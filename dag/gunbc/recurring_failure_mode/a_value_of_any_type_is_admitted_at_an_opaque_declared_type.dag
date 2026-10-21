@@ -2,10 +2,14 @@ module gunbc.recurring_failure_mode.a_value_of_any_type_is_admitted_at_an_opaque
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_value_of_any_type_is_admitted_at_an_opaque_declared_type: RecurringFailureMode = RecurringFailureMode {
   identity: "a_value_of_any_type_is_admitted_at_an_opaque_declared_type" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the seed's inhabitance relation distinguishing host-realized opaque types (whose inhabitants are given by a realization binding) from declarations with no constructor, and refusing a value of an unrelated type at the latter." } },
 
   receipts: [
     "**a value of any type is admitted at an opaque declared type** (invalid state: a value of an unrelated type, an Int for instance, accepted at a parameter or return whose declared type is a bodiless `type H` declaration. Harm: a silent admission, DESIGN section 5; the declared type carries no constructor the value could be, and nothing refuses it).",

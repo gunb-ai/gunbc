@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.tco_identity_passthrough_elision_after_slot_local_split
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data tco_identity_passthrough_elision_after_slot_local_split: RecurringFailureMode = RecurringFailureMode {
   identity: "tco_identity_passthrough_elision_after_slot_local_split" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**CLASS: an optimization that treats source-level name equality as state identity after lowering has split one source binding into a mutable local and a persistent state slot; it elides a required transfer and turns a terminating tail-recursive loop into a fixed-point loop.** INVALID STATE: TCO loop parameters `__tco_loop_*` with authored names rebound each iteration from those slots; a tail self-call whose argument is the same-named ExprVar as a parameter emits `continue` with no slot write because identity-passthrough treated spelling equality as a no-op assign.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.admitted_module_without_judged_standing
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data admitted_module_without_judged_standing: RecurringFailureMode = RecurringFailureMode {
   identity: "admitted_module_without_judged_standing" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a source-ingested module has no judged standing** (the required gates adjudicate entry-derived closures, while source-root ingest admits a larger identity population; a module outside every required closure can carry a structurally checkable defect while every gate stays green.",

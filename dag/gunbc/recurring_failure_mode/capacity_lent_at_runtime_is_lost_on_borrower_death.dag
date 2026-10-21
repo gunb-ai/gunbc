@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.capacity_lent_at_runtime_is_lost_on_borrower
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data capacity_lent_at_runtime_is_lost_on_borrower_death: RecurringFailureMode = RecurringFailureMode {
   identity: "capacity_lent_at_runtime_is_lost_on_borrower_death" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a host-wide server lends capacity at runtime (the ctrl-jobserver GNU make FIFO, /var/lib/ctrl/jobserver/host.fifo) and the borrower returns it cooperatively; a borrower SIGKILLed mid-compile returns nothing and no owner reclaims it, so the pool shrinks for the daemon's lifetime while the host still accepts work.",

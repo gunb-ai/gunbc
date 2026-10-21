@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.authored_lexeme_read_as_a_grammar_marker
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data authored_lexeme_read_as_a_grammar_marker: RecurringFailureMode = RecurringFailureMode {
   identity: "authored_lexeme_read_as_a_grammar_marker" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a structural pass recognises a grammar marker by a Symbol that authored text can also spell. A StampLexeme terminal (an ordinary identifier; after MQ-1 PR-2 a caret symbol's name too) becomes an Atom whose identity IS its text, and in `v2.std.node` Node it is indistinguishable from an atom the grammar placed as a marker, so a pass keyed on the bare identity reads the program's data as its structure -- one identity, two meanings (DESIGN section 3).",
