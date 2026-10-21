@@ -14,11 +14,11 @@ import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 
-// A TYPE APPLICATION IN A FUNCTION SIGNATURE (`List<T>` of the function's own parameter) IS SPELLED BY THE
+// A TYPE APPLICATION IN A FUNCTION SIGNATURE (`Box<T>`, a generic type declared in the same module, over the function's own parameter) IS SPELLED BY THE
 // ONE TYPE-APPLICATION RENDERER (v2.compiler.emit_semantic_decl produced_type_binding_instantiation over
 // translate_type_expression_project), and the function's own type parameter binds like a type
 // declaration's. Before it, every applied type in a signature refused produced_decl_type_ref_unrealized.
-// The module carries no generic type declaration, so the row is independent of the generic member arm.
+// The fixture declares `Box<T>`, so the row stacks on the generic member arm of the PR that introduced it.
 type SignatureEmissionVerdict
   = SignatureEmitted { text: String }
   | SignatureRefused { reason: Symbol }
@@ -57,14 +57,7 @@ fn signature_emission_applied_type_verdict() -> SignatureEmissionVerdict {
 
 test fn an_applied_type_of_the_functions_own_parameter_is_spelled_in_its_signature_holds() -> Bool {
   match signature_emission_applied_type_verdict() {
-    SignatureEmitted { text: t } => string_contains(s: t, pattern: "fn f<T>(") && string_contains(s: t, pattern: "<T>")
+    SignatureEmitted { text: t } => string_contains(s: t, pattern: "fn f<T>(") && string_contains(s: t, pattern: "Box < T >")
     SignatureRefused { reason: _ } => false
-  }
-}
-
-fn zz_probe() -> String {
-  match signature_emission_applied_type_verdict() {
-    SignatureEmitted { text: t } => concat("EMITTED ", t)
-    SignatureRefused { reason: r } => concat("REFUSED ", r)
   }
 }
