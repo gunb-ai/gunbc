@@ -207,7 +207,7 @@ test fn the_lab_git_carve_outs_are_group_writable_setgid_and_nothing_wider() -> 
     // find its declaration) is also why the child's PATH must be the child under .git: a declaration
     // missing or mispathed fails here, not in a later deploy.
     && all(dashboard_git_worker_directory_children, c => any(dirs, d =>
-      owned_path_text(t: d) == join([lab.repo_root as String, "/.git/", c as String], "")
+      owned_path_text(t: d) == dashboard_git_worker_subtree_path(instance: lab, child: c)
         && declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
         && declared_mode_octal(t: d) == file_mode_octal(mode: dashboard_git_worker_subtree_granted_directory_mode(child: c))))
     // THE TWO ARMS ARE ACTUALLY DIFFERENT, pinned at the renderer so the per-child check above cannot be
@@ -501,15 +501,23 @@ data readback_foreign_group: NonEmptyStr = "briansrls"
 // on a file is a privilege shape that belongs on directories alone.
 //
 // `top` / `foreign_top` are the subtree's own required top mode and the OTHER subtree's, so the same set
-// of refusals is run for the sticky subtree (objects/, top 3775) and the plain one (refs/, logs/, top
-// 2775) and neither can be satisfied by the other's shape.
+// of refusals is run for the sticky subtree (objects/, top 3770) and the plain one (refs/, logs/, top
+// 2770) and neither can be satisfied by the other's shape.
 fn readback_grants_the_declared_state(child: NonEmptyStr, top: String) -> Bool {
   dashboard_git_subtree_readback_is_granted(
     child: child,
     group: fleet_posix_worker_shared_group_name,
     receipt: join([
       readback_line(kind: "d", mode: top, group: readback_granted_group(), path: ""),
-      readback_line(kind: "d", mode: "775", group: readback_granted_group(), path: "f9"),
+      // THE SWEPT INTERIOR IS 02775, NOT 0775. The declared walk adds g+w AND g+s to every directory it
+      // crosses, existing fan-out directories included, so a correctly-migrated object fan-out dir is
+      // group-writable AND setgid -- and a fan-out dir git creates tomorrow inherits that setgid from its
+      // parent (though not the sticky bit, which does not propagate, which is why the interior leg is a
+      // window rather than the top's exact mode). An interior at 0775 -- group-writable but with no setgid,
+      // the shape a tree keeps when the walk never reached it -- is a REFUSAL, and readback_refuses_the_
+      // ungranted_states below feeds exactly that shape and demands it be refused. The granted receipt must
+      // therefore carry the swept 02775, the same reason the top carries the declared mode.
+      readback_line(kind: "d", mode: "2775", group: readback_granted_group(), path: "f9"),
       readback_line(kind: "f", mode: "664", group: readback_granted_group(), path: "f9/obj"),
     ], "\n"),
   )
@@ -664,6 +672,7 @@ data worker_mode_rwx: PermissionBits = PermissionBits { read: true, write: true,
 data worker_mode_r_x: PermissionBits = PermissionBits { read: true, write: false, execute: true }
 data worker_mode_rw_: PermissionBits = PermissionBits { read: true, write: true, execute: false }
 data worker_mode_r__: PermissionBits = PermissionBits { read: true, write: false, execute: false }
+data worker_mode___: PermissionBits = PermissionBits { read: false, write: false, execute: false }
 
 fn worker_mode(owner: PermissionBits, group: PermissionBits, other: PermissionBits, setgid: Bool, sticky: Bool) -> FileMode {
   FileMode {
@@ -681,11 +690,18 @@ fn worker_mode(owner: PermissionBits, group: PermissionBits, other: PermissionBi
 data measured_srv1_unmigrated_mode: FileMode = worker_mode(
   owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode_r_x, setgid: false, sticky: false
 )
+// THE EXPECTED TOP MODES ARE THE DECLARED ONES, not a hand spelling: managed_directory's two arms
+// (other = ---) are the single authority the C1 consolidation established, the pins below (2770/3770)
+// state them as strings, and the owned-directory route installs exactly those. An earlier cut of these
+// two rows carried other: r_x -- the host's pre-migration bit pattern -- which made THIS claim
+// internally contradictory (legs compared the model against 2775 while its pins demanded 2770) and was
+// the second authority for one mode the lab finding of 0ed9fbca802 turned up. The counterexample rows
+// below keep their measured spellings on purpose: they are EVIDENCE the model must classify, not grants.
 data granted_directory_mode_expected: FileMode = worker_mode(
-  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode_r_x, setgid: true, sticky: false
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode___, setgid: true, sticky: false
 )
 data granted_shared_directory_mode_expected: FileMode = worker_mode(
-  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode_r_x, setgid: true, sticky: true
+  owner: worker_mode_rwx, group: worker_mode_rwx, other: worker_mode___, setgid: true, sticky: true
 )
 data granted_file_mode_expected: FileMode = worker_mode(
   owner: worker_mode_rw_, group: worker_mode_rw_, other: worker_mode_r__, setgid: false, sticky: false
