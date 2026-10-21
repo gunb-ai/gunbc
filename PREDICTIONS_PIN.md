@@ -845,3 +845,9 @@ Question: is the binder/leaf discriminator census-observable on an authorable pr
 - P-B3 (no-regression, refuse side): applied_box_int_vs_bool_is_refused => count >= 1 on BOTH arms.
 - P-B4: same-binder accepts stay 0 both arms: fn f<T>(x: T, y: T){same_arm(a: x, b: y)} and the generic-caller flexibility specimen.
 Both arms build self-host; binary rc captured raw (never via tail). Void/abort != pass: an arm that fails to build gets NO count reported for it.
+
+### PRED-B results so far (MAIN arm @f34616e, claim-run rc=1, members printed; FIXED arm raw log pending)
+- MAIN p_b1 PASS (unmarked same-spelling T's from one signature: count>=1, REFUSED). So main false-refuses same-fn unmarked T's; the fix's 'two T's of one fn are the same parameter' should FLIP this to accepted (==0). p_b1's >=1 assertion is main-polarity; restatement belongs to the claim-home version.
+- MAIN p_b4 PASS, p_b2 PASS (same-binder accept + Box<Int>==Box<Int> accept hold on main).
+- MAIN p_b3 FAIL (Box<Int> vs Box<Bool> ACCEPTED on main, count 0) -> the applied-container refusal machinery is NOT on main; it arrives with the PR's applied half (superseded by PR-2 arm 2). Consistent with the applied half being PR-introduced.
+- MAIN p_b5 FAIL (T-of-f vs T-of-g same spelling accepted on main, count 0) -> THE BUG the binder half fixes, reproducible on an AUTHORABLE census program. If FIXED shows p_b5 PASS (>=1) with p_b4 still ==0, condition (a) is SATISFIABLE and the claim-home set = {p_b5 green-with-fix red-on-main, p_b4+p_b2 holds, p_b1 restated to same-fn==0}.
