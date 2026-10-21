@@ -162,6 +162,19 @@ fn install_empty_file_command(path: String, octal_mode: NonEmptyStr, uid: Int, g
   )
 }
 
+// install -d CREATES A DIRECTORY WITH ITS FINAL OWNER, GROUP AND MODE IN ONE STEP (coreutils manual,
+// "install invocation": -d creates the directory and any missing parents, -o and -g set the owner and
+// group, -m the mode). The point is who OWNS what a privileged process creates: a mkdir run as root
+// leaves a root-owned directory that its real consumer cannot rename; this leaves it owned by the
+// named principal. Owner and group are NAMES because install(1) accepts either spelling and the
+// callers hold declared account names, not uids.
+fn install_directory_owned_command(path: String, octal_mode: NonEmptyStr, owner: NonEmptyStr, group: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: install_program(),
+    arguments: ["-d", "-m", octal_mode as String, "-o", owner as String, "-g", group as String, "--", path],
+  )
+}
+
 // -f ALONE, NEVER -rf, AND THAT IS THE POINT OF THE NAME. -f makes a missing file a success, which
 // is what an unlink-if-present means; it does NOT recurse, so a path that turns out to be a
 // directory refuses instead of destroying its contents. The recursive form is a different operation

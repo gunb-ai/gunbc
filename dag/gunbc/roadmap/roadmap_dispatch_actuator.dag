@@ -3286,7 +3286,7 @@ fn dispatch_systemd_unit_container_plan(
             detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
           }
         SystemdUnitNameAdmitted { name } =>
-          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
             AttemptExitHookRefused { reason } =>
               DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
             AttemptExitHookRendered { exec_line } =>
