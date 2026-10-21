@@ -8744,6 +8744,11 @@ fn infer_frame_inherited(frame: InferFrame) -> InferFrame {
   InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: Absent }
 }
 
+// A MATCH ARM IS A BRANCH ARM: the expected type of the match reaches each arm body (F2), as infer_branch_arm_child_frame does for if.
+fn infer_frame_with_declared_position_expected(frame: InferFrame, expected: Optional<Node>) -> InferFrame {
+  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: frame.entering, declared_position_expected: expected }
+}
+
 fn infer_frame_keep_declared_position_expected(frame: InferFrame) -> InferFrame {
   InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: frame.declared_position_expected }
 }
@@ -8924,7 +8929,7 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
             match slot.ordinal {
               PositionalOrdinal { index: i } =>
                 match match_positional_slot(ordinal: i) {
-                  MatchArmSlot => infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+                  MatchArmSlot => infer_frame_with_declared_position_expected(frame: infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved), expected: frame.declared_position_expected)
                   MatchScrutineeSlot => infer_frame_inherited(frame: frame)
                 }
               LabeledChild => infer_frame_inherited(frame: frame)
