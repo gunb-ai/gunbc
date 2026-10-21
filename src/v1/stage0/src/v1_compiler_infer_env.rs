@@ -48,14 +48,14 @@ use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
+pub use crate::v1_std_core::ParsedModuleItemKind;
+use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
-    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
-    qualified_last_segment, resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality,
-    CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode, InternTable,
-    NewlineIndex, Node, ParsedModuleItemKind,
+    param_node_name_at, param_node_type_expr, qualified_last_segment,
+    resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
+    Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3598,92 +3598,14 @@ pub fn settled_type(
                     head: d.clone(),
                     args: n.children.clone(),
                 })),
-                Some(rhs) => match alias_rhs_applied(
-                    d.clone(),
+                Some(rhs) => settled_alias_rhs(
                     rhs.clone(),
-                    n.children.clone(),
                     source_indices.clone(),
                     env.clone(),
-                ) {
-                    Some(applied) => settled_alias_rhs(
-                        applied.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                        fuel.clone(),
-                    ),
-                    std::option::Option::None => std::option::Option::None,
-                },
+                    fuel.clone(),
+                ),
             },
             _ => std::option::Option::None,
-        }
-    }
-}
-
-pub fn alias_rhs_applied(
-    d: Rc<DeclarationRef>,
-    rhs: Rc<Node>,
-    use_args: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<Node>> {
-    match declaration_node_of_ref(d.clone(), env.clone()) {
-        std::option::Option::None => {
-            if ((use_args.clone().len() as i64) == 0) {
-                Some(rhs.clone())
-            } else {
-                std::option::Option::None
-            }
-        }
-        Some(decl) => {
-            let names = Rc::new({
-                let mut __result = Vec::new();
-                for p in decl.params.clone().iter().cloned() {
-                    __result.push(crate::v1_std_core::param_node_name_at(
-                        p.clone(),
-                        source_indices.clone(),
-                    ));
-                }
-                __result
-            });
-            if ((names.clone().len() as i64) == 0) {
-                Some(rhs.clone())
-            } else {
-                if ((names.clone().len() as i64) != (use_args.clone().len() as i64)) {
-                    std::option::Option::None
-                } else {
-                    {
-                        let subst = Rc::new(
-                            names
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .enumerate()
-                                .map(|(i, v)| (i as i64, v))
-                                .collect::<Vec<_>>(),
-                        )
-                        .iter()
-                        .cloned()
-                        .fold(
-                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                            |acc: _, pair: (i64, String)| match use_args
-                                .clone()
-                                .get((pair.0.clone()) as usize)
-                                .cloned()
-                            {
-                                Some(arg) => {
-                                    v1_rt::rc_map_insert(acc.clone(), pair.1.clone(), arg.clone())
-                                }
-                                std::option::Option::None => acc.clone(),
-                            },
-                        );
-                        Some(substitute_generics(
-                            rhs.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ))
-                    }
-                }
-            }
         }
     }
 }
@@ -3755,57 +3677,37 @@ pub fn settled_rhs(
                     args: rhs.children.clone(),
                 }));
             }
-            Some(next) => {
-                match alias_rhs_applied(
-                    head.clone(),
-                    next.clone(),
-                    rhs.children.clone(),
-                    source_indices.clone(),
-                    env.clone(),
-                ) {
-                    std::option::Option::None => {
+            Some(next) => match next.declaration.clone() {
+                Some(next_head) => {
+                    if (fuel.clone() <= 0) {
                         break std::option::Option::None;
+                    } else {
+                        {
+                            let __tco_0 = next.clone();
+                            let __tco_1 = next_head.clone();
+                            let __tco_2 = source_indices;
+                            let __tco_3 = env;
+                            let __tco_4 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_rhs = __tco_0;
+                            __tco_loop_head = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            __tco_loop_env = __tco_3;
+                            __tco_loop_fuel = __tco_4;
+                            continue;
+                        }
                     }
-                    Some(applied) => match applied.declaration.clone() {
-                        Some(next_head) => {
-                            if (fuel.clone() <= 0) {
-                                break std::option::Option::None;
-                            } else {
-                                {
-                                    let __tco_0 = applied.clone();
-                                    let __tco_1 = next_head.clone();
-                                    let __tco_2 = source_indices;
-                                    let __tco_3 = env;
-                                    let __tco_4 = v1_rt::int_sub(fuel, 1);
-                                    __tco_loop_rhs = __tco_0;
-                                    __tco_loop_head = __tco_1;
-                                    __tco_loop_source_indices = __tco_2;
-                                    __tco_loop_env = __tco_3;
-                                    __tco_loop_fuel = __tco_4;
-                                    continue;
-                                }
-                            }
-                        }
-                        std::option::Option::None => {
-                            break std::option::Option::None;
-                        }
-                    },
                 }
-            }
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+            },
         }
-    }
-}
-
-pub fn node_is_type_declaration_item(n: Rc<Node>) -> bool {
-    match n.module_item_kind.clone() {
-        ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
-        _ => false,
     }
 }
 
 pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
     if (((((pre.connective.clone() != Connective::NoConnective)
-        || !node_is_type_declaration_item(pre.clone()))
+        || ((pre.params.clone().len() as i64) > 0))
         || (pre.type_annotation.clone() != std::option::Option::None))
         || ((pre.children.clone().len() as i64) > 0))
         || (pre.return_cardinality.clone() != Cardinality::Required))
@@ -4254,149 +4156,4 @@ pub fn alias_rhs_head_of_declaration(
         Some(rhs) => rhs.declaration.clone(),
         std::option::Option::None => std::option::Option::None,
     }
-}
-
-pub fn type_node_label(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    {
-        let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        if (authored.clone() != "".to_string()) {
-            authored.clone()
-        } else {
-            match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: tv_id, .. }) => tv_id.clone(),
-                _ => n.name.clone(),
-            }
-        }
-    }
-}
-
-pub fn substitute_generics(
-    n: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    if v1_rt::map_is_empty(&subst) {
-        n.clone()
-    } else {
-        substitute_generics_apply(n.clone(), subst.clone(), source_indices.clone())
-    }
-}
-
-pub fn substitute_generics_apply(
-    n: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-                match v1_rt::map_get(&subst, tv_id.clone()) {
-                    Some(c) => {
-                        if (type_node_label(c.clone(), source_indices.clone()) == tv_id.clone()) {
-                            n.clone()
-                        } else {
-                            crate::v1_std_core::preserve_outer_optional_cardinality(
-                                n.clone(),
-                                c.clone(),
-                            )
-                        }
-                    }
-                    std::option::Option::None => n.clone(),
-                }
-            }
-            _ => {
-                let nm = type_node_label(n.clone(), source_indices.clone());
-                let is_bare = ((((n.children.clone().len() as i64) == 0)
-                    && (n.connective.clone() == Connective::NoConnective))
-                    && ((n.params.clone().len() as i64) == 0));
-                if is_bare.clone() {
-                    match v1_rt::map_get(&subst, nm.clone()) {
-                        Some(c) => crate::v1_std_core::preserve_outer_optional_cardinality(
-                            n.clone(),
-                            c.clone(),
-                        ),
-                        std::option::Option::None => n.clone(),
-                    }
-                } else {
-                    {
-                        let new_children = Rc::new({
-                            let mut __result = Vec::new();
-                            for c in n.children.clone().iter().cloned() {
-                                __result.push(substitute_generics_apply(
-                                    c.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        });
-                        let new_params = Rc::new({
-                            let mut __result = Vec::new();
-                            for p in n.params.clone().iter().cloned() {
-                                __result.push(substitute_generics_apply(
-                                    p.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        });
-                        let new_inferred = match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                let new_rt = substitute_generics_apply(
-                                    rt.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                );
-                                if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                                    n.inferred.clone()
-                                } else {
-                                    Some(Rc::new(InferredNode::Resolved {
-                                        node: new_rt.clone(),
-                                    }))
-                                }
-                            }
-                            _ => n.inferred.clone(),
-                        };
-                        if ((v1_rt::rc_vec_ptr_eq(new_children.clone(), n.children.clone())
-                            && v1_rt::rc_vec_ptr_eq(new_params.clone(), n.params.clone()))
-                            && (new_inferred.clone() == n.inferred.clone()))
-                        {
-                            n.clone()
-                        } else {
-                            Rc::new(Node {
-                                occurrence_identity: Rc::new(
-                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
-                                ),
-                                name: n.name.clone(),
-                                span: n.span.clone(),
-                                ident_span: n.ident_span.clone(),
-                                children: new_children.clone(),
-                                connective: n.connective.clone(),
-                                params: new_params.clone(),
-                                inferred: new_inferred.clone(),
-                                return_cardinality: n.return_cardinality.clone(),
-                                uses: n.uses.clone(),
-                                body: n.body.clone(),
-                                transport: n.transport.clone(),
-                                properties: n.properties.clone(),
-                                type_annotation: n.type_annotation.clone(),
-                                is_self_recursive: n.is_self_recursive.clone(),
-                                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                                match_pattern: n.match_pattern.clone(),
-                                module_item_kind: n.module_item_kind.clone(),
-                                declaration_marker: n.declaration_marker.clone(),
-                                declaration: n.declaration.clone(),
-                                expr_data: n.expr_data.clone(),
-                                ident: None,
-                            })
-                        }
-                    }
-                }
-            }
-        }
-    })
 }

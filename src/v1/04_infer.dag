@@ -3844,17 +3844,38 @@ fn structured_application_lit_is_declared_optional_variant(
 // agree by the declaration each spelling names, read before any peel: the peel reaches a refinement's
 // body, which names no declaration, and the spelling-keyed alias relation that used to bridge the pair
 // is now keyed on identity (same_declaration).
+//
+// THE FORMAL SIDE IS A NODE AND THE LITERAL SIDE CARRIES THE DECLARATION ITS SPELLING SETTLED TO IN ITS OWN SCOPE. One spelling
+// names different declarations in different modules (`Box` in `app.a` and in `app.b`), so equal spellings agree only when the
+// declarations agree: both sides resolved to one declaration, or neither resolved (a kernel name is global). A spelling that
+// resolves on exactly one side, or to two declarations, refuses; the name never stands in for the identity.
+// `lit_name` is the literal side's AUTHORED label, not a second identity: the spelling-keyed arms below (a declared cast, a spelled
+// alias pair, a brand) are relations over labels by their nature and run only for two DIFFERENT spellings, where `lit_ref` has
+// nothing to add; at an equal spelling only the declaration decides.
 fn application_type_names_compatible(
-  formal_name: String,
+  formal: Node,
   lit_name: String,
+  lit_ref: DeclarationRef?,
   type_env: TypeEnv,
   module_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
+  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   if formal_name == "" || lit_name == "" {
     formal_name == lit_name
   } else if formal_name == lit_name {
-    true
+    match type_reference_declaration_ref(n: formal, source_indices: source_indices, env: type_env) {
+      Present { value: formal_ref } =>
+        match lit_ref {
+          Present { value: lit_decl } => declaration_ref_eq(a: formal_ref, b: lit_decl)
+          Absent => false
+        }
+      Absent =>
+        match lit_ref {
+          Present { value: _ } => false
+          Absent => true
+        }
+    }
   } else {
     let same_declaration = match lookup_type_by_name(env: type_env, name: formal_name) {
       Present { value: formal_item } =>
@@ -3970,8 +3991,9 @@ fn coproduct_variant_payload_admits_type_name(
       }
       let payload_name = authored_name_at(source_indices: source_indices, node: payload_type)
       let names_agree = application_type_names_compatible(
-        formal_name: payload_name,
+        formal: payload_type,
         lit_name: actual_name,
+        lit_ref: type_reference_declaration_ref(n: actual, source_indices: source_indices, env: type_env),
         type_env: type_env,
         module_name: module_name,
         source_indices: source_indices) || alias_identity_in_judgment(left: payload_type, right: actual, source_indices: source_indices, text: TextJudgedIn { env: type_env })
@@ -4041,6 +4063,15 @@ fn coproduct_variant_payload_admits_type_name(
 //
 // COST. Two map lookups and a walk bounded by the two declarations' own arm counts. Nothing is
 // re-derived from normalized structure and nothing is denominated in the corpus.
+// The declaration a produced type node RESOLVED TO, read from its identity and never from its spelling: the spelling is resolved in
+// the consuming module, where a homonym from another module would answer with the formal's own declaration.
+fn actual_declaration_node(actual: Node, scope: InferScope) -> Node? {
+  match type_reference_declaration_ref(n: actual, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    Present { value: d } => declaration_node_of_ref(d: d, env: scope.type_env)
+    Absent => none
+  }
+}
+
 fn coproduct_variant_name_sets_differ(
   left: Node,
   right: Node,
@@ -4065,6 +4096,7 @@ fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> Bool {
 fn foreign_concrete_coproduct_where_parent_required(
   formal_decl: Node,
   formal_name: String,
+  actual: Node,
   actual_name: String,
   actual_rep: String,
   scope: InferScope
@@ -4075,7 +4107,7 @@ fn foreign_concrete_coproduct_where_parent_required(
     || (actual_rep != "" && coproduct_name_is_kernel_or_optional_carrier(name: actual_rep)) {
     false
   } else {
-    match lookup_type_by_name(env: scope.type_env, name: actual_name) {
+    match actual_declaration_node(actual: actual, scope: scope) {
       Absent => false
       Present { value: actual_decl } =>
         let actual_is_concrete_coproduct = actual_decl.connective == Disj
@@ -4800,7 +4832,8 @@ fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope:
   let declared_name = authored_name_at(source_indices: scope.type_env.source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: scope.type_env.source_indices, node: produced)
   if application_type_names_compatible(
-      formal_name: declared_name, lit_name: produced_name,
+      formal: declared, lit_name: produced_name,
+      lit_ref: type_reference_declaration_ref(n: produced, source_indices: scope.type_env.source_indices, env: scope.type_env),
       type_env: scope.type_env, module_name: scope.module_name,
       source_indices: scope.type_env.source_indices)
       || alias_identity_in_judgment(left: declared, right: produced, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
@@ -5149,17 +5182,19 @@ fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String
 // one head), and only a pair that names no common declaration falls to the spelled-name relation below.
 fn nominal_product_heads_agree(declared: Node, produced: Node, declared_name: String, produced_name: String, scope: InferScope) -> Bool {
   alias_identity_in_judgment(left: declared, right: produced, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
-    || nominal_product_head_names_agree(declared_name: declared_name, produced_name: produced_name, scope: scope)
+    || nominal_product_head_names_agree(declared: declared, produced: produced, produced_name: produced_name, scope: scope)
 }
 
 fn nominal_product_head_names_agree(
-  declared_name: String,
+  declared: Node,
+  produced: Node,
   produced_name: String,
   scope: InferScope
 ) -> Bool {
   application_type_names_compatible(
-    formal_name: declared_name,
+    formal: declared,
     lit_name: produced_name,
+    lit_ref: type_reference_declaration_ref(n: produced, source_indices: scope.type_env.source_indices, env: scope.type_env),
     type_env: scope.type_env,
     module_name: scope.module_name,
     source_indices: scope.type_env.source_indices)
@@ -5437,8 +5472,9 @@ fn coproduct_payload_where_parent_required(
     if formal_name == "" || actual_name == "" || either_is_optional_carrier {
       false
     } else if application_type_names_compatible(
-        formal_name: formal_name,
+        formal: formal,
         lit_name: actual_name,
+        lit_ref: type_reference_declaration_ref(n: actual, source_indices: source_indices, env: scope.type_env),
         type_env: scope.type_env,
         module_name: scope.module_name,
         source_indices: source_indices) {
@@ -5468,6 +5504,7 @@ fn coproduct_payload_where_parent_required(
               || foreign_concrete_coproduct_where_parent_required(
                 formal_decl: decl,
                 formal_name: formal_name,
+                actual: actual,
                 actual_name: actual_name,
                 actual_rep: actual_rep,
                 scope: scope)
@@ -5625,7 +5662,8 @@ fn structured_application_site_type_mismatch_with_peeled(
                 Present { value: admitted } => !admitted && !optional_marked_formal_takes_optional_literal(formal: formal, formal_peeled: formal_peeled, lit_name: lit_name, scope: scope)
                 Absent =>
               if application_type_names_compatible(
-                formal_name: formal_name, lit_name: lit_name,
+                formal: formal_peeled, lit_name: lit_name,
+                lit_ref: structured_literal_owner_declaration(lit_name: lit_name, scope: scope),
                 type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices) {
                 false
               } else {
@@ -5638,7 +5676,8 @@ fn structured_application_site_type_mismatch_with_peeled(
                   let expanded_name = authored_name_at(source_indices: source_indices, node: expansion.resolved)
                   expanded_name == formal_structural
                     || application_type_names_compatible(
-                      formal_name: formal_structural, lit_name: expanded_name,
+                      formal: formal_peeled, lit_name: expanded_name,
+                      lit_ref: type_reference_declaration_ref(n: expansion.resolved, source_indices: source_indices, env: scope.type_env),
                       type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
                 Absent => false
               } {
@@ -5649,10 +5688,12 @@ fn structured_application_site_type_mismatch_with_peeled(
               } else if formal_structural == lit_nominal
                 || formal_structural == lit_name
                 || application_type_names_compatible(
-                  formal_name: formal_structural, lit_name: lit_nominal,
+                  formal: formal_peeled, lit_name: lit_nominal,
+                  lit_ref: structured_literal_owner_declaration(lit_name: lit_nominal, scope: scope),
                   type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
                 || application_type_names_compatible(
-                  formal_name: formal_structural, lit_name: lit_name,
+                  formal: formal_peeled, lit_name: lit_name,
+                  lit_ref: structured_literal_owner_declaration(lit_name: lit_name, scope: scope),
                   type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices) {
                 false
               } else {
@@ -5670,7 +5711,8 @@ fn structured_application_site_type_mismatch_with_peeled(
                             Present { value: owner } =>
                               let owner_name = authored_name_at(source_indices: source_indices, node: owner)
                               !application_type_names_compatible(
-                                formal_name: formal_name, lit_name: owner_name,
+                                formal: formal_peeled, lit_name: owner_name,
+                                lit_ref: type_reference_declaration_ref(n: owner, source_indices: source_indices, env: scope.type_env),
                                 type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
                             Absent => true
                           }
@@ -5679,10 +5721,12 @@ fn structured_application_site_type_mismatch_with_peeled(
                         let decl_name = structured_application_structural_type_name(
                           type_name: authored_name_at(source_indices: source_indices, node: decl), scope: scope)
                         !application_type_names_compatible(
-                          formal_name: decl_name, lit_name: lit_nominal,
+                          formal: decl, lit_name: lit_nominal,
+                          lit_ref: structured_literal_owner_declaration(lit_name: lit_nominal, scope: scope),
                           type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
                           && !application_type_names_compatible(
-                            formal_name: decl_name, lit_name: lit_name,
+                            formal: decl, lit_name: lit_name,
+                            lit_ref: structured_literal_owner_declaration(lit_name: lit_name, scope: scope),
                             type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
                       _ => false
                     }
@@ -5750,7 +5794,8 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
       match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
         Present { value: lit_name } =>
           if application_type_names_compatible(
-            formal_name: formal_name, lit_name: lit_name,
+            formal: formal, lit_name: lit_name,
+            lit_ref: declaration_named_by_type_name(name: lit_name, env: type_env),
             type_env: type_env, module_name: module_name, source_indices: source_indices) {
             false
           } else {
@@ -11637,7 +11682,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         } else if (field_cardinality_diags |> count) > 0 {
           field_cardinality_diags
         } else if node_type_compatible(
-          left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
+          left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
+          && nominal_product_inhabitance_refusal(
+            declared: with_required_cardinality(n: expected_node), produced: got_node, scope: scope) == none {
           []
         } else if rejects_string_for_optional_coproduct_field(
           expected: expected_node,
