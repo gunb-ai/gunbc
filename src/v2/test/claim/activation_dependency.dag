@@ -742,6 +742,20 @@ test fn acd_o2_inhabited_half() -> Bool {
   acd_zero_alternatives_then_infers(src: acd_inhabited_empty_source, accepted: false)
 }
 
+test fn acd_o4_never_infers() -> Bool {
+  match acd_assemble_with(src: acd_never_source, peers: Cons { head: acd_never_peer(), tail: Empty }) {
+    Absent => false
+    Present { value: t } => acd_inference_accepts(tree: t)
+  }
+}
+
+test fn acd_o5_never_zero_row() -> Bool {
+  match acd_assemble_with(src: acd_never_source, peers: Cons { head: acd_never_peer(), tail: Empty }) {
+    Absent => false
+    Present { value: t } => length(xs: activation_dispositions(tree: t).zero_alternatives) == 1
+  }
+}
+
 test fn acd_o3_never_assembles() -> Bool {
   match acd_assemble_with(src: acd_never_source, peers: Cons { head: acd_never_peer(), tail: Empty }) {
     Absent => false
