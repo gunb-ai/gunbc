@@ -685,8 +685,6 @@ mod tests {
             answer("test.fixture.read_probe_provider"),
             PoolAnswer::Holds
         ));
-        // The observation saw a readable regular file; the acquisition read will not.
-        std::fs::write(ws.join(&rel_file), [0xffu8, 0xfe, 0xfd]).expect("corrupt the provider");
         let site = |start: i64| {
             Rc::new(GeneratedProviderSite {
                 cause: GeneratedProviderCause::GeneratedConversionRoute,
@@ -732,6 +730,8 @@ mod tests {
                 "std.graph".to_string()
             ]
         );
+        // The model judged the pool's Holds; the acquisition read that follows will not succeed.
+        std::fs::write(ws.join(&rel_file), [0xffu8, 0xfe, 0xfd]).expect("corrupt the provider");
         let failed = match extend_with_acquired(sources, &modules, &|m: &str| {
             super::super::emit_host::fixture_pool_closure_of(m, &pool)
         })
