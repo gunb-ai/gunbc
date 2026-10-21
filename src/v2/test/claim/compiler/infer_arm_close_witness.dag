@@ -138,20 +138,12 @@ fn rb_resolved(o: Outcome<ResolvedTree>) -> Bool {
 fn rb_b5() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { Absent } else { Absent }\n  x\n}\n") }
 test fn rb_b5_refuses_no_arm_declares() -> Bool { ers_has(o: rb_b5(), reason: ^infer_no_arm_declares_a_type) }
 
-// Mixed-state arms: an Int arm beside an Absent arm. Absent is underived, so it is elaborated at the declaring sibling's type (Int),
-// where it is the ordinary literal-at-expected refusal. The Optional control beside it accepts through the same join.
+// Mixed-state arms with NO expected type (an unannotated let): an Int arm beside an Absent arm. Absent is underived, so the join
+// elaborates it at the declaring sibling's type (Int) and the arms conflict. The Optional control beside it accepts through the same join.
+// With a declared expected type each arm is judged against it (Rule A part 2, child-frame hops), so that case is covered there.
 fn rb_g1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x = if true { 1 } else { Absent }\n  x\n}\n") }
 test fn rb_g1_int_beside_absent_refuses() -> Bool { ers_has(o: rb_g1(), reason: ^infer_arms_declare_conflicting_types) }
 test fn rb_g1_the_optional_sibling_control_accepts() -> Bool { ers_infer_accepted(o: rb_b1()) }
-
-// [] control (RED on the real path, flips with Rule A part 2). Native `[]` mints no type of its own yet, so the arm FAILS grounding
-// (infer_grounding_not_derived) before the join can hold it: neither [1]/[] nor []/[] reaches the declaring-sibling elaboration.
-// Rule A part 2 (the expected return seeds the instantiation: [] mints FreeMonoid of a constructor-use variable) is what makes
-// these accept / refuse infer_no_arm_declares_a_type; these claims then flip and stay enrolled as regression controls.
-fn rb_l1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  if true { [1] } else { [] }\n}\n") }
-test fn rb_l1_empty_beside_list_refuses_grounding_until_rule_a_part_2() -> Bool { ers_has(o: rb_l1(), reason: ^infer_grounding_not_derived) }
-fn rb_l2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> List<Int> {\n  let x = if true { [] } else { [] }\n  x\n}\n") }
-test fn rb_l2_two_empties_refuse_grounding_until_rule_a_part_2() -> Bool { ers_has(o: rb_l2(), reason: ^infer_grounding_not_derived) }
 
 // Cost bound: arm nesting depth 1/2/4/8. The instrument is claim_batch's per-claim eval_steps receipt; the four claims differ only in depth.
 fn rb_d1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  if true { Absent } else { Present { value: 1 } }\n}\n") }
