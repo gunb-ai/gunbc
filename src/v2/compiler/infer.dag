@@ -7643,7 +7643,6 @@ fn infer_close_held_root_at(declaring: Node, cur: InferHoldResolution, held: Inf
               InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: infer_arms_declare_conflicting_types_diagnostic(node: held.settled.node)) } }
             ArmTypesJoined { joined: _ } => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
             ArmTypesNoneDeclare => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
-            ArmTypesDeferred => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
           }
       }
   }

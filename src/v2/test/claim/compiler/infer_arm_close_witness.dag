@@ -295,10 +295,11 @@ fn rb_s1() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(o: Int?, x: Int?)
 fn rb_s2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, x: Int?) -> Optional<Int?> {\n  match b {\n    true => Absent\n    false => x\n  }\n}\n") }
 test fn rb_s_if_and_both_match_forms_refuse_with_one_reason() -> Bool { ers_has(o: rb_n1(), reason: ^inhabitance_optional_layer_depth_mismatch) && ers_has(o: rb_s1(), reason: ^inhabitance_optional_layer_depth_mismatch) && ers_has(o: rb_s2(), reason: ^inhabitance_optional_layer_depth_mismatch) }
 
+// ON THE STACKED BRANCH the declared expected type reaches the nested arm first, so the foreign constructor refuses at its own position (infer_grounding_not_derived) rather than at the join; the join's infer_arms_declare_conflicting_types still guards the let-bound (no expected type) path in the base branch.
 // ARM AGREEMENT IS JUDGED AFTER CLOSURE, NOT ONLY AT THE FIRST HELD ARM (Manager 1): a nested arm of another type, whose closure at the declaring type is incompatible, refuses in either inner-arm order; Absent beside Absent still accepts.
 fn rb_k1() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { Absent } else { OtherNone } } }\n") }
 fn rb_k2() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { OtherNone } else { Absent } } }\n") }
 fn rb_k3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { Absent } else { Absent } } }\n") }
-test fn rb_k1_nested_arm_of_another_type_refuses_after_closure() -> Bool { ers_has(o: rb_k1(), reason: ^infer_arms_declare_conflicting_types) && !ers_infer_accepted(o: rb_k1()) }
-test fn rb_k2_same_in_the_other_inner_arm_order() -> Bool { ers_has(o: rb_k2(), reason: ^infer_arms_declare_conflicting_types) && !ers_infer_accepted(o: rb_k2()) }
+test fn rb_k1_nested_arm_of_another_type_refuses_after_closure() -> Bool { ers_has(o: rb_k1(), reason: ^infer_grounding_not_derived) && !ers_infer_accepted(o: rb_k1()) }
+test fn rb_k2_same_in_the_other_inner_arm_order() -> Bool { ers_has(o: rb_k2(), reason: ^infer_grounding_not_derived) && !ers_infer_accepted(o: rb_k2()) }
 test fn rb_k3_absent_beside_absent_accepts() -> Bool { ers_infer_accepted(o: rb_k3()) }
