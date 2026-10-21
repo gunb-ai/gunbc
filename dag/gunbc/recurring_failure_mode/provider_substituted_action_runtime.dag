@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.provider_substituted_action_runtime
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data provider_substituted_action_runtime: RecurringFailureMode = RecurringFailureMode {
   identity: "provider_substituted_action_runtime" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**provider-substituted action runtime** (an action release's own action.yml declares one execution mechanism, and the platform executes a different one in its place. GitHub ran every actions/upload-artifact@v4 and actions/download-artifact@v4 step in this repository -- action.yml `runs.using: node20` -- under Node 24, annotating each job \"Node.js 20 is deprecated ... being forced to run on Node.js 24\" and continuing green).",

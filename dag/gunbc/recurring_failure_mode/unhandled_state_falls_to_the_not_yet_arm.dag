@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.unhandled_state_falls_to_the_not_yet_arm
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data unhandled_state_falls_to_the_not_yet_arm: RecurringFailureMode = RecurringFailureMode {
   identity: "unhandled_state_falls_to_the_not_yet_arm" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "**an unhandled state falls to the NOT-YET arm, so a settled answer is reported as a pending one** (a fold reduces a producer's conclusion set to a verdict with an arm per state it knows and a default for the rest, and the default it falls to is NOT-YET-TERMINAL.",

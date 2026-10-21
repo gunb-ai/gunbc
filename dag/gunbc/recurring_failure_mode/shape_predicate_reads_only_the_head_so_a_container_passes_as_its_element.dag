@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.shape_predicate_reads_only_the_head_so_a_container_passes_as_its_element
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data shape_predicate_reads_only_the_head_so_a_container_passes_as_its_element: RecurringFailureMode = RecurringFailureMode {
   identity: "shape_predicate_reads_only_the_head_so_a_container_passes_as_its_element" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A STRUCTURAL PREDICATE THAT INSPECTS ONLY THE FIRST CHILD CANNOT DISTINGUISH A CONTAINER OF N ELEMENTS FROM ONE ELEMENT, so the container is admitted AS an element and elements 2..N are silently dropped by whatever consumes the match.** The invalid state is a total, pure, fail-closed-looking walk that returns a population of the right TYPE and the wrong CARDINALITY, with no refusal anywhere: the consumer reads the accepted value's head, produces a well-formed partial answer, and reports Accepted. The harm is DESIGN section 5's forbidden case rather than a rung: a fabricated plausible output, here a syntactically valid target module missing most of its declarations, which compiles and therefore fails no downstream check either.",

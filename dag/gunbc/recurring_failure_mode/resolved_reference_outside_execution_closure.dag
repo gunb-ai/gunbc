@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.resolved_reference_outside_execution_closure
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data resolved_reference_outside_execution_closure: RecurringFailureMode = RecurringFailureMode {
   identity: "resolved_reference_outside_execution_closure" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "resolved reference outside the execution closure (an Accepted program contains a resolved call edge whose target declaration's OWNER MODULE is absent from the module closure loaded for that execution, so resolve and typecheck both report success and the program dies at run time.",

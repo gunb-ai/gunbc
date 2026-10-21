@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_convergence_precondition_decided_after_the
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_convergence_precondition_decided_after_the_binary_swap: RecurringFailureMode = RecurringFailureMode {
   identity: "a_convergence_precondition_decided_after_the_binary_swap" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: live_deploy tree convergence has a precondition that is decidable from the object source before any host mutation (the source's git partial-clone standing: extensions.partialClone, remote.*.promisor, remote.*.partialclonefilter; shallow is observed and does not refuse without a specimen), but the apply Decide phase admits that source by path shape only. The first execution of the transfer is gunbc-tree-sync.service ExecStart after Mutate has already installed /opt/gunbc/bin/gunbc.",

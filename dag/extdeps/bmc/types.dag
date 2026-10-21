@@ -633,6 +633,31 @@ fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
   }
 }
 
+// WHETHER A TARGET MEANS 'BOOT FROM THE NETWORK' IS AN INTERFACE FACT ABOUT REDFISH, NOT A FLEET
+// POLICY, so it lives beside the enum rather than in whichever consumer needed it first (DESIGN 3:
+// extdeps owns a dependency's interface shape). It also answers with a union rather than a Bool,
+// because the arm IS the finding: a caller deciding whether to schedule a network boot wants to know
+// WHICH target it is relying on, and a Bool cannot be quoted at an operator when a unit boots the
+// wrong thing. Every arm of the enum is named -- no default -- so a target added upstream makes this
+// match non-exhaustive and forces someone to decide what it means, which is the durable version of
+// the rule and the thing a spelling list or a catch-all could never do.
+type RedfishBootTargetNetworkStanding
+  = NetworkBootTarget { via: NonEmptyStr }
+  | NotNetworkBootTarget { why: NonEmptyStr }
+
+fn redfish_boot_target_network_standing(t: RedfishBootSourceOverrideTarget) -> RedfishBootTargetNetworkStanding {
+  match t {
+    BootTargetPxe => NetworkBootTarget { via: "PXE boot target" }
+    BootTargetUefiHttp => NetworkBootTarget { via: "UEFI HTTP boot target" }
+    BootTargetNone => NotNetworkBootTarget { why: "None selects no device at all" }
+    BootTargetHdd => NotNetworkBootTarget { why: "Hdd is a local disk" }
+    BootTargetCd => NotNetworkBootTarget { why: "Cd is an optical/virtual media device" }
+    BootTargetUsb => NotNetworkBootTarget { why: "Usb is a removable device" }
+    BootTargetBiosSetup => NotNetworkBootTarget { why: "BiosSetup enters firmware setup" }
+    BootTargetDiags => NotNetworkBootTarget { why: "Diags enters vendor diagnostics" }
+  }
+}
+
 fn redfish_boot_override_enabled_wire(e: RedfishBootSourceOverrideEnabled) -> NonEmptyStr {
   match e {
     BootOverrideDisabled => "Disabled"

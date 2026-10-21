@@ -1,0 +1,680 @@
+/* ════════════════════════════════════════════════════════════════════
+   gunb.ai · canonical design system
+   ────────────────────────────────────────────────────────────────────
+   Tokens, base typography, AND the shared primitive vocabulary.
+
+   Every public page composes named primitives from this file.
+   Pages should only add inline CSS for genuinely page-specific
+   structure (e.g. workpad has dev chrome that doesn't belong in the
+   public design system).
+   ══════════════════════════════════════════════════════════════════ */
+
+
+/* ╔══ TOKENS ═════════════════════════════════════════════════════════ */
+
+:root {
+  /* Hue and accent parameters — change once, propagate everywhere */
+  --hue-warm:  37;
+  --hue-moss:  134;
+  --hue-clay:  3;
+  --hue-brass: 43;
+  --accent-sat: 36%;
+  --accent-l: 48%;
+
+  /* Accents — materials, not status signals.
+     moss   = structural continuity / derived / held / re-derived
+     clay   = boundary / removed / violated / no artifact emitted
+     brass  = human edit focus / selected source fact (rare, narrow) */
+  --moss:        hsl(var(--hue-moss), var(--accent-sat), var(--accent-l));
+  --moss-dim:    hsl(var(--hue-moss), var(--accent-sat), 36%);
+  --moss-subtle: hsla(var(--hue-moss), var(--accent-sat), var(--accent-l), 0.14);
+  --clay:        hsl(var(--hue-clay), var(--accent-sat), var(--accent-l));
+  --clay-dim:    hsl(var(--hue-clay), var(--accent-sat), 36%);
+  --clay-subtle: hsla(var(--hue-clay), var(--accent-sat), var(--accent-l), 0.14);
+  --brass:        hsl(var(--hue-brass), 34%, 54%);
+  --brass-dim:    hsl(var(--hue-brass), 28%, 40%);
+  --brass-subtle: hsla(var(--hue-brass), 34%, 54%, 0.13);
+
+  /* Neutrals — void scale (dark surfaces) */
+  --void:     hsl(var(--hue-warm), 0%, 5%);
+  --void-up:  hsl(var(--hue-warm), 3%, 8%);
+  --void-up2: hsl(var(--hue-warm), 4%, 11%);
+
+  /* Neutrals — stone scale (text on dark) */
+  --stone:       hsl(var(--hue-warm), 20%, 76%);
+  --stone-dim:   hsl(var(--hue-warm), 12%, 55%);
+  --stone-faint: hsl(var(--hue-warm), 10%, 38%);
+
+  /* Neutrals — warm white (light surfaces / strong text) */
+  --warm-white:     hsl(var(--hue-warm), 27%, 94%);
+  --warm-white-dim: hsl(var(--hue-warm), 18%, 87%);
+
+  /* Borders */
+  --border-dark:        hsla(var(--hue-warm), 20%, 76%, 0.08);
+  --border-dark-strong: hsla(var(--hue-warm), 20%, 76%, 0.16);
+
+  /* Type families */
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Noto Sans", system-ui, sans-serif;
+
+  /* Measures — width grammar */
+  --measure-page:  56rem;
+  --measure-wide:  62rem;
+  --measure-prose: 42rem;
+  --measure-title: 16ch;
+
+  /* Gaps — vertical/spacing rhythm */
+  --gap-xs: 0.4rem;
+  --gap-sm: 0.85rem;
+  --gap-md: 1.25rem;
+  --gap-lg: 2.5rem;
+  --gap-xl: 4rem;
+}
+
+
+/* ╔══ RESET + BASE ══════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--void);
+  color: var(--warm-white-dim);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+body { margin: 0; }
+a { color: inherit; }
+
+
+/* ╔══ LAYOUT ════════════════════════════════════════════════════════ */
+
+.page {
+  width: min(calc(100% - 2rem), var(--measure-page));
+  margin-inline: auto;
+  padding-block: clamp(2rem, 5vw, 4rem);
+}
+
+
+/* ╔══ MASTHEAD ══════════════════════════════════════════════════════ */
+
+.masthead {
+  display: flex; align-items: center; gap: var(--gap-sm);
+  margin-bottom: 3.5rem;
+  flex-wrap: wrap;
+}
+.mark {
+  width: 64px; height: 64px;
+  color: var(--stone);
+  flex: 0 0 auto;
+}
+.wordmark {
+  font-family: var(--font-mono); font-size: 1.5rem;
+  letter-spacing: 0.04em;
+  color: var(--warm-white);
+}
+
+
+/* ╔══ TEXT ROLES ════════════════════════════════════════════════════ */
+
+.eyebrow {
+  font-family: var(--font-mono); font-size: 0.62rem;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--stone-faint);
+}
+.eyebrow.right { margin-left: auto; }
+
+/* Top-right nav in the masthead — same mono treatment as the footer */
+.masthead-nav {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--stone-faint);
+}
+.masthead-nav a {
+  color: var(--warm-white-dim);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s, color 0.15s;
+}
+.masthead-nav a:hover { color: var(--moss); border-bottom-color: currentColor; }
+.masthead-nav .sep {
+  margin: 0 0.55rem;
+  color: var(--stone-faint);
+  opacity: 0.55;
+}
+
+.section-label {
+  display: block;
+  font-family: var(--font-mono); font-size: 0.6rem;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--stone-faint);
+  margin-bottom: 0.65rem;
+}
+
+
+/* ╔══ HERO — field-note split (left identity, right prose + install) ═ */
+
+.hero-spine {
+  display: grid;
+  grid-template-columns: minmax(21rem, 0.9fr) minmax(25rem, 1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: start;
+  margin-bottom: 2.75rem;
+}
+.hero-left h1 {
+  margin: 0 0 0.85rem;
+  max-width: 16.5ch;
+  font-family: var(--font-sans); font-weight: 600;
+  font-size: clamp(2.2rem, 4.8vw, 3.45rem);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  color: var(--warm-white);
+  text-wrap: balance;
+}
+.hero-left .tagline {
+  font-family: var(--font-sans); font-size: 1.02rem;
+  line-height: 1.45;
+  color: var(--stone);
+  margin: 0;
+  max-width: 24em;
+}
+.hero-right {
+  max-width: var(--measure-prose);
+  padding-top: 0.35rem;
+  display: grid;
+  gap: 1.15rem;
+}
+.hero-right p {
+  margin: 0;
+  line-height: 1.7;
+  color: var(--warm-white-dim);
+}
+.hero-right strong { color: var(--warm-white); font-weight: 500; }
+.hero-right code {
+  font-family: var(--font-mono); font-size: 0.88em;
+  color: var(--warm-white);
+}
+.hero-right .install { margin-top: 0.35rem; }
+
+
+/* ╔══ PROSE — generic body paragraphs ══════════════════════════════ */
+
+.prose { max-width: var(--measure-prose); margin: 0; }
+.prose p {
+  margin: 0 0 1.05rem;
+  line-height: 1.7;
+  color: var(--warm-white-dim);
+}
+.prose p:last-child { margin-bottom: 0; }
+.prose strong { color: var(--warm-white); font-weight: 500; }
+.prose code {
+  font-family: var(--font-mono); font-size: 0.88em;
+  color: var(--warm-white);
+}
+
+
+/* ╔══ MEASURE WRAPPERS ═════════════════════════════════════════════
+   Width is controlled by section CONTAINERS, not individual components.
+   Wrap a section in one of these to clamp its children. */
+
+.measure-prose { max-width: var(--measure-prose); }
+.measure-page  { max-width: var(--measure-page); }
+.measure-wide  { max-width: var(--measure-wide); }
+
+
+/* ╔══ CARVED RULE — section break with moss diamond notch ═════════
+   No max-width: inherits from its container (the section's measure
+   wrapper or .page). That keeps it aligned with whatever sits beside
+   or below it. */
+
+.carved-rule {
+  display: flex; align-items: center; gap: 0.7rem;
+  width: 100%;
+  margin: 2.75rem 0;
+}
+.carved-rule::before, .carved-rule::after {
+  content: ""; flex: 1; height: 0;
+  border-top: 1px solid var(--border-dark-strong);
+}
+.carved-rule .notch {
+  width: 6px; height: 6px;
+  background: var(--moss-dim);
+  transform: rotate(45deg);
+}
+
+
+/* ╔══ COMMAND PANEL ═════════════════════════════════════════════════ */
+
+.command {
+  background: var(--void-up);
+  border: 1px solid var(--border-dark);
+  border-radius: 3px;
+  padding: 0.95rem 1.2rem;
+  font-family: var(--font-mono); font-size: 0.82rem;
+  line-height: 1.85;
+  color: var(--warm-white-dim);
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+.command .prompt { color: var(--moss); user-select: none; }
+
+
+/* ╔══ INVARIANT PANEL — clay only here ═════════════════════════════ */
+
+.invariant {
+  background: var(--void-up);
+  border: 1px solid var(--border-dark);
+  border-left: 2px solid var(--clay);
+  border-radius: 0 3px 3px 0;
+  padding: 1rem 1.25rem;
+  font-family: var(--font-mono); font-size: 0.82rem;
+  line-height: 1.75;
+  color: var(--warm-white-dim);
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+.invariant .title {
+  color: var(--clay);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+
+/* ╔══ ROLE TOKENS — shared between code spans and graph elements ═
+   The visual-correspondence rule: every colored code token has a
+   same-colored graph object, and vice versa.
+
+   Taxonomy (one color per structural meaning):
+     stable      ordinary structure                    warm-white
+     focus       the source fact this card pivots on   brass
+     derived     directly downstream / 1-2 hops        moss
+     transitive  multi-hop downstream (distant kin)    moss-dim
+     artifact    terminal generated slot               warm-white
+     removed     diff removal                          clay
+     boundary    violation / no artifact emitted       clay
+     context     ambient text without a role           stone
+
+   stable and artifact share warm-white intentionally: they are the
+   bookends of the system (source root and target slot). The cut-
+   corner pentagon shape carries the artifact distinction. */
+
+.map-stable     { color: var(--warm-white); }
+.map-focus      { color: var(--brass); }
+.map-derived    { color: var(--moss); }
+.map-transitive { color: var(--warm-white-dim); }
+.map-artifact   { color: var(--warm-white); }
+.map-removed    { color: var(--clay); }
+.map-boundary   { color: var(--clay); }
+.map-context    { color: var(--stone-dim); }
+
+
+/* ╔══ STORY DECK — one progressive example, four accreting stages ═══
+   Rendered by assets/cards.js. Each stage shares the same base graph;
+   the visual story builds up layer by layer (lasso, dots, artifacts).
+   Navigate via prev/next buttons or ← / → keys. */
+
+.deck {
+  margin: var(--gap-lg) 0;
+  background: var(--void-up);
+  border: 1px solid var(--border-dark);
+  border-radius: 5px;
+  padding: 1.25rem 1.5rem 1.5rem;
+  outline: none;
+}
+.deck-head {
+  display: flex; align-items: center; gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.deck-name {
+  font-family: var(--font-mono); font-size: 0.68rem;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--warm-white);
+}
+.deck-head .deck-ticks {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 0.45rem;
+  flex: 0 0 auto;
+}
+.deck-tick {
+  width: 16px; height: 10px;
+  background: var(--border-dark-strong);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.deck-tick.active { background: var(--moss); }
+.deck-pos {
+  font-family: var(--font-mono); font-size: 0.62rem;
+  letter-spacing: 0.13em; color: var(--stone-faint);
+}
+.deck-pos .deck-current { color: var(--warm-white); }
+
+.deck-stage {
+  overflow: hidden;
+  border: 1px solid var(--border-dark);
+  border-radius: 4px;
+  background: var(--void);
+}
+.card-track {
+  display: flex;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.deck-card {
+  flex: 0 0 100%;
+  padding: 1.2rem 1.5rem 1.25rem;
+  box-sizing: border-box;
+}
+.deck-card-head {
+  display: flex; align-items: baseline; gap: 0.85rem;
+  margin-bottom: 0.65rem;
+  flex-wrap: wrap;
+}
+.deck-card-num {
+  font-family: var(--font-mono); font-size: 0.6rem;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--stone-faint);
+}
+.deck-card-name {
+  font-family: var(--font-sans); font-weight: 600;
+  font-size: 1.15rem; color: var(--warm-white);
+  letter-spacing: -0.005em;
+}
+.deck-card-concept {
+  font-family: var(--font-sans); font-size: 0.92rem;
+  line-height: 1.6; color: var(--warm-white-dim);
+  margin: 0 0 1.25rem; max-width: 46em;
+}
+.deck-card-concept strong { color: var(--warm-white); font-weight: 500; }
+
+/* Vertical stack: code and graph each get the full card width. The
+   richer system (with the Sessions parallel domain) makes the graph
+   wider than the code pane can accommodate when split 50/50; the
+   stacked layout keeps the SVG text readable. */
+.deck-card-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+}
+
+/* Code pane — no horizontal scroll. If a line would overflow it
+   gets clipped at the panel edge; specs must keep lines short. */
+.card-code {
+  background: var(--void-up);
+  border: 1px solid var(--border-dark);
+  border-radius: 4px;
+  padding: 0.75rem 0.9rem 0.85rem;
+  font-family: var(--font-mono); font-size: 0.68rem;
+  color: var(--warm-white-dim);
+  line-height: 1.6;
+  overflow: hidden;
+}
+.card-code-head {
+  font-size: 0.58rem;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--stone-faint);
+  padding-bottom: 0.55rem;
+  border-bottom: 1px dashed var(--border-dark);
+  margin-bottom: 0.6rem;
+  display: flex; align-items: center; gap: 0.45rem;
+}
+.card-code-head .ck-dot  { color: var(--moss); font-size: 0.55rem; }
+.card-code-head .ck-file { color: var(--warm-white-dim); letter-spacing: 0.04em; text-transform: none; font-size: 0.66rem; }
+
+.ck-line {
+  white-space: pre;
+  display: block;
+}
+.ck-line.ck-diff-rm  { background: var(--clay-subtle);  margin: 0 -0.25rem; padding-left: 0.25rem; }
+.ck-line.ck-diff-add { background: var(--moss-subtle); margin: 0 -0.25rem; padding-left: 0.25rem; }
+.ck-ln    { color: var(--stone-faint); user-select: none; }
+.ck-kw    { color: var(--moss); }
+.ck-ty    { color: var(--warm-white); font-weight: 500; }
+.ck-com   { color: var(--stone-faint); }
+.ck-diff-sign { font-weight: 600; }
+.ck-diff-rm  .ck-diff-sign { color: var(--clay); }
+.ck-diff-add .ck-diff-sign { color: var(--moss); }
+.ck-ref { font-weight: 500; }
+
+/* Graph pane — SVG fills available width, capped at a reasonable
+   max-height so a tall viewBox does not push card height to absurd. */
+.card-graph {
+  background: var(--void-up);
+  border: 1px solid var(--border-dark);
+  border-radius: 4px;
+  padding: 0.7rem 0.85rem;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.card-graph svg {
+  display: block;
+  max-width: 100%;
+  max-height: 22rem;
+  width: 100%;
+  height: auto;
+  color: var(--stone);
+  overflow: visible;
+}
+
+.graph-node text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--warm-white-dim);
+}
+/* Nodes are filled with the card-graph background so edges
+   underneath are masked at crossings. */
+.graph-node rect,
+.graph-node.map-artifact path { fill: var(--void); }
+
+.graph-node.map-stable rect     { stroke: var(--warm-white); stroke-width: 2; }
+.graph-node.map-stable text     { fill: var(--warm-white); font-weight: 600; }
+.graph-node.map-focus rect      { stroke: var(--brass); stroke-width: 2; }
+.graph-node.map-focus text      { fill: var(--brass); font-weight: 500; }
+.graph-node.map-derived rect    { stroke: var(--moss); stroke-width: 1.5; }
+.graph-node.map-derived text    { fill: var(--moss); }
+.graph-node.map-transitive rect { stroke: var(--warm-white-dim); stroke-width: 1.2; stroke-opacity: 0.75; }
+.graph-node.map-transitive text { fill: var(--warm-white-dim); }
+.graph-node.map-removed rect    { stroke: var(--clay); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.graph-node.map-removed text    { fill: var(--clay); }
+.graph-node.map-boundary rect   { stroke: var(--clay); stroke-width: 2; }
+.graph-node.map-boundary text   { fill: var(--clay); font-weight: 500; }
+.graph-node.map-context rect    { stroke: var(--stone-faint); stroke-width: 1; stroke-opacity: 0.55; }
+.graph-node.map-context text    { fill: var(--stone-dim); }
+.graph-node.map-skipped rect    { stroke: var(--stone); stroke-width: 1; stroke-opacity: 0.32; }
+.graph-node.map-skipped text    { fill: var(--stone-dim); fill-opacity: 0.4; }
+
+/* Artifact (cut-corner) — warm-white so artifacts read as the
+   system's terminal bookends, distinct from moss derived nodes.
+   Shape and color both carry the structural distinction.
+   For artifacts that are present in the model but NOT in this card's
+   affected set (e.g. parallel-domain outputs in card 02), apply the
+   context role so they render as grey pentagons. */
+.graph-node.map-artifact path,
+.graph-node.map-artifact line { stroke: var(--warm-white); stroke-width: 1.5; }
+.graph-node.map-artifact text { fill: var(--warm-white); }
+.graph-node.map-context path,
+.graph-node.map-context line { stroke: var(--stone-faint); stroke-width: 1; stroke-opacity: 0.55; }
+.graph-node.map-context text { fill: var(--stone-dim); }
+
+/* Default stroke = stone so an edge with no matching role rule
+   is still visible (defensive: failing visibly beats failing silent). */
+.graph-edge { fill: none; stroke: var(--stone); stroke-width: 1.5; stroke-linecap: round; }
+.graph-edge.map-stable     { stroke: var(--warm-white); }
+.graph-edge.map-focus      { stroke: var(--brass); }
+.graph-edge.map-derived    { stroke: var(--moss); }
+.graph-edge.map-transitive { stroke: var(--warm-white-dim); stroke-opacity: 0.7; }
+.graph-edge.map-artifact   { stroke: var(--warm-white); }
+.graph-edge.map-removed    { stroke: var(--clay); stroke-dasharray: 4 3; }
+.graph-edge.map-boundary   { stroke: var(--clay); }
+.graph-edge.map-context    { stroke: var(--stone-faint); stroke-opacity: 0.5; }
+.graph-edge.map-skipped    { stroke: var(--stone); stroke-opacity: 0.32; }
+
+.graph-edge-label {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.05em;
+}
+.graph-edge-label.map-stable     { fill: var(--warm-white); }
+.graph-edge-label.map-focus      { fill: var(--brass); }
+.graph-edge-label.map-derived    { fill: var(--moss-dim); }
+.graph-edge-label.map-transitive { fill: var(--warm-white-dim); }
+.graph-edge-label.map-artifact   { fill: var(--warm-white); }
+.graph-edge-label.map-removed    { fill: var(--clay); }
+.graph-edge-label.map-boundary   { fill: var(--clay); }
+.graph-edge-label.map-context    { fill: var(--stone-faint); }
+
+/* Cost-area cells — per-cell coloring so a single panel can hold both
+   budget and overage. Bottom-aligned panels with the budget row at the
+   same Y in both: declared (1×n, all budget) sits as the bottom row
+   of the observed grid (n×n, with the n-1 rows above as overage).
+   The visual claim: observed extends UP past the declared ceiling. */
+.cost-area rect { fill: none; stroke-width: 1; }
+.cost-area rect.cost-cell-budget  { stroke: var(--moss); fill: var(--moss-subtle); }
+.cost-area rect.cost-cell-overage { stroke: var(--clay); fill: var(--clay-subtle); }
+.cost-area-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  fill: var(--warm-white-dim);
+}
+.cost-area-sublabel {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.05em;
+  fill: var(--stone-faint);
+}
+
+/* Receipt — structured label/value rows.
+   The receipt is the card's stamp, not a prose recap. Each row pairs
+   a small mono key (stone-faint) with a colored value carried by the
+   {role:text} token system. Card 03's receipt also embeds a code
+   block (the suggested replacement shape) — the "diagnostic" is just
+   another row of the receipt, not a separate panel. */
+.card-receipt {
+  margin-top: 1rem;
+  padding: 0.7rem 0.95rem;
+  background: var(--void-up);
+  border: 1px solid var(--border-dark);
+  border-left: 2px solid var(--moss-dim);
+  border-radius: 0 3px 3px 0;
+  font-family: var(--font-mono); font-size: 0.7rem;
+  line-height: 1.65;
+  color: var(--warm-white-dim);
+  display: grid; gap: 0.25rem;
+}
+.card-receipt-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+@media (max-width: 540px) {
+  .card-receipt-row { grid-template-columns: 1fr; gap: 0.05rem; }
+}
+.rk {
+  color: var(--stone-faint);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+}
+.rv { color: var(--warm-white-dim); }
+.card-receipt-code {
+  margin-top: 0.1rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--void);
+  border-radius: 3px;
+  font-size: 0.66rem;
+  color: var(--moss);
+  white-space: pre;
+  overflow-x: hidden;
+}
+
+/* Nav (prev/next buttons) */
+.deck-nav {
+  display: flex; align-items: center; gap: 1rem;
+  margin-top: 1rem;
+}
+.deck-btn {
+  background: var(--void);
+  border: 1px solid var(--border-dark);
+  border-radius: 3px;
+  padding: 0.5rem 0.95rem;
+  font-family: var(--font-mono); font-size: 0.68rem;
+  color: var(--warm-white-dim);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s, color 0.15s;
+}
+.deck-btn:hover           { color: var(--moss); border-color: var(--moss-dim); }
+.deck-btn:focus-visible   { outline: 1px solid var(--moss); outline-offset: 2px; }
+.deck-btn:disabled        { opacity: 0.3; cursor: not-allowed; }
+.deck-btn:disabled:hover  { color: var(--warm-white-dim); border-color: var(--border-dark); }
+
+/* Lasso (dashed moss polygon) and dot markers for accreted layers */
+.graph-lasso {
+  fill: none;
+  stroke: var(--moss);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  stroke-linejoin: round;
+}
+.graph-dot { fill: var(--moss); stroke: none; }
+
+
+/* ╔══ FOOTER ════════════════════════════════════════════════════════ */
+
+.foot {
+  margin-top: 3rem;
+  font-family: var(--font-mono); font-size: 0.72rem;
+  color: var(--stone-faint);
+  letter-spacing: 0.04em;
+}
+.foot a {
+  color: var(--warm-white-dim);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s, color 0.15s;
+}
+.foot a:hover { color: var(--moss); border-bottom-color: currentColor; }
+.foot .sep {
+  margin: 0 0.55rem;
+  color: var(--stone-faint);
+  opacity: 0.55;
+}
+
+
+/* ╔══ MEDIA QUERIES ═════════════════════════════════════════════════ */
+
+@media (max-width: 760px) {
+  .hero-spine {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  .hero-left h1 { max-width: 18ch; }
+}
+
+@media (max-width: 700px) {
+  .specimen-body { grid-template-columns: 1fr; }
+  .story-ledger {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 0.85rem;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+  .specimen {
+    flex: 0 0 88vw;
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 480px) {
+  .masthead { margin-bottom: 2.5rem; }
+  .masthead .eyebrow { margin-left: 0; flex-basis: 100%; }
+  .carved-rule { margin: 2rem 0; }
+}

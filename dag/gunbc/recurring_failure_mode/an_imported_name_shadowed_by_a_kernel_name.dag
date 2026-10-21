@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data an_imported_name_shadowed_by_a_kernel_name: RecurringFailureMode = RecurringFailureMode {
   identity: "an_imported_name_shadowed_by_a_kernel_name" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "an imported name shadowed by a kernel name -- residual after the Optional mint wall. v1.compiler.infer_env overlay_skips_kernel_name still sits above imports for the kernel types, the container spellings, Unit, Optional, Present, and Absent. lookup_binding still answers from env.bindings (declarations and named imports) before that overlay. INVALID STATE: one spelling, one module, two declarations, chosen by which lookup asks. The Optional instance of that fork is CLOSED: std.literal_elaboration kernel_named_import_standing / v1.compiler.resolve kernel_named_import_diags refuse a non-mint Optional import (gunbc.recurring_failure_mode.import_collides_with_a_kernel_name). The enrolled regression control is test.claim.infer_kernel_import_collision_witness importing_a_non_mint_optional_refuses_at_the_import (ImportCollidesWithKernelName). Names with no kernel_mint_declaration_rows row are KernelNamedImportAdmitted, so the two-lookup fork remains writable for every overlay_skips spelling that is not Optional.",

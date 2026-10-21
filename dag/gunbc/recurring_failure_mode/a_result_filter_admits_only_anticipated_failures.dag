@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_result_filter_admits_only_anticipated_failures
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_result_filter_admits_only_anticipated_failures: RecurringFailureMode = RecurringFailureMode {
   identity: "a_result_filter_admits_only_anticipated_failures" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a result filter admits only anticipated failures: a reader runs a tool through a grep, sed or head written to match the failure shapes the reader EXPECTED, and treats the filtered output as the tool's verdict. A failure in any other shape is filtered out and reads as silence -- and silence reads as success. The filter is written by the same person who is hoping the run is green, which is exactly the wrong author for a completeness question.",
