@@ -41,20 +41,16 @@ fn observe_url_file(path: NonEmptyStr, expected_hash: NonEmptyStr) -> Acquisitio
 // way round. Its three real-execution witnesses drive it with a temp file they wrote themselves, and
 // a probe that could only be called with a whole AcquisitionSubject would have forced those fixtures
 // to build one -- more ceremony around the same two facts. One authority, called by both.
-fn observe_url_file_subject(subject: AcquisitionSubject) -> AcquisitionObservation {
-  observe_url_file(
-    path: subject.install_path,
-    expected_hash: url_file_digest(key: subject.key),
-  )
-}
+// A REVISION-KEYED SUBJECT IS REFUSED, NOT VERIFIED AGAINST A STAND-IN. This binding verifies one
+// file against one SHA-256; it has no way to check an upstream revision, so such a subject is a
+// caller defect and both paths say so: the probe reports that it could not establish the identity,
+// and an attempt is rejected with the same reason. Neither reads as wrong bytes at the path.
+data url_file_revision_key_refusal: NonEmptyStr = "the single-file URL acquisition verifies a SHA-256 content digest; a revision-keyed subject cannot be verified by it"
 
-// THE DIGEST THIS SUBJECT IS KEYED ON. A single-file URL subject is always digest-keyed -- the
-// artifact is one file with one published SHA-256 -- so the revision arm is
-// unreachable here and answers with a string that could never verify rather than a plausible one.
-fn url_file_digest(key: AcquisitionKey) -> NonEmptyStr {
-  match key {
-    ContentDigestSha256 { hex: h } => h
-    UpstreamRevision { revision: _ } => "a single-file URL subject is never revision-keyed" as NonEmptyStr
+fn observe_url_file_subject(subject: AcquisitionSubject) -> AcquisitionObservation {
+  match subject.key {
+    UpstreamRevision { revision: _ } => AcquisitionProbeFailed { reason: url_file_revision_key_refusal }
+    ContentDigestSha256 { hex: h } => observe_url_file(path: subject.install_path, expected_hash: h)
   }
 }
 
@@ -72,19 +68,22 @@ fn url_file_staging_path(subject: AcquisitionSubject) -> NonEmptyStr {
 
 fn attempt_url_file_source(subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   let part_path = url_file_staging_path(subject: subject)
-  match origin.locator {
-    SourceArgv { argv: _ } =>
-      AttemptRejected { detail: "this mirror was built with a command-line locator, which the single-file URL transport cannot fetch; it downloads a URL" as NonEmptyStr }
-    SourceUrl { url: u } => attempt_url_file_download(subject: subject, origin: origin, url: u, part_path: part_path)
+  match subject.key {
+    UpstreamRevision { revision: _ } => AttemptRejected { detail: url_file_revision_key_refusal }
+    ContentDigestSha256 { hex: digest } => match origin.locator {
+      SourceArgv { argv: _ } =>
+        AttemptRejected { detail: "this mirror was built with a command-line locator, which the single-file URL transport cannot fetch; it downloads a URL" as NonEmptyStr }
+      SourceUrl { url: u } => attempt_url_file_download(subject: subject, origin: origin, url: u, part_path: part_path, digest: digest)
+    }
   }
 }
 
-fn attempt_url_file_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr) -> AcquisitionAttempt {
+fn attempt_url_file_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr, digest: NonEmptyStr) -> AcquisitionAttempt {
   let downloaded = http.Client.DownloadToFile(url: url, destination: part_path)
   if downloaded.success == false {
     AttemptUnreachable
   } else {
-    match sha256sum_verify_via_shell(path: part_path, expected_digest: url_file_digest(key: subject.key)) {
+    match sha256sum_verify_via_shell(path: part_path, expected_digest: digest) {
       Sha256Matches => url_file_publish(subject: subject, origin: origin, part_path: part_path)
       Sha256Mismatch => url_file_discard_mismatch(part_path: part_path)
       Sha256VerifyInfraFailure { reason: r } => url_file_discard_infra_failure(part_path: part_path, subject: subject, origin: origin, reason: r)
