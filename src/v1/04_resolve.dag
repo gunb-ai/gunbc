@@ -306,40 +306,24 @@ fn kind_lookup_trace(kind_decl: Node, env: TypeEnv) -> String {
 // A stamped control (the 20 realization_measurement refusals) reads decl=paramref. The fields ride
 // the EXISTING refusal message: no new diagnostic exists, so no module's abandonment changes.
 fn raven_probe_wall_dump(arg: Node, env: TypeEnv, module_name: String) -> String {
-  let a = authored_name_at(source_indices: env.source_indices, node: arg)
-  let arg_name = if a == "" { arg.name } else { a }
   let occ_text = match arg.occurrence_identity {
-    OccurrenceMinted { id: _ } => "minted"
-    OccurrenceProjected { id: _, caused_by: _ } => "projected"
-    OccurrencePending { caused_by: _ } => "pending"
-    _ => "synthetic"
+    OccurrenceMinted { id: _ } => "m"
+    OccurrenceProjected { id: _, caused_by: _ } => "p"
+    OccurrencePending { caused_by: _ } => "x"
+    _ => "s"
   }
-  let conn_text = match arg.connective {
-    NoConnective => "none"
-    Arrow => "arrow"
-    Conj => "conj"
-    Disj => "disj"
-  }
-  let inferred_text = match arg.inferred { Present { value: _ } => "present"  Absent => "absent" }
+  let inferred_text = match arg.inferred { Present { value: _ } => "p"  Absent => "a" }
   let decl_text = match arg.declaration {
-    Absent => "none"
-    Present { value: r } => if declaration_ref_is_type_parameter(ref: r) { "paramref" } else { "other" }
-  }
-  let ident_text = match arg.ident_span {
-    Absent => "absent"
-    Present { value: s } => concat(s.file, ":", to_string(value: s.start), "-", to_string(value: s.end))
+    Absent => "n"
+    Present { value: r } => if declaration_ref_is_type_parameter(ref: r) { "t" } else { "o" }
   }
   concat(
-    "|PROBE mod=", module_name,
-    " arg=", arg_name,
-    " occ=", occ_text,
-    " span=", arg.span.file, ":", to_string(value: arg.span.start), "-", to_string(value: arg.span.end),
-    " ident=", ident_text,
-    " children=", to_string(value: arg.children |> count),
-    " params=", to_string(value: arg.params |> count),
-    " conn=", conn_text,
-    " inferred=", inferred_text,
-    " decl=", decl_text
+    "|P o=", occ_text,
+    " c=", to_string(value: arg.children |> count),
+    " p=", to_string(value: arg.params |> count),
+    " i=", inferred_text,
+    " d=", decl_text,
+    " s=", to_string(value: arg.span.start), "-", to_string(value: arg.span.end)
   )
 }
 
