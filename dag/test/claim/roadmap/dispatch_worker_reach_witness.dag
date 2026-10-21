@@ -2,7 +2,7 @@ module test.claim.roadmap.dispatch_worker_reach_witness
 
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
-import extdeps.access.posix { FileMode, FileOwnership, file_mode_of_octal_text }
+import extdeps.access.posix { FileMode, FileOwnership, PermissionBits, file_mode_of_octal_text }
 import gunbc.roadmap.dispatch_worker_reach {
   HandedPath,
   AncestorStat,
@@ -28,10 +28,17 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, s
 // The receipts below are that observation, typed; the RED and the GREEN differ ONLY in the receipt
 // chain (and the root it describes), so a pass cannot come from a different judge.
 
+// A literal below is always well-formed octal text; the Absent arm is the all-denied mode, so a typo
+// in a receipt reads as a blocked directory rather than a pass.
+fn none_mode() -> FileMode {
+  let nothing = PermissionBits { read: false, write: false, execute: false }
+  FileMode { owner: nothing, group: nothing, other: nothing, setuid: false, setgid: false, sticky: false }
+}
+
 fn mode(octal: String) -> FileMode {
   match file_mode_of_octal_text(text: octal) {
     Present { value: m } => m
-    Absent => match file_mode_of_octal_text(text: "0") { Present { value: z } => z  Absent => mode(octal: octal) }
+    Absent => none_mode()
   }
 }
 
@@ -80,8 +87,8 @@ test fn the_observed_lab_chain_refuses_naming_local_share_and_emits_no_spawn() -
   match reach {
     DispatchWorkerAncestorNotTraversable { worker: w, handed_path: _, blocking_dir: d, observed_owner: o, observed_mode: _ } =>
       w == "gunbc-worker" && d == "/home/briansrls/.local/share" && o.uid == 1000
-        && contains(dispatch_worker_reach_wire(reach: reach), "710")
-        && contains(dispatch_worker_reach_wire(reach: reach), "/home/briansrls/.local/share")
+        && string_contains(s: dispatch_worker_reach_wire(reach: reach), pattern: "710")
+        && string_contains(s: dispatch_worker_reach_wire(reach: reach), pattern: "/home/briansrls/.local/share")
         && match belt_worker_reach_outcome(reach: reach) {
           ExecStepFailed { step: s, detail: _ } => s == "worker-reach"
           ExecStepsOk => false
