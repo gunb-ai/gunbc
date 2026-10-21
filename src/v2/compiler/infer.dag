@@ -2747,7 +2747,7 @@ fn infer_match_bool(
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
-  let arm_targets = match_arm_slots(n: node) |> list_map(f: fn(a) { child_slot_target(slot: a) })
+  let arm_targets = list_map(xs: match_arm_slots(n: node), f: fn(a) { child_slot_target(slot: a) })
   if !all_edges_positional(children: node.children) || length(xs: arm_targets) != 2 {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
@@ -2840,7 +2840,7 @@ fn infer_match(
   expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
   let positional_targets = positional_child_target_nodes(node: node)
-  let arms = match_arm_slots(n: node) |> list_map(f: fn(a) { child_slot_target(slot: a) })
+  let arms = list_map(xs: match_arm_slots(n: node), f: fn(a) { child_slot_target(slot: a) })
       if is_empty(xs: arms) {
         infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
       } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
@@ -3378,7 +3378,7 @@ fn infer_match_coproduct(
     match match_slot_target(n: node, slot: MatchScrutineeSlot) {
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
-        let arms = match_arm_slots(n: node) |> list_map(f: fn(a) { child_slot_target(slot: a) })
+        let arms = list_map(xs: match_arm_slots(n: node), f: fn(a) { child_slot_target(slot: a) })
             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: _, diagnostics: cd } =>
