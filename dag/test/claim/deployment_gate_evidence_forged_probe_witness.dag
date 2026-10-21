@@ -91,6 +91,24 @@ test fn a_foreign_call_to_the_review_mint_is_refused_at_the_callee() -> Bool {
   ) >= 1
 }
 
+// (a2) THE RUN ID, PASSED WHERE A RULE ID BELONGS (review 83825, folded per warm-crane-219's split).
+// Both axes were `Int`, so the probe's mint call handed the RUN's digits to the rule-id slot and the call
+// COMPILED -- the mint's RuleIsNotTheOneRequested arm then compared run digits against rule digits, a
+// question with two different upstream objects that Int answers as if they were one. The rule id now has
+// its own carrier beside the rule model (extdeps.github.deployment_protection_rule); with it in place this
+// forgery is a TypeMismatch at the callee, keyed by the argument's type. THE CLAIM IS DELIBERATELY WRITTEN
+// BEFORE THE CARRIER (RED-first): today the line compiles, the row is absent, and this claim is red. The
+// control -- which names the mint and imports everything the probe attacks but calls nothing -- must read
+// ZERO at the same key, so the row cannot be an artifact of importing the module rather than forging.
+test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_mint() -> Bool {
+  refusals(c: probe_census(), class: "TypeMismatch", subject: "Primitive(Int)") >= 1
+    && refusals(
+         c: control_census(),
+         class: "TypeMismatch",
+         subject: "Primitive(Int)",
+       ) == 0
+}
+
 // (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
 // identity; if it were open, a caller could mint the identity and then the token, without GitHub
 // having confirmed anything about this repository.

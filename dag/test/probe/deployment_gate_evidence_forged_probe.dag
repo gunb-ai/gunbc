@@ -163,7 +163,13 @@ fn forge_an_accepted_review() -> AcceptedReviewOutcome {
     },
     status: 204,
     ownership: forged_ownership,
-    requested_rule_id: 900000001,
+    // THE RUN ID, PASSED WHERE A RULE ID BELONGS (review 83825). Both axes are `Int` today, which is the
+    // whole defect: this call compiles, and the mint's own RuleIsNotTheOneRequested arm then compares the
+    // run's digits against the rule's digits -- a check that can only answer "no" for the wrong reason.
+    // The typed carrier makes this line refuse to compile: a run id is not a value a rule-id slot can
+    // receive. This forgery is the discriminating RED: with the carrier in place the census names it, and
+    // until the carrier exists the claim that reads it is red.
+    requested_rule_id: forged_run_id,
   )
 }
 
