@@ -9949,7 +9949,7 @@ fn body_lower_field_init_pun_edge(captured: Node, item: Node) -> Outcome<Edge> {
       match node_atom_identity_optional(node: atom) {
         Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item))
         Present { value: field_name } =>
-          if field_name == ^none {
+          if symbol_lexeme(sym: field_name) == "none" {
             outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_reserved_value_name_pun, n: atom))
           } else {
             outcome_accepted(
