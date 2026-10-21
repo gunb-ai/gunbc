@@ -306,7 +306,7 @@ test fn a_generic_record_emits_with_its_declared_parameter_holds() -> Bool {
 
 test fn a_generic_coproduct_emits_with_its_declared_parameters_holds() -> Bool {
   match member_emission_generic_coproduct_verdict() {
-    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Either<A, B>") && string_contains(s: t, pattern: "Left(A)") && string_contains(s: t, pattern: "Right(B)")
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Either<A, B>") && string_contains(s: t, pattern: "Left { value: A }") && string_contains(s: t, pattern: "Right { value: B }")
     MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
