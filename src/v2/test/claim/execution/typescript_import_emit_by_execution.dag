@@ -94,6 +94,7 @@ fn ts_import_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_import_witness_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
@@ -114,7 +115,7 @@ fn ts_import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
 
 fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
   fold(
-    node_positional_child_targets(node: block),
+    positional_child_target_nodes(node: block),
     init: outcome_accepted(value: std.algebra.Empty),
     f: fn(acc, nd) {
       bind_outcome(

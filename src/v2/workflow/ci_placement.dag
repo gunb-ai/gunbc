@@ -9,7 +9,6 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment,
   CommitWorkflowSurface,
   commit_gate_roster,
-  commit_workflow_surface_eq,
   commit_check_kind_eq
 }
 
@@ -101,7 +100,7 @@ fn commit_workflow_surface_list_eq(left: List<CommitWorkflowSurface>, right: Lis
 }
 
 fn commit_workflow_surface_present(surface: CommitWorkflowSurface, surfaces: List<CommitWorkflowSurface>) -> Bool {
-  any(xs: surfaces, predicate: fn(s) { commit_workflow_surface_eq(a: s, b: surface) })
+  any(xs: surfaces, predicate: fn(s) { s == surface })
 }
 
 fn commit_check_enrollment_eq(left: CommitCheckEnrollment, right: CommitCheckEnrollment) -> Bool {

@@ -1,5 +1,6 @@
 module gunbc.runner.runner_guest_image
 
+import extdeps.posix.environment { posix_home_env }
 import gunbc.runner.microvm_guest_artifacts {
   GuestArtifactDigestProvenance, PublishedByUpstream, FirstObservedOnFetch,
   GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
@@ -245,7 +246,7 @@ data runner_guest_echo_program: String = "/usr/bin/echo"
 // parsing an assignment string.
 data runner_guest_job_path_name: NonEmptyStr = "PATH" as NonEmptyStr
 data runner_guest_job_path_value: NonEmptyStr = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" as NonEmptyStr
-data runner_guest_job_home_name: NonEmptyStr = "HOME" as NonEmptyStr
+data runner_guest_job_home_name: NonEmptyStr = posix_home_env
 data runner_guest_job_home_value: NonEmptyStr = "/root" as NonEmptyStr
 data runner_guest_job_path: NonEmptyStr = concat(runner_guest_job_path_name, concat("=", runner_guest_job_path_value)) as NonEmptyStr
 data runner_guest_job_home: NonEmptyStr = concat(runner_guest_job_home_name, concat("=", runner_guest_job_home_value)) as NonEmptyStr

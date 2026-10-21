@@ -113,6 +113,7 @@ type FleetPosixAccountKey
   | FleetAccountInferenceService
   | FleetAccountPublicationHelper
   | FleetAccountNotificationService
+  | FleetAccountDeployJob
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -693,6 +694,13 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: service_name_requirements,
         sudo_grants: fleet_posix_notification_service_sudo_grants(),
       }
+    FleetAccountDeployJob =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: fleet_posix_deploy_job_sudo_grants(),
+      }
   }
 }
 
@@ -741,6 +749,18 @@ fn fleet_posix_publication_helper_sudo_grants() -> List<PosixSudoGrant> {
 // own config, and writes its own state directory; none of that needs sudo, and the account is
 // declared empty so a future grant is a visible edit to this function rather than a roster append.
 fn fleet_posix_notification_service_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+// EMPTY AS A BINARY ROSTER, BY CONSTRUCTION. The account jobs of the deploy slot run as
+// (gunbc.ci.deploy_slot_tenancy deploy_slot_job_user, plan decision D5) holds no whole-binary grant:
+// the root-equivalent entries of fleet_posix_ci_runner_sudo_grants (systemctl, install, apt-get,
+// visudo) are exactly what the split removes from the principal PR code can reach, and giving them
+// to a second account would move the finding rather than close it. Its per-unit authority -- the
+// retirement mask lines and the fabric-cell set-property lines -- is rendered as exact operations in
+// the runner host sudoers (gunbc.runner.runner_host_grants deploy_slot_privileged_operations), which
+// a binary-path PosixSudoGrant cannot express. A future binary grant is a visible edit here.
+fn fleet_posix_deploy_job_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -1109,6 +1129,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
     FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
     FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
     FleetAccountNotificationService => PrincipalRequiresHostScope { principal: key }
+    FleetAccountDeployJob => PrincipalRequiresHostScope { principal: key }
   }
 }
 

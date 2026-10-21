@@ -1,9 +1,14 @@
 module v2.test.claim.manual.rust_grammar_structure
 
 
+// Built ONCE per claim process and read by key; the membership of a class in a module-literal
+// rule set is a pure function of that set, so a per-query rebuild and linear scan was authored
+// duplication (gunbc.recurring_failure_mode.nested_membership_scan_where_a_map_primitive_exists).
+data rust_grammar_structure_token_class_membership: Map<Symbol, Bool> = lex_rule_set_token_class_map(rules: rust_lex_rules())
+
 fn rust_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
-  lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: ^rust_token_kw_let) &&
-    lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: ^rust_token_kw_else) &&
+  map_contains_key(m: rust_grammar_structure_token_class_membership, key: ^rust_token_kw_let) &&
+    map_contains_key(m: rust_grammar_structure_token_class_membership, key: ^rust_token_kw_else) &&
     rust_formal_production_list_has_lhs(
       productions: rust_formal_productions(),
       lhs: ^rust_production_fn_add

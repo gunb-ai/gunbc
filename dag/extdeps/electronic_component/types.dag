@@ -3,7 +3,7 @@ module extdeps.electronic_component.types
 import std.logic { Bool }
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Volt, Millivolt, Ampere, Micrometer }
+import std.measure { Volt, Millivolt, Milliampere, Micrometer }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -31,9 +31,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // A PART'S DATASHEET FACTS, BY PART CLASS. A photograph of a populated board shows top markings; a
 // datasheet binds a marking to an ordering code and to that class's ratings. A TVS diode, a capacitor,
-// a MOSFET, a temperature sensor and a connector have different relevant specifications, so each class
-// carries its own record and a row carries exactly one of them -- never one bag of optional fields
-// where a capacitor's "drain current" is merely absent.
+// a MOSFET, a temperature sensor, a connector and a hot-swap controller have different relevant
+// specifications, so each class carries its own record and a row carries exactly one of them -- never
+// one bag of optional fields where a capacitor's "drain current" is merely absent.
 //
 // Every figure is a typed measure; the only strings are transcriptions -- the ordering code, the
 // package designator, the top marking, a pin's datasheet name, a series name, and
@@ -82,7 +82,7 @@ type FetTerminal {
 type MosfetSpecification {
   channel: FetChannel
   drain_source_maximum: Volt
-  continuous_drain_current: Ampere
+  continuous_drain_current: Milliampere
   terminals: List<FetTerminal>
 }
 
@@ -115,6 +115,49 @@ type TemperatureSensorSpecification {
   pins: List<SensorPin>
 }
 
+// A HOT-SWAP CONTROLLER'S PINS, BY THE FUNCTION ITS DATASHEET GIVES EACH. Supply, ground and bus pins
+// carry the shared SensorPinRole rather than a second name for the same function.
+type ControllerPinRole
+  = GateDrive
+  | OutputFeedback
+  | CurrentSenseInput
+  | SupplyKelvinSense
+  | UndervoltageEnable
+  | OvervoltageLockout
+  | PowerGoodOutput
+  | PowerGoodFeedback
+  | FaultTimer
+  | FaultRetryMode
+  | PowerLimitSet
+  | CurrentLimitRange
+  | InternalRegulatorOutput
+  | ReferenceOutput
+  | TemperatureDiodeInput
+  | AuxiliaryVoltageInput
+  | NoConnection
+  | SharedPinRole { role: SensorPinRole }
+
+type ControllerPin {
+  number: Nat
+  name: NonEmptyStr
+  role: ControllerPinRole
+}
+
+// A datasheet threshold over its stated minimum, typical and maximum.
+type ThresholdWindow {
+  minimum: Millivolt
+  typical: Millivolt
+  maximum: Millivolt
+}
+
+// The pin thresholds a reading is judged against: below enable_threshold's minimum the gate is held
+// off; at or above overvoltage_threshold's minimum the controller may lock out.
+type HotSwapControllerSpecification {
+  pins: List<ControllerPin>
+  enable_threshold: ThresholdWindow
+  overvoltage_threshold: ThresholdWindow
+}
+
 type ConnectorOrientation
   = VerticalMount
   | RightAngleMount
@@ -138,12 +181,251 @@ type ConnectorSpecification {
   mating: ConnectorMatingStanding
 }
 
+// A LOGIC PIN'S ROLE ON A SHIFT REGISTER, as its datasheet's pin table names it. A parallel input is
+// read by the part; a serial output is driven by it; the control pins are driven by whatever clocks
+// it. Which way a net at one of these pins runs is the role's, not the package's.
+type LogicPinRole
+  = ParallelInput { bit: Nat }
+  | SerialOutput { inverted: Bool }
+  | SerialInput
+  | ShiftLoadControl
+  | ClockInput
+  | ClockInhibit
+  | LogicGround
+  | LogicSupply
+
+type LogicPin {
+  number: Nat
+  name: NonEmptyStr
+  role: LogicPinRole
+}
+
+type ShiftRegisterSpecification {
+  bits: Nat
+  supply: MillivoltRange
+  pins: List<LogicPin>
+}
+
+// A DUAL-SUPPLY LEVEL TRANSLATOR'S PINS, BY THE FUNCTION ITS DATASHEET GIVES EACH. A data port is one
+// end of a channel and carries signal either way; which way is set by that channel's direction input,
+// and the output enable places every output in three-state. The two supplies are named apart because
+// each port is referenced to its own.
+type TranslatorPinRole
+  = PortA { channel: Nat }
+  | PortB { channel: Nat }
+  | DirectionControl { channel: Nat }
+  | OutputEnable { three_state_when_high: Bool }
+  | TranslatorGround
+  | SupplyA
+  | SupplyB
+
+type TranslatorPin {
+  number: Nat
+  name: NonEmptyStr
+  role: TranslatorPinRole
+}
+
+type LevelTranslatorSpecification {
+  channels: Nat
+  supply_a: MillivoltRange
+  supply_b: MillivoltRange
+  pins: List<TranslatorPin>
+}
+
+// A SINGLE LOGIC GATE'S PINS, BY THE FUNCTION ITS DATASHEET GIVES EACH: inputs, the output, ground and
+// supply. The function is the AND of its inputs, inverted or not: the two-input positive AND gate read
+// so far is { inputs: 2, inverted_output: false }, a NAND would be the same with the output inverted.
+type GateFunction {
+  inputs: Nat
+  inverted_output: Bool
+}
+
+type GatePinRole
+  = GateInput { name: NonEmptyStr }
+  | GateOutput
+  | GateGround
+  | GateSupply
+
+type GatePin {
+  number: Nat
+  name: NonEmptyStr
+  role: GatePinRole
+}
+
+type LogicGateSpecification {
+  function: GateFunction
+  supply: MillivoltRange
+  pins: List<GatePin>
+}
+
+// A PROGRAMMABLE-LOGIC DEVICE, BY WHAT DECIDES WHETHER IT IS DOING ANYTHING. Its function is whatever
+// configuration it holds, which this row cannot carry; what it carries is how that configuration
+// arrives (volatile parts load it at every power-up over one of the declared schemes), the signals that
+// request and report configuration, and what its user pins do before it is configured. A device whose
+// user pins are weak pull-ups until CONF_DONE drives nothing on a board until that signal says so.
+type ConfigurationMemory
+  = VolatileConfiguration
+  | NonVolatileConfiguration
+
+type ConfigurationScheme
+  = ActiveSerial { data_lanes: Nat, flash_family: NonEmptyStr }
+  | AvalonStreaming
+  | JtagDownload
+
+type ConfigurationSignalRole
+  = ConfigurationRequest
+  | ConfigurationStatus
+  | ConfigurationDone
+  | InitializationDone
+  | ModeSelect
+
+type ConfigurationSignal {
+  name: NonEmptyStr
+  role: ConfigurationSignalRole
+}
+
+// What a user pin does before the device is configured: a weak pull-up, high impedance, or one of the
+// two as a strap on the named pin selects.
+type UnconfiguredIoState
+  = WeakPullUp
+  | HighImpedance
+  | PullUpByStrap { strap: NonEmptyStr }
+
+// por_monitored_supplies names the rails the device's power-on reset watches beyond its core and I/O
+// supplies; a device whose reset holds until every one is present configures nothing while one is
+// missing, however the others read.
+type ProgrammableLogicSpecification {
+  logic_elements: Nat
+  memory: ConfigurationMemory
+  schemes: List<ConfigurationScheme>
+  signals: List<ConfigurationSignal>
+  io_before_configuration: UnconfiguredIoState
+  por_monitored_supplies: List<NonEmptyStr>
+}
+
+// The signal that reports initialization complete and user mode entered, if the row names one; it is
+// optional on the device and stronger evidence than configuration done.
+fn initialization_done_signal(spec: ProgrammableLogicSpecification) -> ConfigurationSignal? {
+  (filter(spec.signals, s => match s.role { InitializationDone => true, _ => false })).first()
+}
+
+// A SERIAL FLASH, BY WHAT A READER OF IT NEEDS: capacity, supply, how many data lanes, the clock
+// ceiling, the JEDEC signature a bus read returns, and whether it has a reset pin.
+type SerialFlashSpecification {
+  capacity_mbit: Nat
+  supply: MillivoltRange
+  data_lanes: Nat
+  clock_mhz: Nat
+  jedec_signature: NonEmptyStr
+  dies: Nat
+  reset_pin: Bool
+}
+
+// A PLATFORM ROOT OF TRUST, BY WHAT IT PROTECTS. It sits between a processor and the flash that
+// processor boots from; secure boot means the flash's content is authenticated before the processor
+// runs, so on a board the processor it guards does nothing until it is released. Which signal releases
+// the processor is a datasheet fact not yet carried.
+type RootOfTrustProtection
+  = SpiFlashRuntimeProtection
+  | I2cSmbusFiltering
+  | SecureBoot
+  | ComponentAttestation
+  | LifecycleManagement
+
+type RootOfTrustSpecification {
+  core: NonEmptyStr
+  protections: List<RootOfTrustProtection>
+}
+
+fn guards_boot(spec: RootOfTrustSpecification) -> Bool {
+  any(spec.protections, p => match p { SecureBoot => true, _ => false })
+}
+
+// The signal that reports a completed configuration, if the row names one.
+fn configuration_done_signal(spec: ProgrammableLogicSpecification) -> ConfigurationSignal? {
+  (filter(spec.signals, s => match s.role { ConfigurationDone => true, _ => false })).first()
+}
+
+type GatePinStanding
+  = GateInputPin { pin: GatePin }
+  | GateOutputPin { pin: GatePin }
+  | GateSupplyOrReturn { pin: GatePin }
+  | NoGatePinNumbered { number: Nat }
+
+fn gate_pin_standing(spec: LogicGateSpecification, number: Nat) -> GatePinStanding {
+  match (filter(spec.pins, p => p.number == number)).first() {
+    Absent => NoGatePinNumbered { number: number }
+    Present { value: pin } => match pin.role {
+      GateInput { name: _ } => GateInputPin { pin: pin }
+      GateOutput => GateOutputPin { pin: pin }
+      GateGround => GateSupplyOrReturn { pin: pin }
+      GateSupply => GateSupplyOrReturn { pin: pin }
+    }
+  }
+}
+
+// What a net meeting a translator pin is, from the pin's role: one end of a data channel (its direction
+// a live fact of that channel's direction input, not of the pin), a direction or enable input the part
+// receives, its supply or return, or no such pin.
+type TranslatorPinStanding
+  = DataPortOfChannel { pin: TranslatorPin, channel: Nat, b_side: Bool }
+  | ControlIntoTheTranslator { pin: TranslatorPin }
+  | TranslatorSupplyOrReturn { pin: TranslatorPin }
+  | NoTranslatorPinNumbered { number: Nat }
+
+fn translator_pin_standing(spec: LevelTranslatorSpecification, number: Nat) -> TranslatorPinStanding {
+  match (filter(spec.pins, p => p.number == number)).first() {
+    Absent => NoTranslatorPinNumbered { number: number }
+    Present { value: pin } => match pin.role {
+      PortA { channel } => DataPortOfChannel { pin: pin, channel: channel, b_side: false }
+      PortB { channel } => DataPortOfChannel { pin: pin, channel: channel, b_side: true }
+      DirectionControl { channel: _ } => ControlIntoTheTranslator { pin: pin }
+      OutputEnable { three_state_when_high: _ } => ControlIntoTheTranslator { pin: pin }
+      TranslatorGround => TranslatorSupplyOrReturn { pin: pin }
+      SupplyA => TranslatorSupplyOrReturn { pin: pin }
+      SupplyB => TranslatorSupplyOrReturn { pin: pin }
+    }
+  }
+}
+
+// Which way a net meeting a shift-register pin runs, from the pin's role: read into the part, driven
+// out of it, a control or clock the part receives, its supply or return, or no such pin.
+type LogicPinDirection
+  = ReadByThePart { pin: LogicPin }
+  | DrivenByThePart { pin: LogicPin }
+  | ControlOrClockIntoThePart { pin: LogicPin }
+  | SupplyOrReturn { pin: LogicPin }
+  | NoLogicPinNumbered { number: Nat }
+
+fn logic_pin_direction(spec: ShiftRegisterSpecification, number: Nat) -> LogicPinDirection {
+  match (filter(spec.pins, p => p.number == number)).first() {
+    Absent => NoLogicPinNumbered { number: number }
+    Present { value: pin } => match pin.role {
+      ParallelInput { bit: _ } => ReadByThePart { pin: pin }
+      SerialInput => ReadByThePart { pin: pin }
+      SerialOutput { inverted: _ } => DrivenByThePart { pin: pin }
+      ShiftLoadControl => ControlOrClockIntoThePart { pin: pin }
+      ClockInput => ControlOrClockIntoThePart { pin: pin }
+      ClockInhibit => ControlOrClockIntoThePart { pin: pin }
+      LogicGround => SupplyOrReturn { pin: pin }
+      LogicSupply => SupplyOrReturn { pin: pin }
+    }
+  }
+}
+
 type ComponentSpecification
   = TvsDiodeSpec { tvs: TvsSpecification }
   | CapacitorSpec { capacitor: CapacitorSpecification }
   | MosfetSpec { mosfet: MosfetSpecification }
   | TemperatureSensorSpec { sensor: TemperatureSensorSpecification }
   | ConnectorSpec { connector: ConnectorSpecification }
+  | HotSwapControllerSpec { controller: HotSwapControllerSpecification }
+  | ShiftRegisterSpec { register: ShiftRegisterSpecification }
+  | LevelTranslatorSpec { translator: LevelTranslatorSpecification }
+  | LogicGateSpec { gate: LogicGateSpecification }
+  | ProgrammableLogicSpec { logic: ProgrammableLogicSpecification }
+  | RootOfTrustSpec { root_of_trust: RootOfTrustSpecification }
+  | SerialFlashSpec { flash: SerialFlashSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -156,7 +438,7 @@ type ElectronicComponentRow {
 
 // THE ONE PROJECTION A RAIL BOUND CONSUMES: the highest voltage the part tolerates across its rated
 // terminals, with what kind of limit it is. Each kind bounds the rail the part sits across from above;
-// none says what the rail IS. A sensor or connector projects nothing.
+// none says what the rail IS. A sensor, connector or controller projects nothing.
 type VoltageWithstandKind
   = TvsReverseStandoff
   | CapacitorRatedVoltage
@@ -175,5 +457,12 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     MosfetSpec { mosfet } => Present { value: VoltageWithstand { kind: DrainSourceMaximum, maximum: mosfet.drain_source_maximum } }
     TemperatureSensorSpec { sensor: _ } => Absent
     ConnectorSpec { connector: _ } => Absent
+    HotSwapControllerSpec { controller: _ } => Absent
+    ShiftRegisterSpec { register: _ } => Absent
+    LevelTranslatorSpec { translator: _ } => Absent
+    LogicGateSpec { gate: _ } => Absent
+    ProgrammableLogicSpec { logic: _ } => Absent
+    RootOfTrustSpec { root_of_trust: _ } => Absent
+    SerialFlashSpec { flash: _ } => Absent
   }
 }

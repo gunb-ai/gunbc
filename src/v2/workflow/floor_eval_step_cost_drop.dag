@@ -231,10 +231,6 @@ data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasureme
 
 data floor_eval_step_cost_drop_approval_intent_digest_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.auth.approved_secret_grants_witness.the_real_request_digests_its_intent_and_admits_only_that_revision" as NonEmptyStr,
-    measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.auth.approved_secret_grants secret_grants_approval_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
     identity: "test.claim.auth.fabric_state_provision_witness.the_real_material_request_admits_only_its_own_revision" as NonEmptyStr,
     measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.fabric.fabric_storage_state_provision fabric_state_provision_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
   },
