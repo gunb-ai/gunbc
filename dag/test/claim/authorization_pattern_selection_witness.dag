@@ -594,3 +594,53 @@ test fn the_deploy_route_switch_is_refused_while_srv1_shares_the_job_uid() -> Bo
   !deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: srv1_observed_job_tenancy)
     && deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: SoleTenantOfJobUid)
 }
+
+// ── THE MANUAL-STEP ROWS (node adhoc-28759c44-922), run through the real fold ────────────────
+// Each row is a place where an operator's hand stands in for the modeled route. The claim is about
+// the row's OWN verdict (site_verdict), so deleting a row, or editing its characteristics until the
+// selection moves, turns the matching claim red. The reasoned arm is asserted beside the selection:
+// a selection that moved onto the realized pattern would make the reason dead and the claim red.
+fn manual_row_diverges_with_reason(key: String, selects_approved: Bool, selects_edge: Bool) -> Bool {
+  let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
+  (rows |> count) == 1
+    && any(map(rows, row => site_verdict(row: row)), v =>
+      (if selects_approved { selected_approved(s: v.selection) } else { selected_administrator_edge(s: v.selection) || !selects_edge })
+        && match v.conformance {
+          DivergesWithReason { reason: _ } => true
+          Conforms => false
+          Diverges => false
+          SiteNotDecidable { standing: _ } => false
+        })
+}
+
+test fn manual_operator_api_effects_select_the_approval_route_and_state_the_divergence() -> Bool {
+  manual_row_diverges_with_reason(key: "gunbc.secret_provision::gcp_fleet_secrets_wif_binding_intervention", selects_approved: true, selects_edge: false)
+    && manual_row_diverges_with_reason(key: "gunbc.cloudflare.r2_origin::cloudflare_bootstrap_custody_intervention", selects_approved: true, selects_edge: false)
+    && manual_row_diverges_with_reason(key: "gunbc.review_sheet_operator::shared_drive_create_intervention", selects_approved: true, selects_edge: false)
+    && manual_row_diverges_with_reason(key: "gunbc.review_sheet_operator::spreadsheet_create_intervention", selects_approved: true, selects_edge: false)
+    && manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_publisher_token_mint_intervention", selects_approved: true, selects_edge: false)
+    && manual_row_diverges_with_reason(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", selects_approved: true, selects_edge: false)
+}
+
+test fn manual_srv1_root_steps_select_the_administrator_edge_and_state_the_divergence() -> Bool {
+  manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", selects_approved: false, selects_edge: true)
+    && manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_server_install_intervention", selects_approved: false, selects_edge: true)
+    && manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_subscriber_grant_intervention", selects_approved: false, selects_edge: true)
+}
+
+test fn the_github_environment_reviewer_gate_selects_the_approval_route_and_states_the_divergence() -> Bool {
+  manual_row_diverges_with_reason(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", selects_approved: true, selects_edge: false)
+}
+
+fn manual_row_conforms_as_a_named_step(key: String) -> Bool {
+  let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
+  (rows |> count) == 1
+    && any(map(rows, row => site_verdict(row: row)), v =>
+      match v.selection { ManualStepRequired { step: _, receipt: _ } => true _ => false }
+        && match v.conformance { Conforms => true _ => false })
+}
+
+test fn no_api_physical_steps_are_named_and_conform() -> Bool {
+  manual_row_conforms_as_a_named_step(key: "gunbc.spark.dgx_pxe_boot::spark_pxe_firmware_enablement_intervention")
+    && manual_row_conforms_as_a_named_step(key: "gunbc.fleet.mtcollins_firmware_converge::mtcollins1_ac_power_cycle_effect")
+}
