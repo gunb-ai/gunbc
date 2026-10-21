@@ -98,7 +98,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: TypeArgumentKindMismatch {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat(type_arg_display_spelling(n: arg, env: env), " [", kind_lookup_trace(kind_decl: kind_decl_for_message(kind_node: kind_node, env: env), env: env), "]"), span: arg., raven_probe_wall_dump(arg: arg, env: env, module_name: module_name)), span: arg.span
+                    supplied: concat(type_arg_display_spelling(n: arg, env: env), " [", kind_lookup_trace(kind_decl: kind_decl_for_message(kind_node: kind_node, env: env), env: env), "]", raven_probe_wall_dump(arg: arg, env: env, module_name: module_name)), span: arg.span
                   },
                   module_name: module_name
                 )]
@@ -142,7 +142,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: ForwardedParameterUnkinded {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares no kind, so it cannot be shown to inhabit '", kind_name, "')"), raven_probe_wall_dump(arg: arg, env: env, module_name: module_name)),
+                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares no kind, so it cannot be shown to inhabit '", kind_name, "')", raven_probe_wall_dump(arg: arg, env: env, module_name: module_name)),
                     span: arg.span
                   },
                   module_name: module_name
