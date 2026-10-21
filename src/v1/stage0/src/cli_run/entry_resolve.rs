@@ -1500,7 +1500,7 @@ fn multi_entry_index_shell_body(
         generation: next_index_generation(),
         source_files,
         provider_layout: RefCell::new(None),
-        providers_outside_index: RefCell::new(Vec::new()),
+        provider_snapshots: RefCell::new(std::collections::HashMap::new()),
         module_graph_facts: acquired_facts
             .unwrap_or_else(|| build_module_graph_facts_live(source_roots)),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
@@ -1881,6 +1881,31 @@ pub(crate) fn resolve_entry_with_parse_cache(
     out
 }
 
+/// The typed entry resolve the demand-acquired loop drives: the same load and core as
+/// `resolve_entry_with_parse_cache`, returning the core's NeedsAcquisition instead of rendering it.
+pub(crate) fn resolve_entry_typed(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+) -> Result<CoreResolve, String> {
+    let depth = resolve_span_enter();
+    let span_started = std::time::Instant::now();
+    resolve_stage_slot_reset();
+    set_phase(FloorPhase::Resolve, entry_file);
+    let (sources, load_nanos) =
+        nanos_net_of_pool_parse(|| load_sources_for_entry_with_pool(index, entry_file));
+    let out = sources.and_then(|sources| {
+        resolve_stage_slot_add(|s| s.load += load_nanos);
+        resolved_graph_from_sources_with_index_typed(
+            index,
+            sources,
+            entry_file,
+            ResolvedGraphMemoShare::Memoize,
+        )
+    });
+    resolve_span_exit(depth, entry_file, span_started.elapsed().as_nanos());
+    out
+}
+
 pub(crate) fn resolve_entry_with_parse_cache_inner(
     index: &MultiEntryIndex,
     entry_file: &str,
@@ -1960,6 +1985,29 @@ pub(crate) fn via_index_parse_one_source(
 /// to the `00_core.dag` interpreter-blocking authority on every class those stages
 /// can produce (`ComplexityUnknown`, the sole class where the predicates differ, is
 /// only produced by complexity analysis, which does not run on this path).
+/// What the layout answers for a module the demand-acquired index does not hold: the source it
+/// read, no such module, or a module it names but could not read. Never a Boolean, so a failed read
+/// is never mistaken for absence.
+pub(crate) enum ProviderLayoutAnswer {
+    Holds(Rc<v1_compiler_compile::SourceFile>),
+    Lacks,
+    Unreadable,
+}
+
+/// The resolve core's typed outcome. NeedsAcquisition is not a failure: the closure demands
+/// providers that the builder's layout holds and its index does not, with the exact source the pool
+/// answer read, so the builder rebuilds from those bytes.
+pub(crate) enum CoreResolve {
+    Resolved(
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
+    ),
+    NeedsAcquisition(Vec<(String, Rc<v1_compiler_compile::SourceFile>)>),
+}
+
+/// The terminal-caller wrapper: a builder that holds its whole pool never sees NeedsAcquisition,
+/// because only the demand-acquired index answers from a layout.
 pub(crate) fn resolved_graph_from_sources_with_index(
     index: &MultiEntryIndex,
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
@@ -1973,6 +2021,21 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     ),
     String,
 > {
+    match resolved_graph_from_sources_with_index_typed(index, sources, phase_label, memo_share)? {
+        CoreResolve::Resolved(graph, si, diags) => Ok((graph, si, diags)),
+        CoreResolve::NeedsAcquisition(providers) => Err(format!(
+            "generated providers {:?} are outside this closure, and this builder does not rebuild",
+            providers.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>()
+        )),
+    }
+}
+
+pub(crate) fn resolved_graph_from_sources_with_index_typed(
+    index: &MultiEntryIndex,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    phase_label: &str,
+    memo_share: ResolvedGraphMemoShare,
+) -> Result<CoreResolve, String> {
     let entry_file = phase_label;
     index
         .module_graph_facts
@@ -1984,7 +2047,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
         record_required_lane_judged_sources(&sources);
-        return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
+        return Ok(CoreResolve::Resolved(
+            graph.clone(),
+            si.clone(),
+            compile_clean_diags.clone(),
+        ));
     }
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
@@ -2114,20 +2181,27 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // On Acquire, each acquired module's own closure joins the sources and the whole closure is
     // checked again; the closure only grows and the model refuses a module it already holds, so the
     // recursion reaches Complete or a typed refusal. One loop for every caller of this core.
-    // The entry index carries each pooled module's source text in memory (read when the index was
-    // built, which refuses an unreadable or doubly-declared module), so its answer is Holds or Lacks.
+    // A module in the index is held: its source text was read when the index was built, which
+    // refuses an unreadable or doubly-declared module. Outside it, only the demand-acquired index has
+    // an answer -- its layout's typed Holds / Lacks / Unreadable -- and a Holds keeps the bytes it read
+    // (provider_snapshots), so the rebuild acquires exactly those and never reads the provider again.
     let pool = |m: &str| {
-        let in_layout = || {
-            index
-                .provider_layout
-                .borrow()
-                .as_ref()
-                .map_or(false, |held| held(m))
-        };
-        if index.source_files.contains_key(m) || in_layout() {
-            super::provider_acquire::PoolAnswer::Holds
-        } else {
-            super::provider_acquire::PoolAnswer::Lacks
+        if index.source_files.contains_key(m) {
+            return super::provider_acquire::PoolAnswer::Holds;
+        }
+        let layout = index.provider_layout.borrow().clone();
+        match layout.map(|answer| answer(m)) {
+            Some(ProviderLayoutAnswer::Holds(source)) => {
+                index
+                    .provider_snapshots
+                    .borrow_mut()
+                    .insert(m.to_string(), source);
+                super::provider_acquire::PoolAnswer::Holds
+            }
+            Some(ProviderLayoutAnswer::Unreadable) => {
+                super::provider_acquire::PoolAnswer::Unreadable
+            }
+            Some(ProviderLayoutAnswer::Lacks) | None => super::provider_acquire::PoolAnswer::Lacks,
         }
     };
     match super::provider_acquire::judge_closure(
@@ -2166,12 +2240,15 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             )?;
             let typed_refusal = match extended {
                 super::provider_acquire::Extension::Extended(merged) => {
-                    let acquired = resolved_graph_from_sources_with_index(
+                    let acquired = match resolved_graph_from_sources_with_index_typed(
                         index,
                         merged,
                         phase_label,
                         memo_share,
-                    )?;
+                    )? {
+                        CoreResolve::Resolved(graph, si, diags) => (graph, si, diags),
+                        needs @ CoreResolve::NeedsAcquisition(_) => return Ok(needs),
+                    };
                     // In-process only: resolved_graph_memo lives on this one MultiEntryIndex, whose
                     // pool is immutable for the index's lifetime, so the post-acquisition graph is the
                     // answer for this subject in this run. No persisted or cross-process key is minted.
@@ -2181,21 +2258,20 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                             .borrow_mut()
                             .insert(subject.clone(), acquired.clone());
                     }
-                    return Ok(acquired);
+                    return Ok(CoreResolve::Resolved(acquired.0, acquired.1, acquired.2));
                 }
                 super::provider_acquire::Extension::Stalled => {
                     super::provider_acquire::stalled(&provider_demands, &modules)
                 }
                 super::provider_acquire::Extension::OutsideIndex(outside) => {
-                    // The layout holds these providers and this acquired closure does not: record
-                    // them for the demand-acquired loop, which rebuilds its closure with them.
-                    index
-                        .providers_outside_index
-                        .borrow_mut()
-                        .extend(outside.iter().cloned());
-                    return Err(format!(
-                        "generated providers {outside:?} are outside this demand-acquired closure; \
-                         the closure is rebuilt with them"
+                    // The layout holds these providers and this acquired closure does not: the
+                    // builder rebuilds its closure from the snapshots the pool answer read.
+                    let snapshots = index.provider_snapshots.borrow();
+                    return Ok(CoreResolve::NeedsAcquisition(
+                        outside
+                            .iter()
+                            .filter_map(|m| snapshots.get(m).map(|src| (m.clone(), src.clone())))
+                            .collect(),
                     ));
                 }
                 super::provider_acquire::Extension::Unreadable(failed) => {
@@ -2292,7 +2368,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         );
     }
 
-    Ok((typed, source_indices, compile_clean_diags))
+    Ok(CoreResolve::Resolved(
+        typed,
+        source_indices,
+        compile_clean_diags,
+    ))
 }
 
 pub(crate) fn parse_module_node_from_index_source(
