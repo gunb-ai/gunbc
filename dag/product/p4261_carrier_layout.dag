@@ -6,7 +6,9 @@ import std.measure { Volt, Ampere, Micrometer, volt, ampere, micrometer, volt_co
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b, gh200_dv5_b }
 import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
+import extdeps.electronic_component.microchip_cec1736 { cec1736 }
 import extdeps.electronic_component.types {
+  RootOfTrustSpec, RootOfTrustSpecification, guards_boot,
   ProgrammableLogicSpec, ProgrammableLogicSpecification, VolatileConfiguration, NonVolatileConfiguration,
   ConfigurationScheme, ActiveSerial, AvalonStreaming, JtagDownload, WeakPullUp, HighImpedance, configuration_done_signal,
   HotSwapControllerSpec,
@@ -114,7 +116,7 @@ import product.electrical.source_draw {
   is_draw_contradicted,
 }
 import product.electrical.bench_session {
-  AssetAlteration, ThermalPad, thermal_interface_text,
+  AssetAlteration, ThermalPad, InterfaceUnstated, thermal_interface_text,
   BenchRecord,
   ProbeAttachment,
   BenchIncident,
@@ -972,6 +974,7 @@ fn mosfet_of(c: InstalledComponent) -> MosfetSpecification? {
       LevelTranslatorSpec { translator: _ } => Absent
       LogicGateSpec { gate: _ } => Absent
       ProgrammableLogicSpec { logic: _ } => Absent
+      RootOfTrustSpec { root_of_trust: _ } => Absent
     }
   }
 }
@@ -990,6 +993,7 @@ fn controller_of(c: InstalledComponent) -> HotSwapControllerSpecification? {
       LevelTranslatorSpec { translator: _ } => Absent
       LogicGateSpec { gate: _ } => Absent
       ProgrammableLogicSpec { logic: _ } => Absent
+      RootOfTrustSpec { root_of_trust: _ } => Absent
     }
   }
 }
@@ -1102,6 +1106,35 @@ fn alterations_text(layout: CarrierLayoutObservation) -> String {
   match layout.measured {
     Absent => "no alteration of the asset is recorded"
     Present { value: b } => if count(b.bench.alterations) == 0 { "no alteration of the asset is recorded" } else { join(map(b.bench.alterations, a => alteration_text(a: a)), "; ") }
+  }
+}
+
+fn root_of_trust_of(c: InstalledComponent) -> RootOfTrustSpecification? {
+  match identified_row(c: c) {
+    Absent => Absent
+    Present { value: row } => match row.specification {
+      RootOfTrustSpec { root_of_trust } => Present { value: root_of_trust }
+      _ => Absent
+    }
+  }
+}
+
+// WHAT STANDS BETWEEN U4 AND ITS FLASH. An identified root-of-trust row with secure boot among its
+// protections means U4's configuration is read through a part that authenticates it first, so U4's
+// CONF_DONE has a condition before it: the root of trust's release.
+fn u5_2_root_of_trust_text(layout: CarrierLayoutObservation) -> String {
+  match installed(layout: layout, c: e1_u5_2) {
+    Absent => join([component_text(c: e1_u5_2), " is not a component of this carrier's observation"], "")
+    Present { value: x } => match identified_row(c: x) {
+      Absent => join([component_text(c: e1_u5_2), "'s marking is unread or unresolved"], "")
+      Present { value: row } => match root_of_trust_of(c: x) {
+        Absent => join([component_text(c: e1_u5_2), " reads ", row.ordering_code as String, ", a row that carries no root-of-trust specification"], "")
+        Present { value: r } => join([
+          component_text(c: e1_u5_2), " reads ", row.ordering_code as String, ": a platform root of trust (", r.core as String, ") with ", to_string(count(r.protections)), " protections",
+          if guards_boot(spec: r) { ", secure boot among them, so the flash beside it is authenticated before the part it guards runs, and U4's configuration has that release as a condition before CONF_DONE" } else { ", secure boot not among them" },
+        ], "")
+      }
+    }
   }
 }
 
@@ -1831,8 +1864,9 @@ data p4261_enable_network_hypothesis: InvestigationHypothesis = InvestigationHyp
     "energized at 48 V, the top end of the part across from pin 21 (reported at 0 ohm to pin 21, read directly, not through the wire, no baseline recorded) read about 4.86 V, hedged ('like 4.86 or something'; first 'it reads 5v'): U1_P5's bias supply reads live at a VDD-like level -- at a point reported at 0 ohm to pin 21, not joined to it by a baseline and not yet separated from pins 20 and 22 -- so on that reading the controller is not off for want of its own supply",
     "the 11-13 mA draw does not establish which circuits are powered, so it neither shows nor excludes other powered logic",
     "U4, the heatsinked device below J4, read 2026-10-21 with its heatsink lifted: Intel's Cyclone 10 GX 10CX085YF672E6G (extdeps.electronic_component.intel_10cx085), an SRAM-based FPGA that loads its configuration at every power-up from a serial flash it masters, a host, or JTAG, and whose user pins are weak pull-ups until CONF_DONE goes high. The device that would drive Q300's gate is therefore programmable logic whose configuration source and state are unread: the three Micron-format BGAs beside it (K1 listing) are the configuration-flash candidates and the 2 x 5 header below it the JTAG candidate. A gate node at 0 V with 800 ohm to the return is what an unconfigured FPGA's pin, or a configured one holding it low, both look like from outside",
+    "U5_2, below U4, read 2026-10-21 with the Microchip logo as CEC1736 (extdeps.electronic_component.microchip_cec1736): a platform root of trust with secure boot, the part NVDebug's debug dumps name beside the FPGA as the ERoT. Three Micron-format BGAs sit beside it (U2_2 and U3_2 'RW188', a third 'RW251', undecoded), so U4's configuration flash is read through a part that authenticates it first, and U4 configures only once that part releases it: a flash image the root of trust declines, or a root of trust not provisioned on an engineering unit, leaves U4 unconfigured with no switch able to change it. Energized and settled, DS1_2 beside U5_2 blinks on 1.0 s, off 1.5 s and DS6 beside J68 on 1.36 s, off 1.32 s (two videos, measured frame by frame); two different periods are two different sources, and which part drives each is unread",
   ],
-  decided_by: "Energized and settled, CONF_DONE's state (at the FPGA's status LED or a test point once its ball is traced; high reads configured, low unconfigured), which separates a sequencer holding the gate low from one that never loaded; the markings of the three BGAs beside U4 and whether the 2 x 5 header is JTAG (its pins to U4's TCK, TMS, TDI and TDO once traced), through which an unconfigured device reports CONF_DONE directly. Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Read (2026-10-20): the pad to J20's black lead 500 ohm with red on the pad and 300 ohm swapped, Q300's lead b to the pad 500 and 1000 ohm, so the paths hold junctions. Then energized at 48 V with all four poles toward ON and settled, against J20's black lead and at pads rather than the UQFN contacts: the lower pad of the part above U500 (the 500 ohm point) and the end of U43's capacitor nearer U43, then the same pad with only S2's poles toward ON; the 500 ohm pad at about 0 V while Q300's lead b reads 0 V says U500's contact holds the node, a few volts there says the 500 ohm path is not a wire. U500's marking read sharply and its dot's corner, then the maker's table. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
+  decided_by: "Which part drives DS1_2 and DS6 (U5_2's or U4's pin, traced unpowered), so that each blink names its source; U5_2's release of U4 (its reset or release output to U4's nCONFIG, traced unpowered, then read energized); and the three BGAs' part numbers from Micron's decoder. Energized and settled, CONF_DONE's state (at the FPGA's status LED or a test point once its ball is traced; high reads configured, low unconfigured), which separates a sequencer holding the gate low from one that never loaded; the markings of the three BGAs beside U4 and whether the 2 x 5 header is JTAG (its pins to U4's TCK, TMS, TDI and TDO once traced), through which an unconfigured device reports CONF_DONE directly. Unpowered, first the probes shorted on one recorded range, then on that range: pin 7's own lead to P6, which joins P6 to pin 7 or separates them; the reported zeros re-read so they join or separate (Q301's lone lead to P6, Q301's and Q300's lead a to J20's black lead, Q301's lead b to Q300's lone lead, the resistor's nearer end to lead b, and the via to lead b); Q300's lead b to the exact U51 pin its trace meets, on that range, then that pin's role under SCLS402R (a parallel input reads the node, a serial output could drive it); the resistor's third character confirmed; and whether pin 7 has a pull-up, pin 7's lead to J20's red lead. U51's and U49's markings read 'LV165A' (SN74LV165A, 2026-10-20), so what clocks them is the next part to name. The K38 maker read from a date-code line or another maker's table before any reading names a terminal by the BSS138's pinout. Read (2026-10-20): the pad to J20's black lead 500 ohm with red on the pad and 300 ohm swapped, Q300's lead b to the pad 500 and 1000 ohm, so the paths hold junctions. Then energized at 48 V with all four poles toward ON and settled, against J20's black lead and at pads rather than the UQFN contacts: the lower pad of the part above U500 (the 500 ohm point) and the end of U43's capacitor nearer U43, then the same pad with only S2's poles toward ON; the 500 ohm pad at about 0 V while Q300's lead b reads 0 V says U500's contact holds the node, a few volts there says the 500 ohm path is not a wire. U500's marking read sharply and its dot's corner, then the maker's table. Nothing drives Q300's lead b or pin 7 until a reviewed decision. Later, read-only PMBus status (STATUS_INPUT 7Ch, DIAGNOSTIC_WORD E1h)",
 }
 
 // THE LOCAL CONTROLS PUT THE CARRIER THROUGH RECORDED STATES; NONE IS NAMED BY FUNCTION. What S1, S2,
@@ -1853,6 +1887,7 @@ data p4261_local_control_hypothesis: InvestigationHypothesis = InvestigationHypo
     "the bench ceiling did not shape the staircase: the operator ran these states under a 0.6 A limit as often as under 0.10 A, with the supply at 48 V, and the draw was the same ('i had the amperage at .6A regularly so .1A was definitely not capping it, its not taking more'); which limit any one recorded step ran under is unrecorded, so the phases carry both as candidates and the voltage from their agreement. The switch-event photographs alone show 54.00 V",
     "the Q21_P5 / Q22_P5 source-side terminals, P6, Q301's lead b node, Q300's lead b and the resistor's far end are unread in every recorded phase; the readings before the switch event were taken with the vector unrecorded",
     "U4 read 2026-10-21 as Intel's Cyclone 10 GX 10CX085YF672E6G: the local controls, the headers and the shift registers are consistent with inputs an FPGA reads, and the indicator sequence with outputs it drives; a blinking indicator after settling is then a configured device running, which its CONF_DONE confirms or denies",
+    "two indicators blink in the settled state with different periods (DS1_2 about 2.5 s, DS6 about 2.7 s, videos of 2026-10-21): if DS1_2 is driven by U5_2, the root of trust is running; if DS6 is driven by U4, U4 is configured and running; which part drives each is unread, and a pattern that is an error code rather than a heartbeat is not excluded",
   ],
   decided_by: "Unpowered and discharged, each of J68's ten points and J30's three to J20's black lead on a recorded range against the shorted-probe baseline, which alone joins a point to the return. Then, in the settled state, J68's R1 and J30's 3.1 V point each taken low through 1 kohm to a point so joined, reading the point while held and the source's V, A and CV / CC / OCP: the same hold-and-release with the source in CV and the point near 0 V reads as a logic input; the point staying high, or CC or OCP appearing, reads otherwise. In each stable phase, Q21_P5's source-side terminals (ProtectedInputBusInPhase), P6, Q301's lead b node, Q300's lead b and the resistor's far end. Unpowered, Q300's lead b to the exact U51 pin its trace meets, and each S1 / S2 pole, J30's high point and J68's 1.8 V points to U49 / U51 pins. Each S1 pole moved with the output off, then across a cold start. A video holding the board and the source's display through a J30 and a J68 hold and release. Nothing is bridged hard again before the unpowered map, and nothing drives Q300's lead b or pin 7 until a reviewed decision",
 }
@@ -2030,7 +2065,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   input: Absent,
   unresolved: [
     UnresolvedPart { designator: Present { value: "U4" }, marking: Absent, obligation: "the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage, so it takes several rails; consistent with an FPGA, a management SoC or a PCIe switch. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad. The E1's U4, read that way 2026-10-21, is Intel's Cyclone 10 GX 10CX085YF672E6G (e1 components); the K1's own stays unread", evidence: k1_listing },
-    UnresolvedPart { designator: Absent, marking: Absent, obligation: "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed", evidence: k1_listing },
+    UnresolvedPart { designator: Absent, marking: Absent, obligation: "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed. On the E1 (2026-10-21) the 2x5 is J68, populated, and the shrouded connector is a two-row six-position receptacle beside U53 (e1 components)", evidence: k1_listing },
     UnresolvedPart { designator: Absent, marking: Present { value: "2FA17 / RW186 (two), RW251" }, obligation: "three small BGAs beside U4: two-line marks in Micron's FBGA format, undecoded; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading", evidence: k1_listing },
     UnresolvedPart { designator: Present { value: "U522" }, marking: Absent, obligation: "marking not legible in the listing close-up", evidence: k1_listing },
     UnresolvedPart { designator: Absent, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: k1_listing },
@@ -2933,16 +2968,35 @@ data e1_u3: ComponentInstanceIdentity = e1_component(local: "U3")
 // the Intel logo, so the row is identified, not a candidate. Its 672 balls are not named as terminals.
 data e1_u4: ComponentInstanceIdentity = e1_component(local: "U4")
 data e1_u4_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads e39a6d7c (U4 with its neighbours: 4R7 and 2R2 inductors, U10_P2, U9_P2, Q6_P2, U100 above; U21, Q1_2, U108, Y2 and Y361 around) and ddbe372b (the marking close up: intel / Cyclone 10 / 10CX085YF672E6G / P CBABF2243A / TAIWAN / S241AK47 / 305PA2U0D / e1) (not on Drive)")
-data e1_u4_heatsink_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-21", verbatim: "basically the plastic clips are very easy to push in put kind of expand and will not pull out no matter what i tried / The pad ripped so I scraped it and cleaned it off the heatsink, I have plenty of thermal paste here" }
+data e1_u4_heatsink_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-21", verbatim: "basically the plastic clips are very easy to push in put kind of expand and will not pull out no matter what i tried / The pad ripped so I scraped it and cleaned it off the heatsink, I have plenty of thermal paste here / Sorry - I put the heatsink on already, do you want me to take it off again?" }
 data e1_u4_heatsink_alteration: AssetAlteration = AssetAlteration {
   key: "2026-10-21 U4 heatsink lifted",
   asset: p4261_e1_b,
   part: e1_u4,
   performed_on: "2026-10-21",
   removed: ThermalPad,
-  applied: Absent,
+  applied: Present { value: InterfaceUnstated },
   evidence: e1_u4_heatsink_said,
 }
+// THE TRUSTED-BOOT ISLAND BELOW U4 (2026-10-21). U5_2 carries the Microchip logo over 'CEC1736 /
+// BAS723G / 2242QB1': a platform root of trust, identified. Beside it three Micron-format BGAs, U3_2
+// and U2_2 marked '2NA17 / RW188' and a third, designator unread, '2RA17 / RW251' (Micron's FBGA
+// part-marking decoder gives the part numbers; not yet run), and DS1_2, the indicator the operator had placed 'near U1_TFP'. The '_2'
+// suffix (Q1_2, U1_2, U2_2, U3_2, U5_2, DS1_2) reads as that island's designator family, as '_P2' reads
+// as U4's power stage and '_P5' as the 48 V hot-swap channel. Energized and settled, two videos
+// (2026-10-21) were measured frame by frame: DS1_2 on about 1.0 s and off about 1.5 s, DS6 beside J68
+// on about 1.36 s and off about 1.32 s, DS5 beside it steady, the four-lamp group near U1_TFP steady.
+data e1_u5_2: ComponentInstanceIdentity = e1_component(local: "U5_2")
+data e1_u2_2: ComponentInstanceIdentity = e1_component(local: "U2_2")
+data e1_u3_2: ComponentInstanceIdentity = e1_component(local: "U3_2")
+data e1_rw251_bga: ComponentInstanceIdentity = e1_component(local: "BGA marked 2RA17 / RW251 right of U3_2 (designator unread; U39 is the small two-terminal part beside it)")
+data e1_u41: ComponentInstanceIdentity = e1_component(local: "U41")
+data e1_u22: ComponentInstanceIdentity = e1_component(local: "U22")
+data e1_u53_receptacle: ComponentInstanceIdentity = e1_component(local: "two-row six-position shrouded receptacle beside U53 (designator unread)")
+data e1_erot_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads db5163ea and 914927cc (U5_2 'CEC1736 / BAS723G / 2242QB1' with the Microchip logo; U3_2 and U2_2 '2NA17 / RW188', a third BGA '2RA17 / RW251'; Q1_2, U21, U69, U104, U105, DS1_2 around), dda6b3a6 (energized: DS1_2 lit beside U5_2, U1_TFP below, the DS1x group lit at the right), d0a17790 (unpowered: the U5_2 designator read plainly, DS1_2 below-right of it, Q1_2, U104, U1_TFP) and 52e248d1 (unpowered: U3_2 and U2_2 with their corner dots, the 'U39' label beside a small two-terminal part between them, U105, U104, DS1_2, DS7, and the lamp row labelled DS10, DS11, DS13, DS12) (not on Drive)")
+data e1_j30_area_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session upload 5b324555: J30 (two pins seen, a third position beside them), U210, D7_P2, U483, U41 'PW546A / 26KG4 / C7HE', U22 'P617A / 01.14 / 226', U60_P2 with the 2R2 inductor, U145, Q2_P2, Q4_P2, D4_P2, U33, Q56, Y360, U67, U66, U44, U98, U14 (not on Drive)")
+data e1_j68_area_photo: EvidenceRef = e1_photo(taken_on: "2026-10-21", locator: "bench-session uploads 06062ffb and 4e89938f: J68 as a populated 2 x 5 header beside DS3 to DS6 (an orange and a green lamp lit), a two-row six-position shrouded receptacle beside U53, U1_TNE, U1_2, U21, U93, U95, U10_P2, U100, Q5_P2, Q6_P2, U2_P2, two 4R7 and one 1R0 inductors, three 330 capacitors; wider: J22 (two pins by the HF mark), U15, Q72, U50, U550, U551, U541, U540, U85, Q25, U140, S1, J540; and b63328ac (unpowered: J68's ten pins, the lamp row labelled DS3, DS4, DS5, DS6 left to right with J68 to their right, U95, U1_TNE, U71, U540, U550, U50, D6_P2, U70, J540's edge) (not on Drive)")
+data e1_blink_videos: EvidenceRef = OperatorPhotograph { taken_on: "2026-10-21", locator: "bench-session video uploads 563c426c (6.0 s, close on U5_2 and DS1_2) and 12b8c869 (15.9 s, from U4 to J68); measured frame by frame at 26.75 frames per second by colour-blob tracking, the heatsink fins excluded (not on Drive)" }
 data e1_u3_leads: List<NonEmptyStr> = ["upper-left lead", "upper-middle lead", "upper-right lead", "lower-right lead", "lower-middle lead", "lower-left lead"]
 data e1_module_site_photo: EvidenceRef = e1_photo(taken_on: "2026-10-20", locator: "bench-session uploads 9da5383c (J4, H2, U4), 9cd281be (J3), 1749253a and fe0f5816 (U3 on the back below Q300 and Q301, with the pad group below it) and 376b5588 (U43, Y50 and U500 at the site's corner beside U51 and U49); e8c5473a and its repeat, the operator's 500 marks on the cluster beside J3 (not on Drive)")
 data e1_site_clusters_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-20", verbatim: "both of the J3/J4 sites have similar clusters under them that both read 500 - there are many pins that i.e. read 500 in that cluster - do you need the exact? my goal isn't to build an exact netlist, unless we really have to -" }
@@ -3123,12 +3177,11 @@ data e1_settled_indicators: List<IndicatorObservation> = [
   e1_top_group(designator: "DS13", state: IndicatorLit),
   e1_top_group(designator: "DS12", state: IndicatorLit),
   e1_top_group(designator: "DS11", state: IndicatorDark),
-  e1_seen(designator: "DS1_2", colour: GreenIndicator, state: IndicatorLit),
-  e1_seen(designator: "DS6", colour: GreenIndicator, state: IndicatorLit),
-  e1_seen(designator: "DS5", colour: RedOrAmberIndicator, state: IndicatorLit),
+  IndicatorObservation { indicator: DesignatorRead { designator: "DS1_2" }, colour: GreenIndicator, state: IndicatorBlinking, basis: TimedInVideo { evidence: e1_blink_videos, on_ms: 1010, off_ms: 1480, cycles: 5 } },
+  IndicatorObservation { indicator: DesignatorRead { designator: "DS6" }, colour: GreenIndicator, state: IndicatorBlinking, basis: TimedInVideo { evidence: e1_blink_videos, on_ms: 1360, off_ms: 1320, cycles: 5 } },
+  IndicatorObservation { indicator: DesignatorRead { designator: "DS5" }, colour: RedOrAmberIndicator, state: IndicatorLit, basis: SeenInVideo { evidence: e1_blink_videos, seconds: 15 } },
   e1_seen(designator: "DS3", colour: GreenIndicator, state: IndicatorDark),
   e1_seen(designator: "DS4", colour: GreenIndicator, state: IndicatorDark),
-  IndicatorObservation { indicator: IndicatorByPlace { place: "one near U1_TFP (which designator unrecorded; the operator pointed at two blinking green lamps, DS1_2 and DS6 by their places, unconfirmed)" }, colour: GreenIndicator, state: IndicatorBlinking, basis: OperatorReported { evidence: e1_blinkers_said } },
 ]
 
 fn e1_phase_volt(c: ComponentInstanceIdentity, point: NonEmptyStr, millivolts: Nat, said: EvidenceRef) -> PhaseNodeVoltage {
@@ -3443,6 +3496,13 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { component: e1_j3, terminals: [], identification: MarkingUnresolved { marking: Absent, discriminator: "the module receptacle at one end of the site; its contact count and maker from the board's documentation or the connector's own marking" } },
     InstalledComponent { component: e1_j4, terminals: [], identification: MarkingUnresolved { marking: Absent, discriminator: "the module receptacle at the other end of the site, beside H2 and U4" } },
     InstalledComponent { component: e1_u3, terminals: names(ns: e1_u3_leads), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "B5 and more (partly legible)", evidence: e1_u3_photo } }, discriminator: "a six-lead small-outline part beside the module site; read the full marking under raking light and count the leads from its marker" } },
+    InstalledComponent { component: e1_u5_2, terminals: [], identification: IdentifiedByMarking { row: cec1736, marking: MarkingReading { text: "Microchip logo / CEC1736 / BAS723G / 2242QB1", evidence: e1_erot_photo } } },
+    InstalledComponent { component: e1_u3_2, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "2NA17 / RW188 (corner dot)", evidence: e1_erot_photo } }, discriminator: "a Micron-format FBGA code; Micron's part-marking decoder gives the part number, expected a serial NOR of the family Altera sold as EPCQ-L" } },
+    InstalledComponent { component: e1_u2_2, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "2NA17 / RW188 (corner dot)", evidence: e1_erot_photo } }, discriminator: "the same code as U3_2; the same decoder" } },
+    InstalledComponent { component: e1_rw251_bga, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "2RA17 / RW251", evidence: e1_erot_photo } }, discriminator: "a Micron-format FBGA code distinct from U2_2's and U3_2's; the same decoder. Its designator is unread: the 'U39' label sits beside the small two-terminal part between U3_2 and U2_2 (upload 52e248d1), not this BGA" } },
+    InstalledComponent { component: e1_u41, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "PW546A / 26KG4 / C7HE", evidence: e1_j30_area_photo } }, discriminator: "a 14-lead part beside J30; the maker's marking table" } },
+    InstalledComponent { component: e1_u22, terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "P617A / 01.14 / 226", evidence: e1_j30_area_photo } }, discriminator: "an eight-lead part beside U483; the maker's marking table" } },
+    InstalledComponent { component: e1_u53_receptacle, terminals: [], identification: MarkingUnresolved { marking: Absent, discriminator: "a two-row six-position shrouded receptacle beside U53 and J68, the K1 listing's 'small shrouded connector below U4'; its pitch, designator and pinout are unread, and it is the debug-port candidate for U4 or U5_2" } },
     InstalledComponent { component: e1_u4, terminals: [], identification: IdentifiedByMarking { row: cyclone_10_gx_10cx085yf672e6g, marking: MarkingReading { text: "intel (logo) / Cyclone 10 / 10CX085YF672E6G / P CBABF2243A / TAIWAN / S241AK47 / 305PA2U0D / e1 (circled)", evidence: e1_u4_photo } } },
     InstalledComponent { component: e1_u43_chain_via, terminals: names(ns: ["via"]), identification: MarkingUnresolved { marking: Absent, discriminator: "a via the operator reads as a ground point (800 ohm from Q300's lead b on the 2k range); joined to the return only by a baselined reading" } },
   ],
@@ -3768,6 +3828,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
     ". ", phases_reading(layout: layout),
     ". ", q300_gate_path_reading(layout: layout),
     ". ", u4_configuration_text(layout: layout),
+    ". ", u5_2_root_of_trust_text(layout: layout),
     ". ", alterations_text(layout: layout),
     ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis), ". ", hypothesis_text(h: p4261_enable_network_hypothesis), ". ", hypothesis_text(h: p4261_local_control_hypothesis), ". ", hypothesis_text(h: p4261_q4_temperature_diode_hypothesis), ". ", hypothesis_text(h: p4261_vdd_bypass_hypothesis),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
@@ -3811,6 +3872,7 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
     LevelTranslatorSpec { translator: _ } => []
     LogicGateSpec { gate: _ } => []
     ProgrammableLogicSpec { logic: _ } => []
+    RootOfTrustSpec { root_of_trust: _ } => []
   }
 }
 
@@ -3942,6 +4004,7 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
     LevelTranslatorSpec { translator: _ } => ""
     LogicGateSpec { gate: _ } => ""
     ProgrammableLogicSpec { logic: _ } => ""
+    RootOfTrustSpec { root_of_trust: _ } => ""
   }
 }
 

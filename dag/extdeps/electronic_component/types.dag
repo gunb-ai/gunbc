@@ -296,6 +296,26 @@ type ProgrammableLogicSpecification {
   io_before_configuration: UnconfiguredIoState
 }
 
+// A PLATFORM ROOT OF TRUST, BY WHAT IT PROTECTS. It sits between a processor and the flash that
+// processor boots from; secure boot means the flash's content is authenticated before the processor
+// runs, so on a board the processor it guards does nothing until it is released. Which signal releases
+// the processor is a datasheet fact not yet carried.
+type RootOfTrustProtection
+  = SpiFlashRuntimeProtection
+  | I2cSmbusFiltering
+  | SecureBoot
+  | ComponentAttestation
+  | LifecycleManagement
+
+type RootOfTrustSpecification {
+  core: NonEmptyStr
+  protections: List<RootOfTrustProtection>
+}
+
+fn guards_boot(spec: RootOfTrustSpecification) -> Bool {
+  any(spec.protections, p => match p { SecureBoot => true, _ => false })
+}
+
 // The signal that reports a completed configuration, if the row names one.
 fn configuration_done_signal(spec: ProgrammableLogicSpecification) -> ConfigurationSignal? {
   (filter(spec.signals, s => match s.role { ConfigurationDone => true, _ => false })).first()
@@ -379,6 +399,7 @@ type ComponentSpecification
   | LevelTranslatorSpec { translator: LevelTranslatorSpecification }
   | LogicGateSpec { gate: LogicGateSpecification }
   | ProgrammableLogicSpec { logic: ProgrammableLogicSpecification }
+  | RootOfTrustSpec { root_of_trust: RootOfTrustSpecification }
 
 type ElectronicComponentRow {
   vendor: Vendor<Hardware>
@@ -415,5 +436,6 @@ fn voltage_withstand(spec: ComponentSpecification) -> VoltageWithstand? {
     LevelTranslatorSpec { translator: _ } => Absent
     LogicGateSpec { gate: _ } => Absent
     ProgrammableLogicSpec { logic: _ } => Absent
+    RootOfTrustSpec { root_of_trust: _ } => Absent
   }
 }

@@ -87,10 +87,14 @@ type IndicatorIdentity
   | DesignatorCandidate { designator: NonEmptyStr, basis: NonEmptyStr }
   | IndicatorByPlace { place: NonEmptyStr }
 
-// A photograph establishes lit or dark at its instant; blinking is the operator's statement over time.
+// A photograph establishes lit or dark at its instant; blinking is the operator's statement over time,
+// or a video's: SeenInVideo is a state that held for the video's length, TimedInVideo a blink whose on
+// and off intervals were measured frame by frame over a counted number of full cycles.
 type IndicatorBasis
   = SeenInPhotograph { evidence: EvidenceRef }
   | OperatorReported { evidence: EvidenceRef }
+  | SeenInVideo { evidence: EvidenceRef, seconds: Nat }
+  | TimedInVideo { evidence: EvidenceRef, on_ms: Nat, off_ms: Nat, cycles: Nat }
 
 type IndicatorObservation {
   indicator: IndicatorIdentity
@@ -568,6 +572,8 @@ fn basis_text(b: IndicatorBasis) -> String {
   match b {
     SeenInPhotograph { evidence: _ } => "in a photograph"
     OperatorReported { evidence: _ } => "by the operator's statement"
+    SeenInVideo { evidence: _, seconds } => join(["throughout a ", to_string(seconds), " s video"], "")
+    TimedInVideo { evidence: _, on_ms, off_ms, cycles } => join(["timed in a video: on ", to_string(on_ms), " ms, off ", to_string(off_ms), " ms, over ", to_string(cycles), " cycles"], "")
   }
 }
 

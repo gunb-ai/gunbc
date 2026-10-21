@@ -186,6 +186,7 @@ type ProbeAttachment {
 type ThermalInterface
   = ThermalPad
   | ThermalPaste
+  | InterfaceUnstated
 
 type AssetAlteration {
   key: NonEmptyStr
@@ -201,6 +202,7 @@ fn thermal_interface_text(t: ThermalInterface) -> String {
   match t {
     ThermalPad => "a thermal pad"
     ThermalPaste => "thermal paste"
+    InterfaceUnstated => "an interface the operator did not state"
   }
 }
 
