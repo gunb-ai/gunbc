@@ -877,13 +877,38 @@ fn gunbc_running_service_bodies(text: String) -> List<String> {
   )
 }
 
-// The deployment names more than one bounded slice (the serving slice, the broker's, the convergence oneshots'
-// own), so the population law is "a Slice= line that is not system.slice", and the drain's own claim below pins
-// the deployment slice.
+// A Slice= that names a slice the deployment never installs gets no MemoryMax (systemd creates it unbounded),
+// and gunbc refuses in it exactly as in system.slice. So the law is "names a slice this apply installs with a
+// MemoryMax", and the installed set is read from the apply's own install steps: each `[Slice]` unit body that
+// carries MemoryMax= is followed by the redirect that stages it as `<stage>/<name>.slice`.
+fn first_or_empty(parts: List<String>) -> String {
+  match parts.first() {
+    Present { value: head } => head
+    Absent => ""
+  }
+}
+
+fn installed_bounded_slice_name(seg: String) -> String {
+  let body = service_body_of_segment(seg: seg)
+  let after_stage = first_or_empty(parts: skip(split(s: seg, delimiter: "\"$_gunbc_stage\"'/"), 1))
+  let name = first_or_empty(parts: split(s: after_stage, delimiter: "'"))
+  if string_contains(s: body, pattern: "\nMemoryMax=") { name } else { "" }
+}
+
+fn installed_bounded_slices(text: String) -> List<String> {
+  filter(map(skip(split(s: text, delimiter: "[Slice]"), 1), seg => installed_bounded_slice_name(seg: seg)), name => name != "")
+}
+
+fn service_slice_name(body: String) -> String {
+  let after_key = first_or_empty(parts: skip(split(s: body, delimiter: "\nSlice="), 1))
+  first_or_empty(parts: split(s: after_key, delimiter: "\n"))
+}
+
 fn gunbc_running_services_are_all_sliced(text: String) -> Bool {
+  let installed = installed_bounded_slices(text: text)
   all(
     gunbc_running_service_bodies(text: text),
-    body => string_contains(s: body, pattern: "\nSlice=") && !string_contains(s: body, pattern: "\nSlice=system.slice"),
+    body => any(installed, sl => service_slice_name(body: body) == sl),
   )
 }
 
@@ -899,17 +924,33 @@ test fn the_drain_service_names_the_deployment_slice() -> Bool {
   string_contains(s: full_install_apply_text(spec: spec), pattern: join(["Slice=", deployment_slice_unit_name(names: spec.names) as String], ""))
 }
 
-test fn a_gunbc_running_service_without_a_slice_is_found_unsliced() -> Bool {
-  let unsliced = "[Unit]\nDescription=x\n[Service]\nType=oneshot\nExecStart=/opt/gunbc run --source-root /d --entry /e\n[Install]\nWantedBy=x\n"
-  !gunbc_running_services_are_all_sliced(text: unsliced)
+fn fixture_apply(slice_line: String) -> String {
+  join([
+    "[Unit]\nDescription=s\n\n[Slice]\nMemoryMax=1\n' > \"$_gunbc_stage\"'/gunbc-bounded.slice'",
+    "[Unit]\nDescription=u\n\n[Slice]\nMemoryHigh=1\n' > \"$_gunbc_stage\"'/gunbc-unbounded.slice'",
+    "[Unit]\nDescription=x\n[Service]\nType=oneshot\n", slice_line,
+    "ExecStart=/opt/gunbc run --source-root /d --entry /e\n[Install]\nWantedBy=x\n",
+  ], "")
 }
 
-test fn a_gunbc_running_service_with_a_slice_is_found_sliced() -> Bool {
-  let sliced = "[Unit]\nDescription=x\n[Service]\nType=oneshot\nSlice=gunbc-user-work.slice\nExecStart=/opt/gunbc run --source-root /d --entry /e\n[Install]\nWantedBy=x\n"
+test fn a_gunbc_running_service_without_a_slice_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: ""))
+}
+
+test fn a_gunbc_running_service_in_an_installed_bounded_slice_is_found_sliced() -> Bool {
+  let sliced = fixture_apply(slice_line: "Slice=gunbc-bounded.slice\n")
   count(gunbc_running_service_bodies(text: sliced)) == 1
     && gunbc_running_services_are_all_sliced(text: sliced)
 }
 
 test fn a_gunbc_running_service_in_system_slice_is_found_unsliced() -> Bool {
-  !gunbc_running_services_are_all_sliced(text: "[Service]\nSlice=system.slice\nExecStart=/opt/gunbc run --source-root /d\n")
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: "Slice=system.slice\n"))
+}
+
+test fn a_gunbc_running_service_in_a_slice_the_apply_never_installs_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: "Slice=gunbc-never-installed.slice\n"))
+}
+
+test fn a_gunbc_running_service_in_an_installed_slice_with_no_memory_max_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: "Slice=gunbc-unbounded.slice\n"))
 }
