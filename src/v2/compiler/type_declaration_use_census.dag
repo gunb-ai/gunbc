@@ -253,8 +253,8 @@ fn type_declaration_rows(
   kinds: FreeMonoid<DeclaredTypeKind>,
   modifiers: FreeMonoid<DeclaredTypeModifiers>
 ) -> FreeMonoid<TypeDeclRow> {
-  let members = fold(module_bodies_in_tree(node: root, path: [], acc: []), init: [], f: fn(acc, b) {
-    concat(acc, module_body_member_edges(body: b.body))
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
   })
   fold_list(xs: members, empty: Empty, cons: fn(acc, edge) {
     match edge.label {
@@ -459,8 +459,8 @@ fn as_walk(
 // Every cast in one module, member by member; an Arrow member's body starts with its declared
 // return as the parent reading, so a cast in return position carries that evidence.
 fn as_site_rows(module: String, root: Node, typing: AsTyping, index: SymbolIndex) -> FreeMonoid<AsSiteRow> {
-  let members = fold(module_bodies_in_tree(node: root, path: [], acc: []), init: [], f: fn(acc, b) {
-    concat(acc, module_body_member_edges(body: b.body))
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
   })
   fold_list(xs: members, empty: Empty, cons: fn(acc, edge) {
     match edge.label {
