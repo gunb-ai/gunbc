@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_representation_change_drops_the_types_realization_checkpoint
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_representation_change_drops_the_types_realization_checkpoint: RecurringFailureMode = RecurringFailureMode {
   identity: "a_representation_change_drops_the_types_realization_checkpoint" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "INVALID STATE: a type keeps its target realization (the declaration still emits as the host primitive) while a consumer that decides the primitive's OPERATOR SEMANTICS asks a different question of the type and gets no answer. Specimen: the Nat de-fork (gunbc#12846) redeclared std.nat Nat from an alias over the kernel integer to the inductive Zero | Succ { prev: Nat }, bound to the kernel integer by gunbc.structural_realization_bindings kernel_grounding_rows. The declaration emitted `pub type Nat = i64;` and every signature stayed i64, but v1.compiler.emit_rust expr_realizes_as_refusing_int reads a realization CHECKPOINT off the operand's inferred type, and the inductive declaration has none of its own -- so the check answered false and Nat + - * emitted Rust's wrapping infix operators instead of v1_rt::int_add/sub/mul.",

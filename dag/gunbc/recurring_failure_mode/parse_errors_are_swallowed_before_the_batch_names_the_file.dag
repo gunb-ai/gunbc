@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.parse_errors_are_swallowed_before_the_batch_names_the_file
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, NoRungStated }
 
 data parse_errors_are_swallowed_before_the_batch_names_the_file: RecurringFailureMode = RecurringFailureMode {
   identity: "parse_errors_are_swallowed_before_the_batch_names_the_file" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a tool prints the NAME of what failed while the CAUSE is in scope and reachable. The parse layer drops the diagnostic it is holding, and every layer above can only report that it got nothing back. The reader is told which file failed to parse and not why, so the next move is guess-and-rebuild, and the rebuild cost is a full cold cargo build of v1-compiler on the shared runner -- measured 20+ minutes per cycle including the BuildBuddy sync.",

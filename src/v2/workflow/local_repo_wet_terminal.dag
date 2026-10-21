@@ -414,6 +414,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.fci1_bounded_store_wet_witness", function: "the_store_state_reads_present_absent_and_unlistable_from_the_real_filesystem" },
+      entry: "dag/test/claim/live_deploy/fci1_bounded_store_wet_witness.dag",
+      function: "the_store_state_reads_present_absent_and_unlistable_from_the_real_filesystem",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
       function: "a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs",
