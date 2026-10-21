@@ -38,7 +38,8 @@ import v2.std.node { positional_child_target_nodes,
   Transform,
   TypeNode,
   content_hash,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import v2.std.node_query { field_projection_optional, find_arrow_body_child, find_named_child }
 import std.optional { Absent, Present }
@@ -100,8 +101,8 @@ fn dotted_fixture_seq(left: Node, right: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
-      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right, declaration: NotADeclaration }
     ]
   )
 }
@@ -169,7 +170,7 @@ fn dotted_fixture_shell(captured: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured }
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured, declaration: NotADeclaration }
     ]
   )
 }

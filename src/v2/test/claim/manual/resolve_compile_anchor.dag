@@ -36,7 +36,8 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }
@@ -53,7 +54,8 @@ fn service_atom_conj_tree() -> Node {
           },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -90,7 +92,8 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
             },
             children: [],
             occurrence_id: OccurrenceSynthetic
-          }
+          },
+          declaration: NotADeclaration
         },
         Edge {
           label: Authored { name: ^anchor_decl_second },
@@ -100,7 +103,8 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
             },
             children: [],
             occurrence_id: OccurrenceSynthetic
-          }
+          },
+          declaration: NotADeclaration
         }
       ],
       occurrence_id: OccurrenceSynthetic
@@ -131,7 +135,8 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                   },
                   children: [],
                   occurrence_id: OccurrenceSynthetic
-                }
+                },
+                declaration: NotADeclaration
               },
               Edge {
                 label: Positional,
@@ -141,7 +146,8 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                   },
                   children: [],
                   occurrence_id: OccurrenceSynthetic
-                }
+                },
+                declaration: NotADeclaration
               },
               Edge {
                 label: Positional,
@@ -151,11 +157,13 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                   },
                   children: [],
                   occurrence_id: OccurrenceSynthetic
-                }
+                },
+                declaration: NotADeclaration
               }
             ],
             occurrence_id: OccurrenceSynthetic
-          }
+          },
+          declaration: NotADeclaration
         }
       ],
       occurrence_id: OccurrenceSynthetic
@@ -198,7 +206,8 @@ fn resolve_imported_module_root() -> Node {
           },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -245,7 +254,8 @@ fn resolve_subject_module_root_with_import_use() -> Node {
       ),
       Edge {
         label: Authored { name: ^anchor_subject_import_use },
-        target: resolve_imported_use_tree()
+        target: resolve_imported_use_tree(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

@@ -1,5 +1,7 @@
 module v2.test.claim.manual.scheduler_runnable_frontier
 
+import v2.std.node { NotADeclaration }
+
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,9 +33,9 @@ data scheduler_missing_source_node: Node = Node {
 data scheduler_fixture_graph: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^scheduler_build_symbol }, target: scheduler_build_node },
-    Edge { label: Authored { name: ^scheduler_test_symbol }, target: scheduler_test_node },
-    Edge { label: Authored { name: ^scheduler_emit_symbol }, target: scheduler_emit_node }
+    Edge { label: Authored { name: ^scheduler_build_symbol }, target: scheduler_build_node, declaration: NotADeclaration },
+    Edge { label: Authored { name: ^scheduler_test_symbol }, target: scheduler_test_node, declaration: NotADeclaration },
+    Edge { label: Authored { name: ^scheduler_emit_symbol }, target: scheduler_emit_node, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

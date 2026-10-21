@@ -18,7 +18,7 @@ import v2.std.integer { integer_int_type_node }
 import v2.std.list_introduction { list_introduction_head_path, lower_list_introduction }
 import v2.std.logic { Bool }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
-import v2.std.node { positional_child_target_nodes, Authored, Branch, ComputationNode, Conj, Edge, Instantiation, Node, Positional, TypeNode }
+import v2.std.node { positional_child_target_nodes, Authored, Branch, ComputationNode, Conj, Edge, Instantiation, Node, Positional, TypeNode, NotADeclaration }
 import v2.std.node_query { construct_node }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
 import v2.std.symbol_index { MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, SymbolIndex, VariantArmPayload, empty_symbol_index, symbol_index_bind_at, symbol_index_declaring_path_of, symbol_index_insert, symbol_index_mark_declared_payload, symbol_index_mark_module_root }
@@ -42,7 +42,8 @@ fn nvar_field_payload() -> Node {
     children: [
       Edge {
         label: Authored { name: ^code },
-        target: integer_int_type_node()
+        target: integer_int_type_node(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -268,9 +269,9 @@ fn nvar_branch_of(then_arm: Node, else_arm: Node, id: Int) -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_token_kw_true) },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_token_kw_true), declaration: NotADeclaration },
+      Edge { label: Positional, target: then_arm, declaration: NotADeclaration },
+      Edge { label: Positional, target: else_arm, declaration: NotADeclaration }
     ],
     occurrence_id: nvar_id(n: id)
   }
@@ -297,7 +298,7 @@ fn nvar_failure_construct() -> Node {
   construct_node(
     reference: nvar_ref(path: nvar_failure_alias(), id: 8),
     field_edges: [
-      Edge { label: Authored { name: ^code }, target: dag_int_literal_fixture_one() }
+      Edge { label: Authored { name: ^code }, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ],
     source: Node {
       kind: ComputationNode { behavior: Branch },

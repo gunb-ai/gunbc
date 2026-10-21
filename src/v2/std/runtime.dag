@@ -38,7 +38,8 @@ import v2.std.node {
   Transform,
   Value,
   fold_list_node,
-  algebra_empty_conj
+  algebra_empty_conj,
+  NotADeclaration
 }
 
 type RuntimeIdentity {
@@ -129,7 +130,7 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
 }
 
 fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn runtime_value_conj_node(children: List<Edge>) -> Node {

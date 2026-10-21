@@ -249,7 +249,7 @@ fn production_edge_label(language: Symbol, edge: Symbol) -> EdgeLabel {
 }
 
 fn core_edge(marker: CoreEdgeLabel, target: Node) -> Edge {
-  Edge { label: core_edge_label(marker: marker), target: target }
+  Edge { label: core_edge_label(marker: marker), target: target, declaration: NotADeclaration }
 }
 
 // THE ONE READER OF A CORE MARKER: it matches the arm, so an authored name spelled like a marker
@@ -347,9 +347,18 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ConstantMemberEdge => ^core_constant_member_edge
   }
 }
+// WHETHER AN EDGE IS THE DECLARATION OF ITS LABEL, with the occurrence of the token that declared it.
+// A declaration name is an Authored label (a bare Symbol), so the occurrence of the token that declared
+// it has no home on the label; it lives on the Edge, beside the label, exactly as a Node carries its own
+// occurrence_id. Neither enters content_hash: content_hash_step folds (label, child hash) and never the
+// Edge. A closed coproduct with no default, so an edge built by a producer that forgot to mint refuses
+// at construction rather than reading as "not a declaration".
+type EdgeDeclaration = DeclaresAt { occurrence: NodeOccurrenceIdentity } | NotADeclaration
+
 type Edge {
   label: EdgeLabel
   target: Node
+  declaration: EdgeDeclaration
 }
 
 type EdgeShape {
@@ -460,7 +469,7 @@ fn close_lowered_image_of(root: Node, source: Node) -> Node {
 fn close_lowered_image_under(node: Node, source: OccurrenceId) -> Node {
   match node.occurrence_id {
     OccurrenceSynthetic =>
-      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source) }))
+      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source), declaration: NotADeclaration }))
     OccurrenceMinted { id: id } => if id.value == source.value { close_lowered_image(root: node) } else { node }
     OccurrencePending { caused_by: _ } => node
     OccurrenceProjected { id: _, caused_by: _ } => node
@@ -491,7 +500,7 @@ fn close_image_member(node: Node, source: OccurrenceId) -> Node {
 }
 
 fn close_image_edges(edges: List<Edge>, source: OccurrenceId) -> List<Edge> {
-  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source) })
+  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source), declaration: NotADeclaration })
 }
 
 // THE ONE ALLOCATION PASS, run once over a normalized tree. It visits the whole tree in pre-order,
@@ -515,7 +524,7 @@ fn allocate_pending_occurrences(
     f: (acc, e) => {
       let child = allocate_pending_occurrences(root: e.target, allocator: acc.allocator)
       PendingEdgesAllocation {
-        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root }),
+        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root, declaration: NotADeclaration }),
         allocator: child.allocator,
       }
     },
@@ -590,7 +599,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: NotADeclaration })
   )
 }
 
@@ -2873,7 +2882,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
 }
 
 fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn node_offset_conj(children: List<Edge>) -> Node {
@@ -3165,8 +3174,8 @@ fn fold_list_node<T>(
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item) },
-          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node },
+          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item), declaration: NotADeclaration },
+          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node, declaration: NotADeclaration },
         ],
         occurrence_id: OccurrenceSynthetic
 }

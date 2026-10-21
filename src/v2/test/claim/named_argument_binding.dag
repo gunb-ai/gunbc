@@ -38,7 +38,8 @@ import v2.std.node {
   content_hash,
   node_subtree_nodes,
   well_formed,
-  StructuralLabel
+  StructuralLabel,
+  NotADeclaration
 }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.text { String }
@@ -254,11 +255,11 @@ fn nab_plan_edges(arrow: Node, actuals: List<Edge>) -> List<Symbol> {
 }
 
 fn nab_named(label: Symbol) -> Edge {
-  Edge { label: Authored { name: label }, target: nab_unit() }
+  Edge { label: Authored { name: label }, target: nab_unit(), declaration: NotADeclaration }
 }
 
 fn nab_positional() -> Edge {
-  Edge { label: Positional, target: nab_unit() }
+  Edge { label: Positional, target: nab_unit(), declaration: NotADeclaration }
 }
 
 fn nab_unit() -> Node {

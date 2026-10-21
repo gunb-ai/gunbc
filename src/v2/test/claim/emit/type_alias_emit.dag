@@ -1,5 +1,7 @@
 module v2.test.claim.emit.type_alias_emit
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data type_alias_core_node_golden: String = "type CoreNode = Node;"
@@ -16,7 +18,7 @@ fn type_alias_atom(spelling: String) -> Node {
 fn type_alias_qualified_name_emitted(type_name: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: type_alias_atom(spelling: type_name) } ],
+    children: [ Edge { label: Positional, target: type_alias_atom(spelling: type_name), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -24,7 +26,7 @@ fn type_alias_qualified_name_emitted(type_name: String) -> Node {
 fn type_alias_type_expr_emitted(type_name: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: type_alias_qualified_name_emitted(type_name: type_name) } ],
+    children: [ Edge { label: Positional, target: type_alias_qualified_name_emitted(type_name: type_name), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -33,8 +35,8 @@ fn type_alias_decl_emitted(name: String, type_name: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: type_alias_atom(spelling: name) },
-      Edge { label: Positional, target: type_alias_type_expr_emitted(type_name: type_name) }
+      Edge { label: Positional, target: type_alias_atom(spelling: name), declaration: NotADeclaration },
+      Edge { label: Positional, target: type_alias_type_expr_emitted(type_name: type_name), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -52,8 +54,8 @@ fn type_alias_generic_qualified_name_emitted(head: String, arg: String) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: type_alias_atom(spelling: head) },
-      Edge { label: Positional, target: type_alias_atom(spelling: arg) }
+      Edge { label: Positional, target: type_alias_atom(spelling: head), declaration: NotADeclaration },
+      Edge { label: Positional, target: type_alias_atom(spelling: arg), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -62,7 +64,7 @@ fn type_alias_generic_qualified_name_emitted(head: String, arg: String) -> Node 
 fn type_alias_generic_type_expr_emitted(head: String, arg: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: type_alias_generic_qualified_name_emitted(head: head, arg: arg) } ],
+    children: [ Edge { label: Positional, target: type_alias_generic_qualified_name_emitted(head: head, arg: arg), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -71,8 +73,8 @@ fn type_alias_generic_rhs_decl_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: type_alias_atom(spelling: "NodeList") },
-      Edge { label: Positional, target: type_alias_generic_type_expr_emitted(head: "List", arg: "Node") }
+      Edge { label: Positional, target: type_alias_atom(spelling: "NodeList"), declaration: NotADeclaration },
+      Edge { label: Positional, target: type_alias_generic_type_expr_emitted(head: "List", arg: "Node"), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

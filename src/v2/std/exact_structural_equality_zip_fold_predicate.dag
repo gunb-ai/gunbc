@@ -1,7 +1,7 @@
 module v2.std.exact_structural_equality_zip_fold_predicate
 
 import std.algebra { list_snoc_item }
-import v2.std.node { Edge, Node, NodeFold, fold_node, node_for_structural_equality, node_rebuild, well_formed }
+import v2.std.node { Edge, Node, NodeFold, fold_node, node_for_structural_equality, node_rebuild, well_formed, NotADeclaration }
 
 fn exact_structural_zip_fold_init(n: Node) -> Node {
   node_for_structural_equality(n: node_rebuild(n: n, children: []))
@@ -9,7 +9,7 @@ fn exact_structural_zip_fold_init(n: Node) -> Node {
 fn exact_structural_zip_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: NotADeclaration })
   )
 }
 fn exact_structural_zip_fold_algebra() -> NodeFold<Node> {

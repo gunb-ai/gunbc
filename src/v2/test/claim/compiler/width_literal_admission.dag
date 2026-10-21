@@ -11,7 +11,7 @@ import std.algebra { Cons, Empty, list_append }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, NotADeclaration }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.infer { InferLiteralElaboratesTo, InferLiteralNotElaborated, InferLiteralElaborationRefused, infer_literal_elaborates_at, infer_machine_width_bits, infer_machine_width_of, infer_machine_width_signedness, infer_type_alias_normalized_at, infer_type_declaration_ref, infer_type_head_and_args }
 import v2.std.node { Atom, Edge, Instantiation, Node, Positional, TypeNode, node_synthetic }
@@ -176,14 +176,14 @@ fn wla_literal(lexeme: String) -> Node {
 fn wla_edges(args: List<Node>) -> List<Edge> {
   match args {
     Empty => []
-    Cons { head: a, tail: rest } => list_append(left: [Edge { label: Positional, target: a }], right: wla_edges(args: rest))
+    Cons { head: a, tail: rest } => list_append(left: [Edge { label: Positional, target: a, declaration: NotADeclaration }], right: wla_edges(args: rest))
   }
 }
 
 fn wla_instantiation(head: Node, args: List<Node>) -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
-    children: list_append(left: [Edge { label: Positional, target: head }], right: wla_edges(args: args)),
+    children: list_append(left: [Edge { label: Positional, target: head, declaration: NotADeclaration }], right: wla_edges(args: args)),
     occurrence_id: OccurrenceSynthetic
   }
 }

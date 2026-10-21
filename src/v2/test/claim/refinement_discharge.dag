@@ -7,7 +7,7 @@ import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { binder_edge }
 
@@ -41,9 +41,10 @@ fn rdt_application(body: Node) -> Node {
           ),
           return_type_binding: ^bool_node_symbol,
           body: body
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }
@@ -129,9 +130,10 @@ fn rdt_unevaluable_application(body: Node) -> Node {
           ),
           return_type_binding: ^rdt_undenoted_return,
           body: body
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }

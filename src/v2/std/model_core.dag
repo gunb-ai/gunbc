@@ -24,7 +24,7 @@ import v2.std.logic {
   bool_primitive_facts_node,
   bool_width_fact_node
 }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, NotADeclaration }
 import v2.std.witness { Holds, Violates, Witness }
 
 type ModelCorePrimitiveFactAxis
@@ -190,15 +190,18 @@ fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
     children: [
       Edge {
         label: Authored { name: ^model_core_law_field_subject },
-        target: model_core_bool_inhabitance_witness()
+        target: model_core_bool_inhabitance_witness(),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^model_core_law_field_algebra },
-        target: model_core_bool_algebra_node()
+        target: model_core_bool_algebra_node(),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^model_core_law_field_kind },
-        target: model_core_atom(id: discriminant(v: key))
+        target: model_core_atom(id: discriminant(v: key)),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: OccurrenceSynthetic

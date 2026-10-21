@@ -24,7 +24,8 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -99,14 +100,16 @@ fn rd_declaration(decl_sym: Symbol) -> Edge {
       kind: TypeNode { connective: Atom { identity: decl_sym } },
       children: [],
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 
 fn rd_qualified_mention() -> Edge {
   Edge {
     label: Positional,
-    target: rd_qn_spine(segments: rd_provided_marker_qn)
+    target: rd_qn_spine(segments: rd_provided_marker_qn),
+    declaration: NotADeclaration
   }
 }
 
@@ -122,11 +125,13 @@ fn rd_import_syntax_mention() -> Edge {
             kind: TypeNode { connective: Atom { identity: ^ProvidedMarker } },
             children: [],
             occurrence_id: OccurrenceSynthetic
-          }
+          },
+          declaration: NotADeclaration
         }
       ],
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 

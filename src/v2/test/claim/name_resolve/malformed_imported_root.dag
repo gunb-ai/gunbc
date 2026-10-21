@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid, empty_map, map_insert }
 
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, fold_list_node }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, fold_list_node, NotADeclaration }
 import v2.std.qualified_name { QualifiedName }
 
 fn malformed_qn_node() -> Node {
@@ -52,7 +52,8 @@ fn malformed_root_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

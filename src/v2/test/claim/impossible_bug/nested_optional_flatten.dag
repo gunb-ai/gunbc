@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Occupancy }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Occupancy, NotADeclaration }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -41,10 +41,11 @@ data falsification_nested_optional: Node = Node {
       target: Node {
         kind: TypeNode { connective: Occupancy },
         children: [
-          Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
+          Edge { label: Positional, target: atom_node(s: ^optional_value_symbol), declaration: NotADeclaration },
         ],
         occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
     },
   ],
   occurrence_id: OccurrenceSynthetic
@@ -53,7 +54,7 @@ data falsification_nested_optional: Node = Node {
 data falsification_optional_double_unwrap: Node = Node {
   kind: TypeNode { connective: Occupancy },
   children: [
-    Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
+    Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol), declaration: NotADeclaration },
   ],
   occurrence_id: OccurrenceSynthetic
 }

@@ -9,7 +9,7 @@ import v2.std.logic { bool_node }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Authored, Conj, Edge, Node, Symbol, TypeNode }
+import v2.std.node { Authored, Conj, Edge, Node, Symbol, TypeNode, NotADeclaration }
 import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -90,7 +90,7 @@ test fn dai_a_name_inside_an_operation_signature_is_not_a_declared_field() -> Bo
 test fn dai_a_malformed_inhabitance_is_reported_as_malformed() -> Bool {
   let missing_algebra = Node {
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: ^inhabitant_edge }, target: bool_node() }],
+    children: [Edge { label: Authored { name: ^inhabitant_edge }, target: bool_node(), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
   match algebra_inhabitance_field_declaration(inhabitance: missing_algebra, field: ^lattice_field_join) {
@@ -122,7 +122,7 @@ test fn dai_a_matching_name_on_a_non_binder_is_malformed() -> Bool {
   let carrier = bool_node()
   let structure = Node {
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: ^ring_field_add }, target: carrier }],
+    children: [Edge { label: Authored { name: ^ring_field_add }, target: carrier, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
   dai_is_malformed(d: algebra_inhabitance_field_declaration(inhabitance: algebra_inhabitance_node(algebra: structure, inhabitant: carrier), field: ^ring_field_add))
@@ -157,7 +157,7 @@ test fn dai_a_declared_field_before_a_malformed_member_is_malformed() -> Bool {
     kind: TypeNode { connective: Conj },
     children: [
       binder_edge(name: ^ring_field_add, type_node: carrier),
-      Edge { label: Authored { name: ^ring_field_mul }, target: carrier }
+      Edge { label: Authored { name: ^ring_field_mul }, target: carrier, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

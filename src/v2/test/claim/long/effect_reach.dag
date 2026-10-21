@@ -20,7 +20,7 @@ import v2.std.effect_reach {
   UnknownHostEffectSink
 }
 import v2.std.fn_index { FnArrowDecl }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme, NotADeclaration }
 import v2.std.text { String }
 
 data sn_source_rel_path: String = "src/v2/compiler/normalize.dag"
@@ -102,7 +102,7 @@ fn call_channel_atom(text: String) -> Node {
 fn call_channel_call(callee: String) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: call_channel_atom(text: callee) }],
+    children: [Edge { label: Positional, target: call_channel_atom(text: callee), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -146,7 +146,7 @@ test fn effect_reach_does_not_follow_a_non_call_atom_collision() -> Bool {
   classification_is_local(classification: call_channel_effect_classification(
     entry_output: Node {
       kind: TypeNode { connective: Conj },
-      children: [Edge { label: Positional, target: call_channel_atom(text: "helper_fn") }],
+      children: [Edge { label: Positional, target: call_channel_atom(text: "helper_fn"), declaration: NotADeclaration }],
       occurrence_id: OccurrenceSynthetic
     }
   ))

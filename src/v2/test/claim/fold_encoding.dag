@@ -1,6 +1,6 @@
 module v2.test.claim.fold_encoding
 
-import v2.std.node { positional_child_target_nodes }
+import v2.std.node { positional_child_target_nodes, NotADeclaration }
 import std.algebra { Empty }
 import v2.std.anonymous_binder { is_fold_carrier_binder }
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
@@ -354,7 +354,7 @@ fn fe_rebuilt(n: Node, drop: FeDrop) -> Node {
         }
       FeDropInit => false
     }
-    if cut { acc } else { list_snoc_item(xs: acc, item: Edge { label: e.label, target: fe_mutated(n: e.target, drop: drop) }) }
+    if cut { acc } else { list_snoc_item(xs: acc, item: Edge { label: e.label, target: fe_mutated(n: e.target, drop: drop), declaration: NotADeclaration }) }
   }))
 }
 

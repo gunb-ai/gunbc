@@ -12,6 +12,7 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -32,7 +33,8 @@ data disj_max_cheap_body: Node = Node {
         kind: TypeNode { connective: Atom { identity: ^disj_max_cheap_body_atom } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -52,11 +54,13 @@ data disj_max_expensive_body: Node = Node {
               kind: TypeNode { connective: Atom { identity: ^disj_max_expensive_body_atom } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-            }
+            },
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -65,8 +69,8 @@ data disj_max_expensive_body: Node = Node {
 data disj_max_input: Node = Node {
   kind: TypeNode { connective: Disj },
   children: [
-    Edge { label: Positional, target: disj_max_cheap_body },
-    Edge { label: Positional, target: disj_max_expensive_body }
+    Edge { label: Positional, target: disj_max_cheap_body, declaration: NotADeclaration },
+    Edge { label: Positional, target: disj_max_expensive_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

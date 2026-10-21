@@ -10,6 +10,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   content_hash,
+  NotADeclaration
 }
 fn content_hash_order_leaf() -> Node {
   Node {
@@ -25,11 +26,13 @@ fn content_hash_order_conj_ab() -> Node {
     children: [
       Edge {
         label: Authored { name: ^content_hash_order_field_a },
-        target: content_hash_order_leaf()
+        target: content_hash_order_leaf(),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^content_hash_order_field_b },
-        target: content_hash_order_leaf()
+        target: content_hash_order_leaf(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -42,11 +45,13 @@ fn content_hash_order_conj_ba() -> Node {
     children: [
       Edge {
         label: Authored { name: ^content_hash_order_field_b },
-        target: content_hash_order_leaf()
+        target: content_hash_order_leaf(),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^content_hash_order_field_a },
-        target: content_hash_order_leaf()
+        target: content_hash_order_leaf(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -64,7 +69,8 @@ fn content_hash_nested_conj_ab() -> Node {
     children: [
       Edge {
         label: Authored { name: ^content_hash_order_field_a },
-        target: content_hash_order_conj_ab()
+        target: content_hash_order_conj_ab(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -77,7 +83,8 @@ fn content_hash_nested_conj_ba() -> Node {
     children: [
       Edge {
         label: Authored { name: ^content_hash_order_field_a },
-        target: content_hash_order_conj_ba()
+        target: content_hash_order_conj_ba(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

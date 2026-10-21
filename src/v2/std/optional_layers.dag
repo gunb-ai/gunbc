@@ -3,7 +3,7 @@ module v2.std.optional_layers
 import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, Succ, Zero, nat_add, nat_sub }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { positional_child_target_nodes, Occupancy, node_with_occurrence_id, ComputationNode, Edge, Node, Positional, TypeNode }
+import v2.std.node { positional_child_target_nodes, Occupancy, node_with_occurrence_id, ComputationNode, Edge, Node, Positional, TypeNode, NotADeclaration }
 import std.algebra { list_at_optional }
 
 // OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
@@ -70,7 +70,7 @@ fn wrap_type_node_occupancy(base: Node, depth: Nat) -> Node {
     Succ { prev: rest } =>
       Node {
         kind: TypeNode { connective: Occupancy },
-        children: [Edge { label: Positional, target: wrap_type_node_occupancy(base: base, depth: rest) }],
+        children: [Edge { label: Positional, target: wrap_type_node_occupancy(base: base, depth: rest), declaration: NotADeclaration }],
         occurrence_id: OccurrenceSynthetic
       }
   }
@@ -82,7 +82,7 @@ fn wrap_type_node_occupancy(base: Node, depth: Nat) -> Node {
 fn wrap_type_node_occupancy_at(base: Node, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Occupancy },
-    children: [Edge { label: Positional, target: base }],
+    children: [Edge { label: Positional, target: base, declaration: NotADeclaration }],
     occurrence_id: occurrence_id
   )
 }

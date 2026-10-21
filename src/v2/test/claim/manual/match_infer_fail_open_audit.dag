@@ -33,6 +33,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.verification {
   BoolWitness,
@@ -92,14 +93,16 @@ fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_kw_true)
+        target: dag_type_atom_node(identity: ^dag_token_kw_true),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
           body_lit: ^dag_pick_lit_one
-        )
+        ),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -119,28 +122,32 @@ fn match_infer_fail_open_audit_extra_arm_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_kw_true)
+        target: dag_type_atom_node(identity: ^dag_token_kw_true),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
           body_lit: ^dag_pick_lit_one
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_false,
           body_lit: ^dag_pick_lit_one
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
           body_lit: ^dag_pick_lit_two
-        )
+        ),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

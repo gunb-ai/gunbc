@@ -15,6 +15,7 @@ import v2.std.node {
   content_hash,
   LoopBoundEdge,
   core_edge_label,
+  NotADeclaration
 }
 fn content_hash_loop_body_leaf() -> Node {
   Node {
@@ -36,7 +37,7 @@ fn content_hash_loop_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_leaf() }
+      Edge { label: Positional, target: content_hash_loop_body_leaf(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -46,8 +47,8 @@ fn content_hash_loop_body_two() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_leaf() },
-      Edge { label: Positional, target: content_hash_loop_body_leaf() }
+      Edge { label: Positional, target: content_hash_loop_body_leaf(), declaration: NotADeclaration },
+      Edge { label: Positional, target: content_hash_loop_body_leaf(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -57,10 +58,11 @@ fn content_hash_loop_bound_last() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body() },
+      Edge { label: Positional, target: content_hash_loop_body(), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: content_hash_loop_measure_leaf()
+        target: content_hash_loop_measure_leaf(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -73,9 +75,10 @@ fn content_hash_loop_bound_first() -> Node {
     children: [
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: content_hash_loop_measure_leaf()
+        target: content_hash_loop_measure_leaf(),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: content_hash_loop_body() }
+      Edge { label: Positional, target: content_hash_loop_body(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -85,12 +88,13 @@ fn content_hash_loop_bound_middle() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge { label: Positional, target: content_hash_loop_body_two(), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: content_hash_loop_measure_leaf()
+        target: content_hash_loop_measure_leaf(),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: content_hash_loop_body_two() }
+      Edge { label: Positional, target: content_hash_loop_body_two(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -100,11 +104,12 @@ fn content_hash_loop_bound_last_two_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body_two() },
-      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge { label: Positional, target: content_hash_loop_body_two(), declaration: NotADeclaration },
+      Edge { label: Positional, target: content_hash_loop_body_two(), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: content_hash_loop_measure_leaf()
+        target: content_hash_loop_measure_leaf(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -115,14 +120,16 @@ fn content_hash_loop_with_extra_named() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: content_hash_loop_body() },
+      Edge { label: Positional, target: content_hash_loop_body(), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: content_hash_loop_measure_leaf()
+        target: content_hash_loop_measure_leaf(),
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^content_hash_loop_extra_named_sym },
-        target: content_hash_loop_body_leaf()
+        target: content_hash_loop_body_leaf(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

@@ -64,7 +64,8 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-  Symbol
+  Symbol,
+  NotADeclaration
 }
 
 // Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate
@@ -81,7 +82,8 @@ fn tdc_nullary_enum_node() -> Node {
           kind: TypeNode { connective: Conj },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -89,7 +91,8 @@ fn tdc_nullary_enum_node() -> Node {
           kind: TypeNode { connective: Conj },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -111,11 +114,13 @@ fn tdc_payload_enum_node() -> Node {
                 kind: TypeNode { connective: Atom { identity: ^tdc_payload_field } },
                 children: [],
                 occurrence_id: OccurrenceSynthetic
-              }
+              },
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

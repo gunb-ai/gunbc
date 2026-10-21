@@ -35,6 +35,7 @@ import v2.std.node {
   StructuralLabel,
   edge_label_of,
   labeled_named_is,
+  NotADeclaration
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.compiler.parse { parse_tree_projection_edge }
@@ -282,7 +283,8 @@ fn namespace_graft_collect_unit_nodes_against(node: Node, unit_ids: List<Symbol>
 fn namespace_graft_reconstruct_unit_edge(node: Node) -> Edge {
   Edge {
     label: Positional,
-    target: node
+    target: node,
+    declaration: NotADeclaration
   }
 }
 
@@ -296,7 +298,8 @@ fn namespace_graft_reconstruct_declaration_forest(units: List<Node>) -> List<Edg
           list_snoc_item(xs: acc, item: namespace_graft_reconstruct_unit_edge(node: unit))
         }),
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ]
 }
@@ -333,7 +336,8 @@ fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
               optional_present(
                 value: Edge {
                   label: Authored { name: name },
-                  target: rest
+                  target: rest,
+                  declaration: NotADeclaration
                 }
               )
           }
@@ -626,7 +630,8 @@ fn namespace_graft_wrap_segment(segment: Symbol, inner: Node, source: Node) -> N
     children: [
       Edge {
         label: Authored { name: segment },
-        target: inner
+        target: inner,
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: source.occurrence_id
@@ -799,7 +804,7 @@ fn namespace_graft_resolve_group(name: Symbol, first: Edge, rest: List<Edge>) ->
         bind_outcome(
           o: namespace_graft_merge_namespace_bodies(edges: namespace_graft_group_members(group: Cons { head: first, tail: rest })),
           f: fn(members) {
-            outcome_accepted(value: Edge { label: Authored { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: first.target) })
+            outcome_accepted(value: Edge { label: Authored { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: first.target), declaration: NotADeclaration })
           }
         )
       } else {

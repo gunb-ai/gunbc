@@ -4,7 +4,7 @@ import v2.test.claim.parse.parse_test_block_headed_operand_class { bc_parse_at }
 import v2.compiler.body_lowering_fold { BodyLoweredTree }
 import v2.compiler.normalize { normalize_node }
 import v2.std.compilers.sugar { sugar_duplicate_variant_diagnostic }
-import v2.std.node { Atom, Authored, Disj, Edge, Node, Positional, Symbol }
+import v2.std.node { Atom, Authored, Disj, Edge, Node, Positional, Symbol, NotADeclaration }
 import v2.std.diagnostic {
   Diagnostic,
   Locus,
@@ -140,8 +140,8 @@ fn cvd_diagnostic_of(edges: List<Edge>) -> Diagnostic {
 // claim -- positional edges, no name repeated, expecting the malformed reason -- failed.
 test fn distinct_but_unnamed_edges_are_not_reported_as_a_duplicate_variant() -> Bool {
   let edges: List<Edge> = [
-    Edge { label: Positional, target: cvd_leaf(name: ^A) },
-    Edge { label: Positional, target: cvd_leaf(name: ^B) }
+    Edge { label: Positional, target: cvd_leaf(name: ^A), declaration: NotADeclaration },
+    Edge { label: Positional, target: cvd_leaf(name: ^B), declaration: NotADeclaration }
   ]
   cvd_diagnostic_of(edges: edges).reason == ^sugar_reason_malformed
 }
@@ -152,8 +152,8 @@ test fn distinct_but_unnamed_edges_are_not_reported_as_a_duplicate_variant() -> 
 // pair says which branch carries which reason.
 test fn repeated_authored_edge_is_reported_as_a_typed_located_duplicate_variant() -> Bool {
   let edges: List<Edge> = [
-    Edge { label: Authored { name: ^A }, target: cvd_leaf(name: ^A) },
-    Edge { label: Authored { name: ^A }, target: cvd_leaf(name: ^B) }
+    Edge { label: Authored { name: ^A }, target: cvd_leaf(name: ^A), declaration: NotADeclaration },
+    Edge { label: Authored { name: ^A }, target: cvd_leaf(name: ^B), declaration: NotADeclaration }
   ]
   let d = cvd_diagnostic_of(edges: edges)
   (d.reason == ^sugar_reason_duplicate_variant_name)

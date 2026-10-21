@@ -19,6 +19,7 @@ import v2.std.node {
   TypeNode,
   ArrowBodyEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -35,7 +36,8 @@ data arrow_body_cost_domain_param: Node = Node {
         kind: TypeNode { connective: Atom { identity: ^arrow_body_cost_domain_param_atom } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -62,10 +64,11 @@ fn arrow_body_cost_arrow() -> Node {
         kind: TypeNode { connective: Atom { identity: ^arrow_body_cost_return_type } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     },
     signature.order,
-    Edge { label: core_edge_label(marker: ArrowBodyEdge), target: arrow_body_cost_body }
+    Edge { label: core_edge_label(marker: ArrowBodyEdge), target: arrow_body_cost_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
   }

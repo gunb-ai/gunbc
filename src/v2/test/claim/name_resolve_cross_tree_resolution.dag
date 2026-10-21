@@ -40,7 +40,8 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }
@@ -96,7 +97,8 @@ fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> No
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -123,7 +125,8 @@ fn ct_subject_with_import_use(
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

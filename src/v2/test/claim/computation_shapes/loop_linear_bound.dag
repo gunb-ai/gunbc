@@ -16,6 +16,7 @@ import v2.std.node {
   well_formed,
   LoopBoundEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -40,7 +41,7 @@ data loop_linear_bound_measure_leaf: Node = loop_linear_bound_leaf(s: ^loop_line
 data loop_linear_bound_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body_leaf }
+    Edge { label: Positional, target: loop_linear_bound_body_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -48,8 +49,8 @@ data loop_linear_bound_body: Node = Node {
 data loop_linear_bound_subject: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_linear_bound_measure_leaf }
+    Edge { label: Positional, target: loop_linear_bound_body, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_linear_bound_measure_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -87,8 +88,8 @@ data claim_loop_linear_bound_equals_refl: TestClaim = EqualsClaim {
 data loop_linear_bound_subject_rebuilt: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_linear_bound_measure_leaf }
+    Edge { label: Positional, target: loop_linear_bound_body, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_linear_bound_measure_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -96,7 +97,7 @@ data loop_linear_bound_subject_rebuilt: Node = Node {
 data loop_linear_bound_subject_unbounded: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_linear_bound_body }
+    Edge { label: Positional, target: loop_linear_bound_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

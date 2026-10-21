@@ -1,5 +1,7 @@
 module v2.test.claim.provenance.cross_file_provenance
 
+import v2.std.node { NotADeclaration }
+
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,7 +52,8 @@ fn cfp_declaration(decl_sym: Symbol) -> Edge {
       kind: TypeNode { connective: Atom { identity: decl_sym } },
       children: [],
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 

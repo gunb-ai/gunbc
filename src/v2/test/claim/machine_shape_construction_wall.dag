@@ -16,6 +16,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Witness }
 
@@ -34,7 +35,7 @@ fn ms_atom(id: Symbol) -> Node {
 }
 
 fn ms_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn ms_call(callee: Symbol, arg: Node) -> Node {

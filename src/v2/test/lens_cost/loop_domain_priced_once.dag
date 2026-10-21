@@ -17,6 +17,7 @@ import v2.std.node {
   LoopBoundEdge,
   LoopDomainEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -41,16 +42,16 @@ data loop_domain_measure: Node = Node {
 
 data loop_domain_unit_work: Node = Node {
   kind: ComputationNode { behavior: Transform },
-  children: [Edge { label: Positional, target: loop_domain_leaf }],
+  children: [Edge { label: Positional, target: loop_domain_leaf, declaration: NotADeclaration }],
   occurrence_id: OccurrenceSynthetic
 }
 
 data loop_domain_last: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure },
-    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work }
+    Edge { label: Positional, target: loop_domain_unit_work, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -58,9 +59,9 @@ data loop_domain_last: Node = Node {
 data loop_domain_first: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work },
-    Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure }
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work, declaration: NotADeclaration },
+    Edge { label: Positional, target: loop_domain_unit_work, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

@@ -29,7 +29,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Rejected, Some, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton, invariant_port_locus }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Node, Symbol, node_rebuild, symbol_intern_lexeme }
+import v2.std.node { Edge, Node, Symbol, node_rebuild, symbol_intern_lexeme, NotADeclaration }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
@@ -354,9 +354,9 @@ fn node_without_occurrence(node: Node, occurrence: OccurrenceId) -> Node {
           if o.value == occurrence.value {
             acc
           } else {
-            concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence) }])
+            concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence), declaration: NotADeclaration }])
           }
-        Absent => concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence) }])
+        Absent => concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence), declaration: NotADeclaration }])
       }
     })
   )

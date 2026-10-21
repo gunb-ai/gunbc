@@ -20,6 +20,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -40,7 +41,7 @@ data map_id_body_leaf: Node = Node {
 data map_id_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: map_id_body_leaf }
+    Edge { label: Positional, target: map_id_body_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -48,7 +49,7 @@ data map_id_body: Node = Node {
 data map_id_input: Node = Node {
   kind: TypeNode { connective: Occupancy },
   children: [
-    Edge { label: Positional, target: map_id_body }
+    Edge { label: Positional, target: map_id_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

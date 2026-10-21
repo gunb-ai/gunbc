@@ -21,6 +21,7 @@ import v2.std.node {
   LoopCarrierEdge,
   LoopDomainEdge,
   core_edge_label,
+  NotADeclaration
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -42,15 +43,15 @@ fn lde_atom(s: Symbol) -> Node {
 fn lde_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: lde_atom(s: ^lde_body_leaf) }],
+    children: [Edge { label: Positional, target: lde_atom(s: ^lde_body_leaf), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
 
-fn lde_body_edge() -> Edge { Edge { label: Positional, target: lde_body() } }
-fn lde_bound_edge() -> Edge { Edge { label: core_edge_label(marker: LoopBoundEdge), target: lde_atom(s: ^lde_measure) } }
-fn lde_domain_edge() -> Edge { Edge { label: core_edge_label(marker: LoopDomainEdge), target: lde_atom(s: ^lde_collection) } }
-fn lde_carrier_edge() -> Edge { Edge { label: core_edge_label(marker: LoopCarrierEdge), target: lde_atom(s: ^lde_acc) } }
+fn lde_body_edge() -> Edge { Edge { label: Positional, target: lde_body(), declaration: NotADeclaration } }
+fn lde_bound_edge() -> Edge { Edge { label: core_edge_label(marker: LoopBoundEdge), target: lde_atom(s: ^lde_measure), declaration: NotADeclaration } }
+fn lde_domain_edge() -> Edge { Edge { label: core_edge_label(marker: LoopDomainEdge), target: lde_atom(s: ^lde_collection), declaration: NotADeclaration } }
+fn lde_carrier_edge() -> Edge { Edge { label: core_edge_label(marker: LoopCarrierEdge), target: lde_atom(s: ^lde_acc), declaration: NotADeclaration } }
 
 fn lde_loop(children: List<Edge>) -> Node {
   Node {
@@ -79,7 +80,7 @@ test fn unary_loop_still_conforms_and_unknown_named_edge_still_refuses() -> Bool
   && !loop_behavior_edges_conform(children: [
     lde_body_edge(),
     lde_bound_edge(),
-    Edge { label: Authored { name: ^lde_not_a_loop_edge }, target: lde_atom(s: ^lde_collection) }
+    Edge { label: Authored { name: ^lde_not_a_loop_edge }, target: lde_atom(s: ^lde_collection), declaration: NotADeclaration }
   ])
 }
 

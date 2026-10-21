@@ -24,6 +24,7 @@ import v2.std.node {
   ArrowSignatureOrderEdge,
   edge_is_core,
   StructuralLabel,
+  NotADeclaration
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -60,9 +61,9 @@ fn ipo_item() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       sig.domain,
-      Edge { label: Positional, target: ipo_atom(id: ^ipo_int) },
+      Edge { label: Positional, target: ipo_atom(id: ^ipo_int), declaration: NotADeclaration },
       sig.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: ipo_atom(id: ^ipo_z) }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: ipo_atom(id: ^ipo_z), declaration: NotADeclaration }
     ]
   )
 }
@@ -80,7 +81,7 @@ fn ipo_canonical_domain(arrow: Node) -> Node {
         if acc.done {
           IpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }
         } else {
-          IpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
+          IpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target), declaration: NotADeclaration }]) }
         }
       Authored { name: _ } => IpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }

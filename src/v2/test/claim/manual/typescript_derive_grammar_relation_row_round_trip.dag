@@ -28,7 +28,7 @@ import v2.std.grammar {
 }
 
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.node { Conj, Edge, Node, Positional, TypeNode, content_hash }
+import v2.std.node { Conj, Edge, Node, Positional, TypeNode, content_hash, NotADeclaration }
 import v2.test.fixture.task_manager_demo { Task, create_task }
 
 fn ts_grammar_relation_tokens_root() -> Node {
@@ -58,9 +58,9 @@ fn ts_task_type_alias_emitted_surplus_conj_slot() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
-      Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_type_annotation_task_record_emitted(), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
