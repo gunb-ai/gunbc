@@ -11,7 +11,7 @@ import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architec
 import extdeps.shell
 import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent }
 import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slicer_linux_aarch64_appimage_sha256 }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, filesystem_entry_presence, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
 import std.types { FilePath }
@@ -118,10 +118,6 @@ fn cad_environment_lock_name(spec: CadRuntimeSpec) -> String { concat(cad_runtim
 fn cad_environment_lock(spec: CadRuntimeSpec) -> String { join([cad_environments_directory(), "/", cad_environment_lock_name(spec: spec)], "") }
 fn cad_environment_marker(spec: CadRuntimeSpec) -> String { join([cad_environment_prefix(spec: spec), "/", cad_environment_ready_marker], "") }
 
-fn entry_presence(directory: String, name: String) -> FilesystemEntryPresence {
-  let listed = Filesystem.List(path: directory)
-  filesystem_entry_presence(listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error), name: name)
-}
 
 // FOUR READINGS, because they have four remedies: build it, use it, refuse without touching it, and
 // refuse because nobody could look.
@@ -152,19 +148,19 @@ fn read_cad_environment() -> CadEnvironmentReading {
       RuntimeMatches => {}
     }
   }
-  match entry_presence(directory: cad_environments_directory(), name: cad_environment_lock_name(spec: spec)) {
+  match listed_entry_presence(directory: cad_environments_directory(), name: cad_environment_lock_name(spec: spec)) {
     FilesystemEntryAbsent(_) => {}
     FilesystemEntryListed { directory: _, name: _ } => return CadEnvironmentUnreadable { reason: join(["A CAD environment convergence holds ", cad_environment_lock(spec: spec), ", or died holding it; remove it only after confirming no convergence is running"], "") }
     FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
     FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
   }
-  match entry_presence(directory: cad_environments_directory(), name: cad_runtime_spec_digest(spec: spec)) {
+  match listed_entry_presence(directory: cad_environments_directory(), name: cad_runtime_spec_digest(spec: spec)) {
     FilesystemEntryAbsent(_) => return CadEnvironmentAbsent
     FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
     FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }
     FilesystemEntryListed { directory: _, name: _ } => {}
   }
-  match entry_presence(directory: prefix, name: cad_environment_ready_marker) {
+  match listed_entry_presence(directory: prefix, name: cad_environment_ready_marker) {
     FilesystemEntryAbsent(_) => return CadEnvironmentWrong { reason: join(["The CAD environment at ", prefix, " was never published (no ready marker); it is not used or modified -- remove it to rebuild"], "") }
     FilesystemEntryPresenceIndeterminate { cause: c } => return CadEnvironmentUnreadable { reason: c }
     FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => return CadEnvironmentUnreadable { reason: c }

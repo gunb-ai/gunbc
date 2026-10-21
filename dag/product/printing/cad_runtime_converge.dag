@@ -27,11 +27,11 @@ import std.realization_reconcile { Applied, NotApplied, EffectConverged, EffectN
 import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec, cad_runtime_spec_text, cad_runtime_spec_digest }
 import product.printing.print_runtime {
   print_runtime_root, cad_environments_directory, cad_environment_prefix, cad_environment_interpreter,
-  cad_environment_lock, cad_environment_marker, entry_presence, probe_cad_interpreter, RuntimeMatches, RuntimeMismatch,
+  cad_environment_lock, cad_environment_marker, probe_cad_interpreter, RuntimeMatches, RuntimeMismatch,
   CadEnvironmentReading, CadEnvironmentAbsent, CadEnvironmentReady, CadEnvironmentWrong, CadEnvironmentUnreadable,
   cad_environment_reading_reason, read_cad_environment,
 }
-import extdeps.filesystem.filesystem_io { FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.filesystem.filesystem_io { listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 
 // CONVERGING THE PRINT RUNTIME'S CAD ENVIRONMENT, on the host and route it is observed on
 // (product.printing.print_runtime read_cad_environment, LocalExec). The decision is gunbc.ensure's:
@@ -81,7 +81,7 @@ fn run_local(label: String, command: ArgvCommand) -> String? {
 // may have published between the observation and the lock, and then this one builds nothing.
 fn build_locked(spec: CadRuntimeSpec, micromamba: String) -> CadBuildResult {
   let prefix = cad_environment_prefix(spec: spec)
-  match entry_presence(directory: cad_environments_directory(), name: cad_runtime_spec_digest(spec: spec)) {
+  match listed_entry_presence(directory: cad_environments_directory(), name: cad_runtime_spec_digest(spec: spec)) {
     FilesystemEntryAbsent(_) => {}
     FilesystemEntryListed { directory: _, name: _ } => return CadBuildFailed { reason: concat("Another convergence created ", prefix, " after this one observed it absent; nothing built") }
     FilesystemEntryPresenceIndeterminate { cause: c } => return CadBuildFailed { reason: c }

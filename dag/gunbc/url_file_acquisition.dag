@@ -1,8 +1,10 @@
 module gunbc.url_file_acquisition
 
-import std.types { NonEmptyStr, Bool, FilePath }
+import std.types { NonEmptyStr, Bool, FilePath, String }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
+import std.filesystem { path_parent_directory }
+import extdeps.filesystem.filesystem_io { listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.http.client
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
 import gunbc.artifact_acquisition {
@@ -20,19 +22,53 @@ import gunbc.artifact_acquisition {
 // (extdeps.provisioning.ubuntu_install_media_fetch); the print runtime's pinned micromamba binary
 // is the second, which is when the binding moved here instead of being written twice.
 
-// The presence probe is OutcomeIsData: a non-zero `test -f` here means the file is ABSENT, which is
-// one of this fn's four declared answers, not a fault. The type already draws the distinction the arm
-// formalises -- AcquisitionProbeFailed is the separate 'the probe itself broke' arm -- so subject
-// state and probe breakage were never conflated here; only the effect layer's glyph conflated them.
+// PRESENCE IS ESTABLISHED BY LISTING, NOT BY `test -f`. `test -f` is false both for a missing path
+// and for a directory, FIFO or other non-regular entry, so reading its false as absent would let an
+// attempt download beside, and move into, an entry nobody established was missing. The parent is
+// listed instead: an entry it does not name is absent; one it names must then be a regular file
+// before its digest is read, and anything else refuses without being touched. A parent that cannot
+// be listed is absent only when its own parent establishes that it is missing (a first run, before
+// ensure_parent has made the directory); an ancestor that exists but cannot be listed refuses.
+type UrlFileEntry = UrlFileEntryAbsent | UrlFileEntryListed | UrlFileEntryUnreadable { reason: NonEmptyStr }
+
+fn url_file_entry(path: String) -> UrlFileEntry {
+  let parent = path_parent_directory(path: path)
+  match listed_entry_presence(directory: parent, name: path_basename(path: path)) {
+    FilesystemEntryAbsent(_) => UrlFileEntryAbsent
+    FilesystemEntryListed { directory: _, name: _ } => UrlFileEntryListed
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => UrlFileEntryUnreadable { reason: c as NonEmptyStr }
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
+      if parent == "/" || parent == "." || parent == path {
+        UrlFileEntryUnreadable { reason: c as NonEmptyStr }
+      } else {
+        match url_file_entry(path: parent) {
+          UrlFileEntryAbsent => UrlFileEntryAbsent
+          UrlFileEntryListed => UrlFileEntryUnreadable { reason: c as NonEmptyStr }
+          UrlFileEntryUnreadable { reason: _ } => UrlFileEntryUnreadable { reason: c as NonEmptyStr }
+        }
+      }
+  }
+}
+
+fn path_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+}
+
 fn observe_url_file(path: NonEmptyStr, expected_hash: NonEmptyStr) -> AcquisitionObservation {
-  let present = shell.Test.IsFile(path: path as FilePath, expect: OutcomeIsData)
-  if present.is_file == false {
-    AcquisitionAbsent
-  } else {
-    match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
-      Sha256Matches => AcquisitionVerified
-      Sha256Mismatch => AcquisitionDigestMismatch
-      Sha256VerifyInfraFailure { reason: r } => AcquisitionProbeFailed { reason: r }
+  match url_file_entry(path: path as String) {
+    UrlFileEntryAbsent => AcquisitionAbsent
+    UrlFileEntryUnreadable { reason: r } => AcquisitionProbeFailed { reason: r }
+    UrlFileEntryListed => {
+      let regular = shell.Test.IsFile(path: path as FilePath, expect: OutcomeIsData)
+      if regular.is_file == false {
+        AcquisitionProbeFailed { reason: join([path as String, " exists but is not a regular file; it is not replaced -- remove it to acquire the artifact"], "") as NonEmptyStr }
+      } else {
+        match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
+          Sha256Matches => AcquisitionVerified
+          Sha256Mismatch => AcquisitionDigestMismatch
+          Sha256VerifyInfraFailure { reason: r } => AcquisitionProbeFailed { reason: r }
+        }
+      }
     }
   }
 }
