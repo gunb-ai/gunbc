@@ -12226,6 +12226,17 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   }
 }
 
+fn declaring_item_through_aliases(ty: Node, index: TypeDeclIndex, source_indices: Map<String, NewlineIndex>, fuel: Int) -> TypeDeclResolution {
+  let r = resolve_type_decl_routed(index: index, type_expr: ty, source_indices: source_indices).resolution
+  match r {
+    TypeDeclResolved { identity: _, decl: d } =>
+      if fuel > 0 && is_type_alias_item(item: d, source_indices: source_indices) {
+        declaring_item_through_aliases(ty: resolved_type(n: d), index: index, source_indices: source_indices, fuel: fuel - 1)
+      } else { r }
+    _ => r
+  }
+}
+
 // ONE POSITION, ONE NODE, ONE VERDICT: the field is read off the DECLARING item (the node rust_field_carrier_final_type
 // reads), never off expand_type_for_field_access's alias-expanded copy, whose field child resolves PAST an alias
 // (QualifiedName -> FreeMonoid<Symbol>, a recursive type; run 181 probe) and boxed a field the struct never boxed. A generic
@@ -12235,10 +12246,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 // is no second route through the expanded copy.
 fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> NeedsBoxAnswer {
   let si = scope.type_env.source_indices
-  // The DECLARATION is found through the base's alias expansion (Gigabyte = Measure<..> declares no field; Measure does:
-  // run 183, 7 refusals in std.measure); only the FIELD's type is read off the declaring item, never off the expanded copy.
-  let base_struct = expand_type_for_field_access(n: resolved_type(n: base), env: scope.type_env, module_name: scope.module_name).resolved
-  match resolve_type_decl_routed(index: emit_info.type_decl_items, type_expr: base_struct, source_indices: si).resolution {
+  // The DECLARATION is the one an alias chain ends at (CreditsPerMinute = MeasureRate<..> declares no field; its right-hand
+  // side's declaration does: run 184, 7 refusals in std.measure); only the FIELD's type is read off the declaring item.
+  match declaring_item_through_aliases(ty: resolved_type(n: base), index: emit_info.type_decl_items, source_indices: si, fuel: 16) {
     TypeDeclResolved { identity: _, decl: d } =>
       match find_child_named(n: d, name: field, source_indices: si) {
         Present { value: ch } =>
