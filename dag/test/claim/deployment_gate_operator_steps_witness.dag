@@ -317,6 +317,10 @@ fn ownership_with_enabled_for_owner(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
     ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_repository"
+    ),
       decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_act_refuses_a_standing_sealed_for_another_account_or_another_repository"
@@ -372,7 +376,7 @@ fn ownership_for(
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
+      decl_name: "the_join_refuses_a_read_from_another_environment_or_another_repository"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1210,7 +1214,7 @@ fn protection_for(
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
+      decl_name: "the_join_refuses_a_read_from_another_environment_or_another_repository"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1231,6 +1235,14 @@ fn protection_for(
       decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_repository"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_completion_read_from_another_repository_never_certifies_our_removal"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1356,7 +1368,7 @@ fn clock_read(instant: Timestamp) -> Optional<ObservedInstant>
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
-      decl_name: "a_standing_cannot_join_ownership_with_another_environments_protection"
+      decl_name: "the_join_refuses_a_read_from_another_environment_or_another_repository"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1409,6 +1421,14 @@ fn clock_read(instant: Timestamp) -> Optional<ObservedInstant>
       decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_on_another_repository"
+    ),
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_completion_read_from_another_repository_never_certifies_our_removal"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
@@ -1621,7 +1641,7 @@ test fn a_standing_from_another_attempt_or_an_aged_one_is_not_spendable() -> Boo
     })
 }
 
-test fn a_standing_cannot_join_ownership_with_another_environments_protection() -> Bool {
+test fn the_join_refuses_a_read_from_another_environment_or_another_repository() -> Bool {
   // THE CONTROL FIRST: ownership and protection both read for srv1 join, and the standing exists.
   (match join_protection_to_ownership(
          protection: protection_for(
@@ -2931,6 +2951,157 @@ test fn a_standing_refuses_a_pair_witnessed_in_another_account() -> Bool {
       StandingRead { standing: s } =>
         s.boundary.environment_name == gate_env
       StandingRefused { because: _ } => false
+    })
+}
+
+test fn a_standing_refuses_a_pair_witnessed_on_another_repository() -> Bool {
+  // ROUND-8 SURVIVOR 1 (manager, srv2 at e6a28861d7b): the standing site's REPO comparison had no
+  // witness of its own -- the exact shape of round 6's M1s, one axis over. Deleting the repo term at
+  // standing_from_join alone left all 32 steps claims green.
+  //
+  // WHY THE EXISTING CLAIMS DO NOT COVER IT: the owner test (a_standing_refuses_a_pair_witnessed_in_another_account)
+  // varies OWNER on both reads, so the repo terms at the standing never decide anything; the join test
+  // (the_join_refuses_a_read_from_another_environment_or_another_repository) varies the repo on ONE side of
+  // the JOIN, which refuses before the standing runs. Nothing ever handed the standing a pair that agrees
+  // internally and is about a different repository. That is the threat: ownership + protection both read
+  // for gunb-ai/<other repo>/srv1-production, the join ESTABLISHES, and only the standing's subject check
+  // stands between that consistent foreign pair and a CurrentRemovalBoundaryStanding for OUR boundary --
+  // the credential the act consumes. Environments are per-repository objects: srv1-production in another
+  // repository says nothing about this boundary's reviewers, even with the same owner and the same name.
+  //
+  (match join_protection_to_ownership(
+    protection: protection_for(
+      owner: gate_owner,
+      repo: other_repo,
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+    ),
+    ownership: ownership_with_enabled_for_owner(
+      owner: gate_owner,
+      environment: gate_env,
+      installation_id: canonical_installation_id,
+      identity_repo: other_repo,
+      rule_id: canonical_rule_id,
+    ),
+  ) {
+    // THE PREMISE, ASSERTED NOT ASSUMED: the pair must join. If it refused, the standing would be refused
+    // for the WRONG reason (JoinWasRefused) and this test would pass on an accident.
+    ProtectionJoinEstablished { protection: _, ownership: _ } => true
+    ProtectionJoinRefused { because: _ } => false
+  })
+    // THE MUTATION: that internally-consistent foreign-repository pair against OUR boundary. The refusal
+    // must name the axis that actually differs: owners and environments byte-identical, repos different.
+    // Matching RepositoryDiffers BY NAME is the point -- under the manager's mutation (repo dropped at the
+    // standing site) the mint returns StandingRead, this arm does not match, and the claim fails.
+    && (match observe_removal_boundary_standing(
+      joined: join_protection_to_ownership(
+        protection: protection_for(
+          owner: gate_owner,
+          repo: other_repo,
+          environment: gate_env,
+          reviewer_present: true,
+          main_only: true,
+        ),
+        ownership: ownership_with_enabled_for_owner(
+          owner: gate_owner,
+          environment: gate_env,
+          installation_id: canonical_installation_id,
+          identity_repo: other_repo,
+          rule_id: canonical_rule_id,
+        ),
+      ),
+      boundary: srv1_deployment_gate_boundary,
+      attempt: standing_attempt(),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      StandingRefused {
+        because: StandingIsAboutAnotherBoundary {
+          because: RepositoryDiffers { observed_repo: seen_repo, other_repo: asked_repo },
+        },
+      } =>
+        seen_repo == other_repo && asked_repo == gate_repo
+      StandingRefused { because: _ } => false
+      StandingRead { standing: _ } => false
+    })
+    // THE CONTROL: the identical chain with the repo back to gate_repo. It mints. Not the fixtures, the
+    // clock, the attempt or the installation earns the refusal -- the repository does. If someone pins the
+    // standing to "always refuse", this control reddens.
+    && (match observe_removal_boundary_standing(
+      joined: join_protection_to_ownership(
+        protection: protection_for(
+          owner: gate_owner,
+          repo: gate_repo,
+          environment: gate_env,
+          reviewer_present: true,
+          main_only: true,
+        ),
+        ownership: ownership_with_enabled_for_owner(
+          owner: gate_owner,
+          environment: gate_env,
+          installation_id: canonical_installation_id,
+          identity_repo: gate_repo,
+          rule_id: canonical_rule_id,
+        ),
+      ),
+      boundary: srv1_deployment_gate_boundary,
+      attempt: standing_attempt(),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      StandingRead { standing: s } => s.boundary.environment_name == gate_env
+      StandingRefused { because: _ } => false
+    })
+}
+
+test fn a_completion_read_from_another_repository_never_certifies_our_removal() -> Bool {
+  // ROUND-8 SURVIVOR 2 (manager, srv2 at e6a28861d7b): the COMPLETION site's REPO comparison had no
+  // witness of its own. Deleting the repo term at reviewer_removal_from_read alone left everything green.
+  // The comment at that site describes this exact threat for the owner axis; the repo axis is the same
+  // threat one letter away. This mint is the arm that CERTIFIES "the reviewer is gone" -- the sentence
+  // stage 5 of the plan rests on, the one that releases the srv1 boundary. A post-removal read of
+  // gunb-ai/<other repo>/srv1-production with the reviewer absent and main-only present would certify
+  // OUR removal from real evidence about the wrong repository -- the worst kind, because it audits.
+  //
+  // THE CONTROL FIRST: the same read, at OUR repository, records. So the mutation arm below is refused
+  // for the repository and for nothing else.
+  (match observe_reviewer_removal(
+    boundary: srv1_deployment_gate_boundary,
+    after: protection_for(
+      owner: gate_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: false,
+      main_only: true,
+    ),
+    observed_at: clock_read(instant: standing_instant),
+  ) {
+    ReviewerRemovalCompletionRecorded { receipt: r } =>
+      r.boundary.environment_name == gate_env && r.reviewer_removed
+    ReviewerRemovalCompletionRefused { because: _ } => false
+  })
+    // THE MUTATION: the post-removal read taken from another REPOSITORY under the same owner. The refusal
+    // must name the repo axis (observed = the read, other = the boundary). Under the manager's mutation
+    // (repo dropped at the completion site) the mint takes the SubjectsAgree path, records a receipt for
+    // OUR boundary, the named arm below does not match, and the claim fails.
+    && (match observe_reviewer_removal(
+      boundary: srv1_deployment_gate_boundary,
+      after: protection_for(
+        owner: gate_owner,
+        repo: other_repo,
+        environment: gate_env,
+        reviewer_present: false,
+        main_only: true,
+      ),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      ReviewerRemovalCompletionRefused {
+        because: CompletionReadIsOfAnotherSubject {
+          because: RepositoryDiffers { observed_repo: seen_repo, other_repo: asked_repo },
+        },
+      } =>
+        seen_repo == other_repo && asked_repo == gate_repo
+      ReviewerRemovalCompletionRefused { because: _ } => false
+      ReviewerRemovalCompletionRecorded { receipt: _ } => false
     })
 }
 
