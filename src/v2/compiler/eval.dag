@@ -14,7 +14,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.verdict { Verdict, verdict_fail, verdict_fold }
 import v2.std.runtime { EnvironmentBindingKey, Continue, EvaluationEnvironment, EvaluationFrame, BindInterpreter, BranchInterpreter, InterpretationAlgebra, InterpretationStructureWitness, LoopInterpreter, MatchInterpreter, Raise, TransformInterpreter, ValueInterpreter, Return, RuntimeAggregate, RuntimeAggregateValue, RuntimeFieldFound, RuntimeFieldValue, RuntimeFieldMissing, runtime_aggregate_field_selection, RuntimeClosure, RuntimeClosureValue, RuntimePrimitive, RuntimeReference, RuntimeUnit, RuntimeValueNodeProjected, RuntimeValueNodeUnrepresentable, RuntimeBehaviorInterpreter, ValueRuntimeInterpreter, TransformRuntimeInterpreter, BranchRuntimeInterpreter, LoopRuntimeInterpreter, BindRuntimeInterpreter, MatchRuntimeInterpreter, Suspend, ControlTransfer, RuntimeValue, EffectHandler, EffectHandlerBinding, EffectReceipt, EffectReceiptLog, OperationCall, OperationCallKind, ReadResource, WriteResource, effect_handler_for_kind, environment_binding_key_for_symbol, interpretation_behavior_dispatch, runtime_value_node_projection, runtime_value_resolved_type }
-import v2.std.node { positional_child_target_nodes, symbol_intern_lexeme, StructuralLabel, positional_edges, ArrowBodyForm, Behavior, Bind, Branch, ComputationNode, Edge, Hash, Loop, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, Value, Arrow, Atom, Conj, Disj, Instantiation, Match, DirectAtomBody, FunctionValueBody, ComputationBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, arrow_body_admits_eval_entry, bag_hash_digest, classify_arrow_body_form, combine_hash, content_hash, ByteOffsetCacheEligible, ByteOffsetCacheIneligible, ByteOffsetCacheKey, byte_offset_cache_key, fold_node, is_positional, locally_well_formed, node_for_structural_equality, well_formed }
+import v2.std.node { BranchConditionSlot, branch_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, MatchScrutineeSlot, bind_slot_target, match_slot_target, positional_child_target_nodes, symbol_intern_lexeme, StructuralLabel, positional_edges, ArrowBodyForm, Behavior, Bind, Branch, ComputationNode, Edge, Hash, Loop, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, Value, Arrow, Atom, Conj, Disj, Instantiation, Match, DirectAtomBody, FunctionValueBody, ComputationBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, arrow_body_admits_eval_entry, bag_hash_digest, classify_arrow_body_form, combine_hash, content_hash, ByteOffsetCacheEligible, ByteOffsetCacheIneligible, ByteOffsetCacheKey, byte_offset_cache_key, fold_node, is_positional, locally_well_formed, node_for_structural_equality, well_formed }
 import v2.std.node_query { arrow_constant_member_codomain, FieldProjection, field_projection_edge_base_optional, field_projection_optional, find_arrow_body_child }
 import v2.std.diagnostic { AmbiguousIntent, ByteRange, Correction, DeclarationLocus, Diagnostic, Extent, Locus, NodeLocus, NoCorrectionReason, NonEmptyDiagnostics, InvariantPortLocus, SourcePortLocus, Textual, WholeFile, node_locus, Outcome, Unavailable, Accepted, None, Rejected, ShortCircuit, Suggested, StageDiagnosticPolicy, UserInputBoundary, ExternalContractUnknown, absorb_outcome_diagnostics, append_outcome_value, bind_outcome, diagnostics_eq, diagnostics_singleton, non_empty_diagnostics_eq, outcome_eq, outcome_node_eq, outcome_rejected, sequence_outcome }
 import v2.std.verification { CompilesClaim, DiagnosticClaim, EqualsClaim, RoundTripClaim, StructuralEqualsClaim, TestClaim, TestClaimCompilesClaimVariant, TestClaimDiagnosticClaimVariant, TestClaimEqualsClaimVariant, TestClaimStructuralEqualsClaimVariant, TestClaimRoundTripClaimVariant, test_claim_coproduct_variant, test_claim_evaluation_nodes, test_claim_input }
@@ -981,58 +981,59 @@ fn eval_nth_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edg
   )
 }
 
-fn eval_branch_condition_edge(node: Node) -> Outcome<Edge> {
-  eval_nth_child(
-    node: node,
-    wanted: 0,
-    absent_reason: ^eval_rejected_branch_argument_absent
-  )
+// A node's role children are read through the v2.std.node slot tables, so an edge shared by two roles of one
+// node (a value equal to its body, a scrutinee equal to an arm) still names exactly one slot. A let's
+// <type-annotation> edge (v2.std.type_binder) is a static ascription evaluation does not read, and the
+// tables count positional children only.
+fn eval_slot_outcome(target: Optional<Node>, node: Node, absent_reason: Symbol) -> Outcome<Node> {
+  match target {
+    Present { value: t } => Accepted { value: t, diagnostics: None }
+    Absent => outcome_rejected(d: eval_diagnostic(reason: absent_reason, node: node))
+  }
 }
 
-// A BIND'S SLOTS ARE ITS POSITIONAL EDGES. A let's <type-annotation> edge (v2.std.type_binder) is a
-// static ascription that evaluation does not read, and it may stand anywhere among the children a
-// producer wrote, so binder, value and body are indexed among the positionals only.
-fn eval_nth_positional_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
-  eval_witness_outcome(
-    witness: list_nth(
-      xs: positional_edges(children: node.children),
-      wanted: wanted,
-      absent: eval_diagnostic(reason: absent_reason, node: node)
-    )
+fn eval_branch_condition(node: Node) -> Outcome<Node> {
+  eval_slot_outcome(
+    target: branch_slot_target(n: node, slot: BranchConditionSlot),
+    node: node,
+    absent_reason: ^eval_rejected_branch_argument_absent
   )
 }
 
 fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
   bind_outcome(
-    o: eval_nth_positional_child(
+    o: eval_slot_outcome(
+      target: bind_slot_target(n: node, slot: BindBinderSlot),
       node: node,
-      wanted: 0,
       absent_reason: ^eval_rejected_bind_key_absent
     ),
-    f: fn(e) {
-      eval_environment_binding_key_from_node(declaration: e.target)
+    f: fn(declaration) {
+      eval_environment_binding_key_from_node(declaration: declaration)
     }
   )
 }
 
-fn eval_bind_value_edge(node: Node) -> Outcome<Edge> {
-  eval_nth_positional_child(
+fn eval_bind_value(node: Node) -> Outcome<Node> {
+  eval_slot_outcome(
+    target: bind_slot_target(n: node, slot: BindValueSlot),
     node: node,
-    wanted: 1,
     absent_reason: ^eval_rejected_bind_value_absent
   )
 }
 
 fn eval_bind_body(node: Node) -> Outcome<Node> {
-  bind_outcome(
-    o: eval_nth_positional_child(
-      node: node,
-      wanted: 2,
-      absent_reason: ^eval_rejected_bind_body_absent
-    ),
-    f: fn(e) {
-      Accepted { value: e.target, diagnostics: None }
-    }
+  eval_slot_outcome(
+    target: bind_slot_target(n: node, slot: BindBodySlot),
+    node: node,
+    absent_reason: ^eval_rejected_bind_body_absent
+  )
+}
+
+fn eval_match_scrutinee(node: Node) -> Outcome<Node> {
+  eval_slot_outcome(
+    target: match_slot_target(n: node, slot: MatchScrutineeSlot),
+    node: node,
+    absent_reason: ^eval_rejected_branch_argument_absent
   )
 }
 
@@ -1900,11 +1901,11 @@ fn eval_branch_node_eval(
   match interpreter {
     BranchRuntimeInterpreter { interpreter: branch } =>
       bind_outcome(
-        o: eval_branch_condition_edge(node: node),
-        f: fn(cond_edge) {
+        o: eval_branch_condition(node: node),
+        f: fn(cond_node) {
           bind_outcome(
             o: eval_runtime_node(
-              node: cond_edge.target,
+              node: cond_node,
               tree: tree,
               interpretation: interpretation,
               environment: environment,
@@ -2024,11 +2025,11 @@ fn eval_bind_node_eval(
         o: eval_bind_key(node: node),
         f: fn(key) {
           bind_outcome(
-            o: eval_bind_value_edge(node: node),
-            f: fn(value_edge) {
+            o: eval_bind_value(node: node),
+            f: fn(value_target) {
               bind_outcome(
                 o: eval_runtime_node(
-                  node: value_edge.target,
+                  node: value_target,
                   tree: tree,
                   interpretation: interpretation,
                   environment: environment,
@@ -2085,14 +2086,6 @@ fn eval_bind_node(
   )
 }
 
-fn eval_match_scrutinee_edge(node: Node) -> Outcome<Edge> {
-  eval_nth_child(
-    node: node,
-    wanted: 0,
-    absent_reason: ^eval_rejected_branch_argument_absent
-  )
-}
-
 fn eval_match_node_eval(
   node: Node,
   tree: InferredTree,
@@ -2105,11 +2098,11 @@ fn eval_match_node_eval(
   match interpreter {
     MatchRuntimeInterpreter { interpreter: match_interpreter } =>
       bind_outcome(
-        o: eval_match_scrutinee_edge(node: node),
-        f: fn(scrutinee_edge) {
+        o: eval_match_scrutinee(node: node),
+        f: fn(scrutinee_target) {
           bind_outcome(
             o: eval_runtime_node(
-              node: scrutinee_edge.target,
+              node: scrutinee_target,
               tree: tree,
               interpretation: interpretation,
               environment: environment,
