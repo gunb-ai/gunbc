@@ -21,8 +21,13 @@ module test.claim.floor_expected_red_retirement_witness
 //   3. enrolled_on -- when Present, a real civil date (the calendar module's own round-trip) that does
 //                   not post-date its own re-measurement. When Absent, honest absence: two rows'
 //                   enrolling date was never recorded, and this claim does not let one be invented.
-//   4. on_both_routes -- must agree with the closure's own route list, so "passes on both routes"
-//                   cannot stand next to a one-route receipt.
+//   4. re_measured.routes -- the ONE place route coverage lives. There is no companion boolean: a
+//                   `on_both_routes: Bool` beside this list was deleted (review 84231) because it was a
+//                   second copy of the same fact and the two copies were caught disagreeing. The fold
+//                   refuses a receipt naming no route, and asserts no count of routes either -- a row
+//                   measured on one route is honest when it says one, and the shipped rows say exactly
+//                   what was executed, per DESIGN 4b(1): the reported rung is the rung the evidence
+//                   established, never the rung that would read better.
 //   5. closure.durable_account -- non-empty, and EVERY ref resolves against the live declaration index
 //                   via the same host join `v2.std.decl_ref_resolution_host`
 //                   `cited_declaration_ref_refusal_count_live` the long-haul carrier witness uses. An
@@ -58,7 +63,7 @@ module test.claim.floor_expected_red_retirement_witness
 import std.types { Bool, List, NonEmptyStr, CommitSha, commit_sha_text_holds, string_non_empty }
 import std.algebra { Cons, Empty, fold_list, list_append, length, list_map }
 import std.optional { Optional, Present, Absent }
-import std.execution_mode { ExecutionMode, Wet, Hermetic }
+import std.execution_mode { Wet, Hermetic }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.integer { int_to_decimal_string }
 import std.decl_ref { DeclarationRef }
@@ -111,33 +116,6 @@ fn outcome_is_passed(d: ClaimDisposition) -> Bool {
     Passed => true
     _ => false
   }
-}
-
-// WHICH ROUTES A RECEIPT CLAIMS, read off the one execution-mode sum by constructor. There is no
-// `is_a_route(m) -> Bool` here on purpose: every arm of `ExecutionMode` is a route, so such a predicate
-// could never be false, and a check that cannot fail is not a check (§5). The content is which arms the
-// receipt lists, so `on_both_routes` cannot assert coverage the receipt does not carry.
-fn route_list_covers_both(routes: List<ExecutionMode>) -> Bool {
-  any(
-    xs: routes,
-    predicate: fn(m) {
-      match m {
-        Wet => true
-        Hermetic => false
-        Record => false
-      }
-    }
-  )
-    && any(
-      xs: routes,
-      predicate: fn(m) {
-        match m {
-          Wet => false
-          Hermetic => true
-          Record => false
-        }
-      }
-    )
 }
 
 // A REAL CALENDAR DAY, checked by the calendar module's own round-trip rather than by a shape test
@@ -193,7 +171,6 @@ fn refusal_labels_for_row(
     "standing-not-ExpectedRed",
     "enrolment-date-not-a-civil-date",
     "enrolment-date-after-its-own-measurement",
-    "on_both_routes-disagrees-with-receipt-routes",
     "empty-durable-account",
     "unresolvable-durable-account",
     "head-not-a-commit-sha",
@@ -255,15 +232,19 @@ fn refusal_fires(
       Absent => false
       Present { value: d } => !(date_le(a: d, b: rm.on))
     }
-  } else if label == "on_both_routes-disagrees-with-receipt-routes" {
-    r.on_both_routes != route_list_covers_both(routes: rm.routes)
-  } else if label == "empty-durable-account" {
+    } else if label == "empty-durable-account" {
     length(xs: durable) == 0
   } else if label == "unresolvable-durable-account" {
     (length(xs: durable) >= 1)
       && (cited_declaration_ref_refusal_count_live(refs: durable, pool_roots: pool_roots) != 0)
   } else if label == "head-not-a-commit-sha" {
     !(commit_sha_text_holds(head: rm.head as String))
+  // THE ONLY ROUTE OBLIGATION, and deliberately a non-empty one rather than "covers both". Which
+  // routes a row was measured on is carried ONCE, by `re_measured.routes`; the bool that used to
+  // restate it was deleted (review 84231) because the two copies were observed to disagree. So the
+  // fold can refuse a receipt that names no route at all, but it does not -- and must not -- assert a
+  // number of routes: a row measured on one route is honest when it says so, and the shipped rows say
+  // what was actually executed.
   } else if label == "receipt-names-no-route" {
     length(xs: rm.routes) == 0
   } else if label == "outcome-not-Passed" {
@@ -448,7 +429,6 @@ fn control_row() -> RetiredExpectedRedRow {
     },
     standing_before: ExpectedRed,
     enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
-    on_both_routes: true,
     trigger: Absent,
     closure: control_closure(),
   }
@@ -550,7 +530,6 @@ test fn the_standing_arm_refuses_a_row_that_never_stood_red() -> Bool {
       identity: base.identity,
       standing_before: ExpectedToHold,
       enrolled_on: base.enrolled_on,
-      on_both_routes: base.on_both_routes,
       trigger: base.trigger,
       closure: base.closure,
     }
@@ -565,7 +544,6 @@ test fn the_enrolment_date_arms_separate_absence_from_fabrication() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: Absent,
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: base.closure,
   }
@@ -573,7 +551,6 @@ test fn the_enrolment_date_arms_separate_absence_from_fabrication() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: Present { value: Iso8601CivilDate { year: 2027, month: 1, day: 1 } },
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: base.closure,
   }
@@ -581,7 +558,6 @@ test fn the_enrolment_date_arms_separate_absence_from_fabrication() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 13, day: 45 } },
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: base.closure,
   }
@@ -594,31 +570,6 @@ test fn the_enrolment_date_arms_separate_absence_from_fabrication() -> Bool {
     && arm_refuses_exactly(arm: "enrolment-date-not-a-civil-date", row: impossible)
 }
 
-// ARM: on_both_routes-disagrees-with-receipt-routes. "Passes on both routes" cannot stand next to a
-// one-route receipt, and the converse either.
-test fn the_route_arm_refuses_a_bool_that_disagrees_with_the_receipt() -> Bool {
-  let base = control_row()
-  let one_route = RetiredExpectedRedRow {
-    identity: base.identity,
-    standing_before: base.standing_before,
-    enrolled_on: base.enrolled_on,
-    on_both_routes: true,
-    trigger: base.trigger,
-    closure: RestsOnExecutedCheck {
-      why_no_change: "synthetic" as NonEmptyStr,
-      durable_account: control_account(),
-      re_measured: ReMeasurement {
-        head: control_remeasurement().head,
-        on: control_remeasurement().on,
-        routes: [Wet],
-        outcome: control_remeasurement().outcome,
-        instrument: control_remeasurement().instrument,
-      },
-    },
-  }
-  arm_refuses_exactly(arm: "on_both_routes-disagrees-with-receipt-routes", row: one_route)
-}
-
 // ARMS: the durable account. Empty refuses one arm; naming a declaration that does not exist refuses the
 // other. Both are needed: a non-empty list of phantoms is exactly the shape review 84071 named.
 test fn the_durable_account_arms_refuse_empty_and_phantom() -> Bool {
@@ -627,7 +578,6 @@ test fn the_durable_account_arms_refuse_empty_and_phantom() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
       why_no_change: "synthetic" as NonEmptyStr,
@@ -639,7 +589,6 @@ test fn the_durable_account_arms_refuse_empty_and_phantom() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
       why_no_change: "synthetic" as NonEmptyStr,
@@ -659,7 +608,6 @@ test fn the_instrument_arm_refuses_a_credit_to_another_claim() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
       why_no_change: "synthetic" as NonEmptyStr,
@@ -684,7 +632,6 @@ test fn the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
       why_no_change: "synthetic" as NonEmptyStr,
@@ -702,7 +649,6 @@ test fn the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
       why_no_change: "synthetic" as NonEmptyStr,
@@ -728,7 +674,6 @@ test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool 
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: Present { value: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots") },
     closure: base.closure,
   }
@@ -736,7 +681,6 @@ test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool 
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: Present { value: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module") },
     closure: base.closure,
   }
@@ -757,7 +701,6 @@ test fn the_reason_arm_refuses_a_blank_explanation() -> Bool {
     identity: base.identity,
     standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
-    on_both_routes: base.on_both_routes,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
       why_no_change: "" as NonEmptyStr,
