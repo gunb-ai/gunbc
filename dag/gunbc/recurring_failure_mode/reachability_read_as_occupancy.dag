@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.reachability_read_as_occupancy
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data reachability_read_as_occupancy: RecurringFailureMode = RecurringFailureMode {
   identity: "reachability_read_as_occupancy" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**reachability read as occupancy** (a guard's arm, disposition or check is deleted because nothing currently lands in it.",

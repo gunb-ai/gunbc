@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.recursion_over_value_depth_uncounted_by_the_call_limit
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data recursion_over_value_depth_uncounted_by_the_call_limit: RecurringFailureMode = RecurringFailureMode {
   identity: "recursion_over_value_depth_uncounted_by_the_call_limit" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: host-native recursion whose depth is the depth of a VALUE rather than the depth of an interpreted call chain. The seed interpreter bounds calls (`v1_interpreter` `CALL_DEPTH_LIMIT`, refused typed and located) and runs every call and closure frame under `stacker::maybe_grow`, but a value is as deep as the data it carries -- a right-nested parse of a large module is one Variant per token -- and the derived `Drop`, `PartialEq`, `Display` and `Debug` of `Value`, plus every hand-written walker over it, recursed once per level on the host stack with no checkpoint. No call limit counts those levels, so none could refuse them.",

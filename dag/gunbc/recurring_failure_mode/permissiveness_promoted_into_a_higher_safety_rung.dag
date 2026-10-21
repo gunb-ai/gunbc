@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.permissiveness_promoted_into_a_higher_safety_rung
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data permissiveness_promoted_into_a_higher_safety_rung: RecurringFailureMode = RecurringFailureMode {
   identity: "permissiveness_promoted_into_a_higher_safety_rung" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a refusal that is the FINAL policy is written up as a rung below a more capable one, and a next-rung trigger is filed promising to admit the case it deliberately refuses** (INVALID STATE: a class refuses some input; an author reasons that a future mechanism could HANDLE that input rather than refuse it, concludes the refusal is therefore below its ceiling, and files a DESIGN 4b(2) next-rung trigger naming the more capable mechanism. HARM: the trigger becomes a standing obligation to BREAK the semantics the refusal was chosen to protect, and it is discharged by making the system MORE PERMISSIVE, which moves the class DOWN the ladder while the roster records a climb. The row then reads as a known gap on the way to being closed, so the deliberate boundary loses its author and the next person to touch it satisfies the trigger in good faith.",
