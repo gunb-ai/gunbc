@@ -14,6 +14,7 @@ import extdeps.systemd {
   systemd_path_list_entry_wire,
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties }
 import extdeps.systemd.unit_file { OutputAppendFile, systemd_output_stream_wire }
 
 // THE PATHS A WORKER UNIT IS HANDED ARE ONE TYPED SET, AND THE UNIT IS RENDERED FROM IT. Path text
@@ -130,19 +131,23 @@ fn dispatch_worker_set_read_only_wire(set: List<HandedEntry>) -> String {
   )
 }
 
-// THE SIX PATH-CARRYING SETTINGS, rendered from the set and the exit hook word, in the order the
-// worker unit lists them. The exit hook is the attempt's rendered ExecStopPost command
+// THE PATH-CARRYING SETTINGS, rendered from the set and the exit hook word, in the order the
+// worker unit lists them. The first is the socket DENY list (gunbc.compute.unit_bounds, InaccessiblePaths=):
+// a path-carrying setting that denies and so needs no traversal; it rides as the property its owner builds. The exit hook is the attempt's rendered ExecStopPost command
 // (gunbc.roadmap.roadmap_attempt_exit_spool attempt_exit_hook, whose path operand is the set's
 // HandedExitRoot directory); it rides as the command it is, and the claim below compares it as that.
 fn dispatch_worker_set_path_settings(set: List<HandedEntry>, exit_hook: NonEmptyStr) -> List<SystemdRunProperty> {
-  [
+  concat(
+    worker_root_equivalent_socket_denial_properties(),
+    [
     NamedUnitSetting { property: WorkingDirectoryProperty, value: dispatch_worker_set_working_directory(set: set) as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: true) as NonEmptyStr },
     NamedUnitSetting { property: StandardErrorProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: false) as NonEmptyStr },
     NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
     NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
     NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
-  ]
+    ],
+  )
 }
 
 fn setting_carries_paths(p: SystemdRunProperty) -> Bool {
