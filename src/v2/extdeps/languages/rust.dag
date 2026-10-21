@@ -302,6 +302,8 @@ import v2.std.compilers.semantic_decl_emission {
   MembersInAssociatedBlock,
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
+  HeaderLeadingLines,
+  ImportsLeading,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,

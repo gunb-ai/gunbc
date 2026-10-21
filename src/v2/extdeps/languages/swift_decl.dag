@@ -20,6 +20,8 @@ import v2.std.compilers.semantic_decl_emission {
   ColumnWired,
   MembersInsideTypeBody,
   TargetSemanticDeclCoproductEnumSurface,
+  HeaderLeadingLines,
+  ImportsLeading,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclSurfaceProjection,
   semantic_decl_binding_spelling_row,

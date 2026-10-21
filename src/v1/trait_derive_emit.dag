@@ -250,20 +250,6 @@ fn v1_keyed_map_verdict_from_algebra(type_expr: Node, source_indices: Map<String
   }
 }
 
-fn v1_type_expr_is_keyed_map(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
-    KeyedMap => true
-    NotKeyedMap => false
-    KeyedMapUndecidable { name: _ } => false
-  }
-}
-
-// The KeyedMapUndecidable arm contributes no key head names, and that is a
-// fail-closed marker rather than a policy choice: an unrecognized container
-// spelling is refused by v1.compiler.normalize check_bare_containers before any
-// module reaches the derive walk, so no Accepted program can carry one here. The
-// arm exists so that a future path reaching this walk without passing that wall
-// announces itself as a distinct state instead of being read as "not a map".
 fn v1_map_key_head_type_exprs(
   type_expr: Node,
   source_indices: Map<String, NewlineIndex>

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.unused_import_of_a_missing_module_is_accepte
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unused_import_of_a_missing_module_is_accepted: RecurringFailureMode = RecurringFailureMode {
   identity: "unused_import_of_a_missing_module_is_accepted" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**importing a nonexistent module and using nothing from it was accepted silently** (INVALID STATE: an `import` names a dependency; the native NamespaceOnlyY admission checked only captured alias rows, so a missing module whose listed names were unused — or whose block was empty and yielded zero rows — never reached module_root_find, and the program was Accepted. HARM: DESIGN section 5 silent wrongness — an unresolvable dependency is indistinguishable from a module that imports nothing).",

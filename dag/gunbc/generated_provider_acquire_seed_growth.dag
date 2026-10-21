@@ -1,0 +1,60 @@
+module gunbc.generated_provider_acquire_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Receipt for the hand-Rust that runs generated-provider acquisition in the seed (operator rulings
+// option 1b and E, 2026-10-20). The model is .dag: v1.compiler.infer emits the demands
+// (InferEmissions), groups them per pass (ReconciledPass), and observes them against the checked
+// closure (closure_provider_acquisition_step); std.generated_provider decides. The Rust below only
+// transports: it carries the per-module demand chunks out of the seed's parallel assembly, answers
+// the one fact a closure builder owns (which demanded modules its pool holds, and each acquired
+// module's closure), and re-checks the grown closure.
+data generated_provider_acquire_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "ProviderDemands", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "group_pass_demands", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "ClosureProviderStep", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "PoolAnswer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "pool_observation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "judge_closure", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "stalled", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "step_outcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "compile_to_provider_fixed_point", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "extend_with_acquired", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "ClosureOfError", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "Extension", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "unreadable", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "supplied", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "refused_classes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "judge", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "compile", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "emit_check_sources", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "emit_check_pool_acquires_the_demanded_module_then_reaches_the_fixed_point", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "emit_check_pool_reports_an_unreadable_provider_as_unreadable", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "hermetic_fixture_refuses_absent_and_refused_providers_by_their_own_causes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "entry_resolve_pool_acquires_the_demanded_module_and_a_stalled_extension_refuses_typed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "a_present_provider_acquires_nothing_and_a_chained_demand_acquires_only_its_own_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "emissions_are_built_and_projected_only_at_their_named_sites", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "extended_sources", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "a_read_failure_during_acquisition_refuses_as_module_unreadable", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "cost_receipt_exact_demand_versus_carrier_presence", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "the_real_crossing_refuses_hermetically_and_acquires_through_the_pool", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "acquire_layout_closure_seeded", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "layout_provider_answer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "layout_provider_answer_keeps_unreadable_distinct_from_absent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "seeded_rebuild_under_a_custom_root_uses_the_snapshot_and_reads_nothing_again", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "ProviderLayoutAnswer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "CoreResolve", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolved_graph_from_sources_with_index_typed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolve_entry_typed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_answer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_closure_of", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST RATHER THAN .dag: the closure builders the seed runs -- the entry-resolve core behind claim runs, claim_batch, whole-tree compile and demand-acquired `gunbc run`, the emit-check fixture path and the hermetic fixture -- are hand-Rust over host storage (MultiEntryIndex, the witness-root module index, a manifest). Acquiring a module means reading that storage and re-running the seed's own resolve, which the v1 interpreter cannot express as a .dag fold. Every decision stays in the model: which provider is owed (the demand inference emits), whether a declaration is satisfied, absent or refused, whether to acquire, complete or refuse (std.generated_provider provider_acquisition_step via v1.compiler.infer closure_provider_acquisition_step), and the refusal itself (CompilerDiagnostic GeneratedProviderUnavailable). No builder rescans conversion_plan_rows, chooses a provider, or keys acquisition on a carrier. WHY ADMITTED AGAINST THE v1 FREEZE: gunbc.v1.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- the host-text crossing cut (N7, the eight tests reaching their verdicts through v2-emitted Rust) needs the seed to acquire the route its generated call names, and the alternative was a near-global carrier-presence dependency the operator rejected.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when the native compiler acquires a compiler-generated declaration's provider through v2.compiler.module_acquisition (the N2b generated_head_demand route extended to infer-known demands, consuming std.generated_provider), SUFFICIENT FOR the host-text crossing controls and the N7 tests to reach their verdicts without v1_compiler.cli_run.provider_acquire. WHAT DOES NOT RETIRE IT: moving the loop into a different seed file; a carrier-keyed pre-acquisition; a fallback to the old chars spelling call.",
+  current_boundary: "v1_compiler.cli_run.entry_resolve resolved_graph_from_sources_with_index settles generated providers after reconcile and before the type verdict, recursing on the grown closure; on the demand-acquired `gunbc run` path (MultiEntryIndex provider_layout set) a provider the layout holds and the acquired closure does not comes back from the typed core (resolved_graph_from_sources_with_index_typed, CoreResolve NeedsAcquisition) with the exact source the layout answer read, and v1_compiler.cli_run.demand_acquire resolve_entry_graph_demand_acquired rebuilds the closure from that snapshot (acquire_layout_closure_seeded); v1_compiler.cli_run.emit_host compile_fixture_rendering_only_what_is_read (emit-check, pool: witness-root module index) and compile_dag_multi_module_fixture (hermetic, pool: empty) go through compile_to_provider_fixed_point. Controls: test.claim.generated_provider_step (the model) and the three provider_acquire tests (supplied demand through each real adapter)."
+}

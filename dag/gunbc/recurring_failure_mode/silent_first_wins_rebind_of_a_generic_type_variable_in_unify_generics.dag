@@ -2,10 +2,11 @@ module gunbc.recurring_failure_mode.silent_first_wins_rebind_of_a_generic_type_v
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, CeilingAmbiguous }
 
 data silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics: RecurringFailureMode = RecurringFailureMode {
   identity: "silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "INVALID STATE: unify_generics folds a call's actuals onto one accumulator and its already-bound arm is `if map_has(acc.subst, g) { acc }` — when a parameter already carries a binding, the later actual is DISCARDED and nothing is said, so a call whose arguments instantiate the same formal type variable to two different types is ACCEPTED on the first binding alone. The caller then receives a declared return type instantiated with a binding that no argument of the call implies. This is a fail-open: the compiler knows the two actuals disagree, prints nothing, and keeps typing the call as if the first one were the whole story (DESIGN section 5, an error must not masquerade as success).",

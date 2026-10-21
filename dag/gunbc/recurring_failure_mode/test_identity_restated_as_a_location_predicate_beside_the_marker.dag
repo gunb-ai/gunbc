@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.test_identity_restated_as_a_location_predicate_beside_the_marker
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data test_identity_restated_as_a_location_predicate_beside_the_marker: RecurringFailureMode = RecurringFailureMode {
   identity: "test_identity_restated_as_a_location_predicate_beside_the_marker" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a test is a declaration carrying the authored `test` marker and nothing else, but the native lane restated that identity as a LOCATION predicate beside it (the module's namespace had to be `v2.test` or below, spelled twice: once where the universe was derived and once where the receipt was judged, plus a hand-mirrored copy of the default pattern in the seed, spelled in two seed functions and passed to the emitted compiler on every native run) -- so a marked declaration outside the predicate was silently not a test and a module named inside it was a test candidate whatever it contained (INVALID STATE: two authorities for one fact, `what is a test`, which disagree on every marked declaration outside `v2.test` and are checked against each other by nothing).**",

@@ -649,13 +649,6 @@ fn partition_facade_wrapper_reexports_outcome(spec: Stage0CrateSpec) -> Stage0Re
     })
 }
 
-fn stage0_partition_lookups_valid() -> Bool {
-  match stage0_crate_boundary_emit_outcome() {
-    Stage0CrateBoundaryEmitOk { files: _ } => true
-    Stage0CrateBoundaryEmitRefused { cause: _ } => false
-  }
-}
-
 fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOutcome {
   match spec.kind {
     FoundationCrate =>
