@@ -8,6 +8,7 @@ import gunbc.compile_diagnostic_census {
   // CLASS-SCOPED COUNTING (a_run_id_where_a_rule_id_belongs_is_refused_at_the_row): keyed counting
   // is census_count_at_key's job; the class-only denominator belongs here because a claim that must
   // count "every row of a class, whatever the host renders the subject as" is not a guess at a key.
+  census_blocking_rows,
   census_rows_of_class,
   census_total_count,
 }
@@ -100,6 +101,25 @@ fn axis_type_mismatch_count() -> Int {
   type_mismatch_count(c: axis_census())
 }
 
+// THE LOCALISERS, for the same reason a witness should never assert only its conclusion: the
+// refusal claim can fail because the census never RAN, because the source COMPILES CLEAN, or
+// because the refusal lands under a different class -- and those three readings demand different
+// fixes. Each is measured, not inferred from the one boolean.
+fn axis_total_row_count() -> Int {
+  match axis_census() {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+  }
+}
+
+fn axis_blocking_row_count() -> Int {
+  match axis_census() {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: rows))
+  }
+}
+
 fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
   match c {
     CensusNotRunnable { cause: _ } => 0 - 1
@@ -187,6 +207,19 @@ test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
 // produces the row. Delete the separate carriers and this claim goes red.
 test fn an_installation_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
   axis_type_mismatch_count() >= 1 && control_type_mismatch_count() == 0
+}
+
+// MEASUREMENT CLAIMS (temporary, until the axis forgery's fate is known). If the census cannot
+// run, total reads negative and THIS is the claim that says so. If it runs and reports nothing,
+// the foreign-carrier line COMPILES -- which would be a host-physics finding (plain-record field
+// conformance does not refuse a foreign product value) and the refusal claim would have to be
+// deleted, not re-worded: a claim that cannot go green for a false statement is not negotiable.
+test fn the_axis_source_census_runs() -> Bool {
+  axis_total_row_count() >= 0
+}
+
+test fn the_axis_source_reports_some_refusal() -> Bool {
+  axis_blocking_row_count() >= 1
 }
 
 // (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
