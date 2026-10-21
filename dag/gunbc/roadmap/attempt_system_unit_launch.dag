@@ -185,11 +185,16 @@ type AttemptSystemUnitStartFacts {
 
 // WHAT CROSSES FROM THE REQUESTER. Everything else a start needs is derived by
 // attempt_system_unit_start_facts_for_request.
+//
+// `nonce` NAMES THIS REQUEST INSTANCE. The answer echoes the request body it answers, so a request is
+// answered only by an answer to this body; two requests for one (node, attempt key) are told apart by
+// their nonce (the belt passes the slot generation of the launch it just admitted).
 type AttemptSystemUnitStartRequest {
   node_id: String
   attempt_key: String
   granted: Kibibyte
   inner_argv: List<String>
+  nonce: String
 }
 
 type AttemptSystemUnitStartDerivation
@@ -244,12 +249,13 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
   }
 }
 
-fn attempt_system_unit_start_request_from_plan(plan: DispatchWorkerUnitPlan, granted: Kibibyte) -> AttemptSystemUnitStartRequest {
+fn attempt_system_unit_start_request_from_plan(plan: DispatchWorkerUnitPlan, granted: Kibibyte, nonce: String) -> AttemptSystemUnitStartRequest {
   AttemptSystemUnitStartRequest {
     node_id: plan.node_id,
     attempt_key: plan.attempt_key,
     granted: granted,
     inner_argv: plan.inner_argv,
+    nonce: nonce,
   }
 }
 
@@ -379,6 +385,7 @@ type AttemptSystemUnitStartUnencodableCause
   = AttemptSystemUnitArgvEmpty
   | AttemptSystemUnitArgvWordContainsUnitSeparator
   | AttemptSystemUnitArgvWordContainsNewline
+  | AttemptSystemUnitNonceUnsafe
 
 type AttemptSystemUnitStartEncode
   = AttemptSystemUnitStartEncoded { body: String }
@@ -389,6 +396,7 @@ fn attempt_system_unit_start_unencodable_detail(cause: AttemptSystemUnitStartUne
     AttemptSystemUnitArgvEmpty => "start request argv is empty"
     AttemptSystemUnitArgvWordContainsUnitSeparator => "start request argv word contains U+001F"
     AttemptSystemUnitArgvWordContainsNewline => "start request argv word contains a newline"
+    AttemptSystemUnitNonceUnsafe => "start request nonce is not one safe path segment"
   }
 }
 
@@ -410,6 +418,9 @@ fn attempt_system_unit_encode_start(verb: AttemptSystemUnitStartVerb, request: A
   match attempt_system_unit_argv_unencodable(argv: request.inner_argv) {
     Present { value: cause } => AttemptSystemUnitStartUnencodable { cause: cause }
     Absent =>
+      if !path_segment_is_safe(raw: request.nonce) {
+        AttemptSystemUnitStartUnencodable { cause: AttemptSystemUnitNonceUnsafe }
+      } else {
       AttemptSystemUnitStartEncoded {
         body: join([
           attempt_system_unit_start_verb_wire(verb: verb),
@@ -417,7 +428,9 @@ fn attempt_system_unit_encode_start(verb: AttemptSystemUnitStartVerb, request: A
           request.attempt_key,
           to_string(value: kibibyte_count(k: request.granted)),
           join(request.inner_argv, "\u{1f}"),
+          request.nonce,
         ], "\n"),
+      }
       }
   }
 }
@@ -436,10 +449,10 @@ fn attempt_system_unit_start_request_decode(lines: List<String>) -> AttemptSyste
       match attempt_system_unit_start_verb_parse(tag: tag) {
         AttemptSystemUnitStartVerbUnrecognized { tag: unknown } => AttemptSystemUnitStartVerbUnknown { tag: unknown }
         AttemptSystemUnitStartVerbParsed { verb } =>
-          match lines[5] {
+          match lines[6] {
             Present { value: extra } =>
               if extra != "" {
-                AttemptSystemUnitStartRequestMalformed { reason: "start request carries more than node id, attempt key, grant and argv" }
+                AttemptSystemUnitStartRequestMalformed { reason: "start request carries more than node id, attempt key, grant, argv and nonce" }
               } else {
                 attempt_system_unit_start_request_fields(verb: verb, lines: lines)
               }
@@ -465,18 +478,25 @@ fn attempt_system_unit_start_request_fields(verb: AttemptSystemUnitStartVerb, li
                   match lines[4] {
                     Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
                     Present { value: inner_joined } =>
-                      if inner_joined == "" {
-                        AttemptSystemUnitStartRequestMalformed { reason: "start request argv is empty" }
-                      } else {
-                        AttemptSystemUnitStartRequestDecoded {
-                          verb: verb,
-                          request: AttemptSystemUnitStartRequest {
-                            node_id: node_id,
-                            attempt_key: attempt_key,
-                            granted: kibibyte(count: granted_n),
-                            inner_argv: split(s: inner_joined, delimiter: "\u{1f}"),
-                          },
-                        }
+                      match lines[5] {
+                        Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
+                        Present { value: nonce } =>
+                          if inner_joined == "" {
+                            AttemptSystemUnitStartRequestMalformed { reason: "start request argv is empty" }
+                          } else if nonce == "" {
+                            AttemptSystemUnitStartRequestMalformed { reason: "start request nonce is empty" }
+                          } else {
+                            AttemptSystemUnitStartRequestDecoded {
+                              verb: verb,
+                              request: AttemptSystemUnitStartRequest {
+                                node_id: node_id,
+                                attempt_key: attempt_key,
+                                granted: kibibyte(count: granted_n),
+                                inner_argv: split(s: inner_joined, delimiter: "\u{1f}"),
+                                nonce: nonce,
+                              },
+                            }
+                          }
                       }
                   }
               }
@@ -534,7 +554,7 @@ fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, rev
 }
 
 type AttemptSystemUnitEnqueue
-  = AttemptSystemUnitEnqueued { entry: String }
+  = AttemptSystemUnitEnqueued { entry: String, body: String }
   | AttemptSystemUnitEnqueueOccupied { entry: String }
   | AttemptSystemUnitEnqueueRefused { detail: String }
 
@@ -577,7 +597,7 @@ fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, a
       if !wrote.success {
         AttemptSystemUnitEnqueueRefused { detail: join(["could not write the staged request body at ", staging], "") }
       } else if attempt_system_unit_rename_exact(source: staging, destination: dest) {
-        AttemptSystemUnitEnqueued { entry: entry }
+        AttemptSystemUnitEnqueued { entry: entry, body: body }
       } else {
         AttemptSystemUnitEnqueueOccupied { entry: entry }
       }
@@ -707,21 +727,49 @@ fn attempt_system_unit_claim_entry(instance_root: String, entry: String) -> Atte
   }
 }
 
-fn attempt_system_unit_encode_answer(answer: AttemptSystemUnitAnswer) -> String {
+// AN ANSWER IS BOUND TO THE REQUEST IT ANSWERS: it opens with the request body the root side read, then U+001E,
+// then the verdict. answers/<entry> is keyed by node and attempt key only and root-owned, so it outlives the
+// request; without the echo a later request for the same key reads the earlier run's answer. An answer written
+// before any body was read (a claim that failed, an unreadable body) echoes nothing and so matches no request:
+// the requester sees it as not yet answered, never as this request's outcome.
+data attempt_system_unit_answer_body_separator: String = "\u{1e}"
+
+fn attempt_system_unit_encode_answer(body: String, answer: AttemptSystemUnitAnswer) -> String {
+  join([body, attempt_system_unit_answer_body_separator, attempt_system_unit_encode_verdict(answer: answer)], "")
+}
+
+fn attempt_system_unit_encode_verdict(answer: AttemptSystemUnitAnswer) -> String {
   match answer {
     AttemptSystemUnitStarted => "started\n"
     AttemptSystemUnitRefusedAnswer { reason } => join(["refused\n", reason, "\n"], "")
   }
 }
 
-fn attempt_system_unit_write_answer(instance_root: String, entry: String, answer: AttemptSystemUnitAnswer) -> Bool {
+fn attempt_system_unit_write_answer(instance_root: String, entry: String, body: String, answer: AttemptSystemUnitAnswer) -> Bool {
   Filesystem.WriteCreateNew(
     path: attempt_system_unit_answer_path(instance_root: instance_root, entry: entry),
-    content: attempt_system_unit_encode_answer(answer: answer),
+    content: attempt_system_unit_encode_answer(body: body, answer: answer),
   ).success
 }
 
-fn attempt_system_unit_decode_answer(content: String) -> AttemptSystemUnitAnswerRead {
+fn attempt_system_unit_decode_answer(content: String, request_body: String) -> AttemptSystemUnitAnswerRead {
+  let parts = split(s: content, delimiter: attempt_system_unit_answer_body_separator)
+  match parts[1] {
+    Absent => AttemptSystemUnitAnswerUnreadable { detail: "answer carries no request body echo" }
+    Present { value: verdict } =>
+      match parts.first() {
+        Absent => AttemptSystemUnitAnswerUnreadable { detail: "answer is empty" }
+        Present { value: echoed } =>
+          if echoed != request_body {
+            AttemptSystemUnitAnswerMissing
+          } else {
+            attempt_system_unit_decode_verdict(content: verdict)
+          }
+      }
+  }
+}
+
+fn attempt_system_unit_decode_verdict(content: String) -> AttemptSystemUnitAnswerRead {
   let lines = split(s: content, delimiter: "\n")
   match lines.first() {
     Absent => AttemptSystemUnitAnswerUnreadable { detail: "answer is empty" }
@@ -739,12 +787,12 @@ fn attempt_system_unit_decode_answer(content: String) -> AttemptSystemUnitAnswer
   }
 }
 
-fn attempt_system_unit_read_answer(instance_root: String, entry: String) -> AttemptSystemUnitAnswerRead {
+fn attempt_system_unit_read_answer(instance_root: String, entry: String, request_body: String) -> AttemptSystemUnitAnswerRead {
   let read = Filesystem.Read(path: attempt_system_unit_answer_path(instance_root: instance_root, entry: entry))
   if !read.success {
     AttemptSystemUnitAnswerMissing
   } else {
-    attempt_system_unit_decode_answer(content: read.content)
+    attempt_system_unit_decode_answer(content: read.content, request_body: request_body)
   }
 }
 
@@ -857,6 +905,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
       let _ = attempt_system_unit_write_answer(
         instance_root: instance.instance_root as String,
         entry: entry,
+        body: "",
         answer: AttemptSystemUnitRefusedAnswer { reason: why },
       )
       exit_failure(reason: why)
@@ -868,6 +917,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
         let _ = attempt_system_unit_write_answer(
           instance_root: instance.instance_root as String,
           entry: entry,
+          body: "",
           answer: AttemptSystemUnitRefusedAnswer { reason: why },
         )
         exit_failure(reason: why)
@@ -877,6 +927,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
         let _ = attempt_system_unit_write_answer(
           instance_root: instance.instance_root as String,
           entry: entry,
+          body: content,
           answer: AttemptSystemUnitRefusedAnswer { reason: why },
         )
         exit_failure(reason: why)
@@ -887,6 +938,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
           let _ = attempt_system_unit_write_answer(
             instance_root: instance.instance_root as String,
             entry: entry,
+            body: content,
             answer: AttemptSystemUnitRefusedAnswer { reason: why },
           )
           exit_failure(reason: why)
@@ -897,6 +949,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
               let _ = attempt_system_unit_write_answer(
                 instance_root: instance.instance_root as String,
                 entry: entry,
+                body: content,
                 answer: AttemptSystemUnitStarted,
               )
               started
@@ -905,6 +958,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
               let _ = attempt_system_unit_write_answer(
                 instance_root: instance.instance_root as String,
                 entry: entry,
+                body: content,
                 answer: AttemptSystemUnitRefusedAnswer { reason: why },
               )
               started
@@ -935,6 +989,7 @@ fn attempt_system_unit_handle_claimed(
       let _ = attempt_system_unit_write_answer(
         instance_root: instance_root,
         entry: entry,
+        body: "",
         answer: AttemptSystemUnitRefusedAnswer { reason: why },
       )
       exit_failure(reason: why)
@@ -993,6 +1048,7 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
             let _ = attempt_system_unit_write_answer(
               instance_root: instance_root,
               entry: e,
+              body: "",
               answer: AttemptSystemUnitRefusedAnswer { reason: "request entry is a symlink" },
             )
             attempt_unit_pass_retired(pass: acc, exit: exit_failure(reason: "request entry is a symlink"))
@@ -1001,6 +1057,7 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
             let _ = attempt_system_unit_write_answer(
               instance_root: instance_root,
               entry: e,
+              body: "",
               answer: AttemptSystemUnitRefusedAnswer { reason: why },
             )
             attempt_unit_pass_retired(pass: acc, exit: exit_failure(reason: why))
