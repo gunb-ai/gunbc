@@ -1,7 +1,7 @@
 module v1.compiler.infer_resolve
 
 import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_name, decl_type_parameter_ref, declaration_ref_is_type_parameter }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected, OccurrencePending }
 
 import std.types { SourceSpan, container_param_name }
 
@@ -98,7 +98,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: TypeArgumentKindMismatch {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat(type_arg_display_spelling(n: arg, env: env), " [", kind_lookup_trace(kind_decl: kind_decl_for_message(kind_node: kind_node, env: env), env: env), "]"), span: arg.span
+                    supplied: concat(type_arg_display_spelling(n: arg, env: env), " [", kind_lookup_trace(kind_decl: kind_decl_for_message(kind_node: kind_node, env: env), env: env), "]"), span: arg., raven_probe_wall_dump(arg: arg, env: env, module_name: module_name)), span: arg.span
                   },
                   module_name: module_name
                 )]
@@ -142,7 +142,7 @@ fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env
                 [make_error_node(
                   diagnostic: ForwardedParameterUnkinded {
                     type_name: type_name, param_name: param_name, kind_name: kind_name,
-                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares no kind, so it cannot be shown to inhabit '", kind_name, "')"),
+                    supplied: concat("(the forwarded parameter '", type_arg_display_spelling(n: arg, env: env), "' declares no kind, so it cannot be shown to inhabit '", kind_name, "')"), raven_probe_wall_dump(arg: arg, env: env, module_name: module_name)),
                     span: arg.span
                   },
                   module_name: module_name
@@ -295,6 +295,52 @@ fn kind_lookup_trace(kind_decl: Node, env: TypeEnv) -> String {
     "' inferred=", match kind_decl.inferred { Present { value: _ } => "present"  Absent => "absent" },
     " resolved_target='", kind_admissible_inhabitant_name(kind_decl: kind_decl, env: env),
     "' children=", to_string(value: kind_decl.children |> count)
+  )
+}
+
+// PROBE ONLY (scratch branch agent/v1-param-binder-probe; never merged, named so it can be re-run).
+// Appends the ARGUMENT-SIDE facts the refusal does not otherwise carry, so the two surviving
+// populations can be told apart without minting any new diagnostic: (a) a node the marking pass
+// never visited is an untouched authored leaf -- children=0, params=0, decl=none; (b) a node whose
+// carrier was dropped by a rebuild carries the substituted body -- children>0, inferred=present.
+// A stamped control (the 20 realization_measurement refusals) reads decl=paramref. The fields ride
+// the EXISTING refusal message: no new diagnostic exists, so no module's abandonment changes.
+fn raven_probe_wall_dump(arg: Node, env: TypeEnv, module_name: String) -> String {
+  let a = authored_name_at(source_indices: env.source_indices, node: arg)
+  let arg_name = if a == "" { arg.name } else { a }
+  let occ_text = match arg.occurrence_identity {
+    OccurrenceMinted { id: _ } => "minted"
+    OccurrenceProjected { id: _, caused_by: _ } => "projected"
+    OccurrencePending { caused_by: _ } => "pending"
+    _ => "synthetic"
+  }
+  let conn_text = match arg.connective {
+    NoConnective => "none"
+    Arrow => "arrow"
+    Conj => "conj"
+    Disj => "disj"
+    _ => "other"
+  }
+  let inferred_text = match arg.inferred { Present { value: _ } => "present"  Absent => "absent" }
+  let decl_text = match arg.declaration {
+    Absent => "none"
+    Present { value: r } => if declaration_ref_is_type_parameter(ref: r) { "paramref" } else { "other" }
+  }
+  let ident_text = match arg.ident_span {
+    Absent => "absent"
+    Present { value: s } => concat(s.file, ":", to_string(value: s.start), "-", to_string(value: s.end))
+  }
+  concat(
+    "|PROBE mod=", module_name,
+    " arg=", arg_name,
+    " occ=", occ_text,
+    " span=", arg.span.file, ":", to_string(value: arg.span.start), "-", to_string(value: arg.span.end),
+    " ident=", ident_text,
+    " children=", to_string(value: arg.children |> count),
+    " params=", to_string(value: arg.params |> count),
+    " conn=", conn_text,
+    " inferred=", inferred_text,
+    " decl=", decl_text
   )
 }
 
