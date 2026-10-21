@@ -354,7 +354,7 @@ fn fe_rebuilt(n: Node, drop: FeDrop) -> Node {
         }
       FeDropInit => false
     }
-    if cut { acc } else { list_snoc_item(xs: acc, item: Edge { label: e.label, target: fe_mutated(n: e.target, drop: drop), declaration: NotADeclaration }) }
+    if cut { acc } else { list_snoc_item(xs: acc, item: Edge { label: e.label, target: fe_mutated(n: e.target, drop: drop), declaration: e.declaration }) }
   }))
 }
 

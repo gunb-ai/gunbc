@@ -100,7 +100,7 @@ fn normalize_children_step(
             value: NormalizeEdges {
               edges: list_snoc_item(
                 xs: gathered.edges,
-                item: Edge { label: edge.label, target: child_tree.node, declaration: NotADeclaration }
+                item: Edge { label: edge.label, target: child_tree.node, declaration: edge.declaration }
               ),
               retained: wrapper_retentions_concat(
                 earlier: gathered.retained,

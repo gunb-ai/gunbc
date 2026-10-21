@@ -162,7 +162,7 @@ fn dpo_with_order(arrow: Node, labels: List<Symbol>, keep: Bool) -> Node {
     children: fold(arrow.children, init: [], f: fn(acc, e) {
       if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
         if keep {
-          concat(acc, [Edge { label: e.label, target: dpo_order_list(labels: labels), declaration: NotADeclaration }])
+          concat(acc, [Edge { label: e.label, target: dpo_order_list(labels: labels), declaration: e.declaration }])
         } else {
           acc
         }

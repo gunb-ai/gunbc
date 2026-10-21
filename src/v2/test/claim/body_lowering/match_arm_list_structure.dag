@@ -155,7 +155,7 @@ fn mals_replace(n: Node, target: Node, replacement: Node) -> Node {
     Node {
       kind: n.kind,
       children: fold(n.children, init: Empty, f: fn(acc, e) {
-        list_snoc_item(xs: acc, item: Edge { label: e.label, target: mals_replace(n: e.target, target: target, replacement: replacement), declaration: NotADeclaration })
+        list_snoc_item(xs: acc, item: Edge { label: e.label, target: mals_replace(n: e.target, target: target, replacement: replacement), declaration: e.declaration })
       }),
       occurrence_id: n.occurrence_id
     }

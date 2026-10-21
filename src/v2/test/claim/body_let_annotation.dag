@@ -1120,7 +1120,7 @@ type BlaReorderedResolve {
 // order. Children are rewritten first, so a nested Bind is moved too.
 fn bla_annotation_second(n: Node) -> Node {
   let rebuilt = fold(n.children, init: [], f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: Edge { label: e.label, target: bla_annotation_second(n: e.target), declaration: NotADeclaration })
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: bla_annotation_second(n: e.target), declaration: e.declaration })
   })
   let children = match n.kind {
     ComputationNode { behavior: Bind } =>

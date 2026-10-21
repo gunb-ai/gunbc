@@ -182,7 +182,7 @@ fn fmi_replace_atom(n: Node, from: Symbol, to: Node) -> Node {
   Node {
     kind: n.kind,
     children: fold(n.children, init: [], f: fn(acc, e) {
-      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to), declaration: NotADeclaration })
+      list_snoc_item(xs: acc, item: Edge { label: e.label, target: fmi_replace_binder_type(e: e, from: from, to: to), declaration: e.declaration })
     }),
     occurrence_id: n.occurrence_id
   }

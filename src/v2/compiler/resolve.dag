@@ -2892,7 +2892,7 @@ fn child_walk_step(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
     ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p } =>
       child_walk_refused(w: w, first: f, rest: rs, observation: o, partial: p)
     ResolveWalkAccepted { value: t, diagnostics: ed, bindings: l } =>
-      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t, declaration: NotADeclaration }, d: ed, bindings: l)
+      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t, declaration: e.declaration }, d: ed, bindings: l)
   }
 }
 

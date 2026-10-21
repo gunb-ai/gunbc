@@ -354,9 +354,9 @@ fn node_without_occurrence(node: Node, occurrence: OccurrenceId) -> Node {
           if o.value == occurrence.value {
             acc
           } else {
-            concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence), declaration: NotADeclaration }])
+            concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence), declaration: e.declaration }])
           }
-        Absent => concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence), declaration: NotADeclaration }])
+        Absent => concat(acc, [Edge { label: e.label, target: node_without_occurrence(node: e.target, occurrence: occurrence), declaration: e.declaration }])
       }
     })
   )

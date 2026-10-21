@@ -283,12 +283,12 @@ fn edge_is_head_slot(e: Edge) -> Bool {
 fn rebuilt_edge(e: Edge) -> Edge {
   if edge_is_head_slot(e: e) {
     if edge_target_is_mystery(e: e) {
-      Edge { label: e.label, target: opaque_head_node(), declaration: NotADeclaration }
+      Edge { label: e.label, target: opaque_head_node(), declaration: e.declaration }
     } else {
-      Edge { label: e.label, target: break_mystery_head(n: e.target), declaration: NotADeclaration }
+      Edge { label: e.label, target: break_mystery_head(n: e.target), declaration: e.declaration }
     }
   } else {
-    Edge { label: e.label, target: break_mystery_head(n: e.target), declaration: NotADeclaration }
+    Edge { label: e.label, target: break_mystery_head(n: e.target), declaration: e.declaration }
   }
 }
 

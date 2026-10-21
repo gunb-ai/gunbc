@@ -882,7 +882,7 @@ fn body_term_erase_tree(n: Node) -> Node
       node_rebuild(
         n: n,
         children: fold(n.children, init: Empty, f: fn(acc, e) {
-          list_snoc_item(xs: acc, item: Edge { label: e.label, target: body_term_erase_tree(n: e.target), declaration: NotADeclaration })
+          list_snoc_item(xs: acc, item: Edge { label: e.label, target: body_term_erase_tree(n: e.target), declaration: e.declaration })
         })
       )
   }
@@ -3544,7 +3544,7 @@ fn body_lower_fold_children(node: Node) -> Outcome<Node> {
             Accepted {
               value: node_rebuild(
                 n: shell,
-                children: list_snoc_item(xs: shell.children, item: Edge { label: e.label, target: child, declaration: NotADeclaration })
+                children: list_snoc_item(xs: shell.children, item: Edge { label: e.label, target: child, declaration: e.declaration })
               ),
               diagnostics: diagnostics_merge(outer: ad, inner: cd)
             }
@@ -4297,7 +4297,7 @@ fn body_lower_reify_transform_edge(
     outcome_accepted(
       value: list_snoc_item(
         xs: done,
-        item: Edge { label: e.label, target: e.target, declaration: NotADeclaration }
+        item: Edge { label: e.label, target: e.target, declaration: e.declaration }
       )
     )
   } else {
@@ -4305,7 +4305,7 @@ fn body_lower_reify_transform_edge(
       outcome_accepted(
         value: list_snoc_item(
           xs: done,
-          item: Edge { label: e.label, target: reified, declaration: NotADeclaration }
+          item: Edge { label: e.label, target: reified, declaration: e.declaration }
         )
       )
     })
@@ -5857,7 +5857,7 @@ fn body_lower_position_function_values(node: Node, path: List<Int>) -> Node {
       edges: list_snoc_item(xs: acc.edges, item: Edge {
           label: e.label,
           target: body_lower_position_function_values(node: e.target, path: list_snoc_item(xs: path, item: acc.index)),
-          declaration: NotADeclaration
+          declaration: e.declaration
         })
     }
   })
@@ -5876,7 +5876,7 @@ fn body_lower_position_function_value_arrow(node: Node, path: List<Int>) -> Node
         node_with_occurrence_id(
           kind: node.kind,
           children: fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
-            list_snoc_item(xs: acc, item: Edge { label: e.label, target: body_lower_rename_fresh_type_variables(node: e.target, renames: renames, arrow_body: body_lower_edge_is_arrow_body(e: e)), declaration: NotADeclaration })
+            list_snoc_item(xs: acc, item: Edge { label: e.label, target: body_lower_rename_fresh_type_variables(node: e.target, renames: renames, arrow_body: body_lower_edge_is_arrow_body(e: e)), declaration: e.declaration })
           }),
           occurrence_id: node.occurrence_id
         )
@@ -5968,7 +5968,7 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
                 }
               Positional => e.label
             }
-            list_snoc_item(xs: acc, item: Edge { label: label, target: body_lower_rename_fresh_type_variables(node: e.target, renames: renames, arrow_body: false), declaration: NotADeclaration })
+            list_snoc_item(xs: acc, item: Edge { label: label, target: body_lower_rename_fresh_type_variables(node: e.target, renames: renames, arrow_body: false), declaration: e.declaration })
           }
         })
         node_with_occurrence_id(
@@ -7920,7 +7920,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
                 outcome_with_diagnostics(
                   value: list_snoc_item(
                     xs: done,
-                    item: Edge { label: e.label, target: target, declaration: NotADeclaration }
+                    item: Edge { label: e.label, target: target, declaration: e.declaration }
                   ),
                   diagnostics: d
                 )

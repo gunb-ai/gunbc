@@ -1307,14 +1307,14 @@ fn closure_filter_root_published(root: Node, published: Map<Symbol, Node>) -> No
         if module_binding_edge_is_namespace_body(e: e) {
           list_snoc_item(
             xs: acc,
-            item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published), declaration: NotADeclaration }
+            item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published), declaration: e.declaration }
           )
         } else {
           match try_edge_declared_binding(e: e) {
             Present { value: b } =>
               match map_lookup(m: published, key: b.name) {
                 Present { value: resolved } =>
-                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved, declaration: NotADeclaration })
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved, declaration: e.declaration })
                 Absent => acc
               }
             Absent => list_snoc_item(xs: acc, item: e)
@@ -1329,7 +1329,7 @@ fn closure_filter_root_published(root: Node, published: Map<Symbol, Node>) -> No
       children: fold(root.children, init: [], f: fn(acc, e) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published), declaration: NotADeclaration }
+          item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published), declaration: e.declaration }
         )
       }),
       occurrence_id: root.occurrence_id

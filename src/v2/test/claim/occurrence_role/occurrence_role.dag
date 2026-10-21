@@ -267,7 +267,7 @@ fn plant_unreadable_binder(n: Node) -> Node {
   }
   node_with_occurrence_id(
     kind: kind,
-    children: fold(n.children, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: e.label, target: plant_unreadable_binder(n: e.target), declaration: NotADeclaration }) }),
+    children: fold(n.children, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: e.label, target: plant_unreadable_binder(n: e.target), declaration: e.declaration }) }),
     occurrence_id: n.occurrence_id
   )
 }

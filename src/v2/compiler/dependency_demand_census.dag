@@ -233,7 +233,7 @@ fn demand_census_elide_uses(node: Node) -> Node {
 
 fn demand_census_elide_children(node: Node) -> Node {
   node_rebuild(n: node, children: fold(node.children, init: Empty, f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: Edge { label: e.label, target: demand_census_elide_uses(node: e.target), declaration: NotADeclaration })
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: demand_census_elide_uses(node: e.target), declaration: e.declaration })
   }))
 }
 

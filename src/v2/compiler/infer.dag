@@ -639,7 +639,7 @@ fn infer_formation_child_evidence_edges(
                   optional_present(
                     value: list_snoc_item(
                       xs: evidence_edges,
-                      item: Edge { label: edge.label, target: child_evidence, declaration: NotADeclaration }
+                      item: Edge { label: edge.label, target: child_evidence, declaration: edge.declaration }
                     )
                   )
               }
@@ -2201,7 +2201,7 @@ fn infer_declared_type_children_instantiated(
         Present { value: c2 } =>
           match infer_declared_type_children_instantiated(children: rest, instances: instances) {
             Present { value: rest2 } =>
-              optional_present(value: Cons { head: Edge { label: c.label, target: c2, declaration: NotADeclaration }, tail: rest2 })
+              optional_present(value: Cons { head: Edge { label: c.label, target: c2, declaration: c.declaration }, tail: rest2 })
             Absent => Absent
           }
         Absent => Absent
@@ -4023,7 +4023,7 @@ fn infer_declared_type_denotation(declared: Node) -> Node {
       step: fn(acc, edge, sub) {
         Node {
           kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub, declaration: NotADeclaration }),
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub, declaration: edge.declaration }),
           occurrence_id: acc.occurrence_id
         }
       }
@@ -4395,7 +4395,7 @@ fn infer_type_alias_normalized_at(t: Node, bodies: SymbolIndex, bindings: Symbol
               Node {
                 kind: t.kind,
                 children: fold(t.children, init: Empty, f: fn(acc, e) {
-                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized_at(t: e.target, bodies: bodies, bindings: bindings), declaration: NotADeclaration })
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized_at(t: e.target, bodies: bodies, bindings: bindings), declaration: e.declaration })
                 }),
                 occurrence_id: t.occurrence_id
               }
@@ -4834,7 +4834,7 @@ fn infer_type_instantiated(t: Node, instances: List<TypeVariableInstance>) -> No
       step: fn(acc, edge, sub) {
         Node {
           kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub, declaration: NotADeclaration }),
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub, declaration: edge.declaration }),
           occurrence_id: acc.occurrence_id
         }
       }

@@ -2370,7 +2370,7 @@ fn translate_type_expression_children_in_node(
             o: translate_type_expression_subtree(node: e.target, target: target, projection: projection),
             f: fn(projected) {
               outcome_accepted(
-                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected, declaration: NotADeclaration })
+                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected, declaration: e.declaration })
               )
             }
           )
@@ -2610,7 +2610,7 @@ fn translate_fold_step(
                     n: parent_acc.rebuilt,
                     children: list_snoc_item(
                       xs: parent_acc.rebuilt.children,
-                      item: Edge { label: edge.label, target: child_acc.rebuilt, declaration: NotADeclaration }
+                      item: Edge { label: edge.label, target: child_acc.rebuilt, declaration: edge.declaration }
                     )
                   )
                 },

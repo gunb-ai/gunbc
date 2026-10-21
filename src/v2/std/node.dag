@@ -474,7 +474,7 @@ fn close_lowered_image_of(root: Node, source: Node) -> Node {
 fn close_lowered_image_under(node: Node, source: OccurrenceId) -> Node {
   match node.occurrence_id {
     OccurrenceSynthetic =>
-      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source), declaration: NotADeclaration }))
+      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source), declaration: e.declaration }))
     OccurrenceMinted { id: id } => if id.value == source.value { close_lowered_image(root: node) } else { node }
     OccurrencePending { caused_by: _ } => node
     OccurrenceProjected { id: _, caused_by: _ } => node
@@ -505,7 +505,7 @@ fn close_image_member(node: Node, source: OccurrenceId) -> Node {
 }
 
 fn close_image_edges(edges: List<Edge>, source: OccurrenceId) -> List<Edge> {
-  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source), declaration: NotADeclaration })
+  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source), declaration: e.declaration })
 }
 
 // THE ONE ALLOCATION PASS, run once over a normalized tree. It visits the whole tree in pre-order,
@@ -529,7 +529,7 @@ fn allocate_pending_occurrences(
     f: (acc, e) => {
       let child = allocate_pending_occurrences(root: e.target, allocator: acc.allocator)
       PendingEdgesAllocation {
-        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root, declaration: NotADeclaration }),
+        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root, declaration: e.declaration }),
         allocator: child.allocator,
       }
     },
@@ -604,7 +604,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: NotADeclaration })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: edge.declaration })
   )
 }
 

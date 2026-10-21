@@ -33,7 +33,7 @@ fn children_aligned(a: Node, b: Node) -> Bool {
 }
 
 fn anti_unify_edge(ea: Edge, eb: Edge) -> Edge {
-  Edge { label: ea.label, target: anti_unify(a: ea.target, b: eb.target), declaration: NotADeclaration }
+  Edge { label: ea.label, target: anti_unify(a: ea.target, b: eb.target), declaration: ea.declaration }
 }
 fn anti_unify_children(a: FreeMonoid<Edge>, b: FreeMonoid<Edge>) -> FreeMonoid<Edge> {
   zip_map(a: a, b: b, f: fn(ea, eb) { anti_unify_edge(ea: ea, eb: eb) })

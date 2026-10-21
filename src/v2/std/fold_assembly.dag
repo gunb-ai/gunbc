@@ -84,7 +84,7 @@ fn apply_fills_step(acc: ApplyEdgesAcc, e: Edge) -> ApplyEdgesAcc {
 }
 fn apply_fills_step_with(acc: ApplyEdgesAcc, e: Edge, r: ApplyResult) -> ApplyEdgesAcc {
   ApplyEdgesAcc {
-    edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: r.node, declaration: NotADeclaration }),
+    edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: r.node, declaration: e.declaration }),
     rest: r.rest
   }
 }

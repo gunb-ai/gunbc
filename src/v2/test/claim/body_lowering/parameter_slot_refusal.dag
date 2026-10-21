@@ -85,7 +85,7 @@ fn psr_replace(root: Node, target: Node, with: Node) -> Node {
     Node {
       kind: root.kind,
       children: fold(root.children, init: [], f: fn(acc, e) {
-        list_snoc_item(xs: acc, item: Edge { label: e.label, target: psr_replace(root: e.target, target: target, with: with), declaration: NotADeclaration })
+        list_snoc_item(xs: acc, item: Edge { label: e.label, target: psr_replace(root: e.target, target: target, with: with), declaration: e.declaration })
       }),
       occurrence_id: root.occurrence_id
     }
