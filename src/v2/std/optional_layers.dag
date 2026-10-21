@@ -80,7 +80,7 @@ fn wrap_type_node_occupancy(base: Node, depth: Nat) -> Node {
       Node {
         kind: TypeNode { connective: Instantiation },
         children: [
-          Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic) },
+          Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
           Edge { label: Positional, target: wrap_type_node_occupancy(base: base, depth: rest), declaration: NotADeclaration }
         ],
         occurrence_id: OccurrenceSynthetic

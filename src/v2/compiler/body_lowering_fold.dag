@@ -2883,7 +2883,7 @@ fn body_lower_type_wrap_occupancy(base: Node, question_capture: Node, source: No
               value: close_lowered_image(root: node_with_occurrence_id(
                 kind: TypeNode { connective: Instantiation },
                 children: [
-                  Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: source.occurrence_id) },
+                  Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: source.occurrence_id), declaration: NotADeclaration },
                   Edge { label: Positional, target: base, declaration: NotADeclaration }
                 ],
                 occurrence_id: source.occurrence_id

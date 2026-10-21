@@ -90,7 +90,7 @@ fn ol_malformed_occupancy() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic) }
+      Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
