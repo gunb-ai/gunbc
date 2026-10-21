@@ -1860,6 +1860,7 @@ fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
           }
         Absent => body_lower_operand_fold_children_read(node: node)
       }
+      }
     Absent =>
           match node_atom_identity_optional(node: node) {
             Present { value: _ } => body_lower_operand_ref_read_of(found: body_lower_atom_node_lowered_optional(stripped: node))
