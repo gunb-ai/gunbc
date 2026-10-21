@@ -744,7 +744,8 @@ fn body_term_seal(node: Node, shape: LoweredShape) -> Node
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_sealed_outcome"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_sealed_lowering"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_identity_absent"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted_non_leaf")
   ]
 {
   if body_lower_has_grammar_projection_edge(node: node) {
@@ -768,9 +769,11 @@ fn body_term_sealed_outcome(o: Outcome<Node>, shape: LoweredShape) -> Outcome<No
   admit_callers: [
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_by_identity"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_dispatch"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_dispatch_non_leaf"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fold_raw"),
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_function_value_body"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_reduce_emitted_non_leaf")
   ]
 {
   match o {
@@ -782,7 +785,8 @@ fn body_term_sealed_outcome(o: Outcome<Node>, shape: LoweredShape) -> Outcome<No
 fn body_term_sealed_lowering(o: Outcome<BodyLowering>, shape: LoweredShape) -> Outcome<BodyLowering>
   admit_callers: [
     decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_forward_row_apply"),
-    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted")
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted"),
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_production_emitted_non_leaf")
   ]
 {
   match o {
