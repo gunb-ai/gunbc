@@ -32,9 +32,8 @@ import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
 // drive the route's own functions (collect_module_reference_sites, then acquisition_sugar_member_texts) over
 // a subject that imports only Absent/Present, never Optional, so the path can reach the collected sites only
 // through the route's reading of the sugar. Flipping `?` flips the verdict.
-// RETIREMENT DIRECTION: the Occupancy wrapper is to dissolve into the declaration. This claim pins the
-// declaration as what the sugar denotes, which is the direction that retirement walks; it adds no field to
-// the wrapper and no new consumer of it.
+// The Occupancy wrapper is retired: `T?` lowers to the std.optional Instantiation. This claim pins the
+// declaration as what the sugar denotes.
 
 data odd_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_declaration_identity_artifact, file_path: "src/v2/pilot/odd_pilot.dag" }
 data odd_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^optional_declaration_identity_std_artifact, file_path: "src/v2/pilot/odd_std_pilot.dag" }
@@ -118,7 +117,7 @@ test fn odi_a_local_homonym_is_not_reached_through_the_identity() -> Bool {
 // THE ROUTE'S OWN DEMAND, not a parallel spelling. The subject's only reference to the three segments is
 // the sugar: it imports Absent and Present, never Optional. So `std.optional.Optional` can reach the
 // collected reference sites only through the route's own reading of the sugar — an authored `T?` param
-// reaches the reference collector's Occupancy arm, and module acquisition's sugar-member demand turns
+// lowers to a marked generated reference the reference collector reads as a site, and module acquisition's sugar-member demand turns
 // that into the member the source root OWES.
 // THE DISCRIMINATING INPUT IS odi_the_route_owes_nothing_without_the_sugar below: same subject, `left: T`
 // instead of `left: T?`, and the demand must come back empty. A row that could not go red would not be a
@@ -147,8 +146,8 @@ test fn odi_the_route_owes_std_optional_through_the_identity() -> Bool {
   }
 }
 
-// THE SAME SUBJECT WITHOUT THE SUGAR OWES NOTHING: drop the `?` and the collector never reaches the
-// Occupancy arm, so acquisition demands no sugar member. This is the input that makes the row above red
+// THE SAME SUBJECT WITHOUT THE SUGAR OWES NOTHING: drop the `?` and the collector carries no
+// marked optional reference, so acquisition demands no sugar member. This is the input that makes the row above red
 // when the link is absent, rather than a tautology about the identity's own spelling.
 test fn odi_the_route_owes_nothing_without_the_sugar() -> Bool {
   length(xs: odi_demanded_sugar_members(sugar_type: "T")) == 0

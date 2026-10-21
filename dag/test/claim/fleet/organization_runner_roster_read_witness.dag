@@ -204,6 +204,18 @@ test fn a_two_page_listing_that_closes_is_observed() -> Bool {
   }
 }
 
+// PAGES THAT DISAGREE ON total_count DID NOT OBSERVE ONE POPULATION, even when the distinct ids meet the
+// first page's total: the roster is Partial, never Observed.
+test fn pages_disagreeing_on_total_count_are_partial_not_observed() -> Bool {
+  match walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, response: answered(stdout: ok(link: next_link, total: 2, runners: [runner_one_json])) },
+    ScriptedPage { target: page_two_url, response: answered(stdout: ok(link: "", total: 3, runners: [runner_two_json])) },
+  ]).evidence {
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => true
+    _ => false
+  }
+}
+
 // OR-1 AT THE WALK: another organization's page cannot complete this roster, although its rows would
 // make totals and distinct ids agree.
 test fn a_continuation_into_another_organization_contributes_no_members() -> Bool {

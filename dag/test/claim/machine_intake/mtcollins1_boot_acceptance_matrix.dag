@@ -7,7 +7,7 @@ import std.algebra { list_snoc_item }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
-import v2.std.operation_argv { InputText, InputTextList }
+import std.operation_argv { InputText, InputTextList }
 import v2.std.operation_realization { DispatchRecord, virtual_clock_origin }
 import v2.std.witness_evaluation {
   WitnessEvaluation, WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,

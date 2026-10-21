@@ -16,9 +16,6 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{ResolvedFormals, ResolvedFuncSig};
-use crate::v1_compiler_infer_types::TextJudgment::TextNotAsked;
-use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes;
-pub use crate::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
@@ -1043,26 +1040,14 @@ pub fn gi_supplied_node_reading_lines(
             Rc::new(vec!["T".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            Rc::new(TextJudgment::TextNotAsked {
-                reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
-            }),
-            "v1.tests.claim.generic_identity_census".to_string(),
-        )
-        .subst
-        .clone();
+        );
         let bound_by_name_alone = crate::v1_compiler_infer::unify_generics(
             renamed_xs.substitution_basis.clone(),
             list_of_int.clone(),
             Rc::new(vec!["M".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            Rc::new(TextJudgment::TextNotAsked {
-                reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
-            }),
-            "v1.tests.claim.generic_identity_census".to_string(),
-        )
-        .subst
-        .clone();
+        );
         let renamed_child_key = match gi_first_child(renamed_xs.substitution_basis.clone()) {
             Some(c) => gi_declaration_label(c.declaration.clone()),
             std::option::Option::None => "no child".to_string(),
@@ -1483,14 +1468,36 @@ pub fn gi_sig_with_params(
     sig: Rc<ResolvedFuncSig>,
     params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ResolvedFuncSig> {
-    Rc::new(ResolvedFuncSig {
-        name: sig.name.clone(),
-        params: params.clone(),
-        resolved_formals: sig.resolved_formals.clone(),
-        inferred: sig.inferred.clone(),
-        output_provenance: sig.output_provenance.clone(),
-        variant_provenance: sig.variant_provenance.clone(),
-    })
+    {
+        let __rb_0_0 = sig.name.clone();
+        let __rb_1_0 = params.clone();
+        let __rb_2_0 = sig.resolved_formals.clone();
+        let __rb_3_0 = sig.inferred.clone();
+        let __rb_4_0 = sig.output_provenance.clone();
+        let __rb_5_0 = sig.variant_provenance.clone();
+        let mut __rb_h = sig;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.name = __rb_0_0;
+                __rb_r.params = __rb_1_0;
+                __rb_r.resolved_formals = __rb_2_0;
+                __rb_r.inferred = __rb_3_0;
+                __rb_r.output_provenance = __rb_4_0;
+                __rb_r.variant_provenance = __rb_5_0;
+            }
+            None => {
+                __rb_h = Rc::new(ResolvedFuncSig {
+                    name: __rb_0_0,
+                    params: __rb_1_0,
+                    resolved_formals: __rb_2_0,
+                    inferred: __rb_3_0,
+                    output_provenance: __rb_4_0,
+                    variant_provenance: __rb_5_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn gi_foreign_label_under_owner(

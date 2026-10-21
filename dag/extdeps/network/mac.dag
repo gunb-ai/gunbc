@@ -5,6 +5,7 @@ import std.integer { UInt8, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.numeric.base16 { byte_hex_lower, base16_decode_lower }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -159,19 +160,72 @@ fn mac_address_transmission(addr: Eui48Address) -> MacAddressTransmission {
   }
 }
 
-// A PERMANENT INTERFACE IDENTITY IS UNICAST AND UNIVERSALLY ADMINISTERED. This is the predicate a
-// consumer keying an interface actually wants, stated once here rather than re-derived from the two
-// flags at every call site -- a locally administered address was chosen by software and can be
-// changed by software, and a group address names no single interface at all.
+// THE NULL ADDRESS IS SIX ZERO OCTETS, and it is not an interface's address at any level of the flags.
+// WHAT THE STANDARD ACTUALLY SAYS, stated exactly because the inference matters: the cited IEEE EUI
+// tutorial says an all-zero EUI-48 MUST NOT be used as an identifier, and separately recommends the
+// all-ones address as the null default where one is needed. So the standard licenses one claim -- six
+// zero octets is never a valid identity -- and NOT the stronger one it is tempting to draw, that six
+// zero octets PROVES the reader had no address. A stack that failed to read a NIC, a probe that opened
+// the wrong file, and a device that genuinely has no MAC can all hand over 00:00:00:00:00:00, and this
+// fn cannot tell them apart; it says "this cannot name anything", not "that unit has no NIC". A caller
+// that wants the difference must say WHICH by reporting the absence in its own words -- which is why
+// `gunbc.fleet.runtime_identity_match` turns this into a located gap naming the side and the count,
+// rather than concluding anything about the machine.
+//
+// WHY IT NEEDS ITS OWN FN AT ALL: the two flag bits say nothing about it. Octet 1 of zero is
+// 0b00000000, which is universally administered AND individual, so a consumer filtering on the flags
+// alone accepts the address that must never identify anything as the strongest kind of identity. Two
+// readers that both failed to read a NIC then hand each other 00:00:00:00:00:00 and a flag-keyed rule
+// binds the two sightings as the same machine.
+fn mac_address_is_null(addr: Eui48Address) -> Bool {
+  addr.octet1 == 0 && addr.octet2 == 0 && addr.octet3 == 0
+    && addr.octet4 == 0 && addr.octet5 == 0 && addr.octet6 == 0
+}
+
+// A PERMANENT INTERFACE IDENTITY IS NOT NULL, UNICAST AND UNIVERSALLY ADMINISTERED. This is the
+// predicate a consumer that keys on those octets actually wants, stated once here rather than re-derived
+// from the flags at every call site -- a locally administered address was chosen by software and can be
+// changed by software, a group address names no single interface at all, and the null address must never
+// identify anything at all (see `mac_address_is_null`, whose null case is precisely the both-sides-quiet
+// pair a naive flag filter binds into a false agreement). A consumer that wants only the flag axes
+// reads `mac_address_scope` and `mac_address_transmission` directly; this is the conjunction whose three
+// exclusions travel together and cannot be split by a caller.
+//
+// WHAT IT DOES NOT PROVE, stated because the name is tempting: `true` here establishes the NECESSARY address
+// properties -- not-null, unicast, universally administered -- and nothing more. It does not establish that
+// the address currently identifies a particular machine, that it was read from a source that reports
+// burned-in state, or that two sightings carrying it are the same machine; those need the provenance the
+// reporter supplies and the fold's own verdict. A caller that reads this `true` as "same machine" has
+// imported a conclusion this fn never drew, which is why its consumers take provenance separately.
 fn mac_is_permanent_interface_identity(addr: Eui48Address) -> Bool {
-  match mac_address_scope(addr: addr) {
-    UniversallyAdministered =>
-      match mac_address_transmission(addr: addr) {
-        IndividualAddress => true
-        GroupAddress => false
-      }
-    LocallyAdministered => false
+  if mac_address_is_null(addr: addr) {
+    false
+  } else {
+    match mac_address_scope(addr: addr) {
+      UniversallyAdministered =>
+        match mac_address_transmission(addr: addr) {
+          IndividualAddress => true
+          GroupAddress => false
+        }
+      LocallyAdministered => false
+    }
   }
+}
+
+// TWO ADDRESSES ARE THE SAME ADDRESS WHEN ALL SIX OCTETS AGREE, and that is a fact about the address
+// type, not about any consumer that compares sightings of one. It lives beside the flag axes and the null
+// test for the same reason those do: a consumer that re-derives it at its own call site can derive it
+// differently. Octets are compared rather than the record rendered to text and the strings compared,
+// because the rendering is a projection -- two addresses that differ can render to strings that differ only
+// in a separator a future renderer changes, and a comparison whose truth depends on a display spelling is a
+// comparison that can silently widen.
+fn mac_addresses_are_equal(left: Eui48Address, right: Eui48Address) -> Bool {
+  left.octet1 == right.octet1
+    && left.octet2 == right.octet2
+    && left.octet3 == right.octet3
+    && left.octet4 == right.octet4
+    && left.octet5 == right.octet5
+    && left.octet6 == right.octet6
 }
 
 type MacOctetResult =
@@ -186,7 +240,7 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
   match parts |> get(position) {
     Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
     Present { value: raw } => {
-      let points = chars(s: raw)
+      let points = chars(text: raw)
       if list_length(items: points) != 2 {
         MacOctetErr {
           error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },
