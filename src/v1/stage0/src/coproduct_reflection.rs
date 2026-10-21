@@ -757,8 +757,8 @@ fn concept_decl_node(
 // elaborate a where-predicate (v2 body_lower_kept_where_clause resolves calls), so the captured
 // predicates carry the standing edge `reflected_predicate_standing` -> `source_spelled_unelaborated`
 // beside each predicate's source spelling; a reader that interprets predicates refuses on that mark
-// (v2.std.type_binder where_clause_is_unelaborated). Retired when predicates are elaborated on the v2
-// reflection route.
+// (v2.std.type_binder where_clause_standing -> SourceSpelledWhere). Dissolves when the v2 reflection
+// route elaborates where-predicates through body_lowering_fold: delete this edge and SourceSpelledWhere.
 fn marshal_non_connective_type_item(
     ctx: &InterpContext,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,

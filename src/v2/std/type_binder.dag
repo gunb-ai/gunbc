@@ -313,23 +313,31 @@ fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration>
   }
 }
 
-// THE UNELABORATED STANDING OF A REFLECTED PREDICATE SET. The host reflection route
+// THE STANDING OF A REFINEMENT'S WHERE CLAUSE, AS A CLOSED SUM. The host reflection route
 // (coproduct_reflection marshal_non_connective_type_item) cannot elaborate a where-predicate, so it
 // reflects the captured predicates as their source spellings beside the edge
-// reflected_predicate_standing -> source_spelled_unelaborated. An elaborated set
-// (body_lowering_fold body_lower_kept_where_clause) has no such edge. A reader that INTERPRETS a
-// predicate asks this and refuses on true; it never treats the set as satisfied or as empty.
-// Retired when predicates are elaborated on the v2 reflection route.
-fn where_clause_is_unelaborated(clause: Node) -> Bool {
+// reflected_predicate_standing -> source_spelled_unelaborated; an elaborated set
+// (body_lowering_fold body_lower_kept_where_clause) has no such edge. A clause missing the production
+// or captured-projection structure either route builds is MalformedWhere, never read as elaborated.
+// Every reader that interprets a predicate takes the clause out of this sum (refinement_predicate_clause),
+// so it cannot reach the spellings without matching on their standing.
+// Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
+// SourceSpelledWhere, the reflected_predicate_standing edge in coproduct_reflection, and the refusal arm.
+type WhereStanding
+  = ElaboratedWhere { clause: Node }
+  | SourceSpelledWhere { clause: Node }
+  | MalformedWhere { missing: Symbol }
+
+fn where_clause_standing(clause: Node) -> WhereStanding {
   match find_labeled_child(root: clause, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => MalformedWhere { missing: ^where_clause_production }
     Accepted { value: production, diagnostics: _ } =>
       match find_named_child(root: production, name: ^grammar_production_captured_node_projection) {
-        Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => MalformedWhere { missing: ^captured_predicate_projection }
         Accepted { value: captured, diagnostics: _ } =>
           match find_named_child(root: captured, name: ^reflected_predicate_standing) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => ElaboratedWhere { clause: clause }
+            Accepted { value: _, diagnostics: _ } => SourceSpelledWhere { clause: clause }
           }
       }
   }

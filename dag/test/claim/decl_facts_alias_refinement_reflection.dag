@@ -5,7 +5,7 @@ import std.optional { Optional, Present, Absent }
 import v2.std.decl_index { decl_facts_at, DeclFact, TypeItem }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.type_binder { type_decl_view, TypeAlias, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl, refinement_declaration_of_node, where_clause_is_unelaborated }
+import v2.std.type_binder { type_decl_view, TypeAlias, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl, refinement_declaration_of_node, where_clause_standing, ElaboratedWhere, SourceSpelledWhere, MalformedWhere }
 import v2.std.node_reflection { refinement_predicate_clause }
 
 // THE INHABITANCE CLAIM for the host reflection of an alias and a refinement: decl_facts_at yields a
@@ -47,7 +47,12 @@ fn refinement_carrier(n: Node) -> String {
 
 fn refinement_unelaborated(n: Node) -> Bool {
   match refinement_declaration_of_node(decl: n) {
-    Present { value: r } => where_clause_is_unelaborated(clause: r.where_clause)
+    Present { value: r } =>
+      match where_clause_standing(clause: r.where_clause) {
+        SourceSpelledWhere { clause: _ } => true
+        ElaboratedWhere { clause: _ } => false
+        MalformedWhere { missing: _ } => false
+      }
     Absent => false
   }
 }
@@ -85,4 +90,30 @@ test fn a_predicate_reader_refuses_the_unelaborated_predicate() -> Bool {
 test fn a_predicate_reader_refuses_a_declaration_that_is_no_refinement() -> Bool {
   let hits = fact_of(qn: "std.types.Timestamp")
   count(hits) == 1 && all(hits, f => reason_of(o: refinement_predicate_clause(type_name: symbol_intern_lexeme(lexeme: "Timestamp"), decl: f.node)) == "type_declaration_is_not_a_refinement")
+}
+
+// RED: a clause lacking the production structure is MalformedWhere and the predicate reader refuses it
+// with its own reason; it is not read as elaborated (a bare carrier atom stands for the malformed clause).
+fn standing_label(c: Node) -> String {
+  match where_clause_standing(clause: c) {
+    ElaboratedWhere { clause: _ } => "elaborated"
+    SourceSpelledWhere { clause: _ } => "source_spelled"
+    MalformedWhere { missing: m } => symbol_lexeme(sym: m)
+  }
+}
+
+test fn a_clause_without_production_structure_is_malformed_not_elaborated() -> Bool {
+  let hits = fact_of(qn: "std.types.NonEmptyStr")
+  count(hits) == 1 && all(hits, f => match refinement_declaration_of_node(decl: f.node) {
+    Present { value: r } => standing_label(c: r.carrier) == "where_clause_production"
+    Absent => false
+  })
+}
+
+test fn the_reflected_where_clause_is_source_spelled() -> Bool {
+  let hits = fact_of(qn: "std.types.NonEmptyStr")
+  count(hits) == 1 && all(hits, f => match refinement_declaration_of_node(decl: f.node) {
+    Present { value: r } => standing_label(c: r.where_clause) == "source_spelled"
+    Absent => false
+  })
 }
