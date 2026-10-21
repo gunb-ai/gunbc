@@ -2149,9 +2149,16 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         None
     };
     let (base, base_tree) = if !use_base {
+        eprintln!("namespace-wave-binding-diff: phase=base-census skipped (reader decision)");
         ((String::new(), None), String::new())
     } else {
-        match run_base_ambient_name_census(
+        // MEASUREMENT-ONLY (throwaway, probe run): the base census is a silent block of tens of
+        // minutes; these markers name the phase boundary so clusters can be bracketed against the
+        // census window. They change no decision. Never lands.
+        eprintln!(
+            "namespace-wave-binding-diff: phase=base-census start base_ref={base_ref} head={head} census={base_census}"
+        );
+        let outcome = match run_base_ambient_name_census(
             &scratch,
             &base_ref,
             &head,
@@ -2160,16 +2167,29 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         ) {
             Ok(base) => base,
             Err(cause) => return unreached(format!("base: {cause}")),
-        }
+        };
+        eprintln!(
+            "namespace-wave-binding-diff: phase=base-census done bytes={}",
+            outcome.0 .0.len()
+        );
+        outcome
     };
     // The base tree stays until the standing has read the texts the edit proof is computed from.
     let _base_tree = BaseTreeGuard(base_tree.clone());
     let head_run = if use_head {
-        match run_head_ambient_name_census(&head) {
+        // MEASUREMENT-ONLY (throwaway, probe run): never lands.
+        eprintln!("namespace-wave-binding-diff: phase=head-census start head={head}");
+        let run = match run_head_ambient_name_census(&head) {
             Ok(run) => run,
             Err(cause) => return unreached(format!("head: {cause}")),
-        }
+        };
+        eprintln!(
+            "namespace-wave-binding-diff: phase=head-census done bytes={}",
+            run.0.len()
+        );
+        run
     } else {
+        eprintln!("namespace-wave-binding-diff: phase=head-census skipped (reader decision)");
         (String::new(), None)
     };
     let runs = match cli_run::run_census_infer_root_sets(
