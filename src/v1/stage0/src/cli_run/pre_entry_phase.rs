@@ -214,13 +214,11 @@ fn drain_rows() -> Vec<PhaseRow> {
 // `boundary=main_entry_to_pre_exit_sampling`): from `record_invocation_start`, main's first act,
 // to the sample taken at the print site on the return path. Within it sit argv decode, the
 // transactions, output materialization, diagnostic rendering, and whatever drops run before the
-// print. UNOBSERVED -- not in any row, NOT counted in `process_unattributed`: (a) code before
-// `main` (the runtime's own startup), which happens before the start instant, and (b) exit-time
-// cleanup, which happens after the sample (and whose Rust destructors `std::process::exit` /
-// `libc::_exit` do not run at all). Time in (a) or (b) is invisible to this instrument, not
-// attributed somewhere: a reader must not read `process_unattributed` as "everything outside the
-// transactions for the whole process", because it is only everything outside the transactions
-// BETWEEN the two sampling instants.
+// print. UNOBSERVED -- not in any row, NOT counted in `process_unattributed`: code before `main`
+// (the runtime's own startup, which happens before the start instant) and post-sample cleanup
+// (which happens after the sample). A reader must not read `process_unattributed` as "everything
+// outside the transactions for the whole process", because it is only everything outside the
+// transactions BETWEEN the two sampling instants.
 
 /// Process-lifetime receipts staged for the CLI return path. Process-global, not thread-local:
 /// the compile transaction and the printing site are the same thread in the CLI, but a host that
