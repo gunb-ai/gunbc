@@ -93,7 +93,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { positional_child_target_nodes, content_hash, NotADeclaration }
+import v2.std.node { positional_child_target_nodes, content_hash, NotADeclaration, edge_declared }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
@@ -3226,13 +3226,13 @@ fn body_lower_generic_param_named_optional(item: Node, name_node: Node, kind: Op
 fn body_lower_generic_param_edge_of(b: BodyLowerGenericBinder) -> Edge {
   let atom = b.binder
   match b.kind {
-    Absent => Edge { label: Authored { name: b.name }, target: atom, declaration: NotADeclaration }
+    Absent => edge_declared(name: b.name, target: atom, occurrence: atom.occurrence_id)
     Present { value: k } =>
-      Edge {
-        label: Authored { name: b.name },
+      edge_declared(
+        name: b.name,
         target: node_with_occurrence_id(kind: atom.kind, children: [core_edge(marker: BinderTypeEdge, target: k)], occurrence_id: atom.occurrence_id),
-        declaration: NotADeclaration
-      }
+        occurrence: atom.occurrence_id
+      )
   }
 }
 

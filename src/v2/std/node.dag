@@ -361,6 +361,11 @@ type Edge {
   declaration: EdgeDeclaration
 }
 
+// THE ONE CONSTRUCTOR OF A DECLARATION EDGE: an Authored label declared by the token at `occurrence`.
+fn edge_declared(name: Symbol, target: Node, occurrence: NodeOccurrenceIdentity) -> Edge {
+  Edge { label: Authored { name: name }, target: target, declaration: DeclaresAt { occurrence: occurrence } }
+}
+
 type EdgeShape {
   label: EdgeLabel
   target: NodeShape

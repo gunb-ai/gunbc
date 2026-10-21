@@ -41,7 +41,7 @@ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_id
 import v2.compiler.normalize { normalize_scoped }
 import std.occurrence_identity { scoped_occurrence_allocator }
 import v2.std.language_model { LanguageModel }
-import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
+import v2.std.node { Atom, Authored, DeclaresAt, NotADeclaration, NodeOccurrenceIdentity, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
@@ -281,7 +281,11 @@ fn conserved_identity_of(node: Node) -> Optional<Symbol> {
 // member carried the source's minted id, so conservation's population is unchanged by the cut. A
 // pending member (normalization has not yet allocated it) answers for its cause too.
 fn authored_occurrence_of(node: Node) -> Optional<OccurrenceId> {
-  match node.occurrence_id {
+  authored_occurrence_of_identity(identity: node.occurrence_id)
+}
+
+fn authored_occurrence_of_identity(identity: NodeOccurrenceIdentity) -> Optional<OccurrenceId> {
+  match identity {
     OccurrenceMinted { id: id } => Present { value: id }
     OccurrenceProjected { id: _, caused_by: caused_by } => Present { value: caused_by.occurrence }
     OccurrencePending { caused_by: caused_by } => Present { value: caused_by }
@@ -516,7 +520,19 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
       }
   }
   fold(node.children, init: here, f: fn(inner, edge) {
-    occurrence_identity_index(acc: inner, node: edge.target)
+    let declared = match edge.declaration {
+      NotADeclaration => inner
+      DeclaresAt { occurrence: occurrence } =>
+        match authored_occurrence_of_identity(identity: occurrence) {
+          Absent => inner
+          Present { value: id } =>
+            match edge.label {
+              Authored { name: name } => map_insert(m: inner, key: id, value: name)
+              _ => inner
+            }
+        }
+    }
+    occurrence_identity_index(acc: declared, node: edge.target)
   })
 }
 
