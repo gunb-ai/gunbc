@@ -27,8 +27,9 @@ import gunbc.live_deploy.slice_bounds {
 import gunbc.live_deploy.emit {
   attempt_unit_drain_steps_for_instance, retired_attempt_unit_sudo_route_paths, attempt_unit_drain_argv_refused_poison,
   live_deploy_attempt_unit_drain_service_unit_file, AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_path_unit_file,
-  apply_intent_from_effects,
+  apply_intent_from_effects, attempt_unit_sudo_route_retire_dissolution,
 }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import gunbc.live_deploy.spec {
   deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path,
   deployment_attempt_unit_drain_service_unit_name,
@@ -272,6 +273,11 @@ test fn the_lab_apply_deletes_the_retired_sudoers_receipt_and_lock() -> Bool {
   let own = srv1_lab_dashboard_instance()
   all(retired_attempt_unit_sudo_route_paths(instance: own), p => string_contains(s: text, pattern: p))
     && string_contains(s: text, pattern: join(["/etc/sudoers.d/gunbc-attempt-system-unit-", own.instance_id as String], ""))
+    && string_contains(s: text, pattern: gunbc.live_deploy.operations.sudoers_after_removal_check_command())
+    && (match attempt_unit_sudo_route_retire_dissolution {
+      UnboundDissolution { description } => string_contains(s: description as String, pattern: "passed the sudoers check")
+      BoundDissolution { trigger: _ } => false
+    })
 }
 
 test fn the_lab_full_install_apply_installs_the_drain_path_and_service() -> Bool {

@@ -55,7 +55,9 @@ import gunbc.roadmap.attempt_system_unit_launch {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
-  AttemptProcessExitedWith,
+  AttemptProcessExitedWith, AttemptProcessSignaled,
+  attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+  AttemptWorkerRole,
 }
 import gunbc.host.host_layout {
   attempt_exit_inbox_dir,
@@ -269,16 +271,14 @@ fn sudo_n_touch_cli(path: String) -> ProcessExit {
 }
 
 fn launcher_write_refused(instance: HostDashboardInstance, unit_key: String, path: String) -> Bool {
-  match launcher_sandbox_touch(instance: instance, unit_key: unit_key, path: path) {
-    SandboxTouchUnrunnable => false
-    SandboxTouchRan { exit_code } => exit_code != 0
-  }
+  let existed_before = wet_path_exists(path: path)
+  wet_write_refused(touch: launcher_sandbox_touch(instance: instance, unit_key: unit_key, path: path), existed_before: existed_before, path: path)
 }
 
 fn launcher_wrote(instance: HostDashboardInstance, unit_key: String, path: String) -> Bool {
   match launcher_sandbox_touch(instance: instance, unit_key: unit_key, path: path) {
     SandboxTouchUnrunnable => false
-    SandboxTouchRan { exit_code } => exit_code == 0
+    SandboxTouchRan { exit_code } => exit_code == 0 && wet_path_exists(path: path)
   }
 }
 
@@ -346,8 +346,10 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
           AttemptSystemUnitEnqueueRefused { detail: _ } => SandboxTouchUnrunnable
           AttemptSystemUnitEnqueueOccupied { entry: _ } => SandboxTouchUnrunnable
           AttemptSystemUnitEnqueued { entry: entry } =>
-            SandboxTouchRan {
-              exit_code: if wet_drain_answer_arrives(instance_root: instance.instance_root as String, entry: entry) { 0 } else { 1 },
+            if wet_drain_started(instance_root: instance.instance_root as String, entry: entry) {
+              wet_inner_exit_status(instance: instance, unit_key: unit_key)
+            } else {
+              SandboxTouchUnrunnable
             }
         }
       }
@@ -396,13 +398,11 @@ test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
 test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
   let inst = srv1_lab_dashboard_instance()
   prepare_probe_attempt(instance: inst)
-    && match launcher_sudo_n_touch(
-      instance: inst,
+    && wet_write_refused(
+      touch: launcher_sudo_n_touch(instance: inst, path: join([path_parent_directory(path: inst.serve_binary as String), "/x"], "")),
+      existed_before: wet_path_exists(path: join([path_parent_directory(path: inst.serve_binary as String), "/x"], "")),
       path: join([path_parent_directory(path: inst.serve_binary as String), "/x"], ""),
-    ) {
-      SandboxTouchUnrunnable => false
-      SandboxTouchRan { exit_code } => exit_code != 0
-    }
+    )
 }
 
 test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed() -> Bool {
@@ -529,6 +529,75 @@ fn wet_drain_answer_poll(instance_root: String, entry: String, remaining: Int) -
         let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
         wet_drain_answer_poll(instance_root: instance_root, entry: entry, remaining: remaining - 1)
       }
+  }
+}
+
+// THE INNER RESULT IS READ FROM THE ATTEMPT'S OWN EXIT RECORD, never inferred from the drain. The drain
+// answers Started when the unit has been started and does not wait for it, so the answer says only that
+// the unit ran, not whether the command inside it succeeded; the ExecStopPost record carries that
+// (record.end). A claim that took "an answer arrived" for the inner command's result would score a unit
+// that never executed as a refused write (DESIGN 4b: dissolving the sudo route may delete its
+// machinery, never the discriminating RED and its positive control). Missing, unreadable or Refused
+// answers, a record that never lands, and a signalled end are all SandboxTouchUnrunnable: the claim is
+// false, never counted as refused. attempt_exit_record_observe reads inbox, queued, running, done and
+// refused, so the belt-exit drain moving the record between stages cannot hide it.
+fn wet_drain_started(instance_root: String, entry: String) -> Bool {
+  wet_drain_started_poll(instance_root: instance_root, entry: entry, remaining: 240)
+}
+
+fn wet_drain_started_poll(instance_root: String, entry: String, remaining: Int) -> Bool {
+  match attempt_system_unit_read_answer(instance_root: instance_root, entry: entry) {
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => true
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => false
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
+    AttemptSystemUnitAnswerMissing =>
+      if remaining <= 0 {
+        false
+      } else {
+        let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
+        wet_drain_started_poll(instance_root: instance_root, entry: entry, remaining: remaining - 1)
+      }
+  }
+}
+
+fn wet_inner_exit_status(instance: HostDashboardInstance, unit_key: String) -> SandboxTouch {
+  wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, remaining: 240)
+}
+
+fn wet_inner_exit_status_poll(instance: HostDashboardInstance, unit_key: String, remaining: Int) -> SandboxTouch {
+  match attempt_exit_record_observe(
+    instance_root: instance.instance_root as String,
+    node_id: wet_probe_node as String,
+    attempt_key: launcher_probe_key(unit_key: unit_key),
+    role: AttemptWorkerRole,
+  ) {
+    AttemptExitRecordFound { record: record } =>
+      match record.end {
+        AttemptProcessExitedWith { status } => SandboxTouchRan { exit_code: status }
+        AttemptProcessSignaled { signal: _ } => SandboxTouchUnrunnable
+      }
+    AttemptExitRecordUnreadable { reason: _ } => SandboxTouchUnrunnable
+    AttemptExitRecordNone =>
+      if remaining <= 0 {
+        SandboxTouchUnrunnable
+      } else {
+        let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
+        wet_inner_exit_status_poll(instance: instance, unit_key: unit_key, remaining: remaining - 1)
+      }
+  }
+}
+
+fn wet_path_exists(path: String) -> Bool {
+  shell.Exec.RunArgv(program: "test", arguments: ["-e", path]).exit_code == 0
+}
+
+// A refused write needs the nonzero inner status AND the target unchanged: a probe path that did not
+// exist before must still not exist, so a status that disagrees with the filesystem is not a pass.
+// An allowed write needs status 0 AND the path present afterwards.
+fn wet_write_refused(touch: SandboxTouch, existed_before: Bool, path: String) -> Bool {
+  match touch {
+    SandboxTouchUnrunnable => false
+    SandboxTouchRan { exit_code } => exit_code != 0 && (existed_before || !wet_path_exists(path: path))
   }
 }
 
