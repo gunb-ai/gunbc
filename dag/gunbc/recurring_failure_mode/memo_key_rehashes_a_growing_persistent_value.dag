@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.memo_key_rehashes_a_growing_persistent_value
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data memo_key_rehashes_a_growing_persistent_value: RecurringFailureMode = RecurringFailureMode {
   identity: "memo_key_rehashes_a_growing_persistent_value" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a memoized pure fold carries a growing persistent Map, but the memo demand key recursively hashes the contents of each fresh root. Sharing inside the value does not share its content hash across roots. A constant-cost map update is surrounded by a growing key-construction cost, and successive keys retain successive argument values. HARM: an otherwise incremental census becomes quadratic in identifier count before it can report its first corpus result.",
     "INSTANCE: v1_interpreter.eval_pure_named_call constructs eval_recompute_key before lookup or admission. Composite argument identity is content-hashed with allocation-local hash reuse; a new persistent Map root is a new allocation. v2.workflow.cause_assertion_census.cause_identifier_counts exposes this cost while consuming the parser's already-acquired Token stream. INSTRUMENT: v2.workflow.cause_identifier_cost_probe.probe, invoked with gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/cause_identifier_cost_probe.dag --function probe --arg report=/tmp/cause-identifier-cost. Each begin/end output pair brackets identifier counting after fixture construction; its file modification times expose the cost curve and its payload verifies the resulting key cardinality. Timings are derived from this instrument, not transcribed here.",
