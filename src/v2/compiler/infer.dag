@@ -3293,7 +3293,7 @@ fn infer_arm_declaring_type(rows: List<InferCoproductArmRow>, entries: Map<Node,
         match infer_arm_body_type_read(row: row, entries: entries, instances: instances, resolved: resolved) {
           Absent => Absent
           Present { value: t } =>
-            match infer_produced_open_type_params(produced: t, declarations: resolved.resolved_declarations) {
+            match infer_produced_open_type_params(produced: t) {
               Empty => Present { value: t }
               Cons { head: _, tail: _ } => Absent
             }
@@ -7204,7 +7204,7 @@ fn infer_settled_arm_is_underived(settled: InferGatherFoldAcc, resolved: Resolve
       Present { value: facts } =>
         match inferred_facts_resolved_type(facts: facts) {
           Holds { value: t } =>
-            match infer_produced_open_type_params(produced: t, declarations: resolved.resolved_declarations) {
+            match infer_produced_open_type_params(produced: t) {
               Empty => false
               Cons { head: _, tail: _ } => true
             }
