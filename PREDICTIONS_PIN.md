@@ -959,3 +959,8 @@ Escape-hatch env on. If H3 refuses, STOP (no H4-H6), report.
 - H2-3 regen-round-cost rc=0 installs>=0, NO 'refused' (trace.dag is gone -> Product(SpanMapping) cannot recur; if it DOES recur, report verbatim).
 - H2-4 heal_wet + seed_regen rc=0; changed set hand-maintained-free.
 - H2-5 rebuild rc=0. H2-6 prebake claim file (cp from scratch prebake) claim-run: 3/3 PASS rc=0.
+
+### PRED-H2 RESULTS (dispatch jc34c678f, chain ABORTED at H23 as designed)
+H20 conflict set matched H1 exactly (no surprise). R2/R3/R4/R5 clean. R1 FAILED: my keep-'{' heuristic produced '[ { {' — the record-opening '{' BEFORE the hunk (04_infer.dag:7231) is common context; the HEAD-side '{' (7240) opened the sccache record which in main's shape is opened by that same common brace. H23 regen-round-cost: "module index refused: 1 unparseable .dag source(s)" = the designed abort (chain stopped, nothing claimed, no push).
+CORRECTED R1: DELETE the ENTIRE HEAD side (trace fields + '},' + '{'); keep only the common pre-hunk '{'. Verified by structure read: PR-2 = '[ { trace-record },{ sccache-record }]' (2 records, PR-2 edited trace's key text), main = '[ { sccache-record }]' (1 record, #14497 deleted trace row with its module). Taking main's retirement = drop 9 HEAD lines. PR-2's edit to that frontier row's key dies with the dead module — correct, nothing to preserve.
+Note for rebase pass: PR-2 modified the deleted trace frontier row -> the row's deletion must be TAKEN (main), the edit abandoned; the row guarded v1.compiler.trace which #14497 proved ZERO-importer dead.
