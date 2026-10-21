@@ -233,6 +233,87 @@ fn observed_identity(installation_id: Int, identity_repo: NonEmptyStr) -> Observ
   }
 }
 
+// THE IDENTITY READ, OWNER EXPOSED (round-6 M1s). `observed_identity` hardcodes owner "gunb-ai", which is
+// right for every test that asks "is this our installation" and wrong for the one question M1s asks: what
+// happens when BOTH reads are honestly about someone-else/gunbc/srv1-production and only the boundary is
+// ours? The twin is the same chain -- same wire fields, same claim-follows-parameter rule -- with the mint's
+// OWN owner parameter passed through, so the ownership side derives the foreign owner from the read itself
+// (observe_rule_ownership copies `observed.owner`), exactly as production would.
+fn observed_identity_for_owner(
+  owner: NonEmptyStr,
+  installation_id: Int,
+  identity_repo: NonEmptyStr
+) -> ObservedGateInstallation?
+  admit_callers: [
+  // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2): this forwards to a sealed mint, so the
+  // roster names every declaration in this module that consumes it and nothing else.
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ownership_with_enabled_for_owner"
+    ),
+  ]
+{
+  match observe_gate_installation(
+    owner: owner,
+    repo: identity_repo,
+    status: installation_readback_success_status,
+    wire: InstallationWireFields {
+      id: Present { value: installation_id },
+      app_id: Present { value: 1900000001 },
+      app_slug: Present { value: "gunbc-deployment-gate" },
+    },
+    // the claim follows the parameter (same rule as observed_identity): a claim pinned to one installation
+    // would make every OTHER installation refuse at the OBSERVATION, hiding the subject check under a
+    // refusal for an unrelated reason.
+    claim: GateInstallationClaim {
+      installation_id: GitHubAppInstallationId { value: installation_id },
+      app_id: GitHubAppId { value: 1900000001 },
+    },
+  ) {
+    InstallationObserved { observed: o } => Present { value: o }
+    InstallationObservationRefused { because: _ } => none
+  }
+}
+
+// THE OWNERSHIP, OWNER EXPOSED (round-6 M1s). The twin of ownership_with_enabled for the same reason: the
+// ownership read's owner is DERIVED from the identity read, so exposing the identity's owner is the honest
+// way to build "both reads are about the foreign account".
+fn ownership_with_enabled_for_owner(
+  owner: NonEmptyStr,
+  environment: NonEmptyStr,
+  installation_id: Int,
+  identity_repo: NonEmptyStr,
+  rule_id: Int
+) -> EnvironmentRuleOwnership
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
+    ),
+  ]
+{
+  match observed_identity_for_owner(
+    owner: owner,
+    installation_id: installation_id,
+    identity_repo: identity_repo,
+  ) {
+    Present { value: observed } =>
+      observe_rule_ownership(
+        rules: [
+          EnabledDeploymentProtectionRule {
+            id: rule_id,
+            node_id: "DPPR_1",
+            enabled: true,
+            app: RuleOwningApp { id: GitHubAppId { value: 1900000001 }, slug: "gunbc-deployment-gate" },
+          }
+        ],
+        environment_name: environment,
+        observed: observed,
+      )
+    none => NotOwnedByGateApp { because: ReadbackCarriedNoRules }
+  }
+}
+
 // THE OWNERSHIP, JOINED RATHER THAN WRITTEN. OwnedByGateApp carries a sealed ObservedRuleOwnership, so
 // there is no literal for it here either: the fold produces it from an enabled rule attributed to the
 // identity read above. A refusal here (no identity, no enabled rule, a foreign App) makes every receipt
@@ -1101,7 +1182,11 @@ fn protection_for(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "standing_at"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
+    ),
+]
 {
   observe_environment_protection(
     owner: owner,
@@ -1271,7 +1356,11 @@ fn clock_read(instant: Timestamp) -> Optional<ObservedInstant>
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "the_removal_act_names_its_subject_in_its_identity_and_in_its_route"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
+    ),
+]
 {
   read_observed_instant(reading: Present { value: instant as NonEmptyStr })
 }
@@ -2523,6 +2612,118 @@ test fn an_observation_stamped_in_the_future_is_not_fresh() -> Bool {
     ) {
       ReviewerRemovalBlocked { missing: _ } => true
       ReviewerRemovalReady { admitted: _ } => false
+    })
+}
+
+test fn a_standing_refuses_a_pair_witnessed_in_another_account() -> Bool {
+  // ROUND-6 M1s: the standing site's OWNER comparison had no witness of its own.
+  //
+  // WHY THE EXISTING TESTS DO NOT COVER IT: a_same_named_repository_in_another_account varies the owner on
+  // ONE side of the join (the pair then disagrees with ITSELF and the join refuses), and the completion side
+  // is varied there too. But the standing mint sits AFTER the join, comparing the joined pair against the
+  // REQUESTED BOUNDARY -- and no test ever built a pair that agrees internally while both halves sit in
+  // another account. That is the exact construction the manager's M1s mutation survives: drop the owner term
+  // at the standing site only, and all 106 claims stay green, because nothing ever asked the standing what
+  // it thinks of a consistent foreign pair.
+  //
+  // THE CONSTRUCTION, WHICH IS ALSO THE THREAT: the installation readback for `someone-else/gunbc` answers
+  // honestly (same App, same rule, enabled); the environment readback for `someone-else/gunbc/srv1-production`
+  // answers honestly (reviewer + main-only); the join ESTABLISHES -- the two reads agree with each other in
+  // all three fields. The boundary being weakened is `srv1_deployment_gate_boundary`, OURS. Only the
+  // standing's subject check stands between that pair and a CurrentRemovalBoundaryStanding for our boundary,
+  // which is the credential the act consumes. A standing is not "evidence a reviewer was required somewhere"
+  // -- it is a licence to weaken THIS boundary, so its subject comparison is the load-bearing one.
+  //
+  // THE CONTROL IS THE SAME CHAIN WITH ONE LETTER OF OWNER CHANGED: same installation id, same rule id,
+  // same environment, same clock read, same attempt -- gate_owner instead of someone-else -- and it must
+  // MINT. If someone later relaxes the standing site to "always refuse", this control reddens; if they drop
+  // the owner term, the mutation arm reddens. Both directions are pinned, on both reads at once.
+  (match join_protection_to_ownership(
+    protection: protection_for(
+      owner: foreign_owner,
+      repo: gate_repo,
+      environment: gate_env,
+      reviewer_present: true,
+      main_only: true,
+    ),
+    ownership: ownership_with_enabled_for_owner(
+      owner: foreign_owner,
+      environment: gate_env,
+      installation_id: canonical_installation_id,
+      identity_repo: gate_repo,
+      rule_id: canonical_rule_id,
+    ),
+  ) {
+    // THE PREMISE, ASSERTED NOT ASSUMED: the pair must join. If it refused, the standing would be refused
+    // for the WRONG reason (JoinWasRefused) and this test would pass on an accident -- the same failure
+    // mode the join-side tests guard against.
+    ProtectionJoinEstablished { protection: _, ownership: _ } => true
+    ProtectionJoinRefused { because: _ } => false
+  })
+    // THE MUTATION: that consistent foreign pair against OUR boundary. The standing must refuse, and the
+    // refusal must name the axis that actually differs: both owners differ while repo and environment are
+    // byte-identical on both sides. Matching the arm BY NAME (not wildcard) is the point -- under the M1s
+    // mutation the mint returns StandingRead, the arm below does not match, and the claim fails.
+    && (match observe_removal_boundary_standing(
+      joined: join_protection_to_ownership(
+        protection: protection_for(
+          owner: foreign_owner,
+          repo: gate_repo,
+          environment: gate_env,
+          reviewer_present: true,
+          main_only: true,
+        ),
+        ownership: ownership_with_enabled_for_owner(
+          owner: foreign_owner,
+          environment: gate_env,
+          installation_id: canonical_installation_id,
+          identity_repo: gate_repo,
+          rule_id: canonical_rule_id,
+        ),
+      ),
+      boundary: srv1_deployment_gate_boundary,
+      attempt: standing_attempt(),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      StandingRefused {
+        because: StandingIsAboutAnotherBoundary { subject: m },
+      } =>
+        m.standing_owner == foreign_owner
+          && m.requested_owner == gate_owner
+          && m.standing_repo == gate_repo
+          && m.requested_repo == gate_repo
+          && m.standing_environment == gate_env
+          && m.requested_environment == gate_env
+      StandingRefused { because: _ } => false
+      StandingRead { standing: _ } => false
+    })
+    // THE CONTROL: the identical chain, owner gunb-ai. It mints. This is what keeps the mutation arm honest
+    // -- it is not the shape of the fixtures, the clock, the attempt or the installation that earns the
+    // refusal, it is the account.
+    && (match observe_removal_boundary_standing(
+      joined: join_protection_to_ownership(
+        protection: protection_for(
+          owner: gate_owner,
+          repo: gate_repo,
+          environment: gate_env,
+          reviewer_present: true,
+          main_only: true,
+        ),
+        ownership: ownership_with_enabled_for_owner(
+          owner: gate_owner,
+          environment: gate_env,
+          installation_id: canonical_installation_id,
+          identity_repo: gate_repo,
+          rule_id: canonical_rule_id,
+        ),
+      ),
+      boundary: srv1_deployment_gate_boundary,
+      attempt: standing_attempt(),
+      observed_at: clock_read(instant: standing_instant),
+    ) {
+      StandingRead { standing: s } =>
+        s.boundary.environment_name == gate_env
+      StandingRefused { because: _ } => false
     })
 }
 

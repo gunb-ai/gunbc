@@ -788,7 +788,11 @@ fn observe_gate_installation(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "observed_identity"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "observed_identity_for_owner"
+    ),
+]
 {
   if status == 404 {
     // GitHub answering "no installation for this repository" — the one refusal that means the App is
@@ -906,7 +910,11 @@ fn observe_rule_ownership(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "ownership_with_enabled"
     ),
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "ownership_with_enabled_for_owner"
+    ),
+]
 {
   if (rules |> count) == 0 {
     NotOwnedByGateApp { because: ReadbackCarriedNoRules }
@@ -1863,7 +1871,11 @@ fn observe_removal_boundary_standing(
     // fixture it can only produce a REFUSAL, because the mint's own calendar check is what names the
     // string. Naming it keeps the "the guard is load-bearing now" claim honest -- the case is reached
     // by calling the mint, not by writing a variant literal.
-  ]
+      decl_ref(
+      module_path: "test.claim.deployment_gate_operator_steps_witness",
+      decl_name: "a_standing_refuses_a_pair_witnessed_in_another_account"
+    ),
+]
 {
   // THE INSTANT IS THE FIRST QUESTION, before the environment is even consulted: a standing is about to
   // become the basis of a freshness comparison, and there is no version of "the environment reads healthy"
