@@ -327,3 +327,17 @@ test fn a_kinded_generic_member_still_refuses_under_its_own_reason_holds() -> Bo
     MemberClosureRefused { reason: _ } => false
   }
 }
+
+fn member_emission_unused_param_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+// `enum Tag<T> { A, B }` is rejected by rustc (E0392), so the member refuses under its own reason
+// instead of reaching the target bare.
+test fn a_generic_member_with_an_unused_param_refuses_under_its_own_reason_holds() -> Bool {
+  match member_emission_unused_param_verdict() {
+    MemberEmitted { text: _ } => false
+    MemberRefused { reason: r } => r == ^emit_module_member_generic_param_unused
+    MemberClosureRefused { reason: _ } => false
+  }
+}
