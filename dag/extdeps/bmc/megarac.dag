@@ -448,8 +448,10 @@ service megarac.Media {
   }
 }
 
-// THE RELEASE CAPABILITY CATALOG MOVED OUT OF THIS MODULE, to
-// gunbc.host.bmc_release_capability_catalog. A capability row is not an AMI fact: it is what OUR
+// THE RELEASE CAPABILITY CATALOG LIVES IN THE OBSERVING LAYER, at
+// gunbc.host.bmc_release_capability_catalog -- never here, and never in extdeps.bmc.capability either
+// (which models the PROTOCOL capability surface, not what a named build of ours established). Review
+// 83380. A capability row is not an AMI fact: it is what OUR
 // automation established about a build — which controls a named fleet-converge run of ours exercised,
 // where OUR artifacts landed, which PR of ours carried them, and whether a human read a web UI page.
 // DESIGN.md §3 puts observations this repository makes in the OBSERVING layer, "not facts of the

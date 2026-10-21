@@ -126,29 +126,54 @@ fn oob_boot_handoff_admission_for_row(
   }
 }
 
-// The public admission: the row is RESOLVED from the release the controller REPORTED, never handed in.
-// The old OobHandoffFirmwareMismatch arm existed because a per-unit row could describe a build other
-// than the one observed -- the reflash-staleness defect, and resolving the row from this same
-// observation removes the HAND-IN path for it. The other half of that defect -- a catalog entry keyed to
-// one build while its evidence read another -- is closed by construction rather than by a refusal here:
-// the catalog derives each entry's release identity from the artifact the entry carries
-// (gunbc.host.bmc_release_capability_catalog.megarac_version_establishment), so there is no such entry to
-// refuse. An entry whose artifact establishes no release matches nothing, which arrives below as
-// Uncatalogued: the repair is to go read the build, which is the repair that actually applies. A build
-// the catalog has not read is a typed unresolved refusal, never a default row.
 // THE OBSERVATION-ANSWERING ENTRY IS DELETED. It resolved the row from observation.identity.firmware,
 // which is the PROBED receipt, and every live consumer reached it with a route observation -- so the
 // handoff answered "can this controller drive a boot?" from whatever release was current when the
 // controller was first probed. After the 0.32 -> 0.45.3 reflash it kept consulting 0.32 while the
-// boot itself had been admitted on 0.45.3 (the side-chat blocker; the production claim
-// w_the_admitted_machine_boots_off_the_current_release_and_not_the_probed_one is what a restored
-// lookup now goes red against). The one fold is oob_boot_handoff_admission_for_row: the caller hands
-// the row the boot decision was made from. A caller that genuinely wants the catalog by probed
-// version -- the coverage probe below -- asks the catalog ITSELF (megarac_release_capability_row_for)
-// and says so in its name; it is a coverage diagnostic, not a live capability decision.
+// boot itself had been admitted on 0.45.3 (the side-chat blocker). What a restored lookup goes red
+// against is the EXECUTED-ROUTE pair w_the_executed_boot_route_consumes_the_current_release_identity
+// and w_the_identity_the_executed_route_reported_came_from_writing_the_controller: they run the
+// production boot under the frame and read the identity OUT of the result the handoff returned, so a
+// defect that resolves the row from the observation's probed firmware INSIDE this fn changes the
+// identity the route hands out and takes them down. A claim-supplied admission cannot see that defect,
+// which is exactly why the fold is reached only through the executed route. The one fold is
+// oob_boot_handoff_admission_for_row: the caller hands the row the boot decision was made from. A caller
+// that genuinely wants the catalog by probed version -- the coverage probe below -- asks the catalog
+// ITSELF (megarac_release_capability_row_for) and says so in its name; it is a coverage diagnostic, not
+// a live capability decision.
 
 // WHETHER AN ADMISSION ADMITS, as its own fn so the handoff's guard is one named question rather
 // than a match inlined into an effect sequence.
+// THE ONLY ROUTE TO A REPORTED-ISSUE OUTCOME, and the fold decides whether it exists. A control is
+// reportable as issued only against the release the ADMISSION consumed, so the identity is read out of
+// the admit arm and cannot be supplied by anyone. The refusal arms answer with the refusal they were
+// handed rather than inventing an identity: a caller that skipped the admission check gets the honest
+// answer, which is that nothing was admitted. This is where a stale release becomes visible -- the
+// outcome says out loud which row the executed route consulted.
+fn boot_control_issuance(
+  admission: OobBootHandoffAdmission,
+  device: NonEmptyStr,
+  action: OobPowerAction,
+) -> OobBootHandoffOutcome {
+  match admission {
+    OobHandoffAdmitted { route: _, capability_row: row } =>
+      BootControlIssued {
+        selected: device,
+        power: observed_power_transition(action: action),
+        admitted: row.firmware,
+      }
+    OobHandoffRouteUnobserved => BootHandoffNotAdmitted { admission: OobHandoffRouteUnobserved }
+    OobHandoffBootSourceOverrideUnavailable =>
+      BootHandoffNotAdmitted { admission: OobHandoffBootSourceOverrideUnavailable }
+    OobHandoffPowerControlUnavailable =>
+      BootHandoffNotAdmitted { admission: OobHandoffPowerControlUnavailable }
+    OobHandoffRowUncatalogued { firmware: f } =>
+      BootHandoffNotAdmitted { admission: OobHandoffRowUncatalogued { firmware: f } }
+    OobHandoffRowAmbiguous { firmware: f, count: c } =>
+      BootHandoffNotAdmitted { admission: OobHandoffRowAmbiguous { firmware: f, count: c } }
+  }
+}
+
 fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
   match admission {
     OobHandoffAdmitted { route: _, capability_row: _ } => true
@@ -174,7 +199,7 @@ fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
 // state to select from), PowerCommandRefused had its request rejected, and PowerCommandAcceptedNoTransition
 // had its request ACCEPTED while the chassis never showed the transition within the bound.
 type OobBootHandoffOutcome
-  = BootControlIssued { selected: NonEmptyStr, power: ObservedPowerTransition }
+  = BootControlIssued { selected: NonEmptyStr, power: ObservedPowerTransition, admitted: BmcFirmwareReleaseIdentity }
   | BootSelectionRefused
   | BootSelectionNotApplied { requested: NonEmptyStr, readback: String }
   | BootSelectionUnverifiable { requested: NonEmptyStr, readback: String }
@@ -454,6 +479,7 @@ fn oob_power_action_after_confirmed_selection(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   device: NonEmptyStr,
+  admission: OobBootHandoffAdmission,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
@@ -469,6 +495,7 @@ fn oob_power_action_after_confirmed_selection(
         password_file: password_file,
         device: device,
         action: action,
+        admission: admission,
       )
   }
 }
@@ -479,6 +506,7 @@ fn oob_power_actuate_and_read_back(
   password_file: NonEmptyStr,
   device: NonEmptyStr,
   action: OobPowerAction,
+  admission: OobBootHandoffAdmission,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
@@ -502,7 +530,8 @@ fn oob_power_actuate_and_read_back(
     progress: power_readback_start(action: action),
     samples_remaining: oob_power_readback_samples,
   ) {
-    PowerReadbackObserved => BootControlIssued { selected: device, power: observed_power_transition(action: action) }
+    // THE ISSUE IS MINTED THROUGH THE FOLD'S OWN ADMISSION, never by spelling an outcome.
+    PowerReadbackObserved => boot_control_issuance(admission: admission, device: device, action: action)
     PowerReadbackExhausted { progress: pr, last_observed: o } =>
       PowerCommandAcceptedNoTransition { selected: device, action: action, progress: pr, last_observed: o }
   }
@@ -542,6 +571,10 @@ fn oob_boot_handoff(
   if oob_handoff_is_admitted(admission: admission) == false {
     return BootHandoffNotAdmitted { admission: admission }
   }
+  // THE ADMISSION TRAVELS WITH THE ROUTE to the step that reports an issued control, so the outcome
+  // names the release the FOLD consumed. A claim can then ask the executed route which release it read
+  // instead of trusting the value the claim handed in; the fold stays the one decision authority and
+  // nothing downstream re-derives one.
   let bmc_host = observation.endpoint.host
   let device = ipmi_boot_device_label(device: selection.device)
 
@@ -579,6 +612,7 @@ fn oob_boot_handoff(
         username: username,
         password_file: password_file,
         device: device,
+        admission: admission,
       )
   }
 }

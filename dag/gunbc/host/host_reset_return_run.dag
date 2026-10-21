@@ -107,6 +107,7 @@ import gunbc.machine_intake.oob_boot_handoff {
   PowerCommandRefused,
   PowerStateReadFailed,
 }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 
 // THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host.host_reset_return is pure
@@ -325,7 +326,7 @@ fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
 // keeps them apart in the first place.
 fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs) -> ResetCommandAcknowledgement {
   match outcome {
-    BootControlIssued { selected: d, power: _ } =>
+    BootControlIssued { selected: d, power: _, admitted: _ } =>
       ResetAccepted {
         controller_response: join(["boot source override verified for '", d as String, "' and the chassis power transition was observed; this is BootControlIssued, not proof the artifact booted"], "") as NonEmptyStr,
         issued_at: issued_at,
@@ -448,6 +449,7 @@ fn host_reset_return_attempt(
           ], "") as NonEmptyStr,
         },
         observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
+        admitted: none,
       )
     Absent => none
   }
@@ -460,6 +462,7 @@ fn host_reset_return_attempt(
         self_identity: identity,
         acknowledgement: ResetNotAttempted { cause: "the pre-issuance baseline refused, so no controller write was attempted" },
         observation: refused,
+        admitted: none,
       )
     Absent =>
       match clock_unix_millis_read() {
@@ -471,6 +474,7 @@ fn host_reset_return_attempt(
             self_identity: identity,
             acknowledgement: ResetNotAttempted { cause: join(["the observer could not read its own clock, so no issuance instant exists and no write was attempted: ", d], "") as NonEmptyStr },
             observation: HostReturnUnobserved { cause: "no issuance instant was established, so nothing was watched" },
+            admitted: none,
           )
         ClockUnixMillisObserved { millis: issued_at } =>
           host_reset_return_issue_and_watch(
@@ -512,6 +516,7 @@ fn host_reset_return_issue_and_watch(
         self_identity: identity,
         acknowledgement: ResetNotAttempted { cause: why },
         observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
+        admitted: none,
       )
     Absent => {}
   }
@@ -527,6 +532,7 @@ fn host_reset_return_issue_and_watch(
         self_identity: identity,
         acknowledgement: ResetNotAttempted { cause: "the bound route names no managed account; refusing before any controller write" },
         observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
+        admitted: none,
       )
     Present { value: account } => {
       let outcome = oob_boot_handoff(
@@ -552,6 +558,7 @@ fn host_reset_return_issue_and_watch(
         self_identity: identity,
         acknowledgement: ack,
         observation: observation,
+        admitted: admitted_release_of(outcome: outcome),
       )
     }
   }
@@ -651,20 +658,20 @@ fn host_reset_return_attempt_exit(
 ) -> ProcessExit
   uses net: std.resources.Network
 {
+  let mint = host_reset_return_attempt(
+    evidence: evidence,
+    proof: proof,
+    candidate: candidate,
+    observer: observer,
+    attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
+    route: route,
+    password_file: password_file,
+  )
   host_reset_return_exit(
-    verdict: reset_return_verdict_of_mint(
-      mint: host_reset_return_attempt(
-        evidence: evidence,
-        proof: proof,
-        candidate: candidate,
-        observer: observer,
-        attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
-        route: route,
-        password_file: password_file,
-      )
-    ),
+    verdict: reset_return_verdict_of_mint(mint: mint),
     subject: subject,
     attempt: host_reset_return_attempt_label(observer: observer, subject: subject),
+    consumed: consumed_release_of_mint(mint: mint),
   )
 }
 
@@ -721,7 +728,7 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
         Present { value: candidate } =>
           match admit_unit_hold_subject(host: candidate.host) {
             UnitHoldNotRequired { host: _ } =>
-              host_reset_return_attempt_exit(proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
+              host_reset_return_attempt_exit(evidence: evidence, proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
             UnitHoldSubjectAdmitted { subject: held } =>
               if (observer as String) != (held.store_host as String) {
                 host_reset_return_preflight_exit(
@@ -738,7 +745,7 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
                   UnitHeld { proof: p } =>
                     unit_hold_release(
                       proof: p,
-                      outcome: host_reset_return_attempt_exit(proof: Present { value: p }, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr),
+                      outcome: host_reset_return_attempt_exit(evidence: evidence, proof: Present { value: p }, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr),
                     )
                 }
               }
@@ -798,20 +805,27 @@ fn host_reset_return_attempt_label(observer: NonEmptyStr, subject: NonEmptyStr) 
 // THE MEASURED FIGURE IS WRITTEN ONLY ON THE ARM THAT MEASURED IT. A refusal line names its cause and
 // carries no number at all, rather than a zero standing in for one -- zero sorts to the top of any
 // ranking of outage times, which makes it the fabrication nobody finds by reading a list.
-fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> String {
+fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr, consumed: BmcFirmwareReleaseIdentity?) -> String {
+  // WHICH ROW THE EXECUTED HANDOFF ANSWERED FROM belongs on the receipt beside the verdict. A bare
+  // "refused" cannot tell a stale-row refusal from a powerless one, and the boot receipt is trusted
+  // precisely because the line names the release the machine was actuated on.
+  let consumed_part = match consumed {
+    Absent => " consumed=none"
+    Present { value: c } => join([" consumed=", c.raw_version as String], "")
+  }
   match verdict {
     HostDrivenBackToKnownState { downtime: ms } =>
-      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=driven-back downtime_ms=", to_string(ms), "\n"], "")
+      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=driven-back downtime_ms=", to_string(ms), consumed_part, "\n"], "")
     ResetReturnRefused { cause: c } =>
-      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=refused downtime_ms=unavailable cause=", reset_return_refusal_cause_wire(cause: c), "\n"], "")
+      join(["attempt=", attempt as String, " subject=", subject as String, " verdict=refused downtime_ms=unavailable cause=", reset_return_refusal_cause_wire(cause: c), consumed_part, "\n"], "")
   }
 }
 
-fn host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> ProcessExit
+fn host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr, consumed: BmcFirmwareReleaseIdentity?) -> ProcessExit
 {
   let _w = Filesystem.Write(
     path: host_reset_return_receipt_path as String,
-    content: host_reset_return_receipt_line(verdict: verdict, subject: subject, attempt: attempt),
+    content: host_reset_return_receipt_line(verdict: verdict, subject: subject, attempt: attempt, consumed: consumed),
   )
   return match verdict {
     HostDrivenBackToKnownState { downtime: _ } => ExitSuccess
