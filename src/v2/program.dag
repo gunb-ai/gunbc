@@ -238,14 +238,22 @@ fn program_choose_branch(
   condition: RuntimeValue,
   _env: EvaluationEnvironment
 ) -> Outcome<Node> {
-  if program_runtime_bool_true(value: condition) {
-    program_branch_arm(node: node, slot: BranchThenSlot)
-  } else if program_runtime_bool_false(value: condition) {
-    program_branch_arm(node: node, slot: BranchElseSlot)
+  if count(node.children) == 3 {
+    if program_runtime_bool_true(value: condition) {
+      program_branch_arm(node: node, slot: BranchThenSlot)
+    } else if program_runtime_bool_false(value: condition) {
+      program_branch_arm(node: node, slot: BranchElseSlot)
+    } else {
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: eval_diagnostic(reason: ^program_branch_condition_rejected, node: node)
+        )
+      }
+    }
   } else {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: eval_diagnostic(reason: ^program_branch_condition_rejected, node: node)
+        d: eval_diagnostic(reason: ^program_branch_shape_rejected, node: node)
       )
     }
   }

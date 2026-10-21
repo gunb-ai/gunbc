@@ -20,7 +20,7 @@ import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes, clai
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two, dag_type_atom_node, dag_value_expression_projection }
 import v2.extdeps.languages.typescript { ts_binding_spellings, ts_fn_add_lex_rules, ts_source_text_authority }
-import v2.program { program_bool_type, program_bool_value, program_choose_branch, program_i64_type, program_termination_proof, program_context_with_effect_io, program_kw_false, program_kw_true, program_literal_one, program_literal_two }
+import v2.program { program_bool_type, program_bool_value, program_choose_branch, program_i64_type, program_int_one_value, program_termination_proof, program_context_with_effect_io, program_kw_false, program_kw_true, program_literal_one, program_literal_two }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.compilers.body_lowering { lower_branch }
 import v2.std.compilers.lexing { ModeledLexRules }
@@ -110,6 +110,45 @@ test fn bsr_a_branch_with_a_fourth_positional_child_is_refused() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+}
+
+fn bsr_reason_is(chosen: Outcome<Node>, reason: Symbol) -> Bool {
+  match chosen {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
+// The whole-node shape preflight (count(children) == 3) precedes the condition dispatch, so a malformed
+// Branch with a non-Bool condition refuses with the SHAPE reason, not the condition reason.
+test fn bsr_a_malformed_branch_with_a_non_bool_condition_refuses_with_the_shape_reason() -> Bool {
+  let two = node_synthetic(
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: program_kw_true() },
+      Edge { label: Positional, target: program_literal_one() }
+    ]
+  )
+  bsr_reason_is(chosen: program_choose_branch(node: two, condition: program_literal_one_value(), _env: bsr_env()), reason: ^program_branch_shape_rejected)
+}
+
+// Three positionals plus an extra LABELED child: branch_slot_target counts positionals only, so the
+// whole-node preflight is what refuses it.
+test fn bsr_three_positionals_plus_a_labeled_child_is_refused() -> Bool {
+  let extra = node_synthetic(
+    kind: ComputationNode { behavior: Branch },
+    children: [
+      Edge { label: Positional, target: program_kw_true() },
+      Edge { label: Positional, target: program_literal_one() },
+      Edge { label: Positional, target: program_literal_two() },
+      Edge { label: Authored { name: ^bsr_extra }, target: program_literal_two() }
+    ]
+  )
+  bsr_reason_is(chosen: program_choose_branch(node: extra, condition: program_bool_value(is_true: true), _env: bsr_env()), reason: ^program_branch_shape_rejected)
+}
+
+fn program_literal_one_value() -> RuntimeValue {
+  program_int_one_value()
 }
 
 fn bsr_env() -> EvaluationEnvironment {
