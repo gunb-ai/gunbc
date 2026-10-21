@@ -1,0 +1,67 @@
+module test.claim.site_gunb_ai_mark_witness
+
+// §5 — the executed witness for gunbc.site.gunb_ai_mark. Every test reads the bytes render_mark()
+// produces (the same bytes mark_write writes), and the parity claim compares them to
+// dag/test/fixture/gunb_ai/live_mark.svg, a committed copy of gunb.ai's served assets/mark.svg
+// (fetched 2026-10-19). The oracle is outside this repo's model, which is what stops the
+// brand_mark -> file conversion from agreeing with itself.
+//
+// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_mark_witness.dag --claim-run
+//
+// Red controls are run against the compiler and reported in the PR body, not here.
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import test.fixture.text_scan { occurrences }
+import gunbc.site.gunb_ai_mark { render_mark, MarkRender, MarkRendered, MarkRefused, mark_parity_nullities, mark_transform }
+
+data served_mark_path: String = "dag/test/fixture/gunb_ai/live_mark.svg"
+
+fn served_mark() -> String {
+  let read = Filesystem.Read(path: served_mark_path)
+  if read.success { read.content } else { "" }
+}
+
+fn rendered_mark() -> String {
+  match render_mark() {
+    MarkRendered { bytes: b } => b
+    MarkRefused { reason: _ } => ""
+  }
+}
+
+fn render_with_parity_applied() -> String {
+  fold(mark_parity_nullities, init: rendered_mark(), f: fn(acc, d) { acc.replace(from: d.generated, to: d.served) })
+}
+
+// The parity claim. The fixture is checked non-empty first: a missing file would make both sides ""
+// and pass vacuously.
+test fn witness_generated_mark_equals_the_served_mark() -> Bool {
+  string_contains(s: served_mark(), pattern: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 120\">")
+    && (render_with_parity_applied() == served_mark())
+}
+
+// The roster is checked both ways: its difference exists in the render, and does not exist in the
+// served file (else the row describes nothing).
+test fn witness_parity_row_is_current() -> Bool {
+  all(mark_parity_nullities, d => d.served != d.generated
+    && string_contains(s: rendered_mark(), pattern: d.generated)
+    && !string_contains(s: served_mark(), pattern: d.generated))
+}
+
+// The geometry arrives through the model: the transform is spelled from the unit-change rows, and
+// the four self-closed elements are the mark's path, two eyes and mouth.
+test fn witness_mark_is_built_from_the_model() -> Bool {
+  let out = rendered_mark()
+  string_contains(s: out, pattern: mark_transform())
+    && mark_transform() == "translate(-12 -12) scale(1.2)"
+    && occurrences(s: out, pattern: " />") == 4
+    && occurrences(s: out, pattern: "<circle ") == 2
+}
+
+test fn witness_render_is_not_refused() -> Bool {
+  match render_mark() {
+    MarkRendered { bytes: _ } => true
+    MarkRefused { reason: _ } => false
+  }
+}

@@ -1,12 +1,13 @@
 module v2.compiler.primitive_authority
 
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.node { positional_child_target_nodes, Node, Symbol, symbol_lexeme }
 import v2.std.data_initializer_identity { projection_named_child_optional }
 import v2.extdeps.languages.dag { dag_string_literal_value_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
-import v2.std.node_query { node_positional_child_targets }
 import v2.std.grammar { node_atom_identity_optional }
+import std.algebra { collection_concat_shape }
+import v2.std.primitive_contract_ref { primitive_contract_qualified_name }
 
 // WHERE A KERNEL PRIMITIVE IS DECLARED. A std.primitives PrimitiveContract row carries `name: "<primitive>"`, and THAT
 // field is the primitive's identity. The row is FOUND by the declaration path std.primitives.<name>_contract (the
@@ -17,7 +18,7 @@ import v2.std.grammar { node_atom_identity_optional }
 // has no .dag authority yet (it lives in the seed's builtin_function_registry) and an untyped acceptance would be
 // silent wrongness.
 fn primitive_authority_path(head: Symbol) -> QualifiedName {
-  qualified_name_from_dotted_string(dotted: concat("std.primitives.", symbol_lexeme(sym: head), "_contract"))
+  primitive_contract_qualified_name(head: head)
 }
 
 // The contract row's OWN `name` field. The lowered row is a nullary arrow whose body edge is the initializer record;
@@ -44,7 +45,7 @@ fn primitive_contract_type_path() -> QualifiedName {
 }
 
 fn primitive_authority_row_declared_type_path_optional(module_qn: QualifiedName, row: Node) -> Optional<QualifiedName> {
-  match fold(node_positional_child_targets(node: row), init: optional_absent(), f: fn(acc, t) { optional_present(value: t) }) {
+  match fold(positional_child_target_nodes(node: row), init: optional_absent(), f: fn(acc, t) { optional_present(value: t) }) {
     Absent => optional_absent()
     Present { value: codomain } =>
       match node_atom_identity_optional(node: codomain) {

@@ -1,0 +1,215 @@
+module gunbc.site.gunb_ai_mark
+
+import std.types { String, Int, List, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.markup {
+  Fragment, Element, FragmentText, MarkupComment, MarkupMedium, attr, document_line_ending,
+  serialize_fragment_with, Serialized, Rejected,
+}
+import extdeps.w3c.svg { svg_markup_medium, svg_xmlns }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.design.palette { swatch_paint }
+import gunbc.design.gunb_ai_hues { seal_white, theme_chrome_black }
+import gunbc.site.markup { page_render_refusal_prefix }
+import gunbc.design.brand_mark {
+  BrandMark, BrandMarkBox, BrandMarkDisc, BrandMarkShape, RoundedBox, Disc, FaceMark,
+  brand_mark, brand_mark_box_path, brand_mark_frame,
+}
+
+// gunb.ai's assets/mark.svg, derived from gunbc.design.brand_mark (the page's favicon link target).
+//
+// THE FILE IS THE MODEL IN ANOTHER COORDINATE SPACE. brand_mark resolves every part into a frame of
+// tenths of a unit; the served file draws the same parts in a 120-unit frame under
+// translate(-12 -12) scale(1.2) (brand_mark.dag: "a body coordinate v is 12v - 120"). So a part's
+// position p in tenths is (p + 120) / 12 in the file and a length l is l / 12. Both divisions must
+// be exact: a part that does not land on an integer is REFUSED, not rounded, because a rounded seal
+// is a different drawing under the same name (§5). The path text itself is brand_mark_box_path's,
+// so the arc spelling exists once.
+//
+// WHAT THIS MODULE DOES NOT OWN: element/attribute/comment syntax (std.markup through
+// extdeps.w3c.svg's medium; path joins its void tags here because SVG's <path> has no content), the
+// geometry (gunbc.design.brand_mark), the two paints (gunbc.design.gunb_ai_hues).
+//
+// SELF-CLOSE SPELLING. std.markup writes a void element as ' />'; the served file writes '/>'.
+// XML 1.0 [44] EmptyElemTag is '<' Name (S Attribute)* S? '/>', so the space is optional and the two
+// spellings are one element. mark_parity_nullities carries that one difference and the witness
+// requires the render, with it applied, to EQUAL the committed copy of the served file.
+//
+// Consumers (§3c): mark_write_arg / v2_cli_main are the build route;
+// test.claim.site_gunb_ai_mark_witness executes render_mark. Run outside the claim runner:
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_mark.dag \
+//     --function mark_write_arg --arg dir=/tmp/gunbai/assets
+
+type MarkRender = MarkRendered { bytes: String } | MarkRefused { reason: String }
+
+// The unit change as data: file = (frame + file_offset_tenths) / file_scale_tenths.
+data file_offset_tenths: Int = 120
+data file_scale_tenths: Int = 12
+
+data mark_output_name: String = "mark.svg"
+data file_frame: Int = 120
+
+data mark_comment_body: String = "Stoic Giant seal \u{2014} white (warm-white) squircle body, black face\n       features. Solid fills, no evenodd cutouts, so the mark reads at\n       16px on any tab background. Outside the squircle is transparent."
+
+data mark_parity_nullities: List<MarkParityDifference> = [
+  MarkParityDifference { served: "/>", generated: " />" },
+]
+
+type MarkParityDifference {
+  served: String
+  generated: String
+}
+
+fn exact(v: Int) -> Bool {
+  v % file_scale_tenths == 0
+}
+
+fn pos(v: Int) -> Int {
+  (v + file_offset_tenths) / file_scale_tenths
+}
+
+fn len(v: Int) -> Int {
+  v / file_scale_tenths
+}
+
+fn pos_exact(v: Int) -> Bool { exact(v: v + file_offset_tenths) }
+
+// translate(-12 -12) scale(1.2): the inverse of the model's own transform, spelled from its rows.
+fn tenths_wire(t: Int) -> String {
+  if t % 10 == 0 { to_string(t / 10) } else { join([to_string(t / 10), ".", to_string(t % 10)], "") }
+}
+
+fn mark_transform() -> String {
+  join(["translate(-", tenths_wire(t: file_offset_tenths), " -", tenths_wire(t: file_offset_tenths), ") scale(", tenths_wire(t: file_scale_tenths), ")"], "")
+}
+
+fn box_exact(b: BrandMarkBox) -> Bool {
+  pos_exact(v: b.x) && pos_exact(v: b.y) && exact(v: b.w) && exact(v: b.h) && exact(v: b.r)
+}
+
+fn disc_exact(c: BrandMarkDisc) -> Bool {
+  pos_exact(v: c.cx) && pos_exact(v: c.cy) && exact(v: c.r)
+}
+
+fn to_file_box(b: BrandMarkBox) -> BrandMarkBox {
+  BrandMarkBox { x: pos(v: b.x), y: pos(v: b.y), w: len(v: b.w), h: len(v: b.h), r: len(v: b.r) }
+}
+
+fn to_file_disc(c: BrandMarkDisc) -> BrandMarkDisc {
+  BrandMarkDisc { cx: pos(v: c.cx), cy: pos(v: c.cy), r: len(v: c.r) }
+}
+
+fn eye_circle(shape: BrandMarkShape) -> List<Fragment> {
+  match shape {
+    Disc { disc } => [Element { tag: "circle", attributes: [
+      attr(name: "cx", value: to_string(pos(v: disc.cx))),
+      attr(name: "cy", value: to_string(pos(v: disc.cy))),
+      attr(name: "r", value: to_string(len(v: disc.r))),
+    ], children: [] }]
+    RoundedBox { box: _ } => []
+  }
+}
+
+fn shape_exact(shape: BrandMarkShape) -> Bool {
+  match shape {
+    Disc { disc } => disc_exact(c: disc)
+    RoundedBox { box: _ } => false
+  }
+}
+
+fn mouth_rect(b: BrandMarkBox) -> Fragment {
+  Element { tag: "rect", attributes: [
+    attr(name: "x", value: to_string(pos(v: b.x))),
+    attr(name: "y", value: to_string(pos(v: b.y))),
+    attr(name: "width", value: to_string(len(v: b.w))),
+    attr(name: "height", value: to_string(len(v: b.h))),
+    attr(name: "rx", value: to_string(len(v: b.r))),
+  ], children: [] }
+}
+
+fn ws(columns: Int) -> Fragment {
+  FragmentText { content: concat("\n", repeat_spaces(n: columns)) }
+}
+
+fn repeat_spaces(n: Int) -> String {
+  if n <= 0 { "" } else { concat(" ", repeat_spaces(n: n - 1)) }
+}
+
+// The medium: the SVG medium plus <path>, which SVG defines with no content. Built from
+// svg_markup_medium so the comment and document grammar stay extdeps.w3c.svg's.
+fn mark_medium() -> MarkupMedium {
+  let base = svg_markup_medium()
+  MarkupMedium {
+    tag_overrides: base.tag_overrides,
+    bracket: base.bracket,
+    text_escape: base.text_escape,
+    void_tags: concat(base.void_tags, ["path"]),
+    void_rendering: base.void_rendering,
+    raw_text_tags: base.raw_text_tags,
+    comment_grammar: base.comment_grammar,
+    document_grammar: base.document_grammar,
+  }
+}
+
+fn mark_tree(mark: BrandMark) -> Fragment {
+  let body = Element { tag: "path", attributes: [
+    attr(name: "fill", value: swatch_paint(sw: seal_white)),
+    attr(name: "d", value: brand_mark_box_path(b: to_file_box(b: mark.shell))),
+  ], children: [] }
+  let feature_nodes = concat(concat(concat(concat(concat([ws(columns: 6)], eye_circle(shape: mark.left_eye)), [ws(columns: 6)]), eye_circle(shape: mark.right_eye)), [ws(columns: 6), mouth_rect(b: mark.mouth)]), [ws(columns: 4)])
+  let features = Element { tag: "g", attributes: [attr(name: "fill", value: swatch_paint(sw: theme_chrome_black))], children: feature_nodes }
+  Element { tag: "svg", attributes: [
+    attr(name: "xmlns", value: svg_xmlns),
+    attr(name: "viewBox", value: join(["0 0 ", to_string(file_frame), " ", to_string(file_frame)], "")),
+  ], children: [
+    ws(columns: 2),
+    MarkupComment { body: mark_comment_body },
+    ws(columns: 2),
+    Element { tag: "g", attributes: [attr(name: "transform", value: mark_transform())], children: [
+      ws(columns: 4), body, ws(columns: 4), features, ws(columns: 2),
+    ] },
+    FragmentText { content: "\n" },
+  ] }
+}
+
+fn mark_representable(mark: BrandMark) -> Bool {
+  box_exact(b: mark.shell) && shape_exact(shape: mark.left_eye) && shape_exact(shape: mark.right_eye)
+    && box_exact(b: mark.mouth) && brand_mark_frame == file_frame * 10
+}
+
+fn render_mark() -> MarkRender {
+  let mark = brand_mark(kind: FaceMark)
+  if !mark_representable(mark: mark) {
+    MarkRefused { reason: "brand_mark has a part that does not land on an integer in the 120-unit file frame; refusing to round" }
+  } else {
+    match serialize_fragment_with(frag: mark_tree(mark: mark), medium: mark_medium()) {
+      Serialized { html: h } => MarkRendered { bytes: concat(h, document_line_ending()) }
+      Rejected { reason: r } => MarkRefused { reason: r }
+    }
+  }
+}
+
+type MarkWrite = MarkWritten { path: String } | MarkWriteRefused { reason: String }
+
+// Bytes are produced in full before the first Filesystem call: a refused render writes nothing.
+fn mark_write(dir: String) -> MarkWrite {
+  match render_mark() {
+    MarkRefused { reason: r } => MarkWriteRefused { reason: r }
+    MarkRendered { bytes: b } => {
+      let path = join([dir, "/", mark_output_name], "")
+      let wrote = Filesystem.Write(path: path, content: b)
+      if wrote.success { MarkWritten { path: path } } else { MarkWriteRefused { reason: join(["write failed: ", path], "") } }
+    }
+  }
+}
+
+fn mark_exit(run: MarkWrite) -> ProcessExit {
+  match run {
+    MarkWritten { path: _ } => ExitSuccess
+    MarkWriteRefused { reason: r } => exit_failure(reason: join([page_render_refusal_prefix, r], ""))
+  }
+}
+
+fn mark_write_arg(dir: String) -> ProcessExit {
+  mark_exit(run: mark_write(dir: dir))
+}

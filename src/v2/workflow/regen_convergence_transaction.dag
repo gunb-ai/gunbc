@@ -174,7 +174,7 @@ fn regen_admit_affected_bound(
 fn regen_affected_bound_admission_label(admission: RegenAffectedBoundAdmission) -> String {
   match admission {
     RegenAffectedBoundAdmitted => "Admitted"
-    RegenAffectedBoundRefused { refusal: _ } => "Refused"
+    RegenAffectedBoundRefused { refusal: refusal } => concat("Refused: ", regen_convergence_refusal_detail(refusal: refusal))
   }
 }
 
@@ -578,6 +578,73 @@ fn regen_stage_plan_surface_paths(outcome: RegenStagePlanOutcome) -> List<String
   }
 }
 
+// THE ONE RENDERER OF A CONVERGENCE REFUSAL'S PAYLOAD. A refusal is typed AND located (DESIGN
+// section 5): every host that prints a refusal prints this, so the variant name never travels
+// without the surface, path, reason or digests it carries. Exhaustive with no `_` arm, so a new
+// variant fails to compile until its author writes what it prints.
+fn regen_surface_identity_text(row: RegenSurfaceIdentity) -> String {
+  concat(row.declaring_module, concat(":", row.projected_path))
+}
+
+fn regen_surface_identity_text_list(rows: List<RegenSurfaceIdentity>) -> String {
+  fold(rows, init: "", f: fn(acc, row) {
+    if acc == "" {
+      regen_surface_identity_text(row: row)
+    } else {
+      concat(acc, concat(" ", regen_surface_identity_text(row: row)))
+    }
+  })
+}
+
+fn regen_string_list_text(rows: List<String>) -> String {
+  fold(rows, init: "", f: fn(acc, row) {
+    if acc == "" {
+      row
+    } else {
+      concat(acc, concat(" ", row))
+    }
+  })
+}
+
+fn regen_convergence_refusal_detail(refusal: RegenConvergenceRefusal) -> String {
+  match refusal {
+    SurfaceOwnershipUnresolved { path: path } => concat("SurfaceOwnershipUnresolved path=", path)
+    SurfaceOwnershipAmbiguous { path: path, modules: modules } =>
+      concat("SurfaceOwnershipAmbiguous path=", concat(path, concat(" modules=[", concat(regen_string_list_text(rows: modules), "]"))))
+    GenerationRoleUnresolved { surface: surface, reason: reason } =>
+      concat("GenerationRoleUnresolved surface=", concat(regen_surface_identity_text(row: surface), concat(" reason=", reason)))
+    SeedMembershipUnresolved { surface: surface, reason: reason } =>
+      concat("SeedMembershipUnresolved surface=", concat(regen_surface_identity_text(row: surface), concat(" reason=", reason)))
+    SurfaceInIncompatibleStageRoles { surfaces: surfaces } =>
+      concat("SurfaceInIncompatibleStageRoles surfaces=[", concat(regen_surface_identity_text_list(rows: surfaces), "]"))
+    StageDependencyClosureIncomplete { closure_id: closure_id, missing: missing } =>
+      concat("StageDependencyClosureIncomplete closure=", concat(closure_id, concat(" missing=[", concat(regen_surface_identity_text_list(rows: missing), "]"))))
+    CandidateFromDifferentSeed { candidate: candidate, expected_generation_id: expected } =>
+      concat("CandidateFromDifferentSeed candidate_generation=", concat(candidate.producer_generation_id, concat(" candidate_tree_id=", concat(candidate.candidate_tree_id, concat(" candidate_tree_digest=", concat(candidate.candidate_tree_digest, concat(" candidate_digest=", concat(candidate.candidate_digest, concat(" surface=", concat(regen_surface_identity_text(row: candidate.surface), concat(" expected_generation=", expected)))))))))))
+    CandidateStaleAfterProducerRebuild { planned_surfaces: planned, observed_generation_id: observed, current_generation_id: current, observed_candidate_digest: digest } =>
+      concat("CandidateStaleAfterProducerRebuild planned=[", concat(regen_surface_identity_text_list(rows: planned), concat("] observed_generation=", concat(observed, concat(" current_generation=", concat(current, concat(" observed_candidate_digest=", digest)))))))
+    PreInstallDigestMismatch { surface: surface, expected: expected, observed: observed } =>
+      concat("PreInstallDigestMismatch surface=", concat(regen_surface_identity_text(row: surface), concat(" expected=", concat(expected, concat(" observed=", observed)))))
+    StageExecutionRefused { refusal: inner } =>
+      concat("StageExecutionRefused ", concat(regen_stage_execution_admission_label(admission: RegenStageExecutionRefused { refusal: inner }), concat(" ", regen_stage_execution_admission_detail(admission: RegenStageExecutionRefused { refusal: inner }))))
+    UnplannedPathMutated { path: path } => concat("UnplannedPathMutated path=", path)
+    NoBuildableProducerCut { reason: reason } => concat("NoBuildableProducerCut reason=", reason)
+    StageOutputExecutableUnbound { ordinal: ordinal, reason: reason } =>
+      concat("StageOutputExecutableUnbound ordinal=", concat(to_string(ordinal), concat(" reason=", reason)))
+    GenerationMadeNoProgress { generation_id: generation_id } => concat("GenerationMadeNoProgress generation=", generation_id)
+    GenerationCycleDetected { seed_digest: seed, candidate_tree_digest: tree } =>
+      concat("GenerationCycleDetected seed_digest=", concat(seed, concat(" candidate_tree_digest=", tree)))
+    GenerationBoundExceeded { bound: bound } => concat("GenerationBoundExceeded bound=", to_string(bound))
+    FinalRegenerationStillDrifts { surfaces: surfaces } =>
+      concat("FinalRegenerationStillDrifts surfaces=[", concat(regen_surface_identity_text_list(rows: surfaces), "]"))
+    FinalRustConsistencyInstrumentRefused { reason: reason } => concat("FinalRustConsistencyInstrumentRefused reason=", reason)
+    TransactionRestoreRefused { reason: reason } => concat("TransactionRestoreRefused reason=", reason)
+    AffectedSetBoundRefused { reason: reason } => concat("AffectedSetBoundRefused reason=", reason)
+    AffectedSetStagePopulationDisagrees { changed: changed, outside_bound: outside } =>
+      concat("AffectedSetStagePopulationDisagrees changed=[", concat(regen_surface_identity_text_list(rows: changed), concat("] outside_bound=[", concat(regen_surface_identity_text_list(rows: outside), "]"))))
+  }
+}
+
 fn regen_stage_plan_kind_label(outcome: RegenStagePlanOutcome) -> String {
   match outcome {
     RegenStagePlanned { stage: stage } => match stage.kind {
@@ -585,7 +652,7 @@ fn regen_stage_plan_kind_label(outcome: RegenStagePlanOutcome) -> String {
       InstallSeedCompatibilityCut => "InstallSeedCompatibilityCut"
       PublishNonSeedOutputs => "PublishNonSeedOutputs"
     }
-    RegenStagePlanningRefused { refusal: _ } => "Refused"
+    RegenStagePlanningRefused { refusal: refusal } => concat("Refused: ", regen_convergence_refusal_detail(refusal: refusal))
     RegenConvergenceTerminal => "Terminal"
   }
 }
@@ -698,8 +765,7 @@ fn regen_admit_candidate_generation(observation: RegenCandidateGenerationObserva
 fn regen_candidate_generation_admission_label(admission: RegenCandidateGenerationAdmission) -> String {
   match admission {
     RegenCandidateGenerationAdmitted => "Admitted"
-    RegenCandidateGenerationRefused { refusal: CandidateStaleAfterProducerRebuild { planned_surfaces: _, observed_generation_id: _, current_generation_id: _, observed_candidate_digest: _ } } => "CandidateStaleAfterProducerRebuild"
-    RegenCandidateGenerationRefused { refusal: _ } => "Refused"
+    RegenCandidateGenerationRefused { refusal: refusal } => concat("Refused: ", regen_convergence_refusal_detail(refusal: refusal))
   }
 }
 
@@ -773,13 +839,13 @@ fn regen_stage_execution_admission_detail(admission: RegenStageExecutionAdmissio
     RegenStageExecutionAdmitted => ""
     RegenStageExecutionRefused { refusal: StagePlannedExecutedMismatch { planned: planned, executed: executed } } =>
       concat(
-        concat("planned=[", concat(regen_surface_identity_path_list(rows: planned), "] ")),
-        concat("executed=[", concat(regen_surface_identity_path_list(rows: executed), "]"))
+        concat("planned=[", concat(regen_surface_identity_text_list(rows: planned), "] ")),
+        concat("executed=[", concat(regen_surface_identity_text_list(rows: executed), "]"))
       )
-    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: expected, observed: observed } } =>
-      concat("expected=", concat(expected, concat(" observed=", observed)))
-    RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: _, reason: reason } } =>
-      concat("build refused: ", reason)
+    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: surfaces, expected: expected, observed: observed } } =>
+      concat("surfaces=[", concat(regen_surface_identity_text_list(rows: surfaces), concat("] expected=", concat(expected, concat(" observed=", observed)))))
+    RegenStageExecutionRefused { refusal: StageSeedBuildRefused { ordinal: ordinal, reason: reason } } =>
+      concat("ordinal=", concat(to_string(ordinal), concat(" build refused: ", reason)))
   }
 }
 
@@ -1033,9 +1099,7 @@ fn regen_admit_generation_progress(
 fn regen_generation_progress_admission_label(admission: RegenGenerationProgressAdmission) -> String {
   match admission {
     RegenGenerationProgressAdmitted => "Admitted"
-    RegenGenerationProgressRefused { refusal: GenerationCycleDetected { seed_digest: _, candidate_tree_digest: _ } } => "CycleRefused"
-    RegenGenerationProgressRefused { refusal: GenerationBoundExceeded { bound: _ } } => "BoundRefused"
-    RegenGenerationProgressRefused { refusal: _ } => "Refused"
+    RegenGenerationProgressRefused { refusal: refusal } => concat("Refused: ", regen_convergence_refusal_detail(refusal: refusal))
   }
 }
 

@@ -6,7 +6,8 @@ import gunbc.cli_wire {CliWirePrintable,CliWireUnprintable}
 import std.process {ExitSuccess,ExitFailure}
 import product.printed_chassis.assembly_geometry {AssemblyPart,part,block,Printed,Cassette,LayOnXZ,placed}
 import product.printed_chassis.assembly_review_checks {review_model_checks,within_bed}
-import product.printed_chassis.cassette_review {all_parts}
+import product.printed_chassis.cassette_review {all_parts,cassette_printable}
+import product.printed_chassis.printable_assembly {CassetteRackReview}
 import product.printed_chassis.cassette {interfaces}
 
 fn displaced(p:AssemblyPart) -> AssemblyPart {
@@ -30,9 +31,9 @@ fn packaging_fixture() -> AssemblyPart {
 // Full assembly admission is witnessed above; packaging exercises the same producer
 // on a small model so this contract does not repeatedly serialize the whole rack.
 test fn review_bundle_requires_the_same_admitted_source_manifest() -> Bool {
- match bundle_for(parts:[packaging_fixture()],joints:[]) {CliWirePrintable {bytes:b,exit:e}=>match e {ExitSuccess=>string_contains(s:b,pattern:"packaging-fixture")&&string_contains(s:b,pattern:"Manifest differs from the emitted geometry")&&string_contains(s:b,pattern:"_review_shapes") ExitFailure {code:_,reason:_}=>false} CliWireUnprintable {cause:_}=>false}
+ match bundle_for(a:cassette_printable(root:CassetteRackReview,parts:[packaging_fixture()],joints:[],keepouts:[])) {CliWirePrintable {bytes:b,exit:e}=>match e {ExitSuccess=>string_contains(s:b,pattern:"packaging-fixture")&&string_contains(s:b,pattern:"Manifest differs from the emitted geometry")&&string_contains(s:b,pattern:"_review_shapes") ExitFailure {code:_,reason:_}=>false} CliWireUnprintable {cause:_}=>false}
 }
 
 test fn review_bundle_refuses_duplicate_members() -> Bool {
- match bundle_for(parts:[packaging_fixture(),packaging_fixture()],joints:[]) {CliWirePrintable {bytes:b,exit:e}=>match e {ExitSuccess=>false ExitFailure {code:_,reason:_}=>string_contains(s:b,pattern:"Assembly source checks refused")} CliWireUnprintable {cause:_}=>false}
+ match bundle_for(a:cassette_printable(root:CassetteRackReview,parts:[packaging_fixture(),packaging_fixture()],joints:[],keepouts:[])) {CliWirePrintable {bytes:b,exit:e}=>match e {ExitSuccess=>false ExitFailure {code:_,reason:_}=>string_contains(s:b,pattern:"Assembly source checks refused")} CliWireUnprintable {cause:_}=>false}
 }

@@ -1,0 +1,335 @@
+module test.claim.site_gunb_ai_page_witness
+
+// §5 — the executed witness for gunbc.site.gunb_ai_page, the module that makes
+// gunbc.site.gunb_ai_content, gunbc.design.brand_mark, gunbc.design.gunb_ai_hues and
+// extdeps.fonts.google_fonts §3c-consumed rather than modelled "for later".
+//
+// WHAT EXECUTES. Every test below calls gunbc.site.gunb_ai_page.render_page(), which builds the
+// page as typed Fragments and serializes it through std.markup's algebra under the page medium. So
+// none of these is a grep over a source file: each reads the bytes the writer would publish, and
+// the writer's Filesystem.Write is reachable only from those same bytes. The claim that carries the
+// layer is the first: the render, after the parity roster is applied, must EQUAL the committed copy
+// of the SERVED page (dag/test/fixture/gunb_ai/live_index.html). The oracle comes from outside this
+// repo, which is what stops the content rows being a second copy of the site's text.
+//
+// THE ROSTER IS CHECKED BOTH WAYS, because a one-directional "differences are allowed" list decays
+// into a list of differences nobody remembers causing:
+//   - every row's served text must occur in the fixture and its generated text in the render;
+//   - substituting them must make the two files EQUAL — that equality is the "no fourth difference"
+//     claim;
+//   - no row may describe a difference that no longer exists, or the roster is stale and would hide
+//     the next real one.
+//
+// CONSUMERS (§3c): render_page and page_write are the site's build route (entry points
+// page_write_arg / v2_cli_main); every row read here is read on that route. The roster is read here
+// only to check the roster.
+//
+// RUN:
+//   gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_page_witness.dag --claim-run
+//
+// RED CONTROLS, RUN against the compiler, each reddening the named test and no other, with the
+// baseline restored to green afterwards. A control that only deletes a field is not a control (it
+// fails to typecheck, proving nothing about behaviour), so every one changes what the RENDERED BYTES
+// say. Outcomes are reported in the PR body, not here — they record one execution, not a standing
+// fact. The controls:
+//   - headline_text gains its terminal period -> witness_title_and_heading_differ_by_one_row
+//   - the clone line, in TWO steps: frozen as a hand-typed literal identical to link_repository.href,
+//     THEN link_repository.href changed -> witness_install_lines_are_generated_from_their_rows.
+//     Neither step alone reddens anything: identical text passes a string check, and moving both
+//     sides together keeps them equal. Only the pair separates "rendered from the row" from "typed
+//     to match the row".
+//   - hero_examples' first two entries swapped -> witness_hero_examples_keep_row_order
+//   - deck_mount_value changed -> witness_deck_mount_is_the_served_mount
+//   - "<em>" injected into tagline_text -> witness_copy_arrives_as_escaped_text
+//   - one parity row's generated text set equal to its served text -> witness_parity_rows_are_current
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.markup { Fragment, Element, FragmentText, MarkupComment, MarkupDocument, Attribute, EscapeContext, UrlContext }
+import extdeps.languages.html { html_doctype_name }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import test.fixture.text_scan { occurrences, index_of, occurs_before }
+import gunbc.site.gunb_ai_page {
+  render_page, PageRender, PageRendered, PageRefused, parity_nullities, parity_served_texts,
+  page_classes, render_document,
+  comment_texts, hero_seal_d, theme_color_value,
+}
+import gunbc.site.gunb_ai_content {
+  headline_text, tagline_text, hero_examples, link_repository, link_contact, install_commands,
+  meta_description_text, site_wordmark, repository_slug,
+}
+import gunbc.design.brand_mark { brand_mark_box_path, brand_mark_disc_path, BrandMarkBox, BrandMarkDisc }
+import gunbc.design.gunb_ai_hues { theme_chrome_black }
+
+// The committed copy of what gunb.ai serves today. Read from disk rather than embedded, so agreeing
+// with a regression would take editing the oracle — which is a visible act, not a side effect of
+// editing this file.
+data served_fixture_path: String = "dag/test/fixture/gunb_ai/live_index.html"
+
+fn served_page() -> String {
+  let read = Filesystem.Read(path: served_fixture_path)
+  if read.success { read.content } else { "" }
+}
+
+// The render, or "" — every test below is an equality or a containment over these bytes, so a
+// refusal reads as "nothing matched" and reddens whatever asked, instead of passing on a default.
+fn rendered_page() -> String {
+  match render_page() {
+    PageRendered { bytes: b } => b
+    PageRefused { reason: _ } => ""
+  }
+}
+
+// The render with the roster applied: each row's generated spelling swapped back for the served
+// spelling. Equality against the fixture after this is the parity claim.
+fn render_with_parity_applied() -> String {
+  fold(parity_nullities, init: rendered_page(), f: fn(acc, d) { acc.replace(from: d.generated, to: d.served) })
+}
+
+// ── Parity ────────────────────────────────────────────────────────────────────────────────────
+
+// 1. THE PARITY CLAIM. The fixture must be readable first: a missing file would make both sides ""
+//    and pass every claim below vacuously.
+test fn witness_generated_page_equals_the_served_page() -> Bool {
+  string_contains(s: served_page(), pattern: "<!DOCTYPE html>")
+    && (render_with_parity_applied() == served_page())
+}
+
+test fn witness_render_is_a_whole_document() -> Bool {
+  let out = rendered_page()
+  string_contains(s: out, pattern: "</html>")
+    && occurrences(s: out, pattern: "<main ") == 1
+    && occurrences(s: out, pattern: "<head>") == 1
+    && occurrences(s: out, pattern: "</main>") == 1
+}
+
+// ── The content rows are what the bytes say (this is the §3c consumer, checked on the output) ──
+
+// 2. Every copy row reaches the served bytes. This is what makes gunbc.site.gunb_ai_content a model
+//    of the site rather than a parallel copy of it.
+test fn witness_copy_rows_appear_in_the_rendered_page() -> Bool {
+  let out = rendered_page()
+  string_contains(s: out, pattern: site_wordmark)
+    && string_contains(s: out, pattern: tagline_text)
+    && string_contains(s: out, pattern: meta_description_text())
+    && string_contains(s: out, pattern: link_contact.href)
+    && string_contains(s: out, pattern: link_repository.href)
+}
+
+// 3. The title and the heading are ONE row plus the heading's own mark — the asymmetry the live page
+//    actually has, and the reason gunb_ai_content stores the sentence unpunctuated. Checked as two
+//    spellings that differ, so neither can be silently edited into the other.
+test fn witness_title_and_heading_differ_by_one_row() -> Bool {
+  let out = rendered_page()
+  let heading = join(["<h1>", headline_text, ".", "</h1>"], "")
+  let title = join(["<title>", site_wordmark, " \u{2014} ", headline_text, "</title>"], "")
+  string_contains(s: out, pattern: heading)
+    && string_contains(s: out, pattern: title)
+    && headline_text != join([headline_text, "."], "")
+}
+
+// 4. ORDER, not presence: both examples occur exactly once AND in row order, so swapping
+//    hero_examples reddens this while every contains-check stays green.
+test fn witness_hero_examples_keep_row_order() -> Bool {
+  let out = rendered_page()
+  let first = nth(rows: hero_examples, i: 0)
+  let second = nth(rows: hero_examples, i: 1)
+  rows_length(rows: hero_examples) == 5
+    && occurrences(s: out, pattern: first) == 1
+    && occurrences(s: out, pattern: second) == 1
+    && occurs_before(haystack: out, before: first, after: second)
+}
+
+// 5. The install block is DOWNSTREAM of the repository row: each emitted command is the string the
+//    row composes from link_repository.href / repository_slug(), so a frozen literal that merely
+//    matches today survives step (a) of the control and dies at step (b).
+test fn witness_install_lines_are_generated_from_their_rows() -> Bool {
+  let out = rendered_page()
+  let cmds = install_commands()
+  rows_length(rows: cmds) == 3
+    && string_contains(s: out, pattern: nth(rows: cmds, i: 0))
+    && nth(rows: cmds, i: 0) == join(["git clone ", link_repository.href], "")
+    && nth(rows: cmds, i: 1) == join(["cd ", repository_slug()], "")
+    && string_contains(s: out, pattern: nth(rows: cmds, i: 2))
+    && repository_slug() != ""
+}
+
+test fn witness_deck_mount_is_the_served_mount() -> Bool {
+  string_contains(s: rendered_page(), pattern: "data-deck=\"users.dag\"")
+}
+
+// 6. Copy arrives as TEXT. The emitter escapes, so markup given in a row cannot become a node; and
+//    the served page's own copy contains no markup to begin with, which is what keeps HTML out of
+//    the content layer entirely.
+test fn witness_copy_arrives_as_escaped_text() -> Bool {
+  let out = rendered_page()
+  !string_contains(s: out, pattern: "<em>")
+    && string_contains(s: out, pattern: tagline_text)
+    && !string_contains(s: tagline_text, pattern: "<")
+}
+
+// ── Structure, red when the TREE breaks rather than when a string is edited ────────────────────
+
+// 7. The class vocabulary in both directions: no class in the output outside the roster, and no
+//    roster row the page stopped using. Positions are scanned rather than counted, so the same
+//    letters inside an attribute name cannot pass as a class value.
+test fn witness_class_roster_is_the_only_vocabulary_used() -> Bool {
+  let out = rendered_page()
+  all(span_starts(out: out, marker: "class=\""), i => class_at_is_listed(out: out, start: i))
+    && all(page_classes(), c => string_contains(s: out, pattern: join(["\"", c, "\""], "")))
+}
+
+// 8. The page must not become a second home for styling. No style attribute; and the only colour in
+//    the document is the theme-colour meta, which is itself derived (next test). Counting "#" against
+//    the count of the derived value is what catches a hand-typed hex elsewhere: each occurrence of
+//    the value contributes exactly one "#", so an extra literal makes the two counts differ.
+test fn witness_no_style_attribute_and_no_hand_written_colour() -> Bool {
+  let out = rendered_page()
+  !string_contains(s: out, pattern: "style=\"")
+    && occurrences(s: out, pattern: "#") == occurrences(s: out, pattern: theme_color_value())
+}
+
+test fn witness_theme_colour_comes_from_the_palette_swatch() -> Bool {
+  string_contains(s: rendered_page(), pattern: theme_color_value())
+    && theme_color_value() == "#0c0d0c"
+    && theme_chrome_black.color.r == 12
+}
+
+// 9. The masthead path is not a copied blob: the same brand_mark builders, fed the hero geometry,
+//    produce the d= value that lands in the bytes. Change brand_mark's arc spelling and this reddens.
+test fn witness_seal_is_built_by_the_brand_geometry() -> Bool {
+  let out = rendered_page()
+  string_contains(s: out, pattern: brand_mark_box_path(b: BrandMarkBox { x: 10, y: 20, w: 100, h: 80, r: 30 }))
+    && string_contains(s: out, pattern: brand_mark_disc_path(c: BrandMarkDisc { cx: 85, cy: 48, r: 8 }))
+    && string_contains(s: out, pattern: hero_seal_d())
+}
+
+// 10. The font request is composed from the family rows, not typed as a URL: one endpoint, both
+//     families at the weights the live page requests.
+test fn witness_font_request_is_generated_from_the_family_rows() -> Bool {
+  let out = rendered_page()
+  string_contains(s: out, pattern: "JetBrains+Mono:wght@400;500")
+    && string_contains(s: out, pattern: "Noto+Sans:wght@400;500;600")
+    && occurrences(s: out, pattern: "fonts.googleapis.com/css2") == 1
+}
+
+// 11. The comments the page emits, read from the rows it emits them from.
+test fn witness_comments_survive_where_they_stand() -> Bool {
+  let out = rendered_page()
+  all(comment_texts(), t => string_contains(s: out, pattern: t))
+}
+
+// 12. The fail-closed guards, and the guards GUARDING the guards. An always-empty guard would pass
+//     every build, so 12a asserts the real page is clean and 12b puts a real offence in front of each
+//     guard and requires a refusal.
+test fn witness_guards_are_clean_on_the_real_page() -> Bool {
+  match render_page() {
+    PageRendered { bytes: _ } => true
+    PageRefused { reason: _ } => false
+  }
+}
+
+// A refusal carries the language layer's located reason with the offending value attached, not an
+// empty string. The offence is put through the page's own route (render_document), so the claim
+// fails if the route stops consulting the guards.
+test fn witness_refusal_names_the_offending_value() -> Bool {
+  match render_document(doc: probe_document(child: link_probe(url: "javascript:alert(1)"))) {
+    PageRefused { reason: r } => string_contains(s: r, pattern: "javascript:alert(1)")
+    PageRendered { bytes: _ } => false
+  }
+}
+
+test fn witness_guards_are_live_not_vacuous() -> Bool {
+  // Each guard: silent on what is allowed, loud on what is not. An implementation that always
+  // rendered passes test 12a and dies here.
+  refuses(child: link_probe(url: "javascript:alert(1)"))
+    && refuses(child: link_probe(url: "data:text/html;base64,AAAA"))
+    && !refuses(child: link_probe(url: "https://ok.example/x"))
+    && !refuses(child: link_probe(url: "mailto:hello@gunb.ai"))
+    && !refuses(child: link_probe(url: "assets/site.css"))
+    && !refuses(child: script_probe(body: "var a = 1;"))
+    && refuses(child: script_probe(body: "var a = '</script>';"))
+    && refuses(child: MarkupComment { body: "a --> b" })
+    && !refuses(child: MarkupComment { body: "fine" })
+}
+
+// ── The roster itself ───────────────────────────────────────────────────────────────────────────
+
+test fn witness_parity_rows_apply_and_exhaust_the_difference() -> Bool {
+  all(parity_nullities, d => string_contains(s: served_page(), pattern: d.served)
+    && string_contains(s: rendered_page(), pattern: d.generated))
+    && render_with_parity_applied() == served_page()
+}
+
+test fn witness_parity_rows_are_current() -> Bool {
+  // A row whose generated text already equals the served text describes no difference, and a roster
+  // carrying such a row would let a real fourth difference pass unremarked.
+  all(parity_nullities, d => d.served != d.generated && !string_contains(s: served_page(), pattern: d.generated))
+}
+
+test fn witness_parity_roster_is_named_by_unique_served_text() -> Bool {
+  let texts = parity_served_texts()
+  rows_length(rows: texts) == 7
+    && all(texts, t => occurrences(s: served_page(), pattern: t) == 1)
+}
+
+// ── Helpers; each is read by a test above and by nothing else ───────────────────────────────────
+
+fn rows_length(rows: List<String>) -> Int {
+  fold(rows, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn nth(rows: List<String>, i: Int) -> String {
+  match get(rows, i) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// Byte offsets at which marker begins, scanning forward from 0.
+fn span_starts(out: String, marker: String) -> List<Int> {
+  starts_from(out: out, marker: marker, at: 0)
+}
+
+fn starts_from(out: String, marker: String, at: Int) -> List<Int> {
+  match index_of(haystack: out, needle: marker, at: at, limit: string_length(s: out)) {
+    Absent => []
+    Present { value: i } => concat(
+      [i + string_length(s: marker)],
+      starts_from(out: out, marker: marker, at: i + string_length(s: marker)),
+    )
+  }
+}
+
+fn class_at_is_listed(out: String, start: Int) -> Bool {
+  let rest = out.substring(start: start, end: string_length(s: out))
+  match index_of(haystack: rest, needle: "\"", at: 0, limit: string_length(s: rest)) {
+    Absent => false
+    Present { value: e } => listed(values: page_classes(), wanted: rest.substring(start: 0, end: e))
+  }
+}
+
+fn listed(values: List<String>, wanted: String) -> Bool {
+  fold(values, init: false, f: fn(acc, v) { acc || v == wanted })
+}
+
+// The guards, driven through the page's own render route with the same Element shapes the page builds.
+fn probe_document(child: Fragment) -> MarkupDocument {
+  MarkupDocument { doctype: html_doctype_name, root: Element { tag: "div", attributes: [], children: [child] } }
+}
+
+fn link_probe(url: String) -> Fragment {
+  Element { tag: "a", attributes: [Attribute { name: "href", ctx: UrlContext, value: url }], children: [] }
+}
+
+fn script_probe(body: String) -> Fragment {
+  Element { tag: "script", attributes: [], children: [FragmentText { content: body }] }
+}
+
+fn refuses(child: Fragment) -> Bool {
+  match render_document(doc: probe_document(child: child)) {
+    PageRefused { reason: _ } => true
+    PageRendered { bytes: _ } => false
+  }
+}

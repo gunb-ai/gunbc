@@ -61,7 +61,7 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // because no neighbour spells it.
 //
 // WHAT THIS DOES NOT CLAIM: the module is clean by CONSTRUCTION nowhere. Nothing refuses a new
-// `password: Secret` interpolated into an argv token -- v2.std.operation_argv's binding wall
+// `password: Secret` interpolated into an argv token -- std.operation_argv's binding wall
 // refuses undeclared names and a non-literal executable position, but ShellTransportOperationRow
 // carries declared_inputs as a List<String>, names without types, so the binder cannot see that an
 // input is Secret. That missing declared-input TYPE on the row is this class's next-rung trigger;

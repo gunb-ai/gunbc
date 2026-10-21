@@ -54,9 +54,22 @@ struct Vectors: Decodable {
         var body: String
     }
 
+    struct Refusal: Decodable {
+        var name: String
+        var body: String
+        var at: String
+        var cause: String
+    }
+
     struct PathSegment: Decodable {
         var input: String
         var encoded: String
+    }
+
+    struct Escape: Decodable {
+        var input: String
+        var string_json: String
+        var object_json: String
     }
 
     struct Surface: Decodable {
@@ -83,10 +96,17 @@ struct Vectors: Decodable {
     var enrolment: [Enrolment]
     var read: [Read]
     var envelope: [Envelope]
+    /// refusal: malformed push-update bodies with the location and cause the server's decoder gives them.
+    var refusal: [Refusal]
     /// path_segment: input -> encoded, emitted by the .dag path_segment fold.
     var path_segment: [PathSegment]
     /// surface: the one method, and the route paths, by name.
     var surface: [Surface]
+    /// escape: characters the emitter has to escape, with the bytes serialize_json gives them.
+    /// Optional in the Codable so that a fixture predating the section (it is emitted by
+    /// gunbc.auth.approval_device_redemption_fixtures escape_specimens) fails ONLY the test that
+    /// reads it, never the whole suite; that test refuses nil loudly.
+    var escape: [Escape]?
     /// stored_request: the store's own rendering, so the detail screen's reader is joined to it.
     /// Optional in the Codable so that a fixture predating the section (it is emitted by
     /// gunbc.auth.approval_device_redemption_fixtures stored_request_specimens) fails ONLY the test
@@ -103,6 +123,7 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(v.enrolment.isEmpty, "no enrolment vectors")
         XCTAssertFalse(v.read.isEmpty, "no read vectors")
         XCTAssertFalse(v.envelope.isEmpty, "no envelope vectors")
+        XCTAssertFalse(v.refusal.isEmpty, "no refusal vectors")
         XCTAssertFalse(v.path_segment.isEmpty, "no path_segment vectors")
         XCTAssertFalse(v.surface.isEmpty, "no surface vectors")
         return v
@@ -206,6 +227,33 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(try WireDecode.redemptionResponse(Data(try envelope("redemption_response_enrollment_unknown").utf8)).outcome, OutcomeName.enrollmentUnknown)
     }
 
+    /// A malformed push-update body is refused at the location and with the cause the SERVER's decoder
+    /// gives it (refusal vectors are decode_push_update's own answers), so a cause or a path root the
+    /// transcription restates differently reds here.
+    func testPushUpdateRefusalsMatchTheServer() throws {
+        for v in try load().refusal {
+            do {
+                _ = try WireDecode.pushUpdate(Data(v.body.utf8))
+                XCTFail("refusal vector \(v.name) was accepted")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, WireError.refused(at: v.at, cause: v.cause).localizedDescription, v.name)
+            }
+        }
+    }
+
+    /// One envelope per arm of the enrol route's typed refusal (enrolment_refusal_<label>): the arms the
+    /// vectors cover are exactly the arms the app spells, and each decodes to the arm its name carries, so an
+    /// arm added to the wire without a vector (or renamed) reds here.
+    func testEveryEnrolmentRefusalArmDecodes() throws {
+        let prefix = "enrolment_refusal_"
+        let arms = try load().envelope.filter { $0.name.hasPrefix(prefix) }
+        XCTAssertEqual(Set(arms.map { String($0.name.dropFirst(prefix.count)) }), Set(EnrolmentRefusalKind.allCases.map { $0.rawValue }))
+        for a in arms {
+            let kind = try WireDecode.enrolmentRefusal(Data(a.body.utf8))
+            XCTAssertEqual(prefix + kind.rawValue, a.name)
+        }
+    }
+
     /// The detail screen's strict read, joined to the store's own rendering: every stored_request
     /// vector (stored_request_json over the witness's input) decodes to exactly that input. No
     /// rendering is typed here.
@@ -292,9 +340,13 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertTrue(seg.hasPrefix("id-") && !seg.contains("+") && !seg.contains("/"))
     }
 
-    /// The emitter's escaping is serialize_json's: controls as \u00XX upper-case, "/" literal.
-    func testEmitterEscapesLikeSerializeJson() {
-        XCTAssertEqual(WireJson.string("a\u{1F}b/\"c\\").serialized, #""a\u001Fb/\"c\\""#)
-        XCTAssertEqual(WireJson.object([("k", .array([.string("x")]))]).serialized, #"{"k": ["x"]}"#)
+    /// The emitter's escaping is serialize_json's, over every specimen the fixture carries.
+    func testEmitterEscapesLikeSerializeJson() throws {
+        let vectors = try XCTUnwrap(try load().escape, "vectors.json has no escape section \u{2014} it is emitted by gunbc.auth.approval_device_redemption_fixtures escape_specimens")
+        XCTAssertFalse(vectors.isEmpty, "no escape specimens")
+        for v in vectors {
+            XCTAssertEqual(WireJson.string(v.input).serialized, v.string_json, v.input)
+            XCTAssertEqual(WireJson.object([("k", .array([.string(v.input)]))]).serialized, v.object_json, v.input)
+        }
     }
 }
