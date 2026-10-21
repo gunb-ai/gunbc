@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.orchestration { PipelineStep }
 import gunbc.live_deploy.emit {
-  deploy_raw, HostScriptProceed, HostScriptRefused, MutateStepsAdmitted, MutateRefused,
+  deploy_raw,
 }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_complete_object_source_serve }
 import extdeps.git.partial_clone {
