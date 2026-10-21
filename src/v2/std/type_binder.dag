@@ -319,8 +319,14 @@ fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration>
 // reflected_predicate_standing -> source_spelled_unelaborated; an elaborated set
 // (body_lowering_fold body_lower_kept_where_clause) has no such edge. A clause missing the production
 // or captured-projection structure either route builds is MalformedWhere, never read as elaborated.
-// Every reader that interprets a predicate takes the clause out of this sum (refinement_predicate_clause),
-// so it cannot reach the spellings without matching on their standing.
+// CONSUMERS: node_reflection refinement_predicate_clause is the refusing reader (consumed by claim
+// test.claim.decl_facts_alias_refinement_reflection only; its production consumer is the declared
+// later change that reads predicates from reflected facts, i.e. the elaboration route named below).
+// type_declaration_use_census where_clause_references still reads r.where_clause directly: its
+// inputs are compile-derived symbol-index nodes, which carry no reflected_predicate_standing edge, and
+// it has no refusal channel; it is NOT routed through this sum.
+// ElaboratedWhere means ABSENCE of the host mark on a well-formed clause: the host marshal is the only
+// producer of source spellings, and it stamps the mark in one place (marshal_non_connective_type_item).
 // Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
 // SourceSpelledWhere, the reflected_predicate_standing edge in coproduct_reflection, and the refusal arm.
 type WhereStanding
