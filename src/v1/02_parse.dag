@@ -4987,8 +4987,8 @@ fn parse_param_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
   let r = parse_param(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.param)
-  let ctx = parse_context_after_node(ctx: r.ctx, node: r.param)
-
+  // P1.3: `parse_param` publishes `param` in its returned ctx; no recovery walk here.
+  let ctx = r.ctx
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
@@ -5183,7 +5183,8 @@ fn parse_block(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = parse_stmts(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let stmts = r.stmts
-  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: stmts)
+  // P1.3: `parse_stmts` publishes every statement it built into `r.ctx`; no recovery walk here.
+  let ctx = r.ctx
   let tokens = skip_newlines(tokens: r.tokens)
 
   let r = expect(tokens: tokens, expected: ExpectRBrace)
@@ -5208,7 +5209,7 @@ fn parse_stmts_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> S
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_stmts_acc(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
+    parse_stmts_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 
@@ -5378,7 +5379,10 @@ fn parse_expr_bp(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprRes
 // `lhs_from` is where `lhs` began. Every operator application, call, access or cast built here
 // begins there too -- `a + b` begins at `a`, not at the `+` its diagnostic span names.
 fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> ExprResult {
-  let ctx = parse_context_after_node(ctx: ctx, node: lhs)
+  // P1.3 allocator postcondition: every caller passes an lhs its producer already published
+  // into ctx (parse_prefix/parse_primary via parse_expr_bp, try_postfix, each fold's own mint or
+  // child result). The recovery walk of the growing left spine was redundant and quadratic here;
+  // a caller that truly adopts a foreign tree must join its ctx explicitly before calling.
   if tok_is_eof(tok: token_stream_first(stream: tokens)) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
   } else {
@@ -5698,7 +5702,7 @@ fn parse_lambda_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_lambda_stmts(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
+    parse_lambda_stmts(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 
@@ -5939,8 +5943,8 @@ fn parse_arg_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -
   let r = parse_single_arg(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ArgsResult { args: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.arg)
-  let ctx = parse_context_after_node(ctx: r.ctx, node: r.arg)
-
+  // P1.3: `parse_single_arg` publishes `arg` in its returned ctx; no recovery walk here.
+  let ctx = r.ctx
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
@@ -6048,7 +6052,10 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
 }
 
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> ExprResult {
-  let ctx = parse_context_after_node(ctx: ctx, node: lhs)
+  // P1.3 allocator postcondition: both entries pass an lhs published into ctx by its producer
+  // (parse_prefix's result, or parse_expr_bp_no_brace's own minted identifier leaf). The recovery
+  // walk of the growing left spine was redundant and quadratic here; a caller that truly adopts a
+  // foreign tree must join its ctx explicitly before calling.
   let tok = token_stream_first(stream: tokens)
   if tok_is_eof(tok: tok) || tok_is_lbrace(tok: tok) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
@@ -6201,7 +6208,7 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_match_arm_stmts(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
+    parse_match_arm_stmts(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 
