@@ -3341,6 +3341,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/roadmap/session_activation_ensure_wet_witness.dag",
       function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_a_coproduct_and_a_record_is_refused" },
+      entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
+      function: "w_an_equality_between_a_coproduct_and_a_record_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_unrelated_records_is_refused" },
+      entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
+      function: "w_an_equality_between_unrelated_records_is_refused",
+      expectation: ExpectedToHold {}
     }
   ]
 }
