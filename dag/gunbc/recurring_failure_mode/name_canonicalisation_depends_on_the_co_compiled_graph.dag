@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.name_canonicalisation_depends_on_the_co_compiled_graph
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data name_canonicalisation_depends_on_the_co_compiled_graph: RecurringFailureMode = RecurringFailureMode {
   identity: "name_canonicalisation_depends_on_the_co_compiled_graph" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a module's resolution depends on which OTHER modules are compiled in the same graph. v1.compiler.infer rewire_type_env_import_str_binding_identity builds build_export_indexes over the whole graph's module list, and rewire_canonical_rewrites withholds a module's canonical rewrite of an inherited name when facts.exporter_count > 1 -- the number of modules IN THAT GRAPH exporting the name, not the number the module can see. The same module source is therefore wired one way in a small closure (e.g. a planning entry such as src/v2/workflow/floor_diff_observe.dag, 83 modules) and another way in a larger one that happens to contain a second exporter of one of its inherited names (the floor's prepared subject, thousands of modules). HARM: non-hermetic resolution -- one source means different things in different closures, so an answer established over one entry's graph is not an answer about the module, and sharing or reusing a wired module across graphs (the per-module wiring this blocked, gunbc#12774 thread) is unsound until it is scoped.",

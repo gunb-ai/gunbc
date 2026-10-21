@@ -43,7 +43,7 @@ import std.process { ExitSuccess, exit_failure }
 // take.
 //
 // THE 8-PIN POWER CONNECTOR SHARES THE END FACE WITH THE FIN WINDOW, in a band on the PCB side of it.
-// The plenum is placed FLUSH with the window's band-side edge and grows away from the band, so no
+// The plenum is placed one band clearance BACK from the window's band-side edge and grows away from the band, so no
 // placement of this part can cover the connector -- construction, not a check. The cost is that the
 // plenum overhangs the card's heatsink face by most of a fan width, into the neighbouring slot.
 

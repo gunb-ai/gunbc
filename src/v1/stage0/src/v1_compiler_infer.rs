@@ -26,13 +26,20 @@ pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
-    literal_homomorphism_rows,
+    conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows,
+    kernel_optional_mint_name, literal_homomorphism_rows,
 };
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{
     carrier_container_equality_rows, kernel_carrier_admits_numeral, CollectionSizeEffect,
     FreeMonoid,
+};
+use crate::std_coercion::ConversionPlanJudgment::{
+    ConversionPlanAbsent, ConversionPlanAdmitted, ConversionPlanAmbiguous,
+    ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText,
+};
+use crate::std_coercion::CrossingPlanSelection::{
+    CrossingPlanJudged, CrossingPlanNone, CrossingPlanSeveral,
 };
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 use crate::std_coercion::TextRepresentation::{
@@ -42,7 +49,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{
-    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, SubtractionRefinement,
+    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, select_text_crossing_plan,
+    unicode_scalar_unfold, ConversionPlanJudgment, CrossingPlanSelection, SubtractionRefinement,
     TextRepresentation, TypeDeclarationProvenance,
 };
 pub use crate::std_computation::ShrinkFactor;
@@ -53,18 +61,22 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length, ContentHash, Fnv1a64Structural,
 };
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
+pub use crate::std_decl_ref::{
+    decl_field_ref, decl_ref, declaration_ref_eq, DeclField, DeclarationRef,
+};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{
     dissolution_description, unbound_dissolution, DissolutionCondition,
 };
+use crate::std_generated_provider::GeneratedProviderCause::GeneratedConversionRoute;
 use crate::std_generated_provider::ProviderAcquisitionStep::{
     AcquireModules, AcquisitionComplete, ProviderAcquisitionRefused,
 };
 use crate::std_generated_provider::ProviderModuleFact::{ModuleInClosure, ModuleNotInPool};
 pub use crate::std_generated_provider::{
-    group_provider_demands, observe_provider_demand, provider_acquisition_step,
-    GeneratedProviderDemand, ProviderAcquisitionStep, ProviderModuleFact, ProviderPoolObservation,
+    generated_provider_demand, group_provider_demands, observe_provider_demand,
+    provider_acquisition_step, GeneratedProviderCause, GeneratedProviderDemand,
+    GeneratedProviderSite, ProviderAcquisitionStep, ProviderModuleFact, ProviderPoolObservation,
 };
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -12213,7 +12225,7 @@ pub fn host_text_unfolded_at_code_point_boundary(
     value: Rc<Node>,
     destination_type: Rc<Node>,
     scope: Rc<InferScope>,
-) -> Rc<Node> {
+) -> Rc<InferResult> {
     match value.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: _, .. }) => {
             match argument_text_representation(value.clone(), scope.type_env.clone()) {
@@ -12222,31 +12234,208 @@ pub fn host_text_unfolded_at_code_point_boundary(
                         destination_type.clone(),
                         scope.clone(),
                     ) {
-                        crate::v1_std_core::make_named_expr_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "chars".to_string(),
-                            Rc::new(ExprData::ExprMethodCall {
-                                method_semantics: Some(Rc::new(
-                                    MethodSemantics::PlainMethodSemantics,
-                                )),
-                            }),
-                            Rc::new(vec![value.clone()]),
-                            Some(Rc::new(InferredNode::Resolved {
-                                node: destination_type.clone(),
-                            })),
-                            value.span.clone(),
-                            elaborated_span("chars".to_string()),
+                        host_text_crossing_call(
+                            value.clone(),
+                            destination_type.clone(),
+                            scope.clone(),
                         )
                     } else {
-                        value.clone()
+                        ok_infer(value.clone())
                     }
                 }
-                TextRepresentation::CodePointSequence => value.clone(),
-                TextRepresentation::NotText => value.clone(),
-                TextRepresentation::TextRepresentationUnidentified => value.clone(),
+                TextRepresentation::CodePointSequence => ok_infer(value.clone()),
+                TextRepresentation::NotText => ok_infer(value.clone()),
+                TextRepresentation::TextRepresentationUnidentified => ok_infer(value.clone()),
             }
         }
-        _ => value.clone(),
+        _ => ok_infer(value.clone()),
+    }
+}
+
+pub fn host_text_crossing_refused(
+    value: Rc<Node>,
+    message: String,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    Rc::new(InferResult {
+        typed: value.clone(),
+        emissions: infer_emissions_of_diagnostics(Rc::new(vec![inference_error(
+            v1_rt::concat("host-text crossing: ".to_string(), message.clone()),
+            value.span.clone(),
+            scope.module_name.clone(),
+        )])),
+    })
+}
+
+pub fn host_text_crossing_demand(
+    route: Rc<DeclarationRef>,
+    value: Rc<Node>,
+) -> Rc<GeneratedProviderDemand> {
+    crate::std_generated_provider::generated_provider_demand(
+        route.clone(),
+        Rc::new(GeneratedProviderSite {
+            cause: GeneratedProviderCause::GeneratedConversionRoute,
+            at: value.span.clone(),
+            occurrence: match (*value.occurrence_identity.clone()).clone() {
+                NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+                _ => Some(value.occurrence_identity.clone()),
+            },
+        }),
+    )
+}
+
+pub fn host_text_crossing_call(
+    value: Rc<Node>,
+    destination_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    match (*crate::std_coercion::select_text_crossing_plan(conversion_plan_rows(), TextRepresentation::HostText, TextRepresentation::CodePointSequence)).clone() {
+    CrossingPlanSelection::CrossingPlanNone => host_text_crossing_refused(value.clone(), "no conversion plan in gunbc.structural_realization_bindings conversion_plan_rows runs from host text to a code-point sequence".to_string(), scope.clone()),
+    CrossingPlanSelection::CrossingPlanSeveral { routes: rs, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(((rs.clone().len() as i64)).to_string(), " conversion plans run from host text to a code-point sequence; the roster must name one".to_string()), scope.clone()),
+    CrossingPlanSelection::CrossingPlanJudged { judgment: j, .. } => match (*j.clone()).clone() {
+    ConversionPlanJudgment::ConversionPlanAdmitted { plan: plan, .. } => host_text_crossing_admitted(plan.route.clone(), value.clone(), destination_type.clone(), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanAbsent { route: r, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat("no conversion plan names ".to_string(), r.module_path.clone()), ".".to_string()), r.decl_name.clone()), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanAmbiguous { route: r, row_count: n, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat((n.clone()).to_string(), " conversion plans name ".to_string()), r.module_path.clone()), ".".to_string()), r.decl_name.clone()), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanEndpointMismatch { plan: p, .. } => host_text_crossing_refused(value.clone(), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the plan ".to_string(), p.route.module_path.clone()), ".".to_string()), p.route.decl_name.clone()), " does not run from host text to a code-point sequence".to_string()), scope.clone()),
+    ConversionPlanJudgment::ConversionPlanEndpointNotText { .. } => host_text_crossing_refused(value.clone(), "one side of the crossing is not identified text".to_string(), scope.clone()),
+},
+}
+}
+
+pub fn host_text_crossing_admitted(
+    route: Rc<DeclarationRef>,
+    value: Rc<Node>,
+    destination_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    {
+        let demand = infer_emissions_of_provider_demand(host_text_crossing_demand(
+            route.clone(),
+            value.clone(),
+        ));
+        let identity = Rc::new(DeclaredCallableIdentity {
+            owner_module_path: route.module_path.clone(),
+            decl_name: route.decl_name.clone(),
+        });
+        let qualified = crate::v1_std_core::callable_identity(identity.clone());
+        match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            qualified.clone(),
+        ))
+        .clone()
+        {
+            FuncSigLookup::FuncSigResolved { sig, declared, .. } => {
+                if ((declared.owner_module_path.clone() != identity.owner_module_path.clone())
+                    || (declared.decl_name.clone() != identity.decl_name.clone()))
+                {
+                    Rc::new(InferResult {
+                        typed: value.clone(),
+                        emissions: infer_emissions_concat(
+                            demand.clone(),
+                            host_text_crossing_refused(
+                                value.clone(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "the route ".to_string(),
+                                                qualified.clone(),
+                                            ),
+                                            " resolved to ".to_string(),
+                                        ),
+                                        crate::v1_std_core::callable_identity(declared.clone()),
+                                    ),
+                                    ", not to itself".to_string(),
+                                ),
+                                scope.clone(),
+                            )
+                            .emissions
+                            .clone(),
+                        ),
+                    })
+                } else {
+                    match sig.params.clone().first().cloned() {
+                        std::option::Option::None => Rc::new(InferResult {
+                            typed: value.clone(),
+                            emissions: infer_emissions_concat(
+                                demand.clone(),
+                                host_text_crossing_refused(
+                                    value.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat("the route ".to_string(), qualified.clone()),
+                                        " declares no parameter to take the host text".to_string(),
+                                    ),
+                                    scope.clone(),
+                                )
+                                .emissions
+                                .clone(),
+                            ),
+                        }),
+                        Some(param) => {
+                            let param_name = crate::v1_std_core::param_node_name_at(
+                                param.clone(),
+                                scope.type_env.source_indices.clone(),
+                            );
+                            Rc::new(InferResult {
+                                typed: crate::v1_std_core::make_named_expr_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                    qualified.clone(),
+                                    Rc::new(ExprData::ExprCall {
+                                        call_semantics: Some(Rc::new(
+                                            CallSemantics::PlainCallSemantics {
+                                                target: Rc::new(
+                                                    CallTargetIdentity::SourceDeclarationCall {
+                                                        owner_module_path: identity
+                                                            .owner_module_path
+                                                            .clone(),
+                                                        decl_name: identity.decl_name.clone(),
+                                                    },
+                                                ),
+                                            },
+                                        )),
+                                        descent_evidence: std::option::Option::None,
+                                    }),
+                                    Rc::new(vec![crate::v1_std_core::make_arg_node(
+                                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                        Some(param_name.clone()),
+                                        value.clone(),
+                                        value.span.clone(),
+                                        elaborated_span(param_name.clone()),
+                                    )]),
+                                    Some(Rc::new(InferredNode::Resolved {
+                                        node: destination_type.clone(),
+                                    })),
+                                    value.span.clone(),
+                                    elaborated_span(qualified.clone()),
+                                ),
+                                emissions: demand.clone(),
+                            })
+                        }
+                    }
+                }
+            }
+            FuncSigLookup::FuncSigUnresolved => Rc::new(InferResult {
+                typed: value.clone(),
+                emissions: demand.clone(),
+            }),
+            FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => Rc::new(InferResult {
+                typed: value.clone(),
+                emissions: infer_emissions_concat(
+                    demand.clone(),
+                    host_text_crossing_refused(
+                        value.clone(),
+                        v1_rt::concat(
+                            v1_rt::concat("the route ".to_string(), qualified.clone()),
+                            " resolves ambiguously in this closure".to_string(),
+                        ),
+                        scope.clone(),
+                    )
+                    .emissions
+                    .clone(),
+                ),
+            }),
+        }
     }
 }
 
@@ -12429,14 +12618,20 @@ pub fn infer_call_arguments_generic_pass(
                 expected.clone(),
             );
             let ar = if formal_is_code_point_sequence.clone() {
-                Rc::new(InferResult {
-                    typed: host_text_unfolded_at_code_point_boundary(
+                {
+                    let crossed = host_text_unfolded_at_code_point_boundary(
                         ar_inferred.typed.clone(),
                         code_point_formal.clone(),
                         scope.clone(),
-                    ),
-                    emissions: ar_inferred.emissions.clone(),
-                })
+                    );
+                    Rc::new(InferResult {
+                        typed: crossed.typed.clone(),
+                        emissions: infer_emissions_concat(
+                            ar_inferred.emissions.clone(),
+                            crossed.emissions.clone(),
+                        ),
+                    })
+                }
             } else {
                 ar_inferred.clone()
             };
@@ -12895,7 +13090,7 @@ pub fn unfold_scalar_sequence_image(
     {
         let scalar_nodes = Rc::new({
             let mut __result = Vec::new();
-            for cp in Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            for cp in crate::std_coercion::unicode_scalar_unfold(s.clone())
                 .iter()
                 .cloned()
             {
@@ -14091,7 +14286,7 @@ Rc::new(InferResult {
                                 }
                             }
                         };
-                        let arg_infer_results = variant_tag_reference_argument_results(
+                        let arg_infer_results = payload_arm_tag_reference_waiver_results(
                             func_name.clone(),
                             crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
                                 call_target.clone(),
@@ -17674,16 +17869,49 @@ pub fn sole_constructor_construction_diags(
     }
 }
 
-pub fn zero_field_variant_tag_reference_frontier_note() -> String {
+pub fn payload_arm_tag_reference_waiver_pairs() -> Rc<Vec<Rc<DeclarationRef>>> {
     thread_local! {
-        static CACHED: String = {
-            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier.".to_string()
+        static CACHED: Rc<Vec<Rc<DeclarationRef>>> = {
+            Rc::new(vec![crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "AlgebraPrimitive".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "AlgebraInverseCompose".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "OrderingComparison".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "EqualityComparison".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "CoercionCrossing".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "InfixToken".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "PrefixToken".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "CallIdent".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "MethodIdent".to_string())])
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<DeclarationRef>>>| c.clone())
 }
 
-pub fn variant_tag_reference_argument_results(
+pub fn payload_arm_tag_reference_row_names_arm(row: Rc<DeclarationRef>, arm_name: String) -> bool {
+    match (*row.field.clone()).clone() {
+        DeclField::NamedField { field_name: f, .. } => (f.clone() == arm_name.clone()),
+        _ => false,
+    }
+}
+
+pub fn payload_arm_tag_reference_is_waived(arm_name: String, scope: Rc<InferScope>) -> bool {
+    match variant_owner_node(scope.clone(), arm_name.clone()) {
+        Some(owner) => match crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+            owner.clone(),
+            scope.type_env.source_indices.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(owner_decl) => {
+                let mut __found = false;
+                for w in payload_arm_tag_reference_waiver_pairs().iter().cloned() {
+                    if (((w.module_path.clone() == owner_decl.module_path.clone())
+                        && (w.decl_name.clone() == owner_decl.decl_name.clone()))
+                        && payload_arm_tag_reference_row_names_arm(w.clone(), arm_name.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
+    }
+}
+
+pub fn payload_arm_tag_reference_waiver_results(
     func_name: String,
     callee_is_body_binding: bool,
     results: Rc<Vec<Rc<ArgInferResult>>>,
@@ -17709,9 +17937,10 @@ pub fn variant_tag_reference_argument_results(
                                     scope.type_env.source_indices.clone(),
                                 ) {
                                     Some(tn) => {
-                                        if (variant_owner_node(scope.clone(), tn.clone())
-                                            != std::option::Option::None)
-                                        {
+                                        if payload_arm_tag_reference_is_waived(
+                                            tn.clone(),
+                                            scope.clone(),
+                                        ) {
                                             Rc::new(ArgInferResult {
                                                 typed_arg: air.typed_arg.clone(),
                                                 emissions: infer_emissions_filter_diagnostics(
@@ -25180,23 +25409,13 @@ pub fn param_is_generic_decl(
 }
 
 pub fn unify_generics(
-    mut __tco_loop_formal: Rc<Node>,
-    mut __tco_loop_actual: Rc<Node>,
-    mut __tco_loop_generic_names: Rc<Vec<String>>,
-    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut formal = __tco_loop_formal;
-        #[allow(unused_mut)]
-        let mut actual = __tco_loop_actual;
-        #[allow(unused_mut)]
-        let mut generic_names = __tco_loop_generic_names;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
+    {
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
@@ -25218,53 +25437,86 @@ pub fn unify_generics(
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
+                    v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
                 }
-                Some(_) => {
-                    break acc.clone();
-                }
+                Some(_) => acc.clone(),
             }
         } else {
             if ((formal.connective.clone() == Connective::Arrow)
                 && (actual.connective.clone() == Connective::Arrow))
             {
-                break unify_callable_generics(
+                unify_callable_generics(
                     formal.clone(),
                     actual.clone(),
                     generic_names.clone(),
                     source_indices.clone(),
                     acc.clone(),
-                );
+                )
             } else {
-                if (((formal.children.clone().len() as i64) == 1)
-                    && ((actual.children.clone().len() as i64) == 1))
+                if (((formal.children.clone().len() as i64) > 0)
+                    && ((formal.children.clone().len() as i64)
+                        == (actual.children.clone().len() as i64)))
                 {
-                    match formal.children.clone().first().cloned() {
-                        Some(fc) => match actual.children.clone().first().cloned() {
-                            Some(ac) => {
-                                let __tco_0 = fc.clone();
-                                let __tco_1 = ac.clone();
-                                let __tco_2 = generic_names;
-                                let __tco_3 = source_indices;
-                                let __tco_4 = acc;
-                                __tco_loop_formal = __tco_0;
-                                __tco_loop_actual = __tco_1;
-                                __tco_loop_generic_names = __tco_2;
-                                __tco_loop_source_indices = __tco_3;
-                                __tco_loop_acc = __tco_4;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                break acc.clone();
-                            }
-                        },
-                        std::option::Option::None => {
-                            break acc.clone();
-                        }
-                    }
+                    unify_generic_child_pairs(
+                        formal.children.clone(),
+                        actual.children.clone(),
+                        generic_names.clone(),
+                        source_indices.clone(),
+                        acc.clone(),
+                    )
                 } else {
+                    acc.clone()
+                }
+            }
+        }
+    }
+}
+
+pub fn unify_generic_child_pairs(
+    mut __tco_loop_formals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_actuals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_generic_names: Rc<Vec<String>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut formals = __tco_loop_formals;
+        #[allow(unused_mut)]
+        let mut actuals = __tco_loop_actuals;
+        #[allow(unused_mut)]
+        let mut generic_names = __tco_loop_generic_names;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        match formals.clone().first().cloned() {
+            Some(f) => match actuals.clone().first().cloned() {
+                Some(a) => {
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&formals, 1));
+                    let __tco_1 = Rc::new(v1_rt::list_skip(&actuals, 1));
+                    let __tco_2 = generic_names.clone();
+                    let __tco_3 = source_indices.clone();
+                    let __tco_4 = unify_generics(
+                        f.clone(),
+                        a.clone(),
+                        generic_names.clone(),
+                        source_indices.clone(),
+                        acc,
+                    );
+                    __tco_loop_formals = __tco_0;
+                    __tco_loop_actuals = __tco_1;
+                    __tco_loop_generic_names = __tco_2;
+                    __tco_loop_source_indices = __tco_3;
+                    __tco_loop_acc = __tco_4;
+                    continue;
+                }
+                std::option::Option::None => {
                     break acc.clone();
                 }
+            },
+            std::option::Option::None => {
+                break acc.clone();
             }
         }
     }

@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentBeforeInference, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
@@ -25,8 +25,8 @@ import std.literal_elaboration {
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
+import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -258,7 +258,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_
 import std.generated_provider {
   GeneratedProviderDemand, group_provider_demands, ProviderAcquisitionStep, ProviderModuleFact,
   ModuleInClosure, ModuleNotInPool, observe_provider_demand, provider_acquisition_step,
-  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused, ProviderPoolObservation
+  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused, ProviderPoolObservation,
+  generated_provider_demand, GeneratedProviderSite, GeneratedConversionRoute
 }
 
 fn is_witness_type_name(name: String) -> Bool {
@@ -8009,25 +8010,95 @@ fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: In
 // judges (expression_value_type through expand_nominal_alias_rhs), so a qualified
 // v2.std.text.String value whose raw resolved node still reads as the spelling String is not
 // mistaken for host text and unfolded twice.
-fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
+//
+// THE NODE IS A CALL TO THE DECLARATION THE PLAN NAMES, NEVER A SPELLING. The plan is selected by the
+// crossing's two endpoints (std.coercion select_text_crossing_plan) and judged by its own route through
+// judge_conversion_plan, the judgment an authored route call receives. The generated call carries that
+// route as a SourceDeclarationCall, spelled by its qualified identity, so no authored import is
+// consulted and no same-spelled `chars` in scope can capture it. The call demands its provider
+// (std.generated_provider, cause GeneratedConversionRoute, at the crossed value's authored span): when
+// the route is outside this closure the crossing is "needs acquisition", the value is left as it was,
+// and the acquisition loop acquires the route's module and checks the closure again; only a provider the
+// loop cannot supply refuses (GeneratedProviderUnavailable). A plan that is absent, ambiguous, or does
+// not run between these endpoints refuses here with its own reason and demands nothing.
+fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> InferResult {
   match value.inferred {
     Present { value: Resolved { node: _ } } =>
       match argument_text_representation(value: value, type_env: scope.type_env) {
         HostText =>
           if destination_declares_scalar_sequence_unfold(destination_type: destination_type, scope: scope) {
-            make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
-              name: "chars", expr_data: ExprMethodCall { method_semantics: Present { value: PlainMethodSemantics } },
-              children: [value],
-              inferred: Present { value: Resolved { node: destination_type } },
-              span: value.span,
-              name_span: elaborated_span(name: "chars")
-            )
-          } else { value }
-        CodePointSequence => value
-        NotText => value
-        TextRepresentationUnidentified => value
+            host_text_crossing_call(value: value, destination_type: destination_type, scope: scope)
+          } else { ok_infer(texpr: value) }
+        CodePointSequence => ok_infer(texpr: value)
+        NotText => ok_infer(texpr: value)
+        TextRepresentationUnidentified => ok_infer(texpr: value)
       }
-    _ => value
+    _ => ok_infer(texpr: value)
+  }
+}
+
+fn host_text_crossing_refused(value: Node, message: String, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: value,
+    emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: concat("host-text crossing: ", message), span: value.span, module_name: scope.module_name)])
+  }
+}
+
+fn host_text_crossing_demand(route: DeclarationRef, value: Node) -> GeneratedProviderDemand {
+  generated_provider_demand(declaration: route, site: GeneratedProviderSite {
+    cause: GeneratedConversionRoute,
+    at: value.span,
+    occurrence: match value.occurrence_identity {
+      OccurrenceSynthetic => Absent
+      _ => Present { value: value.occurrence_identity }
+    }
+  })
+}
+
+fn host_text_crossing_call(value: Node, destination_type: Node, scope: InferScope) -> InferResult {
+  match select_text_crossing_plan(rows: conversion_plan_rows, source: HostText, target: CodePointSequence) {
+    CrossingPlanNone => host_text_crossing_refused(value: value, message: "no conversion plan in gunbc.structural_realization_bindings conversion_plan_rows runs from host text to a code-point sequence", scope: scope)
+    CrossingPlanSeveral { routes: rs } => host_text_crossing_refused(value: value, message: concat(to_string(rs |> count), " conversion plans run from host text to a code-point sequence; the roster must name one"), scope: scope)
+    CrossingPlanJudged { judgment: j } =>
+      match j {
+        ConversionPlanAdmitted { plan: plan } => host_text_crossing_admitted(route: plan.route, value: value, destination_type: destination_type, scope: scope)
+        ConversionPlanAbsent { route: r } => host_text_crossing_refused(value: value, message: concat("no conversion plan names ", r.module_path, ".", r.decl_name), scope: scope)
+        ConversionPlanAmbiguous { route: r, row_count: n } => host_text_crossing_refused(value: value, message: concat(to_string(n), " conversion plans name ", r.module_path, ".", r.decl_name), scope: scope)
+        ConversionPlanEndpointMismatch { plan: p } => host_text_crossing_refused(value: value, message: concat("the plan ", p.route.module_path, ".", p.route.decl_name, " does not run from host text to a code-point sequence"), scope: scope)
+        ConversionPlanEndpointNotText { source: _, target: _ } => host_text_crossing_refused(value: value, message: "one side of the crossing is not identified text", scope: scope)
+      }
+  }
+}
+
+fn host_text_crossing_admitted(route: DeclarationRef, value: Node, destination_type: Node, scope: InferScope) -> InferResult {
+  let demand = infer_emissions_of_provider_demand(demand: host_text_crossing_demand(route: route, value: value))
+  let identity = DeclaredCallableIdentity { owner_module_path: route.module_path as String, decl_name: route.decl_name as String }
+  let qualified = callable_identity(id: identity)
+  match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: qualified) {
+    FuncSigResolved { sig: sig, declared: declared } =>
+      if declared.owner_module_path != identity.owner_module_path || declared.decl_name != identity.decl_name {
+        InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " resolved to ", callable_identity(id: declared), ", not to itself"), scope: scope).emissions) }
+      } else {
+        match sig.params |> first {
+          Absent => InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " declares no parameter to take the host text"), scope: scope).emissions) }
+          Present { value: param } =>
+            let param_name = param_node_name_at(n: param, source_indices: scope.type_env.source_indices)
+            InferResult {
+              typed: make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
+                name: qualified,
+                expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name } } }, descent_evidence: none },
+                children: [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: param_name }, value: value, span: value.span, name_span: elaborated_span(name: param_name))],
+                inferred: Present { value: Resolved { node: destination_type } },
+                span: value.span,
+                name_span: elaborated_span(name: qualified)
+              ),
+              emissions: demand
+            }
+        }
+      }
+    FuncSigUnresolved => InferResult { typed: value, emissions: demand }
+    FuncSigAmbiguous { candidates: _ } =>
+      InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " resolves ambiguously in this closure"), scope: scope).emissions) }
   }
 }
 
@@ -8106,7 +8177,8 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
     let ar = if formal_is_code_point_sequence {
-      InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), emissions: ar_inferred.emissions }
+      let crossed = host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope)
+      InferResult { typed: crossed.typed, emissions: infer_emissions_concat(left: ar_inferred.emissions, right: crossed.emissions) }
     } else { ar_inferred }
     let next_subst = if !has_formal {
       st.subst
@@ -8421,7 +8493,7 @@ fn unfold_peano_image(n: Int, zero: String, succ: String, prev_field: String, pa
 // character grain -- the same primitive the tokenizer's SourceRef is built from -- so a non-ASCII
 // literal's element count and values are its scalars, never its UTF-8 bytes.
 fn unfold_scalar_sequence_image(s: String, destination_type: Node, span: SourceSpan) -> Node {
-  let scalar_nodes = chars(s) |> map(cp =>
+  let scalar_nodes = unicode_scalar_unfold(s: s) |> map(cp =>
     make_expr_node(
       occurrence_identity: OccurrenceSynthetic,
       expr_data: ExprLiteral { value: LitInt { value: cp } },
@@ -9100,7 +9172,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           first_pass
         }
       }
-      let arg_infer_results = variant_tag_reference_argument_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
+      let arg_infer_results = payload_arm_tag_reference_waiver_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
 
       let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
@@ -10989,14 +11061,53 @@ fn sole_constructor_construction_diags(
   } else { [] }
 }
 
-data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier."
+// THE ENUMERATED PAYLOAD-ARM WAIVER (gunbc.rung_drop payload_arm_tag_reference_hollow_value; replaces the
+// general tag-reference seam of operator Ruling 1a, which had no population: for the zero-field arms
+// it was already dead, and for payload arms it waived every site anywhere). A call
+// `discriminant(v: X {})` whose sole argument is a zero-field literal naming a PAYLOAD coproduct
+// variant X waives the MissingField rows of X on that literal ONLY when the arm's declaration (declaring module and name of its owner type, and the arm name as a named component of that owner) is a row of payload_arm_tag_reference_waiver_pairs. The key is the arm's OWNING declaration, never the
+// calling module: a listed arm named from any module is waived, and an arm whose owning declaration is
+// not listed is a hollow construction and refuses with one MissingField per owed field. The argument is inferred as
+// any other expression (typed node, type and every other diagnostic unchanged). A call through a
+// body binding named `discriminant` is a function value, not the builtin, and is not the idiom.
+// DISSOLVE-ON: an arm-name capability from a resolved arm (Charter 3 R1's resolved-arm surface, with
+// elaborate_arm_reference), at which point this function, the list and the row are deleted together.
+data payload_arm_tag_reference_waiver_pairs: List<DeclarationRef> = [
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "AlgebraPrimitive"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "AlgebraInverseCompose"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "OrderingComparison"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "EqualityComparison"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "CoercionCrossing"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "InfixToken"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "PrefixToken"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "CallIdent"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "MethodIdent")
+]
 
-// THE RULING'S SEAM. A call `discriminant(v: X {})` whose sole argument is a zero-field literal
-// naming a coproduct variant is a tag reference: the argument is inferred as any other
-// expression (so its typed node, type and every other diagnostic are unchanged), and only the
-// MissingField rows the wall raised for X on that literal are waived. A call through a body
-// binding named `discriminant` is a function value, not the builtin, and is not the idiom.
-fn variant_tag_reference_argument_results(func_name: String, callee_is_body_binding: Bool, results: List<ArgInferResult>, scope: InferScope) -> List<ArgInferResult> {
+// WHETHER THE LITERAL'S ARM IS ONE OF THE LISTED ARM DECLARATIONS, matched by identity: the module
+// that declares the arm's owning coproduct plus the arm's name, never a spelled "module.arm" string
+// and never the constructing module. A renamed or moved arm stops matching and its hollow literal
+// refuses at the listed row.
+fn payload_arm_tag_reference_row_names_arm(row: DeclarationRef, arm_name: String) -> Bool {
+  match row.field {
+    NamedField { field_name: f } => f == arm_name
+    _ => false
+  }
+}
+
+fn payload_arm_tag_reference_is_waived(arm_name: String, scope: InferScope) -> Bool {
+  match variant_owner_node(scope: scope, name: arm_name) {
+    Present { value: owner } =>
+      match declaration_ref_of_type_node(rt: owner, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+        Present { value: owner_decl } =>
+          payload_arm_tag_reference_waiver_pairs |> any(w => w.module_path == owner_decl.module_path && w.decl_name == owner_decl.decl_name && payload_arm_tag_reference_row_names_arm(row: w, arm_name: arm_name))
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn payload_arm_tag_reference_waiver_results(func_name: String, callee_is_body_binding: Bool, results: List<ArgInferResult>, scope: InferScope) -> List<ArgInferResult> {
   if func_name != "discriminant" || callee_is_body_binding || (results |> count) != 1 {
     results
   } else {
@@ -11009,7 +11120,7 @@ fn variant_tag_reference_argument_results(func_name: String, callee_is_body_bind
           } else {
             match record_lit_type_name_at(texpr: arg, source_indices: scope.type_env.source_indices) {
               Present { value: tn } =>
-                if variant_owner_node(scope: scope, name: tn) != none {
+                if payload_arm_tag_reference_is_waived(arm_name: tn, scope: scope) {
                   ArgInferResult {
                     typed_arg: air.typed_arg,
                     emissions: infer_emissions_filter_diagnostics(emissions: air.emissions, keep: d =>
@@ -14643,16 +14754,33 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Present { value: fc } =>
-        match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
-          Absent => acc
-        }
-      Absent => acc
-    }
+  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) {
+    unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
+}
+
+// A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
+// positionally; one rule serves every arity. A position is read RAW, not through child_type_node:
+// a formal child is a type expression whose inferred is its own TypeVariable, and child_type_node
+// answers error_type for anything not Resolved, so reading it through that would drop the very
+// binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
+// unbound). First-wins binding is unchanged.
+fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+  match formals |> first {
+    Present { value: f } =>
+      match actuals |> first {
+        Present { value: a } =>
+          unify_generic_child_pairs(
+            formals: formals |> skip(1),
+            actuals: actuals |> skip(1),
+            generic_names: generic_names,
+            source_indices: source_indices,
+            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
+          )
+        Absent => acc
+      }
+    Absent => acc
+  }
 }
 
 // A callable denotes its parameters in params and its return in inferred (make_callable_type), so

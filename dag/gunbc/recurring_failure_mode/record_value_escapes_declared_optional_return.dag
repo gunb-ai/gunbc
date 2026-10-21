@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.record_value_escapes_declared_optional_return
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data record_value_escapes_declared_optional_return: RecurringFailureMode = RecurringFailureMode {
   identity: "record_value_escapes_declared_optional_return" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: in the v1 seed, two independent non-rejections let a wrong-typed value stand where a declared type is required, with ZERO blocking diagnostics. (A) `Present { value: <record R> }` returned from a fn declared `-> T?` where T is a coproduct. (B) a bare record R returned from a fn declared `-> T` where T is a coproduct. Each is accepted; the one-axis green (`Present { value: r.arch }`, `r.arch`) is accepted too. The cross-type `==` seen in the same specimen is a different class, filed as a receipt on cross_type_comparison_answers_instead_of_refusing, so the acceptance is a missing judgment and not a blanket. A bare record at `T?` IS refused (declared Optional<Arch>, produced Row), which locates (A) at the Optional wrapper.",

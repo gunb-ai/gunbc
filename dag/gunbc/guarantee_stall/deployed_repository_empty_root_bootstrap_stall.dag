@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE CAPABILITY EXISTS NOW, AND THE CLIMB IS ONE RUNG, NOT TWO. #10722 built the Git-native
 // bootstrap and proved it wet: an empty root is initialized, the candidate imported, the base ref
