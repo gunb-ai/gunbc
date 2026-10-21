@@ -239,8 +239,8 @@ fn not_role_withheld(w: List<RunnerHostFileWithheld>) -> List<RunnerHostFileWith
 // file name rather than taken from runner_unit_slot_role_dropin_path. A missing slot, an extra well-shaped row,
 // a doubled row and a lost withheld entry each fail the join.
 //
-// RESIDUAL, DECLARED: RunnerHostFileWithheld carries a subject and a cause and no slot identity, so a withheld
-// entry is counted against the slot population, not attributed to a particular slot.
+// RESIDUAL, TYPED (role_join_residual): RunnerHostFileWithheld carries a subject and a cause and no slot identity,
+// so a withheld entry is COUNTED against the slot population and never attributed to a particular slot.
 fn expected_role_dropin_paths(host: HostIdentity) -> List<String> {
   map(
     filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
@@ -254,6 +254,28 @@ fn role_population_joins(expected: List<String>, files: List<RunnerHostFileDesir
   all(roles, f => any(expected, e => e == (f.path as String)) && starts_with(s: f.content, prefix: "[Service]\n"))
     && length(distinct_by_key(roles, f => f.path as String)) == length(roles)
     && length(roles) + length(role_withheld) == length(expected)
+}
+
+// THE RESIDUAL OF THE COUNT-ONLY WITHHELD JOIN, AS DATA. When every slot has its own rendered file the join is
+// fully attributed. Otherwise the slots without a file are satisfied by anonymous withheld entries, which are
+// counted and not attributed: files=[a] plus one withheld entry satisfies a [a, b] oracle without proving that
+// entry is b's.
+type RoleJoinResidual
+  = RoleJoinFullyAttributed
+  | RoleJoinWithheldCountedNotAttributed { anonymous_withheld: Int, slots_without_a_file: List<String> }
+
+// The capability that retires the residual, at capability grain (not an artifact): a withheld entry names the
+// slot it stands for, so the join can match it to a slot without counting.
+type RoleJoinResidualRetirementTrigger
+  = WithheldEntriesCarrySlotIdentity
+
+data role_join_residual_retirement: RoleJoinResidualRetirementTrigger = WithheldEntriesCarrySlotIdentity
+
+fn role_join_residual(expected: List<String>, files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> RoleJoinResidual {
+  let rendered = map(filter(files, f => (f.subject as String) == "runner-slot-role-dropin"), f => f.path as String)
+  let without = filter(expected, e => !any(rendered, r => r == e))
+  let anonymous = length(filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin"))
+  if length(without) == 0 && anonymous == 0 { RoleJoinFullyAttributed } else { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: anonymous, slots_without_a_file: without } }
 }
 
 fn role_file_at(path: String) -> RunnerHostFileDesired {
@@ -286,6 +308,21 @@ test fn the_role_join_refuses_a_dropped_row_an_extra_row_a_doubled_row_and_a_los
     && !role_population_joins(expected: expected, files: [a, a], withheld: [])
     && !role_population_joins(expected: expected, files: [a, role_file_at(path: "/etc/elsewhere/20-slot-role.conf")], withheld: [])
     && !role_population_joins(expected: expected, files: [a, b], withheld: [role_withheld_entry()])
+}
+
+// the residual is recorded for exactly the count-only shape: one file plus one anonymous withheld entry over a
+// two-slot oracle joins, and the residual names one anonymous entry and the slot with no file; two files are
+// fully attributed; and the trigger is the declared capability
+test fn the_count_only_withheld_shape_records_its_residual_and_a_full_render_does_not() -> Bool {
+  let pa = "/etc/systemd/system/actions-runner@a.service.d/20-slot-role.conf"
+  let pb = "/etc/systemd/system/actions-runner@b.service.d/20-slot-role.conf"
+  let expected = [pa, pb]
+  let counted = role_join_residual(expected: expected, files: [role_file_at(path: pa)], withheld: [role_withheld_entry()])
+  let full = role_join_residual(expected: expected, files: [role_file_at(path: pa), role_file_at(path: pb)], withheld: [])
+  role_population_joins(expected: expected, files: [role_file_at(path: pa)], withheld: [role_withheld_entry()])
+    && (match counted { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: n, slots_without_a_file: ss } => n == 1 && ss == [pb] RoleJoinFullyAttributed => false })
+    && (match full { RoleJoinFullyAttributed => true RoleJoinWithheldCountedNotAttributed { anonymous_withheld: _, slots_without_a_file: _ } => false })
+    && (match role_join_residual_retirement { WithheldEntriesCarrySlotIdentity => true })
 }
 
 fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
