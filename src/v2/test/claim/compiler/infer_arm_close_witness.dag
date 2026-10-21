@@ -283,3 +283,24 @@ test fn rb_k2_same_in_the_other_inner_arm_order() -> Bool { ers_fatal_is(o: rb_k
 test fn rb_k3_absent_beside_absent_accepts() -> Bool { ers_infer_accepted(o: rb_k3()) }
 fn rb_k4() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { OtherNone }\n") }
 test fn rb_k4_foreign_constructor_at_the_declared_position_refuses_with_the_declared_return_judgment() -> Bool { ers_fatal_is(o: rb_k4(), reason: ^arrow_body_does_not_inhabit_declared_return) }
+
+// RULE A, RECORD FIELDS AND DECLARED FORMALS: the expected type seeds the generic instantiation at every position that declares one.
+// Each refusal asserts its exact fatal reason and has its accepting positive beside it.
+fn rc_fold() -> String { "type Fold<R> {\n  init: fn(Int) -> R\n  is_done: fn(R) -> Bool\n}\n\nfn run<R>(a: Fold<R>) -> Bool { true }\n\n" }
+fn rc_row() -> String { "type Row {\n  f: Int?\n}\n\nfn cat<T>(a: List<T>, b: List<T>) -> List<T> { a }\n\nfn takes(xs: List<Int?>) -> Bool { true }\n\nfn one(x: Int?) -> Bool { true }\n\n" }
+fn rc1() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_fold(), "fn c() -> Bool { run(Fold { init: fn(n) { n + 1 }, is_done: fn(s) { s > 3 } }) }\n")) }
+fn rc2() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_fold(), "fn c() -> Bool { run(Fold { init: fn(n) { n + 1 }, is_done: fn(s) { s && true } }) }\n")) }
+test fn rc1_sibling_lambda_field_takes_instance_accepts() -> Bool { ers_infer_accepted(o: rc1()) }
+test fn rc2_sibling_lambda_field_wrong_instance_refuses() -> Bool { ers_fatal_is(o: rc2(), reason: ^infer_transform_operand_type_mismatch) }
+fn rc3() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Row { Row { f: Absent } }\n")) }
+fn rc4() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> List<Row> { cat([Row { f: Absent }], []) }\n")) }
+fn rc5() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { takes([Absent]) }\n")) }
+fn rc6() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { takes([]) }\n")) }
+fn rc7() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { one(Absent) }\n")) }
+fn rc8() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_row(), "fn r() -> Bool { one(1) }\n")) }
+test fn rc3_record_field_absent_accepts() -> Bool { ers_infer_accepted(o: rc3()) }
+test fn rc4_concat_of_row_with_absent_field_accepts() -> Bool { ers_infer_accepted(o: rc4()) }
+test fn rc5_declared_formal_list_absent_accepts() -> Bool { ers_infer_accepted(o: rc5()) }
+test fn rc6_declared_formal_empty_list_accepts() -> Bool { ers_infer_accepted(o: rc6()) }
+test fn rc7_declared_formal_absent_accepts() -> Bool { ers_infer_accepted(o: rc7()) }
+test fn rc8_declared_formal_bare_literal_refuses() -> Bool { ers_fatal_is(o: rc8(), reason: ^infer_literal_at_optional_is_not_present) }

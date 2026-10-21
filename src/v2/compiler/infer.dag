@@ -8312,10 +8312,10 @@ fn infer_construct_facts_on_entries(
                   match infer_judge_formal_args(
                     position: position_record_field(record: record),
                     site: JudgedAtEachActual,
-                    entries: entries,
+                    entries: infer_entries_with_construct_callback_signatures(pairs: pairs, type_params: type_params, entries: entries, declarations: declarations, bindings: bindings),
                     declarations: declarations,
                     bindings: bindings,
-                    pairs: pairs,
+                    pairs: infer_pairs_callbacks_last(pairs: pairs),
                     type_params: type_params,
                     expected: Absent
                   ) {
@@ -8975,6 +8975,8 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
   let edge = slot.edge
   if infer_application_actual_is_callback(application: parent, edge: edge) {
     infer_callback_argument_frame(application: parent, frame: infer_frame_inherited(frame: frame), acc: acc, callback: edge.target, resolved: resolved)
+  } else if infer_construct_field_is_callback(construct: parent, edge: edge) {
+    infer_construct_callback_frame(construct: parent, frame: infer_frame_inherited(frame: frame), acc: acc, callback: edge.target, resolved: resolved)
   } else {
   match edge.label {
     Positional =>
@@ -9033,6 +9035,36 @@ fn infer_application_actual_is_callback(application: Node, edge: Edge) -> Bool {
   }
 }
 
+// A RECORD FIELD IS A CALLBACK on the same terms: a function literal in field position of a construction, never the tag.
+// The field's declared type is its formal, so it is entered after its sibling fields settle and under the frame
+// the formal instantiates (infer_construct_callback_frame) -- the one callback reading an application argument gets.
+fn infer_construct_field_is_callback(construct: Node, edge: Edge) -> Bool {
+  match construct_tag_optional(n: construct) {
+    Absent => false
+    Present { value: tag } => (tag != edge.target) && infer_node_is_function_literal(n: edge.target)
+  }
+}
+
+fn infer_construct_callback_frame(construct: Node, frame: InferFrame, acc: InferGatherFoldAcc, callback: Node, resolved: ResolvedTree) -> InferFrame {
+  match infer_record_construct_read(node: construct, resolved: resolved) {
+    ConstructIsRecord { construct: record } =>
+      match infer_record_field_binding(node: construct, record: record.record, formals: record.formals) {
+        RecordFieldsBound { pairs: pairs } =>
+          match infer_callback_expectation_over(pairs: pairs, type_params: record.type_params, callback: callback, entries: acc.entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
+            Absent => frame
+            Present { value: e } => infer_callback_formal_frame(frame: frame, expected: e.expected, callback: callback, type_params: e.type_params)
+          }
+        RecordFieldsRefused { diagnostic: _ } => frame
+        RecordPayloadUnread => frame
+      }
+    ConstructNotARecord => frame
+    ConstructIsVariantArm { construct: _ } => frame
+    ConstructVariantArmIdentityUnavailable => frame
+    ConstructVariantArmBodyUnavailable => frame
+    ConstructVariantArmIdentityContested { claimants: _ } => frame
+  }
+}
+
 fn infer_node_is_function_literal(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } =>
@@ -9069,17 +9101,30 @@ fn infer_callback_expectation(application: Node, callback: Node, entries: Map<No
       match infer_application_formal_args(node: application, formals: formals, entries: entries) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: pairs, diagnostics: _ } =>
-          match infer_callback_formal_arg(pairs: pairs, callback: callback) {
-            Absent => optional_absent()
-            Present { value: pair } =>
-              let type_params = infer_application_type_params(node: application, entries: entries)
-              let instances = infer_settled_actual_instances(pairs: pairs, entries: entries, type_params: type_params, declarations: declarations, bindings: bindings)
-              optional_present(value: InferCallbackExpectation {
-                expected: infer_type_alias_normalized_at(t: infer_type_instantiated(t: pair.formal.declared, instances: instances), bodies: declarations, bindings: bindings),
-                type_params: type_params
-              })
-          }
+          infer_callback_expectation_over(
+            pairs: pairs,
+            type_params: infer_application_type_params(node: application, entries: entries),
+            callback: callback,
+            entries: entries,
+            declarations: declarations,
+            bindings: bindings
+          )
       }
+  }
+}
+
+// THE EXPECTATION IS READ OFF THE SITE'S BOUND (formal, actual) PAIRS, whichever site bound them: an application's
+// arguments or a record construction's fields are one pairing (InhabitanceFormalArg), so a callback in either is framed
+// and judged by this one reading.
+fn infer_callback_expectation_over(pairs: List<InhabitanceFormalArg>, type_params: List<Symbol>, callback: Node, entries: Map<Node, List<InferredFacts>>, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<InferCallbackExpectation> {
+  match infer_callback_formal_arg(pairs: pairs, callback: callback) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      let instances = infer_settled_actual_instances(pairs: pairs, entries: entries, type_params: type_params, declarations: declarations, bindings: bindings)
+      optional_present(value: InferCallbackExpectation {
+        expected: infer_type_alias_normalized_at(t: infer_type_instantiated(t: pair.formal.declared, instances: instances), bodies: declarations, bindings: bindings),
+        type_params: type_params
+      })
   }
 }
 
@@ -9208,36 +9253,39 @@ type InferCallbackSignatureWalk {
 fn infer_callback_signature(application: Node, callback: Node, entries: Map<Node, List<InferredFacts>>, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
   match infer_callback_expectation(application: application, callback: callback, entries: entries, declarations: declarations, bindings: bindings) {
     Absent => optional_absent()
-    Present { value: e } =>
-      match arrow_declared_parameter_order(arrow: callback) {
-        ArrowParameterOrderAbsent => optional_absent()
-        ArrowParameterOrderMalformed => optional_absent()
-        ArrowParameterOrderDeclared { labels: labels } =>
-          if infer_callback_arity_differs(expected: e.expected, labels: labels) {
-            infer_callback_signature_of_other_arity(expectation: e, callback: callback, labels: labels, entries: entries)
-          } else {
-          let domain = fold(labels, init: InferCallbackSignatureWalk { position: 0, domain_types: optional_present(value: Empty) }, f: fn(walk, _) {
-            InferCallbackSignatureWalk {
-              position: walk.position + 1,
-              domain_types: match walk.domain_types {
-                Absent => optional_absent()
-                Present { value: types } =>
-                  match infer_callback_input_type(expectation: e, callback: callback, position: walk.position) {
-                    Absent => optional_absent()
-                    Present { value: t } => optional_present(value: list_snoc_item(xs: types, item: t))
-                  }
-              }
-            }
-          }).domain_types
-          match domain {
+    Present { value: e } => infer_callback_signature_at(expectation: e, callback: callback, entries: entries)
+  }
+}
+
+fn infer_callback_signature_at(expectation: InferCallbackExpectation, callback: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
+  match arrow_declared_parameter_order(arrow: callback) {
+    ArrowParameterOrderAbsent => optional_absent()
+    ArrowParameterOrderMalformed => optional_absent()
+    ArrowParameterOrderDeclared { labels: labels } =>
+      if infer_callback_arity_differs(expected: expectation.expected, labels: labels) {
+        infer_callback_signature_of_other_arity(expectation: expectation, callback: callback, labels: labels, entries: entries)
+      } else {
+      let domain = fold(labels, init: InferCallbackSignatureWalk { position: 0, domain_types: optional_present(value: Empty) }, f: fn(walk, _) {
+        InferCallbackSignatureWalk {
+          position: walk.position + 1,
+          domain_types: match walk.domain_types {
             Absent => optional_absent()
-            Present { value: domain_types } =>
-              match infer_callback_return_type(callback: callback, entries: entries) {
+            Present { value: types } =>
+              match infer_callback_input_type(expectation: expectation, callback: callback, position: walk.position) {
                 Absent => optional_absent()
-                Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: callback))
+                Present { value: t } => optional_present(value: list_snoc_item(xs: types, item: t))
               }
           }
+        }
+      }).domain_types
+      match domain {
+        Absent => optional_absent()
+        Present { value: domain_types } =>
+          match infer_callback_return_type(callback: callback, entries: entries) {
+            Absent => optional_absent()
+            Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: callback))
           }
+      }
       }
   }
 }
@@ -9352,22 +9400,49 @@ fn infer_pairs_callbacks_last(pairs: List<InhabitanceFormalArg>) -> List<Inhabit
 fn infer_entries_with_callback_signatures(application: Node, pairs: List<InhabitanceFormalArg>, entries: Map<Node, List<InferredFacts>>, declarations: SymbolIndex, bindings: SymbolIndex) -> Map<Node, List<InferredFacts>> {
   fold(pairs, init: entries, f: fn(acc, pair) {
     if infer_node_is_function_literal(n: pair.arg) {
-      match infer_callback_signature(application: application, callback: pair.arg, entries: entries, declarations: declarations, bindings: bindings) {
-        Absent => acc
-        Present { value: callable } =>
-          match inferred_facts_from_derived_type(node: pair.arg, derived_type: callable, descent: infer_descent_witness_for_node(n: pair.arg)) {
-            Rejected { diagnostics: _ } => acc
-            Accepted { value: facts, diagnostics: _ } =>
-              match admitted_inferred_facts_entry(node: pair.arg, facts: facts) {
-                Rejected { diagnostics: _ } => acc
-                Accepted { value: entry, diagnostics: _ } => inferred_facts_index_enter_first(index: acc, entry: entry)
-              }
-          }
-      }
+      infer_entries_at_callback_signature(
+        acc: acc,
+        callback: pair.arg,
+        signature: infer_callback_signature(application: application, callback: pair.arg, entries: entries, declarations: declarations, bindings: bindings)
+      )
     } else {
       acc
     }
   })
+}
+
+// The same reading for a record construction's fields: a callback field is seen at the signature its declared field type gives it
+// at the instances the settled sibling fields fixed.
+fn infer_entries_with_construct_callback_signatures(pairs: List<InhabitanceFormalArg>, type_params: List<Symbol>, entries: Map<Node, List<InferredFacts>>, declarations: SymbolIndex, bindings: SymbolIndex) -> Map<Node, List<InferredFacts>> {
+  fold(pairs, init: entries, f: fn(acc, pair) {
+    if infer_node_is_function_literal(n: pair.arg) {
+      infer_entries_at_callback_signature(
+        acc: acc,
+        callback: pair.arg,
+        signature: match infer_callback_expectation_over(pairs: pairs, type_params: type_params, callback: pair.arg, entries: entries, declarations: declarations, bindings: bindings) {
+          Absent => optional_absent()
+          Present { value: e } => infer_callback_signature_at(expectation: e, callback: pair.arg, entries: entries)
+        }
+      )
+    } else {
+      acc
+    }
+  })
+}
+
+fn infer_entries_at_callback_signature(acc: Map<Node, List<InferredFacts>>, callback: Node, signature: Optional<Node>) -> Map<Node, List<InferredFacts>> {
+  match signature {
+    Absent => acc
+    Present { value: callable } =>
+      match inferred_facts_from_derived_type(node: callback, derived_type: callable, descent: infer_descent_witness_for_node(n: callback)) {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: facts, diagnostics: _ } =>
+          match admitted_inferred_facts_entry(node: callback, facts: facts) {
+            Rejected { diagnostics: _ } => acc
+            Accepted { value: entry, diagnostics: _ } => inferred_facts_index_enter_first(index: acc, entry: entry)
+          }
+      }
+  }
 }
 
 fn infer_append_binder_types(xs: List<InferBinderType>, ys: List<InferBinderType>) -> List<InferBinderType> {
@@ -9863,7 +9938,11 @@ fn infer_match_schedules_scrutinee_first(parent: Node, slot: ChildSlot) -> Bool 
 fn infer_application_schedules_before_callbacks(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Transform } => !infer_application_actual_is_callback(application: parent, edge: edge)
-    ComputationNode { behavior: _ } => false
+    ComputationNode { behavior: _ } =>
+      match construct_tag_optional(n: parent) {
+        Absent => false
+        Present { value: _ } => !infer_construct_field_is_callback(construct: parent, edge: edge)
+      }
     TypeNode { connective: _ } => false
   }
 }
