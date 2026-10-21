@@ -134,14 +134,6 @@ data repeat_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-data chars_contract: PrimitiveContract = {
-  name: "chars",
-  work: "n",
-  output_size: "n",
-  certainty: Proven,
-  carrier_cost: CarrierInsensitive
-}
-
 data machine_word_native_operate_contract: PrimitiveContract = {
   name: "machine_word_native_operate",
   work: "1",
@@ -794,7 +786,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     concat_contract,
     split_contract,
     repeat_contract,
-    chars_contract,
     machine_word_native_operate_contract,
     to_string_contract,
     parse_int_contract,
