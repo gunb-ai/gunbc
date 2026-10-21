@@ -1450,8 +1450,12 @@ fn floor_expected_red_chunk_belt_recapture_wet_red() -> List<String> {
 //    never held, and the field is checked rather than decorative.
 //  - enrolled_on: a real calendar date (the module's own civil-date round-trip) on or before the
 //    re-measurement day; Absent where the ledger never recorded one, which row 3 discloses.
-//  - on_both_routes: must agree with the closure's own route list, so "passes on both routes"
-//    cannot be asserted next to a single-route receipt.
+//  - (there is no route boolean). Which routes the row was measured on is a fact the closure's
+//    `re_measured.routes` carries ONCE. A `on_both_routes: Bool` beside it was deleted here: it was a
+//    second copy of a fact the record already held, and the witness had to check one against the other
+//    -- exactly the second representation DESIGN 5 names, and a review (84231) caught one row where
+//    the two copies disagreed. What a reader wants -- which routes were run -- is read off the receipt,
+//    and `routes` must be non-empty (witness arm `receipt-names-no-route`).
 //  - trigger: the declaration naming the row's OWN discharge condition, when it had one; when
 //    Present it must resolve, which is what stops a trigger being pacified by deleting the row it
 //    names.
@@ -1460,7 +1464,6 @@ type RetiredExpectedRedRow {
   identity: WitnessIdentity,
   standing_before: ClaimExpectation,
   enrolled_on: Optional<Iso8601CivilDate>,
-  on_both_routes: Bool,
   trigger: Optional<DeclarationRef>,
   closure: Closure,
 }
@@ -1508,7 +1511,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       },
       standing_before: ExpectedRed,
       enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
-      on_both_routes: true,
       trigger: Absent,
       closure: RestsOnExecutedCheck {
         why_no_change: "no attributed fix commit exists: no commit touches this claim's own file, and the guarantee that named it was retired by the declaration-bound formal carrier, so the removal rests on the executed check rather than on a change" as NonEmptyStr,
@@ -1541,14 +1543,21 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       },
       standing_before: ExpectedRed,
       enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 28 } },
-      on_both_routes: true,
       trigger: Absent,
-      closure: RestsOnExecutedCheck {
-        why_no_change: "closed by the 2026-08-25 operator ruling that rehomed the g1 controls and deleted the dead binds; the objects of that change are unreachable from this head after the 2026-10 mega-squash, so it is named rather than hashed and rests on the executed count check" as NonEmptyStr,
+      closure: AttributedToChange {
+        // THE CHANGE IS ATTRIBUTABLE, AND THE CLASSIFICATION FILE SAYS SO. Review 84231 caught that this
+        // row's prose said the closing change was unreachable and named rather than hashed, while
+        // gunbc.declined_live_tree_defect_classification names the closure outright: #9181 (0df5b4170c51)
+        // rehomed the three g1 controls as cited_symbol_planted_controls and only then deleted the orphan
+        // binds. Two records of one closure with two meanings is DESIGN 3's fork; the record that NAMED
+        // the change wins, so the closure is an attribution and the unattributed arm is no longer used
+        // here.
+        change: PullRequest { number: 9181 },
         durable_account: [
           decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
           decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_declaration_refs"),
           decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_outside_index_declaration_refs"),
+          decl_ref(module_path: "v2.lens.cited_symbol_resolution", decl_name: "cited_symbol_planted_controls"),
         ],
         re_measured: ReMeasurement {
           head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
@@ -1572,7 +1581,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       },
       standing_before: ExpectedRed,
       enrolled_on: Absent,
-      on_both_routes: true,
       trigger: Present { value: decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point") },
       closure: AttributedToChange {
         change: PullRequest { number: 9250 },
@@ -1601,7 +1609,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       },
       standing_before: ExpectedRed,
       enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 9, day: 27 } },
-      on_both_routes: true,
       trigger: Present { value: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic") },
       closure: AttributedToChange {
         change: PullRequest { number: 12919 },
