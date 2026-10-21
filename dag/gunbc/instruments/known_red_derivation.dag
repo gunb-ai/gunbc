@@ -1109,7 +1109,7 @@ fn known_red_terminal_of_printed(printed: KnownRedPrintedLine) -> Optional<Claim
 // updates the constants would leave the classifier matching the sentinel and every line of that kind would
 // decode as 'not about this claim' -- which reports as an absent line rather than as a refusal, the one
 // outcome this decoder must not produce (review 84034, DESIGN §3).
-data KnownRedPrintedLine { verdict_word: String, body: String }
+type KnownRedPrintedLine { verdict_word: String, body: String }
 
 // STRIP THE VERDICT WORD AND THE FUNCTION NAME, or report that this line is not about this claim. The
 // transport prints the BARE FUNCTION NAME with no module path, which is why a line is attributed within one
