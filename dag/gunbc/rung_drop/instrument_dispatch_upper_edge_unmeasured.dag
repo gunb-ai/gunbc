@@ -53,6 +53,6 @@ data instrument_dispatch_upper_edge_unmeasured: RungDrop = RungDrop {
     temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
     population: instrument_dispatch_upper_edge_unmeasured_population,
-    restoration_trigger: "A required-context row reads the committed slot widths as a total and refuses when the rostered instrument labels times a stated per-ref fan-out exceed them, and an instrument reports the required lane's queue wait over a parallel-dispatch window; the bound then names the pool it protects and is judged on the gate, not in a comment."
+    restoration_trigger: "A required-context row reads the committed slot widths as a total and refuses when the runs ACTUALLY ADMITTED AT ONCE exceed it -- the admitted population is the set of distinct (ref, label) pairs with a live dispatch, which the per-(ref, label) key makes refs x labels and which the roster of labels alone does not bound, since each ref admits its own labels independently; a pool semaphore holding admitted runs discharges the same obligation. And an instrument reports the required lane's queue wait over a parallel-dispatch window. The capability restored is a bound on concurrent instrument occupancy of the pool the required lane shares, judged on the gate, not in a comment."
   }
 }
