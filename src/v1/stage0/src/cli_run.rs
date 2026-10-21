@@ -3997,11 +3997,14 @@ pub static CENSUS_COST_DISK_READS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 pub static CENSUS_COST_DISK_READ_BYTES: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
-/// Times the underlay identity proof REFUSED, so a read-through fell back to building the
-/// scratch's own answer. Zero is the expected value for a census call; a nonzero count means
-/// either the pool drifted (correct refusal) or the proof is wrong about a legitimate scratch
-/// (silent loss of the fix). `census_cost_step0_measurement` gates it, and its drifted-facts RED
-/// drives it -- which is what keeps the proof from being a decoration that never runs.
+/// Times the underlay identity proof REFUSED -- i.e. a scratch tried to read the pool out of its
+/// underlay and was denied, with the refusal PROPAGATED (`?`), not swallowed and not downgraded to
+/// "build it yourself". Zero is the expected value for a census call; a nonzero count means either
+/// the pool drifted (the correct refusal, and the census call surfaces it as NotRunnable) or the
+/// proof is wrong about a legitimate scratch (which would be a loud red, not a silent loss of the
+/// fix, because the refusal propagates). `census_cost_step0_measurement` gates it at zero over the
+/// warm series, and cli_run's own `underlay_identity_proof_tests` drives it nonzero on drifted
+/// facts -- which is what keeps the proof from being code that never runs.
 pub static CENSUS_COST_IDENTITY_REFUSALS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
@@ -7824,8 +7827,12 @@ fn parsed_file_references_of(
     }
     // The same identity fact the census read-throughs rest on, so the same gate: reading a
     // per-file parse out of the underlay is answering a question about THE POOL from a pool the
-    // caller must prove it shares. A refusal falls through to parsing it here, which is exactly
-    // what this function did before the underlay existed.
+    // caller must prove it shares. A refusal PROPAGATES via `?` -- it does not fall through to
+    // parsing it here -- because reading a pool you cannot prove you share is the failure this
+    // overlay exists to prevent, and §5 fail-closed means refusing loudly (the builtin reports
+    // the located Err, the census reports NotRunnable, CI goes red) rather than proceeding on a
+    // guess. The pre-underlay behavior of parsing it here is what an index with NO underlay
+    // still does; that path is the `Ok(None)` branch of the gate, not a refusal.
     if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(hit) = base.parsed_references.borrow().get(&file) {
             return hit.clone();
@@ -8092,7 +8099,9 @@ fn admit_bare_references_of_file(
         return verdict.clone();
     }
     // Gated on the underlay identity proof, as every other read-through is (see
-    // `scratch_underlay_if_proven`); a refusal just computes this index's own verdict below.
+    // `scratch_underlay_if_proven`). A refusal propagates via `?` rather than falling through to
+    // computing this index's own verdict below -- fail-closed, §5; the fall-through below is only
+    // reached by an index with no underlay (the gate's `Ok(None`).
     if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(verdict) = base.bare_reference_admission.borrow().get(&file) {
             return verdict.clone();
@@ -8625,8 +8634,11 @@ fn build_both_closure_edge_index(
             return Ok(hit.clone());
         }
     }
-    // Gated on the underlay identity proof like every other read-through; on refusal this index
-    // builds its own edge index below, the pre-overlay behavior.
+    // Gated on the underlay identity proof like every other read-through. On refusal the `?`
+    // propagates the located Err (fail-closed, §5) -- this index does NOT quietly build its own
+    // edge index, because a scratch that cannot prove its pool is exactly the state where "build
+    // it yourself from local data" would answer the wrong question. The build-below path is for
+    // an index with no underlay at all.
     if let Some(base) = scratch_underlay_if_proven(index)? {
         if let Some(hit) = base.both_closure_edges.borrow().as_ref() {
             if hit.ref_out.contains_key(&file) {
@@ -24091,9 +24103,6 @@ mod module_grain_affected_equivalence_tests {
     }
 }
 
-// SCAFFOLD: folds into a .dag execution witness when the discovery/diff seed plumbing
-// migrates off the v1 host layer (§6 dissolution trigger)
-#[cfg(test)]
 #[cfg(test)]
 mod underlay_identity_proof_tests {
     use super::{
@@ -24134,7 +24143,7 @@ mod underlay_identity_proof_tests {
         assert!(
             scratch_underlay_if_proven(&scratch)
                 .expect(
-                    "a legitimate scratch must not be refused: a false refusal does not fail                      anything, it silently puts the ~10 s back"
+                    "a legitimate scratch must be PERMITTED: an always-refusing guard would                      satisfy every other assertion in this test, so this arm is what stops the                      RED from being satisfied by a guard that simply never lets anything through"
                 )
                 .is_some(),
             "a scratch that IS its underlay's pool must be allowed to read through it"
@@ -24191,6 +24200,9 @@ mod underlay_identity_proof_tests {
     }
 }
 
+// SCAFFOLD: folds into a .dag execution witness when the discovery/diff seed plumbing
+// migrates off the v1 host layer (§6 dissolution trigger)
+#[cfg(test)]
 mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,

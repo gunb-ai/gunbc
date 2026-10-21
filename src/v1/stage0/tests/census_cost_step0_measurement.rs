@@ -197,13 +197,13 @@ fn step0_census_cost_one_and_four_calls() {
         "disk-read counter must still see the import closure on the warm series, got {}",
         warm.4
     );
-    // THE READ-THROUGH IS ACTUALLY BEING TAKEN. The identity proof returns a located Err rather
-    // than panicking, so a proof that WRONGLY refused a legitimate scratch would not fail here --
-    // it would just quietly rebuild the pool per call and the census would only get slow again.
-    // This assertion is what catches that silent regression: over warm calls the proof must have
-    // PROVEN, never refused. (The drifted-facts RED that drives this counter nonzero lives in
-    // cli_run's own #[cfg(test)] unit tests, a separate binary, so it cannot contaminate this
-    // process's count.)
+    // THE READ-THROUGH IS ACTUALLY BEING TAKEN. A refusal propagates (fail-closed), so a proof
+    // that wrongly refused a legitimate scratch WOULD already be loud -- the census surfaces it as
+    // NotRunnable and the digest equality above goes red. This assertion is the earlier, cheaper
+    // witness of the same fact: the counter says HOW MANY times the gate denied a read-through,
+    // so a regression is attributed to the guard rather than to the census content. (The
+    // drifted-facts RED that drives this counter nonzero lives in cli_run's own #[cfg(test)] unit
+    // tests, a separate binary, so it cannot contaminate this process's count.)
     assert_eq!(
         warm.6, 0,
         "warm census calls were refused the underlay read-through {} times: a false refusal \
