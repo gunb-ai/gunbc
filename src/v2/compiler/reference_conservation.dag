@@ -526,14 +526,13 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
 // carries the atom's occurrence, or a byte range enclosing the atom's extent. A diagnostic at an
 // invariant port or a declaration name locates nothing in this module's tree, so it covers nothing
 // -- an unlocated refusal that swallows a module is exactly the silence this check exists to count.
-type RefusalRange {
-  start: Int
-  end: Int
-}
-
+// THE BYTE RANGE IS v2.std.diagnostic's Extent arm, declared once there; a local field-isomorphic
+// record (the deleted `type RefusalRange { start: Int, end: Int }`) was a structural nickname --
+// DESIGN 3's one-declaration rule names the symbol instead (gunbc.recurring_failure_mode
+// .nominal_isomorphic_record_admitted_at_sibling_declaration).
 type RefusalCover {
   anchored: Map<OccurrenceId, Bool>
-  ranges: FreeMonoid<RefusalRange>
+  ranges: FreeMonoid<ByteRange>
 }
 
 fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<OccurrenceId, Bool> {
@@ -573,7 +572,7 @@ fn refusal_cover_from(diagnostics: NonEmptyDiagnostics) -> RefusalCover {
   )
 }
 
-fn range_encloses_atom(range: RefusalRange, atom: AuthoredAtom) -> Bool {
+fn range_encloses_atom(range: ByteRange, atom: AuthoredAtom) -> Bool {
   match atom.locus {
     Textual { file: _, extent: extent } =>
       match extent {

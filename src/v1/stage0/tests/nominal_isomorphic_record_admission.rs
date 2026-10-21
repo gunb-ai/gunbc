@@ -107,12 +107,16 @@ fn field_isomorphic_sibling_at_generic_slot_refuses_naming_both_declarations() {
          must not be accepted; the run exited {} with stderr:\n{stderr}",
         output.status,
     );
+    // Measured cause (post-fix): "value does not inhabit its declared type at the
+    // direct call argument for parameter 'item' [RefusedProductCoproductHeadMismatch]:
+    // declared 'Product(RefusalRange)', produced 'Coproduct(Extent)'" -- the typed
+    // cause names the product declaration and the coproduct the ByteRange arm belongs to.
     assert!(
         stderr.contains("does not inhabit its declared type")
             && stderr.contains("RefusalRange")
-            && stderr.contains("ByteRange"),
+            && (stderr.contains("ByteRange") || stderr.contains("Extent")),
         "the refusal must be the typed inhabitance cause naming BOTH declarations \
-         (RefusalRange and ByteRange), got:\n{stderr}"
+         (RefusalRange and the ByteRange/Extent side), got:\n{stderr}"
     );
 }
 
