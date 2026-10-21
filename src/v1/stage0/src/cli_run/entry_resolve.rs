@@ -2314,7 +2314,10 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
     ) {
         super::provider_acquire::ClosureProviderStep::Complete => {}
         super::provider_acquire::ClosureProviderStep::Refused(diagnostics) => {
-            return Err(format_error_nodes(&diagnostics, &source_indices));
+            return Err(ResolveFailure::Diagnostics(format_error_nodes(
+                &diagnostics,
+                &source_indices,
+            )));
         }
         super::provider_acquire::ClosureProviderStep::Acquire(modules) => {
             // The acquired provider's closure is built from the source the index already holds -- the
@@ -2388,7 +2391,10 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
             };
             match typed_refusal {
                 super::provider_acquire::ClosureProviderStep::Refused(diagnostics) => {
-                    return Err(format_error_nodes(&diagnostics, &source_indices));
+                    return Err(ResolveFailure::Diagnostics(format_error_nodes(
+                        &diagnostics,
+                        &source_indices,
+                    )));
                 }
                 _ => unreachable!("a stalled or unreadable acquisition always refuses"),
             }
