@@ -854,7 +854,11 @@ fn deployment_retired_belt_timer_unit_path(names: DeploymentNames) -> NonEmptySt
 // position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
 // only one. Witness: deployed_tree_remote_witness_test
 // `the_remote_converges_after_its_inputs_and_before_the_belt` pins the sequence
-// binary,tree,remote,publication,belt,route.
+// binary,tree,remote,publication,attempt-unit-drain,belt,route. The attempt-unit drain (present only
+// where the plan selects the system-manager launcher) sits AFTER the binary and tree its root service
+// executes and BEFORE the belt: the belt is a requester that enqueues on the spool the drain consumes,
+// so by the same dependencies-precede-consumers rule the drain is installed before any belt event can
+// enqueue a request, and a deployment whose plan does not select the launcher has no such member.
 fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
 }
@@ -1168,8 +1172,9 @@ fn deployment_owned_steps(
       kind: UpsertOwned { kind: PublicationHelperPathUnit },
       path: deployment_publication_path_unit_path(names: names),
     },
+  ], concat(deployment_attempt_unit_drain_steps(names: names, lab_plan: lab_plan), concat([
     DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
-  ], concat(deployment_attempt_unit_drain_steps(names: names, lab_plan: lab_plan), concat(deployment_tailnet_door_steps(names: names), concat([
+  ], concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
       kind: UpsertOwned { kind: TailscaleServeMapping },
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
@@ -1177,7 +1182,7 @@ fn deployment_owned_steps(
   ], concat(
     deployment_fabric_storage_steps(holding: holding, names: names),
     deployment_approval_broker_front_door_steps(holding: holding),
-  )))))))
+  ))))))))
 }
 
 // THE DRAIN BELONGS TO THE SELECTED WORKER-SANDBOX REALIZATION, NOT TO EVERY DEPLOYMENT. The path
