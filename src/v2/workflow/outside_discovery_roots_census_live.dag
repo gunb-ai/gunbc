@@ -13,7 +13,7 @@ module v2.workflow.outside_discovery_roots_census_live
 // is interpreted; trigger: the host-native marker read on the C4-E native route). This census cannot join
 // the native lane until the file list is supplied to the native entry as an input (the same move as the
 // stamped head) or a native git read is admitted. It does not fabricate an answer when git is unavailable:
-// the census answers ListingUnread, and the runner exits on the no-observation code, never as a clean
+// the census answers CensusUnread, and the runner exits on the no-observation code, never as a clean
 // census over an empty population (§5: an unreadable input is typed, located, countable, and outranks a
 // finding).
 //
@@ -32,16 +32,16 @@ import v2.workflow.claim_coverage_census_s1_live {
 }
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
+  OutsideRootsOutcome,
+  CensusUnread,
+  CensusObserved,
   InsideGovernedTree,
   OutsideDiscoveryRoots,
   NotAClaimFile,
-  ListingUnread,
   census_rows,
   outside_roots_findings,
   findings_under_note_subject,
   findings_outside_note_subject,
-  listing_unread_row,
-  listing_is_unread,
   outside_roots_receipt_lines,
   outside_roots_header_lines
 }
@@ -160,92 +160,106 @@ type OutsideRootsChannel
   | OutsideChannelFinding { reasons: List<String> }
   | OutsideChannelUnread { cause: String }
 
-// THE CHANNEL, DERIVED FROM WHAT WAS OBSERVED, never chosen beside it: findings dominate (a definite finding
-// is a definite non-hold even if some other read failed -- the same Kleene precedence the composed census
-// uses); with nothing found, an unread input is "no observation"; otherwise the census held.
-fn outside_roots_channel(findings: List<String>, unread: Bool) -> OutsideRootsChannel {
-  if !is_empty(findings) {
-    OutsideChannelFinding {
-      reasons: findings |> map(f => concat("outside-discovery-roots-census: ", f))
+// THE CHANNEL, DERIVED FROM THE OUTCOME, never chosen beside it (review 84111: the Bool this used to take
+// made an unread census and a clean census two shapes of ONE carrier, distinguishable only because a Bool
+// said so -- §4b ranks construction over proof over validation, and here construction is available: the
+// outcome sum has no arm that could mean both). Findings dominate -- a definite finding is a definite
+// non-hold even if some OTHER source failed, the same Kleene precedence the composed census uses; an unread
+// census is the "no observation" case; an observed census that found nothing held.
+fn outside_roots_channel(outcome: OutsideRootsOutcome) -> OutsideRootsChannel {
+  match outcome {
+    CensusUnread { cause: cause } =>
+      OutsideChannelUnread { cause: concat("outside-discovery-roots-census: ", cause) }
+    CensusObserved { rows: rows } => {
+      let findings = outside_roots_findings(rows: rows)
+      if !is_empty(findings) {
+        OutsideChannelFinding {
+          reasons: findings |> map(f => concat("outside-discovery-roots-census: ", f))
+        }
+      } else {
+        OutsideChannelHeld
+      }
     }
-  } else if unread {
-    OutsideChannelUnread { cause: listing_unread_channel_cause }
-  } else {
-    OutsideChannelHeld
   }
 }
 
-// THE CAUSE SAID WHEN THE READING FAILED OUTSIDE THE CAPTURE: the fold itself declares it unread. The two
-// capture refusals carry their own causes; this arm exists so an empty answer that the fold judged unread
-// still arrives typed rather than silent.
-data listing_unread_channel_cause: String = "outside-discovery-roots-census: the listing arrived but the fold judged it unread"
-
-// The census, composed: rows, findings, refusal, receipt. Pure over the listing the capture handed back.
+// The census, composed: what was known (the outcome), what it implies (the channel), and the receipt. Pure
+// over the listing the capture handed back. There is deliberately NO `unread: Bool` field and NO
+// `standing_rows` list beside it (review 84111): the outcome is the only carrier of "looked vs could not
+// look", it cannot mix rows with a refusal, and the channel is derived from it -- so no consumer can read
+// an unread census as an empty, clean population by forgetting a Bool.
 type OutsideRootsCensusOutput {
-  standing_rows: List<OutsideRootsStanding>,
+  outcome: OutsideRootsOutcome,
   findings: List<String>,
   note_vouched: List<String>,
   undeclared: List<String>,
   scan_dir_gap: List<String>,
-  unread: Bool,
   channel: OutsideRootsChannel,
   lines: List<String>
 }
 
 fn outside_roots_census(listing: TrackedListing, bearers: ClaimBearerRead) -> OutsideRootsCensusOutput {
   match listing {
-    ListingRefused { cause: cause } => refused_census(concat("the index could not be asked: ", cause)),
+    ListingRefused { cause: cause } => refused_census(cause: concat("the index could not be asked: ", cause)),
     ListingRead { paths: paths } =>
       match bearers {
         BearersRefused { cause: cause } =>
-          refused_census(concat("the claim marker could not be read: ", cause))
-        BearersRead { paths: marker_paths } => {
-          let rows = census_rows(listing: paths, claim_bearers: marker_paths)
-          let findings = outside_roots_findings(rows: rows)
-          let vouched = findings_under_note_subject(findings: findings)
-          let undeclared = findings_outside_note_subject(findings: findings)
-          let gap = scan_dir_gap_population(claim_bearers: marker_paths)
-          OutsideRootsCensusOutput {
-            standing_rows: rows,
-            findings: findings,
-            note_vouched: vouched,
-            undeclared: undeclared,
-            scan_dir_gap: gap,
-            unread: listing_is_unread(rows: rows),
-            channel: outside_roots_channel(findings: findings, unread: listing_is_unread(rows: rows)),
-            lines: concat(
-              outside_roots_header_lines(),
-              concat(
-                outside_roots_receipt_lines(findings: vouched, vouched_by_note: true),
-                concat(
-                  outside_roots_receipt_lines(findings: undeclared, vouched_by_note: false),
-                  concat(
-                    scan_dir_gap_header_lines(),
-                    scan_dir_gap_receipt_lines(paths: gap)
-                  )
-                )
-              )
-            )
-          }
-        }
+          refused_census(cause: concat("the claim marker could not be read: ", cause))
+        BearersRead { paths: marker_paths } => observed_census(
+          rows: census_rows(listing: paths, claim_bearers: marker_paths),
+          claim_bearers: marker_paths
+        )
       }
   }
 }
 
-// An unreadable input is a refusal with a cause, and never a census that came back empty. One home for the
-// shape so both refusals print the same way.
+// THE REFUSAL, ONE HOME for both reads' failures. "Could not look" is a fact of the whole census and lives
+// in the outcome's type -- never as a row that a fold might forget to check (review 84111; §5: an unreadable
+// input is typed, located, and can never pass as an empty population, because there is no empty population
+// here to confuse it with: the findings/gap fields are empty because NOTHING WAS READ, and the outcome arm
+// says so in the type, not in a Bool beside them).
 fn refused_census(cause: String) -> OutsideRootsCensusOutput {
+  let outcome = CensusUnread { cause: cause }
   OutsideRootsCensusOutput {
-    standing_rows: [listing_unread_row()],
+    outcome: outcome,
     findings: [],
     note_vouched: [],
     undeclared: [],
-    // Empty here is not an observation of "no gap"; it is the absence of any read, and `unread: true` is what
-    // says so. The wet claim reads the two together for exactly that reason.
     scan_dir_gap: [],
-    unread: true,
-    channel: OutsideChannelUnread { cause: concat("outside-discovery-roots-census: ", cause) },
+    channel: outside_roots_channel(outcome: outcome),
     lines: concat(outside_roots_header_lines(), [concat("OUTSIDE-DISCOVERY-ROOTS UNREAD: ", cause)])
+  }
+}
+
+// THE OBSERVATION, one home. Every field is computed from the rows the fold actually produced; the marker
+// paths ride in from the read (the gap population is about what the marker read answered, not what the rows
+// kept). The channel is DERIVED from the outcome, so it cannot disagree with it.
+fn observed_census(rows: List<OutsideRootsStanding>, claim_bearers: List<String>) -> OutsideRootsCensusOutput {
+  let outcome = CensusObserved { rows: rows }
+  let findings = outside_roots_findings(rows: rows)
+  let vouched = findings_under_note_subject(findings: findings)
+  let undeclared = findings_outside_note_subject(findings: findings)
+  let gap = scan_dir_gap_population(claim_bearers: claim_bearers)
+  OutsideRootsCensusOutput {
+    outcome: outcome,
+    findings: findings,
+    note_vouched: vouched,
+    undeclared: undeclared,
+    scan_dir_gap: gap,
+    channel: outside_roots_channel(outcome: outcome),
+    lines: concat(
+      outside_roots_header_lines(),
+      concat(
+        outside_roots_receipt_lines(findings: vouched, vouched_by_note: true),
+        concat(
+          outside_roots_receipt_lines(findings: undeclared, vouched_by_note: false),
+          concat(
+            scan_dir_gap_header_lines(),
+            scan_dir_gap_receipt_lines(paths: gap)
+          )
+        )
+      )
+    )
   }
 }
 

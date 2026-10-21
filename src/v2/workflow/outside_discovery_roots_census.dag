@@ -55,17 +55,29 @@ import v2.lens.module_graph { ModuleDeclarationFact }
 import gunbc.ci.ci_layer_roots { witness_discovery_scan_dirs }
 import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
 
-// THE STANDING. Four states, each a decision the census can actually make from its inputs:
+// THE STANDING. Three states, each a decision the census can actually make about ONE PATH from its inputs:
 //   InsideGovernedTree    -- the layout owns the path; a governed reader can acquire it. Not a finding.
 //   OutsideDiscoveryRoots -- tracked, a .dag, and the layout owns NO tree for it. THE FINDING.
 //   NotAClaimFile         -- outside the trees but not a claim file. Not a finding.
-//   ListingUnread         -- the enumeration itself could not be obtained. "Could not look" is not
-//                            "nothing to report": it refuses, and it outranks an empty census (§5).
+// An unread listing used to live HERE as a fourth arm, beside the per-path states -- review 84111: a fact
+// about the WHOLE census stored as a fact about one path, so a list could mix "unread" with observed rows,
+// a predicate (`listing_is_unread`) existed only to hunt the marker, and any fold forgetting that hunt
+// treated an unread listing as an empty, clean population -- the fail-open shape §5 refuses. "Could not
+// look" is now UNWRITABLE as a row (correctness by construction, §4b): it is an arm of the outcome sum
+// below, which cannot coexist with rows at all.
 type OutsideRootsStanding
   = InsideGovernedTree { path: String, tree_directory: String }
   | OutsideDiscoveryRoots { path: String, cause: OutsideRootsCause }
   | NotAClaimFile { path: String }
-  | ListingUnread { cause: String }
+
+// THE OUTCOME: what the census as a whole knows. Either it looked, and these are the rows -- or it could
+// not look, and this is why. Not both, ever: the fold that consumed the marker-hunting predicate is gone,
+// and the channel the composed census consumes is now DERIVED by matching this sum (review 84111 also
+// dissolves the Bool the derivation used to take: an unread census and a clean census were distinguishable
+// only because a Bool said so; now they are different arms).
+type OutsideRootsOutcome
+  = CensusUnread { cause: String }
+  | CensusObserved { rows: List<OutsideRootsStanding> }
 
 // THE CAUSE, AS CITATIONS AND NOT AS PROSE. A finding's cause used to be one sentence naming its three
 // authorities; a sentence cannot be checked, so a rename or deletion of any of them would have left every
@@ -95,7 +107,6 @@ data outside_roots_cause: OutsideRootsCause = OutsideRootsCause {
   emitted_by: decl_ref(module_path: "gunbc.stage0.stage0_rust_host_observation", decl_name: "emitted_population_repo_paths"),
   layout_authority: decl_ref(module_path: "v2.cli.repository_layout", decl_name: "repository_module_file_of_path")
 }
-data listing_unread_cause: String = "the tracked listing could not be obtained from the index"
 
 // HOW A CITATION IS PRINTED: `module:decl`, read off the carrier. Every printed citation in this module --
 // header and receipt alike -- goes through here, so the string a reader sees and the reference the witness
@@ -252,7 +263,6 @@ fn outside_roots_findings(rows: List<OutsideRootsStanding>) -> List<String> {
         OutsideDiscoveryRoots { path: path, cause: _ } => Cons { head: path, tail: acc }
         InsideGovernedTree { path: _, tree_directory: _ } => acc
         NotAClaimFile { path: _ } => acc
-        ListingUnread { cause: _ } => acc
       }
     }
   )
@@ -269,22 +279,6 @@ fn findings_outside_note_subject(findings: List<String>) -> List<String> {
 // FINDINGS THE NOTE DOES VOUCH FOR: the declared population, as computed rather than transcribed.
 fn findings_under_note_subject(findings: List<String>) -> List<String> {
   findings |> filter(fn(path) { path_is_under_note_subject(path: path) })
-}
-
-// THE REFUSAL. An unreadable listing is not an empty one; it outranks a clean census and reports its cause.
-fn listing_unread_row() -> OutsideRootsStanding {
-  ListingUnread { cause: listing_unread_cause }
-}
-
-fn listing_is_unread(rows: List<OutsideRootsStanding>) -> Bool {
-  any(xs: rows, predicate: fn(row) {
-    match row {
-      ListingUnread { cause: _ } => true
-      InsideGovernedTree { path: _, tree_directory: _ } => false
-      OutsideDiscoveryRoots { path: _, cause: _ } => false
-      NotAClaimFile { path: _ } => false
-    }
-  })
 }
 
 // THE RECEIPT. One line per finding, at the grain the note names. No count is transcribed: the line count

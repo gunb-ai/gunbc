@@ -31,7 +31,8 @@ module v2.test.claim.outside_discovery_roots_census_real_execution
 // THE MUTUAL OBLIGATION, stated the way the pairing obligation requires it: deleting either capture from the
 // live entry does not make this claim quiet, it makes it red. The census cannot invent a listing or a marker
 // answer -- both arrive as typed reads, and a missing one is `ListingRefused`/`BearersRefused`, which makes
-// `out.unread` true and empties `out.findings`; the containment below then fails on the first declared path.
+// the outcome `CensusUnread` and empties `out.findings`; the containment below then fails on the first
+// declared path.
 // So the witness cannot survive the deletion of the integration it witnesses, and it cannot be satisfied by
 // the pure file's fixtures either, because those inject listings rather than performing reads.
 
@@ -39,10 +40,11 @@ import std.types { String, Bool, List }
 import std.algebra { is_empty, length }
 
 import std.decl_ref { decl_ref }
-import v2.std.decl_ref_resolution { declaration_ref_resolution_census_live }
+import v2.std.decl_ref_resolution_host { declaration_ref_resolution_census_live }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 
 import v2.workflow.outside_discovery_roots_census {
+  CensusObserved,
   emitted_entry_for_module,
   subject_path_is_emitted,
   outside_roots_citations,
@@ -88,7 +90,7 @@ test fn the_live_index_agrees_with_the_emitted_subject_population_by_real_execut
     listing: tracked_claim_listing(),
     bearers: tracked_claim_bearers()
   )
-  !(out.unread)
+  (match out.outcome { CensusObserved { rows: _ } => true _ => false })
     && all(xs: subject_population_expected, predicate: fn(path) { is_in(listing: out.findings, path: path) })
     && all(xs: out.findings, predicate: fn(path) { is_in(listing: subject_population_expected, path: path) })
 }
@@ -102,7 +104,7 @@ test fn the_live_reads_produce_an_observed_population_rather_than_a_refusal_by_r
     listing: tracked_claim_listing(),
     bearers: tracked_claim_bearers()
   )
-  !(out.unread) && !(is_empty(out.findings))
+  (match out.outcome { CensusObserved { rows: _ } => true _ => false }) && !(is_empty(out.findings))
 }
 
 // THE GAP POPULATION IS OBSERVED, NOT ASSUMED. The scan-dir gap is printed with no standing, on the ruling
@@ -116,7 +118,7 @@ test fn the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution() -> Bo
     listing: tracked_claim_listing(),
     bearers: tracked_claim_bearers()
   )
-  !(out.unread)
+  (match out.outcome { CensusObserved { rows: _ } => true _ => false })
     && !(is_empty(out.scan_dir_gap))
     && all(xs: out.scan_dir_gap, predicate: fn(path) { is_in(listing: out.findings, path: path) == false })
 }

@@ -38,14 +38,14 @@ import v2.workflow.outside_discovery_roots_census {
   InsideGovernedTree,
   OutsideDiscoveryRoots,
   NotAClaimFile,
-  ListingUnread,
+  OutsideRootsOutcome,
+  CensusUnread,
+  CensusObserved,
   census_rows,
   outside_roots_row,
   outside_roots_findings,
   findings_under_note_subject,
   findings_outside_note_subject,
-  listing_unread_row,
-  listing_is_unread,
   outside_roots_receipt_lines,
   outside_roots_header_lines,
   path_is_claim_file,
@@ -113,8 +113,7 @@ test fn a_governed_path_is_never_a_finding() -> Bool {
       InsideGovernedTree { path: reported, tree_directory: dir } => reported == path && dir != ""
       OutsideDiscoveryRoots { path: _, cause: _ } => false
       NotAClaimFile { path: _ } => false
-      ListingUnread { cause: _ } => false
-    }
+      }
   })
 }
 
@@ -131,7 +130,6 @@ test fn a_claim_file_under_no_governed_tree_is_the_finding_with_a_cause() -> Boo
         && cause.layout_authority.decl_name == "repository_module_file_of_path"
     InsideGovernedTree { path: _, tree_directory: _ } => false
     NotAClaimFile { path: _ } => false
-    ListingUnread { cause: _ } => false
   }
 }
 
@@ -152,7 +150,6 @@ fn row_path(row: OutsideRootsStanding) -> String {
     InsideGovernedTree { path: path, tree_directory: _ } => path
     OutsideDiscoveryRoots { path: path, cause: _ } => path
     NotAClaimFile { path: path } => path
-    ListingUnread { cause: _ } => ""
   }
 }
 
@@ -163,7 +160,6 @@ test fn a_non_claim_file_outside_the_trees_gets_its_own_standing() -> Bool {
     NotAClaimFile { path: reported } => reported == non_claim_outside_path
     InsideGovernedTree { path: _, tree_directory: _ } => false
     OutsideDiscoveryRoots { path: _, cause: _ } => false
-    ListingUnread { cause: _ } => false
   }
 }
 
@@ -267,20 +263,32 @@ test fn an_unreadable_listing_is_not_an_empty_census() -> Bool {
     listing: ListingRefused { cause: "the index could not be asked" },
     bearers: BearersRead { paths: subject_population_expected }
   )
-  refused.unread
+  (match refused.outcome { CensusUnread { cause: cause } => string_contains(s: cause, pattern: "could not be asked") _ => false })
     && is_empty(refused.findings)
     && any(xs: refused.lines, predicate: fn(line) { string_contains(s: line, pattern: "UNREAD") })
 }
 
 test fn a_read_listing_of_nothing_is_a_clean_census_not_a_refusal() -> Bool {
   let read = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: subject_population_expected })
-  !(read.unread) && is_empty(read.findings)
+  (match read.outcome { CensusObserved { rows: _ } => true _ => false }) && is_empty(read.findings)
 }
 
-// The unread standing outranks a finding: when both are present the census still reports itself unread.
-test fn the_unread_standing_outranks_a_populated_census() -> Bool {
-  let rows = concat(census_rows(listing: subject_population_expected, claim_bearers: subject_population_expected), [listing_unread_row()])
-  listing_is_unread(rows: rows)
+// "Could not look" can no longer be MIXED with what was seen: the row list is the type of what was seen, and
+// it has no unread arm to hold a census-level fact. The old version of this claim forged such a list and
+// asked a predicate to find the marker; review 84111 made the forgery itself the thing that must not
+// compile -- so what is asserted here is the construction: every row the fold can produce is a path row.
+test fn a_row_list_can_hold_only_path_rows() -> Bool {
+  // THE OLD FORGEABLE STATE, now unwritable (review 84111): there is no listing_unread_row() and no arm of
+  // OutsideRootsStanding for a listing-level fact -- a List<OutsideRootsStanding> can hold ONLY path rows.
+  // The invariant is enforced by the sum having no unread arm, not by a predicate hunting one.
+  let rows = census_rows(listing: subject_population_expected, claim_bearers: subject_population_expected)
+  all(xs: rows, predicate: fn(row) {
+    match row {
+      InsideGovernedTree { path: _, tree_directory: _ } => true
+      OutsideDiscoveryRoots { path: _, cause: _ } => true
+      NotAClaimFile { path: _ } => true
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +309,7 @@ test fn the_head_is_stamped_beside_the_output_and_never_invented() -> Bool {
 
 test fn a_live_function_resolves_and_reports_no_finding_for_an_empty_listing() -> Bool {
   let out = outside_roots_census(listing: ListingRead { paths: [] }, bearers: BearersRead { paths: subject_population_expected })
-  is_empty(out.findings) && !(out.unread)
+  is_empty(out.findings) && (match out.outcome { CensusObserved { rows: _ } => true _ => false })
 }
 
 // The capture's decision on an EMPTY answer, exercised directly: it is a refusal with a cause, never an
@@ -339,7 +347,7 @@ test fn a_refused_marker_read_is_a_refusal_even_when_the_listing_read_fine() -> 
     listing: ListingRead { paths: subject_population_expected },
     bearers: BearersRefused { cause: "the marker read was never answered" }
   )
-  out.unread
+  (match out.outcome { CensusUnread { cause: _ } => true _ => false })
     && is_empty(out.findings)
     && any(xs: out.lines, predicate: fn(line) { string_contains(s: line, pattern: "marker") })
 }
@@ -352,7 +360,7 @@ test fn an_empty_marker_answer_reports_every_path_as_not_a_claim_file() -> Bool 
     listing: ListingRead { paths: subject_population_expected },
     bearers: BearersRead { paths: [] }
   )
-  !(out.unread) && is_empty(out.findings)
+  (match out.outcome { CensusObserved { rows: _ } => true _ => false }) && is_empty(out.findings)
 }
 
 // THE FABRICATED-FINDING RED, on the files themselves. Tracked `.dag` under the very subject the note names,
@@ -369,8 +377,7 @@ test fn a_tracked_dag_that_declares_no_claim_is_never_reported_as_one() -> Bool 
            NotAClaimFile { path: reported } => reported == path
            InsideGovernedTree { path: _, tree_directory: _ } => false
            OutsideDiscoveryRoots { path: _, cause: _ } => false
-           ListingUnread { cause: _ } => false
-         }
+                }
        })
     && all(xs: subject_population_expected, predicate: fn(path) {
          is_in(listing: outside_roots_findings(rows: census_rows(listing: subject_population_expected, claim_bearers: subject_population_expected)), path: path)
@@ -385,8 +392,7 @@ test fn prose_that_only_mentions_the_marker_is_not_a_claim_file() -> Bool {
       NotAClaimFile { path: reported } => reported == path
       InsideGovernedTree { path: _, tree_directory: _ } => false
       OutsideDiscoveryRoots { path: _, cause: _ } => false
-      ListingUnread { cause: _ } => false
-    }
+      }
   })
 }
 
