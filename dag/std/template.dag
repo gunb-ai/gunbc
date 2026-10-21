@@ -1,4 +1,4 @@
-module v2.std.template
+module std.template
 
 import std.types { List }
 import std.algebra { list_flat_map }
