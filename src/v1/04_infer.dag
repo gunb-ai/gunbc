@@ -18614,13 +18614,22 @@ type RealizeState {
 // is the builder's typed observation (ProviderPoolObservation, one per demanded module). The decision
 // itself is std.generated_provider's.
 //
-// A declaration is refused when a blocking diagnostic of this closure is located inside it.
+// A declaration is refused when a blocking diagnostic of this closure is located inside it: inside
+// its own span or inside its body's (a function item's span does not reach its body).
 fn span_contains(outer: SourceSpan, inner: SourceSpan) -> Bool {
   outer.file == inner.file && inner.start >= outer.start && inner.end <= outer.end
 }
 
+fn declaration_covers(item: Node, at: SourceSpan) -> Bool {
+  span_contains(outer: item.span, inner: at)
+    || match item.body {
+      Present { value: b } => span_contains(outer: b.span, inner: at)
+      Absent => false
+    }
+}
+
 fn declaration_refused_in_closure(item: Node, diagnostics: List<ErrorNode>) -> Bool {
-  diagnostics |> any(d => is_interpreter_blocking_diagnostic(d: d.diagnostic) && span_contains(outer: item.span, inner: diagnostic_to_span(d: d.diagnostic)))
+  diagnostics |> any(d => is_interpreter_blocking_diagnostic(d: d.diagnostic) && declaration_covers(item: item, at: diagnostic_to_span(d: d.diagnostic)))
 }
 
 fn item_declared_names(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<NonEmptyStr> {
