@@ -1878,9 +1878,9 @@ fn dag_grammar_expr_list_helper() -> GrammarExpr {
 
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   dag_grammar_comma_list_expr(
-    item: dag_grammar_value_name_binder_before(
-      name: dag_grammar_ident_or_type_decl_modifier_name(),
-      follow: dag_grammar_value_name_ends_param()
+    item: dag_grammar_sequence(
+      left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false)),
+      right: dag_grammar_ident_or_type_decl_modifier_name()
     )
   )
 }
@@ -2197,25 +2197,16 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
 // keyword, whatever follows it; dag_grammar_value_name_unconditional, the same production a reference reads).
 fn dag_grammar_field_init_pun_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_value_name_guard(
-      binder: dag_grammar_choice(
-        left: dag_grammar_value_name_keyword_tokens(admit_bool_literals: false),
-        right: dag_grammar_sequence(
-          left: dag_grammar_keyword_expr(lexeme: "none"),
-          right: dag_grammar_choice(
-            left: dag_grammar_terminal(token_class: ^dag_token_comma),
-            right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
-          )
-        )
-      )
-    ),
+    left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_tokens(admit_bool_literals: false)),
     right: dag_grammar_primary_name_expr()
   )
 }
 
-// `none` IS AN IDENTIFIER TOKEN, so unlike `true` it is in this alternative's first set: `match x { none => .. }`
-// probes `x { none` as a record literal, and an unconditional refusal there refused every match body that
-// leads with the absence arm. The pun refuses `none` only where it can only be a pun, ending the field.
+// `none` IS NOT REFUSED HERE. It is an identifier TOKEN, in this alternative's first set, so a guard would
+// fire on every speculative record probe (`match x { none => .. }` probes `x { none`), and one keyed on the next
+// token is defeated by an omitted comma (`R { none x }`). The pun parses, and body lowering refuses a pun field
+// named `none` at the parsed pun's position (v2.compiler.body_lowering_fold body_lower_field_init_pun_edge,
+// body_lowering_reason_reserved_value_name_pun): the refusal has that one authority.
 
 // THE STRING KEY IS THE CLASS-STAMPED STRING TERMINAL -- the one string terminal, whose node carries
 // the literal's decoded value (gunbc#12759) -- never a second, spelling-stamped one.

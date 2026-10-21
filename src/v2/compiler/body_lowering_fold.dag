@@ -9931,7 +9931,10 @@ fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
 // the grammar's identity and not a guess from a missing colon. It lowers to the edge the explicit long
 // form lowers to: the label is the name, and the target is the reference the name denotes as a value,
 // built as the pattern pun's binder is (body_lower_field_pattern_edge). Only a tagged record's list
-// parses a pun; a headless brace has no pun production to reach here.
+// parses a pun; a headless brace has no pun production to reach here. A pun named `none` is refused here,
+// located at the name: `none` is the absence literal (body_lower_none_literal), so the pun would name a
+// value no reference can name. The grammar admits it so that a speculative record probe over a match body
+// does not hard-stop (v2.extdeps.languages.dag dag_grammar_field_init_pun_expr).
 fn body_lower_field_init_is_pun(item: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
     Present { value: id } => id == ^dag_surface_field_init_pun
@@ -9946,12 +9949,16 @@ fn body_lower_field_init_pun_edge(captured: Node, item: Node) -> Outcome<Edge> {
       match node_atom_identity_optional(node: atom) {
         Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item))
         Present { value: field_name } =>
-          outcome_accepted(
-            value: Edge {
-              label: Authored { name: field_name },
-              target: body_lower_param_ref_atom(source: atom, identity: field_name)
-            }
-          )
+          if field_name == ^none {
+            outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_reserved_value_name_pun, n: atom))
+          } else {
+            outcome_accepted(
+              value: Edge {
+                label: Authored { name: field_name },
+                target: body_lower_param_ref_atom(source: atom, identity: field_name)
+              }
+            )
+          }
       }
   }
 }

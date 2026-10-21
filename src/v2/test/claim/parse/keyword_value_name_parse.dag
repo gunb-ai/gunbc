@@ -241,19 +241,6 @@ test fn kvn_none_let_refuses_at_the_word_holds() -> Bool {
   )
 }
 
-data kvn_none_record_pun_source: String = "module m.t\ndata d: R = R { none }\n"
-
-// A record-init pun named none refuses at the word: bytes 27..31 of kvn_none_record_pun_source.
-test fn kvn_none_record_pun_refuses_at_the_word_holds() -> Bool {
-  g_fatal_at(
-    parsed: g_tokenize_parse(text: kvn_none_record_pun_source, file: ^probe_kvn_none_record_pun),
-    reason: KeywordAsValueName,
-    file: ^probe_kvn_none_record_pun,
-    start: 27,
-    end: 31
-  )
-}
-
 data kvn_none_label_source: String = "module m.t\ndata d: R = R { none: 1 }\n"
 
 // Control: a record-init field LABEL named none is a label, not a value name, and stays legal.
@@ -416,19 +403,6 @@ test fn kvn_none_tail_loop_block_tail_control_holds() -> Bool {
   }
 }
 
-data kvn_none_lowercase_head_pun_source: String = "module m.t\nfn f(b: Bool) -> Int? {\n  loop b { none }\n}\n"
-
-// Residual, the analog of `b { x }`: a lowercase head followed by a block of one name NOT before `else` reads as
-// a record initializer, so `none` there is a field-ending pun and refuses at the word: bytes 46..50.
-test fn kvn_none_lowercase_head_block_refuses_as_a_pun_holds() -> Bool {
-  g_fatal_at(
-    parsed: g_tokenize_parse(text: kvn_none_lowercase_head_pun_source, file: ^probe_kvn_none_lowercase_head_pun),
-    reason: KeywordAsValueName,
-    file: ^probe_kvn_none_lowercase_head_pun,
-    start: 46,
-    end: 50
-  )
-}
 
 data kvn_none_arm_ident_source: String = "module m.t\nfn f(x: Int?) -> Int {\n  match x {\n    none => 1\n    Present { value } => value\n  }\n}\n"
 
@@ -899,3 +873,56 @@ fn kvn_bool_label_stream() -> TokenStream {
   ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 56, gap_start: 55))
 }
 
+
+data kvn_omit_param_refuse_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none x) { 0 })\n}\n"
+
+// Omitted comma, fn literal parameter list: a none that is not followed by a comma still refuses at the word (bytes 34..38).
+test fn kvn_none_omit_param_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_omit_param_refuse_source, file: ^probe_kvn_omit_param_refuse),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_omit_param_refuse,
+    start: 34,
+    end: 38
+  )
+}
+
+data kvn_omit_param_accept_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none_value x) { 0 })\n}\n"
+
+// Control: none_value is a different word and stays legal in the same omitted-comma syntax.
+test fn kvn_none_value_omit_param_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_omit_param_accept_source, file: ^probe_kvn_omit_param_accept) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_pun_value_accept_source: String = "module m.t\ndata d: R = R { none_value x }\n"
+
+// Control: none_value is a different word and stays a record-init pun in the omitted-comma syntax.
+test fn kvn_none_value_omit_pun_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_pun_value_accept_source, file: ^probe_kvn_pun_value_accept) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_none_pun_parses_source: String = "module m.t\ndata d: R = R { none x }\n"
+
+// A pun named none PARSES: body lowering owns its refusal (v2.test.claim.compiler.optional_native_controls onc_none_pun_*), so a speculative record probe over a match body never hard-stops.
+test fn kvn_none_pun_parses_and_lowering_owns_the_refusal_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_none_pun_parses_source, file: ^probe_kvn_none_pun_parses) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_keyword_block_after_ident_source: String = "module m.t\nfn f(c: Bool) -> Int {\n  if c {\n    let y = 1\n    y\n  } else {\n    0\n  }\n}\n"
+
+// Control: a block that opens with a statement keyword after a lowercase identifier still parses as a block.
+test fn kvn_keyword_block_after_ident_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_keyword_block_after_ident_source, file: ^probe_kvn_keyword_block_after_ident) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

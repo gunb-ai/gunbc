@@ -162,3 +162,27 @@ test fn onc_none_without_std_optional_in_the_closure_refuses_at_resolve() -> Boo
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+
+fn onc_none_pun_refused_by_lowering(body: String) -> Bool {
+  match onc_none_assemble(body: body) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_reserved_value_name_pun
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// A pun named none refuses in body lowering, located at the parsed pun field (single authority): a closing brace, an omitted comma, an explicit comma, and after a lowercase head.
+test fn onc_none_pun_closing_brace_refuses_in_lowering() -> Bool {
+  onc_none_pun_refused_by_lowering(body: "data d: R = R { none }\n")
+}
+
+test fn onc_none_pun_omitted_comma_refuses_in_lowering() -> Bool {
+  onc_none_pun_refused_by_lowering(body: "data d: R = R { none x }\n")
+}
+
+test fn onc_none_pun_explicit_comma_refuses_in_lowering() -> Bool {
+  onc_none_pun_refused_by_lowering(body: "data d: R = R { none, x }\n")
+}
+
+test fn onc_none_pun_after_lowercase_head_refuses_in_lowering() -> Bool {
+  onc_none_pun_refused_by_lowering(body: "fn f(b: Bool) -> Int? {\n  loop b { none }\n}\n")
+}
