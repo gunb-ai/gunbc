@@ -7,7 +7,7 @@ import v2.compiler.target_serialize { target_bundle_optional_child, target_seria
 import v2.compiler.target_carriers { emit_module_decl_separator, target_source_medium }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
-  ProducedDeclWired, UnusedTypeParamRefused,
+  ProducedDeclWired, UnusedTypeParamAdmitted, UnusedTypeParamNotApplicable, UnusedTypeParamRefused,
   TargetModel,
   produced_decl_render_from_rows,
   render_target_text,
