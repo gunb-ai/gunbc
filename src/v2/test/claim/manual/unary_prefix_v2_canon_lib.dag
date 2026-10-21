@@ -1,0 +1,97 @@
+module v2.test.claim.manual.unary_prefix_v2_canon_lib
+
+// v2 SIDE of the unary-prefix agreement (v2.test.claim.manual.unary_prefix_v1_v2_agreement).
+// Split into its own module for the same reason as the v1 side: one file importing BOTH
+// v1.std.core and v2.std.node collides on the bare names Node and Symbol.
+//
+// THE CLAIM'S CANONICAL SHAPE (contract with the v1 lib): I(a,b) infix over two operands, P(x)
+// prefix over one operand, l a leaf. Body lowering reads an operator expression as a Transform
+// application whose first child is the operator token and whose remaining children are the
+// operands (v2.std.compilers.body_lowering lower_binary_infix / lower_unary_prefix), so arity 3
+// is infix and arity 2 is prefix. Only nesting is compared -- the defect IS nesting.
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { ComputationNode, Edge, Transform, Node }
+import v2.std.node_query { find_arrow_body_child }
+
+fn canon_v2_source(body: String) -> String {
+  let sig = match body {
+    "!a && b" => "a: Bool, b: Bool"
+    "!a || b" => "a: Bool, b: Bool"
+    "!a * b" => "a: Bool, b: Bool"
+    _ => "a: Int, b: Int"
+  }
+  concat("module probe.unary_prefix.canon\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
+}
+
+// t3 idiom (block_expr_as_binary_operand_parse.dag arrow_body_kind): find_arrow_body_child answers
+// only at an Arrow root, so a module-rooted tree is walked through its children until one is found.
+fn canon_arrow_body(root: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => canon_arrow_body(root: e.target)
+        }
+      })
+  }
+}
+
+fn v2_canon(body: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "<v2-grammar-refused>"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: canon_v2_source(body: body), file: ^probe_unary_prefix_canon, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "<v2-lex-refused>"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "<v2-parse-refused>"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => "<v2-norm-refused>"
+                Accepted { value: normalized, diagnostics: _ } =>
+                  match canon_arrow_body(root: normalized.root) {
+                    Absent => "<v2-nobody>"
+                    Present { value: lowered } => canon_shape_v2(node: lowered)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn canon_shape_v2(node: Node) -> String {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      if node.children |> length == 3 {
+        concat("I(", canon_operands_v2(children: node.children) |> join(separator: ","), ")")
+      } else if node.children |> length == 2 {
+        concat("P(", canon_operands_v2(children: node.children) |> join(separator: ","), ")")
+      } else {
+        "?"
+      }
+    _ => "l"
+  }
+}
+
+// Shapes of every child except the head (the operator token), by fold: a [first, ...rest] list
+// pattern is not admitted here (v2.lens.fn_index_depth_agreement records the same).
+type CanonV2Acc { skipped: Bool, parts: List<String> }
+
+fn canon_operands_v2(children: List<Edge>) -> List<String> {
+  fold(children, init: CanonV2Acc { skipped: false, parts: [] }, f: fn(step, e) {
+    if step.skipped {
+      CanonV2Acc { skipped: true, parts: list_append(left: step.parts, right: [canon_shape_v2(node: e.target)]) }
+    } else {
+      CanonV2Acc { skipped: true, parts: [] }
+    }
+  }).parts
+}
