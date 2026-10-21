@@ -11,7 +11,6 @@ import extdeps.github.github { Repository, github_https_clone_url, github_https_
 import extdeps.git {
   git_dir_fetch_source_grant, git_non_bare_git_dir, git_local_fetch_source_grant,
   git_isolated_home_env_argv, git_push_ref_in_repo_argv, git_isolated_home_netrc_path,
-  git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env,
   git_dir_path_from_gitfile, resolve_git_dir_pointer, git_local_fetch_upload_pack_command,
 }
 
@@ -34,7 +33,13 @@ test fn the_push_environment_names_a_private_home_and_not_a_token() -> Bool {
     refspec: "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc",
     home: "/tmp/publication-home" as FilePath,
   )
-  prefix == ["env", "HOME=/tmp/publication-home", git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env]
+  // THE ENVIRONMENT, PINNED TO THE WORDS THE HOST'S git MUST SEE. These literals live HERE, in the
+  // claim, and nowhere in the model: the model states the refusals once, as typed bindings, and renders
+  // them (extdeps.tools.env's env_bindings_argv) for a caller that carries its own `env` program. A
+  // claim that compared the argv against model constants would assert that a renderer agrees with
+  // itself; a claim that names the words git actually requires is the check. (Review 81959, item 1:
+  // the model used to keep BOTH spellings as literals, which is the drift this removes.)
+  prefix == ["env", "HOME=/tmp/publication-home", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"]
     && argv == concat(prefix, ["git", "-C", "/tmp/mirror.git", "push", "--quiet", "https://github.com/gunb-ai/gunbc.git", "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc"])
 }
 
@@ -43,8 +48,12 @@ test fn the_isolated_home_holds_netrc_and_not_a_gitconfig() -> Bool {
   let netrc = git_isolated_home_netrc_path(home: home)
   (netrc as String) == "/tmp/publication-home/.netrc"
     && !string_contains(s: netrc as String, pattern: ".gitconfig")
-    && git_config_nosystem_env == "GIT_CONFIG_NOSYSTEM=1"
-    && git_config_global_null_env == "GIT_CONFIG_GLOBAL=/dev/null"
+    && any(xs: git_isolated_home_env_argv(home: home), predicate: w => w == "GIT_CONFIG_NOSYSTEM=1")
+    && any(xs: git_isolated_home_env_argv(home: home), predicate: w => w == "GIT_CONFIG_GLOBAL=/dev/null")
+    // the netrc is what the isolated HOME is FOR (that git 2.43 reads $HOME/.netrc on an https push is
+    // measured, in the module comment); a stray gitconfig in the publication home would be read instead
+    // and the HOME the gitconfig would be read from is the isolated one, pinned by word
+    && any(xs: git_isolated_home_env_argv(home: home), predicate: w => w == "HOME=/tmp/publication-home")
 }
 
 test fn a_resolved_git_dir_grant_does_not_append_dot_git() -> Bool {
