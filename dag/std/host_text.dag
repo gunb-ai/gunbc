@@ -23,8 +23,8 @@ type HostText
 // THE HOST-TO-STRUCTURAL CROSSING (operator ruling H4). The Unicode scalar values of the host text, in
 // source order: not its bytes, not its grapheme clusters, not UTF-16 code units, and never a lossy
 // decoding. A pure declared operation whose host realization binds by THIS declaration's identity
-// (std.primitive_projection primitive_chars, a HostRealizedSeam row; std.primitives chars_contract is
-// its cost authority), so the body is a self-call no realization ever reaches -- a target without a
+// (std.primitive_projection primitive_chars, a HostRealizedSeam row), so the body is a self-call no
+// realization ever reaches -- a target without a
 // realization refuses at realization, it does not fall back to a name. The inverse crossing is its own
 // declared operation, not this one.
 fn chars(text: HostText) -> List<Char> {
