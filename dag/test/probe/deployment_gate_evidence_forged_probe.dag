@@ -220,23 +220,6 @@ data forged_rule_row_from_run_digits: EnabledDeploymentProtectionRule = EnabledD
   app: RuleOwningApp { id: forged_app_id, slug: forged_app_slug },
 }
 
-// THE SECOND CROSS-AXIS FORGERY, and the one that actually tests the CARRIER rather than Int.
-// forged_rule_row_from_run_digits asks "does the rule slot refuse an untyped digit?" -- with a plain Int
-// field GitHub accepted it, and only an Int-vs-carrier refusal is proven by that line. THIS one asks the
-// question the carrier exists to answer: does it refuse a value that is ALREADY a typed GitHub id, but on
-// the WRONG axis? forged_installation_id is a GitHubAppInstallationId -- the same { value: Int } shape,
-// imported from extdeps.github.app, the closest neighbour the confusion could actually take -- and it is
-// refused at the field. If the rule field had been given the installation-id type by mistake, or if a
-// single "GitHubId" type had been minted to cover both, this line would COMPILE: that is precisely the
-// mistake the separate carriers prevent, which is why §5 prefers the construction over the runtime check.
-// The control imports GitHubAppInstallationId too, so the refusal cannot be an artifact of an unknown
-// name -- only a wrong AXIS produces the row.
-data forged_rule_row_from_foreign_carrier: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule {
-  id: forged_installation_id,
-  node_id: "DPPR_forged_carrier",
-  enabled: true,
-  app: RuleOwningApp { id: forged_app_id, slug: forged_app_slug },
-}
 
 fn forge_an_ownership() -> EnvironmentRuleOwnership {
   observe_rule_ownership(
