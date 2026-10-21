@@ -1,0 +1,160 @@
+module test.claim.gcp_iam_bootstrap_population_split_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.iam { GcpPolicy, gcp_cells_bindings }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, cell_preimage, ConvergeProviderRole }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_cells }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, BootstrapApplyRole,
+  iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over, iam_bootstrap_delta_bindings_over,
+  iam_bootstrap_resource_key, iam_bootstrap_role_name,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta {
+  BootstrapSubjectObservation, SubjectPolicyRead, SubjectAnswered, SubjectUnobservable,
+  BootstrapDelta, BootstrapObserved, BootstrapDeltaRequired, BootstrapDeltaRefused,
+  ObserverReach, ObserverReadsPolicy, ObserverReadsSubjectOnly, ObserverHoldsNothing,
+  bootstrap_delta_over, roster_subjects, subject_cells, observer_reach,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_route { root_cell_repair_ceremony }
+import gunbc.auth.gcp_iam_bootstrap { BootstrapCapabilities, BootstrapIdentities, iam_bootstrap_stage_bindings_over, iam_bootstrap_stage_identities_over }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── WHAT THESE CLAIMS ARE ABOUT ──────────────────────────────────────────────────────────────
+// The side chat's three structural findings on gunbc#14360 (relayed by warm-crane-219, 2026-10-19), each
+// at the interface it names:
+//   1. the root ceremony binds only root cells: one derivation, split into a ceremony population and a
+//      delta population, disjoint, and widening the targets or grant sets moves the delta only;
+//   3. no pool cell the observer cannot read is dropped as "nothing to do": the observer reads every
+//      delta pool's policy, and a pool missing one cell surfaces exactly that cell;
+//   4. a missing root cell names the ceremony that repairs THAT cell, not one ceremony for every root.
+
+data probe_secret: NonEmptyStr = "gunbc-bootstrap-split-probe-secret"
+
+fn keys(bs: List<IamBootstrapBinding>) -> List<String> {
+  map(bs, b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
+}
+
+fn same_cells(a: List<IamBootstrapBinding>, b: List<IamBootstrapBinding>) -> Bool {
+  let ka = keys(bs: a)
+  let kb = keys(bs: b)
+  count(ka) == count(kb) && all(ka, k => any(kb, x => x == k))
+}
+
+// ── 1. ONE DERIVATION, TWO DISJOINT POPULATIONS ──────────────────────────────────────────────
+
+test fn the_root_ceremony_population_does_not_move_when_targets_and_grant_sets_widen() -> Bool {
+  let narrow_targets = gcp_iam_converge_targets.skip(n: 1)
+  let narrow_secrets = gcp_iam_converge_grant_set_secrets().skip(n: 1)
+  let wide_secrets = gcp_iam_converge_grant_set_secrets() + [probe_secret]
+  let root_narrow = iam_bootstrap_root_ceremony_bindings_over(targets: narrow_targets, grant_set_secrets: narrow_secrets)
+  let root_wide = iam_bootstrap_root_ceremony_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: wide_secrets)
+  let delta_narrow = iam_bootstrap_delta_bindings_over(targets: narrow_targets, grant_set_secrets: narrow_secrets)
+  let delta_wide = iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: wide_secrets)
+  count(gcp_iam_converge_targets) > 0
+    && same_cells(a: root_narrow, b: root_wide)
+    && count(delta_wide) > count(delta_narrow)
+    && any(delta_wide, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapSecret { secret: probe_secret }))
+}
+
+test fn the_ceremony_and_delta_populations_are_disjoint_and_cover_the_derivation() -> Bool {
+  let all_cells = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  let root = iam_bootstrap_root_ceremony_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  let delta = iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  let kr = keys(bs: root)
+  count(root) > 0 && count(delta) > 0
+    && !any(keys(bs: delta), k => any(kr, x => x == k))
+    && same_cells(a: all_cells, b: root + delta)
+    && !any(delta, b => b.resource == BootstrapProject)
+}
+
+// ── 3. NO UNREAD POOL CELL IS "NOTHING TO DO" ────────────────────────────────────────────────
+
+data delta_roster: List<IamBootstrapBinding> = iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+
+fn bound_policy(cells: List<IamBootstrapBinding>) -> GcpPolicy {
+  GcpPolicy { bindings: gcp_cells_bindings(cs: map(cells, b => b.cell)), etag: "e1", version: 3 }
+}
+
+fn read_in_place(s: IamBootstrapResource) -> BootstrapSubjectObservation {
+  BootstrapSubjectObservation { subject: s, reading: match s {
+    BootstrapProject => SubjectUnobservable
+    BootstrapPool { pool: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
+    BootstrapAccount { account: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
+    BootstrapSecret { secret: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
+    BootstrapBucket { bucket: _ } => SubjectPolicyRead { policy: bound_policy(cells: subject_cells(roster: delta_roster, subject: s)) }
+  } }
+}
+
+fn delta_pools() -> List<IamBootstrapResource> {
+  filter(roster_subjects(roster: delta_roster), s => match s { BootstrapPool { pool: _ } => true  BootstrapProject => false  BootstrapAccount { account: _ } => false  BootstrapSecret { secret: _ } => false  BootstrapBucket { bucket: _ } => false })
+}
+
+fn same_subject(a: IamBootstrapResource, b: IamBootstrapResource) -> Bool {
+  iam_bootstrap_resource_key(resource: a) == iam_bootstrap_resource_key(resource: b)
+}
+
+test fn the_observer_reads_every_delta_pools_policy() -> Bool {
+  count(delta_pools()) > 0
+    && all(delta_pools(), p => match observer_reach(subject: p) { ObserverReadsPolicy => true  ObserverReadsSubjectOnly => false  ObserverHoldsNothing => false })
+}
+
+test fn an_answered_pool_without_its_policy_is_never_nothing_to_do() -> Bool {
+  all(delta_pools(), p => {
+    let obs = map(roster_subjects(roster: delta_roster), s => if same_subject(a: s, b: p) { BootstrapSubjectObservation { subject: s, reading: SubjectAnswered } } else { read_in_place(s: s) })
+    match bootstrap_delta_over(roster: delta_roster, observations: obs) { BootstrapObserved { root_residual: _ } => false  BootstrapDeltaRequired { subjects: _, root_residual: _ } => true  BootstrapDeltaRefused { reasons: _ } => true }
+  })
+}
+
+// THE MUTATION THE SIDE CHAT NAMED: drop the provider-role cell from an existing pool's policy, and
+// exactly that cell is in the delta.
+test fn a_pool_missing_its_provider_role_cell_surfaces_exactly_that_cell() -> Bool {
+  let provider_role = iam_bootstrap_role_name(role: BootstrapApplyRole { role: ConvergeProviderRole }) as String
+  count(delta_pools()) > 0 && all(delta_pools(), p => {
+    let cells = subject_cells(roster: delta_roster, subject: p)
+    let kept = filter(cells, b => b.cell.role != provider_role)
+    let obs = map(roster_subjects(roster: delta_roster), s => if same_subject(a: s, b: p) { BootstrapSubjectObservation { subject: s, reading: SubjectPolicyRead { policy: bound_policy(cells: kept) } } } else { read_in_place(s: s) })
+    count(kept) == count(cells) - 1 && match bootstrap_delta_over(roster: delta_roster, observations: obs) {
+      BootstrapDeltaRequired { subjects: ss, root_residual: _ } => count(ss) == 1 && all(ss, x => same_subject(a: x.subject, b: p) && count(x.missing) == 1 && all(x.missing, m => m.cell.role == provider_role))
+      BootstrapObserved { root_residual: _ } => false
+      BootstrapDeltaRefused { reasons: _ } => false
+    }
+  })
+}
+
+// ── 4. A MISSING ROOT CELL NAMES THE CEREMONY THAT REPAIRS IT ────────────────────────────────
+
+fn same_ceremony(a: TrustRootCeremony, b: TrustRootCeremony) -> Bool {
+  match a {
+    IamBootstrapApply => match b { IamBootstrapApply => true  ApprovalMacKeyProvision => false  OrgAdminAppKeyAccessConverge => false }
+    ApprovalMacKeyProvision => match b { ApprovalMacKeyProvision => true  IamBootstrapApply => false  OrgAdminAppKeyAccessConverge => false }
+    OrgAdminAppKeyAccessConverge => match b { OrgAdminAppKeyAccessConverge => true  IamBootstrapApply => false  ApprovalMacKeyProvision => false }
+  }
+}
+
+test fn each_root_cell_names_its_own_repairing_ceremony() -> Bool {
+  count(ceremony_trust_root_cells()) == 4
+    && all(ceremony_trust_root_cells(), t => match root_cell_repair_ceremony(b: IamBootstrapBinding { resource: BootstrapSecret { secret: t.secret }, cell: t.cell }) { Present { value: c } => same_ceremony(a: c, b: t.ceremony)  Absent => false })
+}
+
+// ── THE CEREMONY'S STAGES EXECUTE THE SELECTOR (srv2 mutations N1, N1b) ───────────────────────
+// gunbc.auth.gcp_iam_bootstrap folds exactly iam_bootstrap_stage_bindings / iam_bootstrap_stage_identities
+// through executors that name no population, so these claims over the selector are claims over what
+// the capabilities and identities stages do.
+test fn the_capabilities_stage_binds_exactly_the_root_population_and_does_not_move_when_inputs_widen() -> Bool {
+  let narrow = iam_bootstrap_stage_bindings_over(stage: BootstrapCapabilities, targets: gcp_iam_converge_targets.skip(n: 1), grant_set_secrets: gcp_iam_converge_grant_set_secrets().skip(n: 1))
+  let wide = iam_bootstrap_stage_bindings_over(stage: BootstrapCapabilities, targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets() + [probe_secret])
+  count(wide) > 0
+    && same_cells(a: wide, b: iam_bootstrap_root_ceremony_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets() + [probe_secret]))
+    && same_cells(a: narrow, b: wide)
+    && !any(wide, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapSecret { secret: probe_secret }))
+}
+
+test fn the_identities_stage_creates_exactly_the_root_identities_and_does_not_move_when_targets_widen() -> Bool {
+  let narrow = map(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: []), i => i.federation.pool_id as String)
+  let wide = map(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: gcp_iam_converge_targets), i => i.federation.pool_id as String)
+  count(narrow) == 3 && count(wide) == 3 && all(wide, x => any(narrow, y => y == x))
+    && all(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: gcp_iam_converge_targets), i => i.own_trust)
+}

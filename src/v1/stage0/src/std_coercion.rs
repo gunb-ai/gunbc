@@ -17,6 +17,7 @@ pub use crate::std_algebra::{
     collection_concat_shape, collection_count_shape, collection_map_shape,
 };
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
+pub use crate::std_host_text::chars;
 use crate::std_literal_elaboration::LiteralSourceKind::*;
 pub use crate::std_literal_elaboration::{LiteralHomomorphism, LiteralSourceKind};
 pub use crate::std_optional::Optional;
@@ -593,7 +594,7 @@ pub fn judge_text_conversion_plan(
 }
 
 pub fn unicode_scalar_unfold(s: String) -> Rc<Vec<i64>> {
-    Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+    v1_rt::chars(&s)
 }
 
 pub fn unicode_scalar_fold(xs: Rc<Vec<i64>>) -> String {

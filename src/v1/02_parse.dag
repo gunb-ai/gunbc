@@ -48,6 +48,7 @@ import v1.std.core { Unmarked, TestMarked,
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span, byte_to_line_col,
+  render_span_location, locate_span, unlocated_cause_phrase, Located,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   intern_table_with_authored_token_ordinals,
   field_access_base,
@@ -6765,13 +6766,16 @@ fn duplicate_field_init_message(ctx: ParseContext, field: String, first: SourceS
   concat("duplicate field '", field, "' in record literal: first at ", field_init_position(ctx: ctx, span: first), ", again at ", field_init_position(ctx: ctx, span: again))
 }
 
+// ONE RENDERER FOR BOTH POSITIONS IN THIS MESSAGE, and the one place that decides what an
+// unlocatable position SOUNDS LIKE. The `Absent` arm used to print `byte <offset>`, which puts a
+// byte count where a reader expects `line:col` -- the same wrong-unit class as the lane line, and
+// a lie about being a position. The authority's unlocated arm keeps the file and says the position
+// is not there.
 fn field_init_position(ctx: ParseContext, span: SourceSpan) -> String {
-  match map_get(ctx.source_indices, span.file) {
-    Present { value: index } => {
-      let lc = byte_to_line_col(index: index, offset: span.start)
-      concat(int_to_string(value: lc.line), ":", int_to_string(value: lc.col))
-    }
-    Absent => concat("byte ", int_to_string(value: span.start))
+  match locate_span(span: span, source_indices: ctx.source_indices) {
+    Located { at: at } =>
+      concat(int_to_string(value: at.start_line), ":", int_to_string(value: at.start_col))
+    Unlocated { cause: cause } => unlocated_cause_phrase(cause: cause)
   }
 }
 

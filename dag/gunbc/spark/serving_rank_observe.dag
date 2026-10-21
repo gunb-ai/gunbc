@@ -45,6 +45,7 @@ import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
 }
+import std.host_text { chars }
 
 // ── READING A LIVE RANK, WHICH IS THE THING THIS CORPUS COULD NOT DO ──────────────────────────
 //
@@ -413,7 +414,7 @@ type ContainerIncarnationId sole_constructor {
 }
 
 fn container_incarnation_id(id: String) -> ContainerIncarnationId? {
-  let cps = chars(s: id)
+  let cps = chars(text: id)
   let n = count(cps)
   if (n == 12 || n == 64) && all(cps, cp => base16_is_lower_digit_code_point(cp: cp)) {
     Present { value: ContainerIncarnationId { id: id as NonEmptyStr } }

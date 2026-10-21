@@ -6,7 +6,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
   OperationInputBinding,
@@ -301,6 +301,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_file_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_as_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_list_command_as"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_version_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_command"),
     decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_check_command"),
     decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_policy_check_command"),
