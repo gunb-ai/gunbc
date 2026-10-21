@@ -25,8 +25,8 @@ import std.literal_elaboration {
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
+import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -231,7 +231,7 @@ import v1.compiler.infer_patterns {
   node_is_never_declaration,
   constructor_roster_for,
   ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
-  expand_scrut_type_for_variant_lookup,
+  expand_scrut_type_for_variant_lookup, instantiate_scrutinee_expansion,
   pattern_matches_constructor,
   constructor_fields
 }
@@ -255,6 +255,12 @@ import v1.compiler.infer_access {
   check_index_access_node, check_slice_access_node
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
+import std.generated_provider {
+  GeneratedProviderDemand, group_provider_demands, ProviderAcquisitionStep, ProviderModuleFact,
+  ModuleInClosure, ModuleNotInPool, observe_provider_demand, provider_acquisition_step,
+  AcquisitionComplete, AcquireModules, ProviderAcquisitionRefused, ProviderPoolObservation,
+  generated_provider_demand, GeneratedProviderSite, GeneratedConversionRoute
+}
 
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
@@ -304,30 +310,75 @@ type InferScope {
   enclosing_declared_type_param_names: List<String>
 }
 
+// WHAT INFERENCE EMITS BESIDE THE TYPED NODE: its diagnostics and the providers its generated
+// references demand (std.generated_provider; operator ruling E, 2026-10-20). One carrier, so a site
+// that merges its children's diagnostics merges their demands in the same operation; keeping one
+// while dropping the other takes an explicit projection of `.emissions.diagnostics`, which is
+// permitted only where a speculative candidate is discarded or a stage boundary finalizes. Demands
+// stay ungrouped here; they are grouped once, over the whole pass, at the acquisition boundary.
+// Ordinary code builds emissions only through the five functions below, never field by field.
+type InferEmissions {
+  diagnostics: List<ErrorNode>
+  provider_demands: List<GeneratedProviderDemand>
+}
+
+fn infer_emissions_empty() -> InferEmissions {
+  InferEmissions { diagnostics: [], provider_demands: [] }
+}
+
+fn infer_emissions_of_diagnostics(diagnostics: List<ErrorNode>) -> InferEmissions {
+  InferEmissions { diagnostics: diagnostics, provider_demands: [] }
+}
+
+fn infer_emissions_of_provider_demand(demand: GeneratedProviderDemand) -> InferEmissions {
+  InferEmissions { diagnostics: [], provider_demands: [demand] }
+}
+
+fn infer_emissions_concat(left: InferEmissions, right: InferEmissions) -> InferEmissions {
+  InferEmissions {
+    diagnostics: concat(left.diagnostics, right.diagnostics),
+    provider_demands: concat(left.provider_demands, right.provider_demands)
+  }
+}
+
+// A site that waives some of its own diagnostics (the discriminant tag-reference seam) keeps every
+// demand: waiving a diagnostic never waives the provider a generated reference owes.
+fn infer_emissions_filter_diagnostics(emissions: InferEmissions, keep: fn(ErrorNode) -> Bool) -> InferEmissions {
+  InferEmissions { diagnostics: emissions.diagnostics |> filter(d => keep(d)), provider_demands: emissions.provider_demands }
+}
+
+// One pass over the chunks per field, so a block's chunked accumulation keeps its cost shape.
+fn infer_emissions_concat_all(chunks: List<InferEmissions>) -> InferEmissions {
+  InferEmissions {
+    diagnostics: flat_map(chunks, c => c.diagnostics),
+    provider_demands: flat_map(chunks, c => c.provider_demands)
+  }
+}
+
 type InferResult {
   typed: Node
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type BlockInferState {
   scope: InferScope
-  diag_chunks: List<List<ErrorNode>>
+  emission_chunks: List<InferEmissions>
   last_type: Node
   typed_stmts: List<Node>
 }
 
 fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferScope,
-    typed_stmts: List<Node>, diag_chunks: List<List<ErrorNode>>,
+    typed_stmts: List<Node>, emission_chunks: List<InferEmissions>,
     last_type: Node, expected: Node?) -> BlockInferState {
   match remaining |> first {
-    Absent => BlockInferState { scope: scope, diag_chunks: diag_chunks,
+    Absent => BlockInferState { scope: scope, emission_chunks: emission_chunks,
                               last_type: last_type, typed_stmts: typed_stmts }
     Present { value: stmt } =>
       let is_last = remaining_count == 1
       let stmt_expected = if is_last { expected } else { none }
       let stmt_result = infer_expr(texpr: stmt, scope: scope, expected: stmt_expected)
       let stmt_typed = stmt_result.typed
-      let stmt_diags = stmt_result.diagnostics
+      let stmt_emissions = stmt_result.emissions
       let stmt_rt = resolved_type(n: stmt_typed)
       let next_scope = scope_after_stmt_node(
         stmt: stmt,
@@ -339,7 +390,7 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
         remaining_count: remaining_count - 1,
         scope: next_scope,
         typed_stmts: list_push(typed_stmts, stmt_typed),
-        diag_chunks: list_push(diag_chunks, stmt_diags),
+        emission_chunks: list_push(emission_chunks, stmt_emissions),
         last_type: stmt_rt,
         expected: expected
       )
@@ -348,34 +399,34 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
 
 type TypedItemResult {
   item: Node
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type ArmInferResult {
   typed_arm: Node
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
   body_type: Node
 }
 
 type PatternScopeResult {
   scope: InferScope
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type StringPartInferResult {
   typed_part: StringPart
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type ArgInferResult {
   typed_arg: Node
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type FieldInferResult {
   typed_field: Node
   infer_result: InferResult
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type BuildTypeEnvResult {
@@ -401,11 +452,6 @@ type BuildTypeEnvResult {
 // introduces - implemented as a separate per-PR gate comparing this ledger against a drift-gated
 // baseline receipt (follow-up work item), NOT an in-run refusal (that would double floor cost by
 // re-resolving main's ledger).
-
-type ParentModulesResult {
-  modules: List<TypedModule>
-  diagnostics: List<ErrorNode>
-}
 
 type CycleDetectState {
   recursive_names: Map<String, Bool>
@@ -624,7 +670,7 @@ fn expr_span(texpr: Node) -> SourceSpan {
 fn ok_infer(texpr: Node) -> InferResult {
   InferResult {
     typed: texpr,
-    diagnostics: []
+    emissions: infer_emissions_empty()
   }
 }
 
@@ -817,7 +863,7 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
       span: texpr.span,
       name_span: texpr.span
     ),
-    diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
+    emissions: infer_emissions_of_diagnostics(diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided }))
   }
 }
 
@@ -873,11 +919,11 @@ fn binding_names_a_coproduct_arm(binding: TypeBinding, name: String, scope: Infe
 fn variant_outside_declared_scope_refusal(name: String, span: SourceSpan, scope: InferScope) -> InferResult {
   InferResult {
     typed: semantic_expr_error_node(message: concat("variant '", name, "' has no owner in this module's scope"), span: span),
-    diagnostics: [inference_error(
+    emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(
       message: concat("variant '", name, "' is not in this module's declared scope: no own coproduct, direct import, or expected coproduct declares it"),
       span: span,
       module_name: scope.module_name
-    )]
+    )])
   }
 }
 
@@ -1114,7 +1160,7 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Er
 fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: SourceSpan, scope: InferScope) -> InferResult {
   InferResult {
     typed: semantic_expr_error_node(message: concat("ambiguous reference '", name, "'"), span: span),
-    diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)]
+    emissions: infer_emissions_of_diagnostics(diagnostics: [make_error_node(diagnostic: AmbiguousReference { name: name, candidates: candidates, span: span }, module_name: scope.module_name)])
   }
 }
 
@@ -1140,7 +1186,7 @@ fn ambiguous_reference_refusal(name: String, candidates: List<String>, span: Sou
 fn scope_map_disagreement_refusal(name: String, span: SourceSpan, scope: InferScope) -> InferResult {
   InferResult {
     typed: semantic_expr_error_node(message: concat("scope map disagreement for '", name, "'"), span: span),
-    diagnostics: [make_error_node(diagnostic: InternalError { message: concat("scope construction defect: '", name, "' is present in body_locals with no TypeBinding in scope.locals; the two maps are populated in lockstep and disagreeing is not a writable program state"), span: span }, module_name: scope.module_name)]
+    emissions: infer_emissions_of_diagnostics(diagnostics: [make_error_node(diagnostic: InternalError { message: concat("scope construction defect: '", name, "' is present in body_locals with no TypeBinding in scope.locals; the two maps are populated in lockstep and disagreeing is not a writable program state"), span: span }, module_name: scope.module_name)])
   }
 }
 
@@ -1389,7 +1435,7 @@ fn constructor_reference_admission_for_outcome(
           message: "constructor call admission refused",
           span: span
         ),
-        diagnostics: admission_diags
+        emissions: infer_emissions_of_diagnostics(diagnostics: admission_diags)
       } }
     Absent => Absent
   }
@@ -2984,16 +3030,13 @@ fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, sc
         _ =>
           InferResult {
             typed: result.typed,
-            diagnostics: concat(
-              result.diagnostics,
-              where_refinement_mismatch_diags(
+            emissions: infer_emissions_concat(left: result.emissions, right: infer_emissions_of_diagnostics(diagnostics: where_refinement_mismatch_diags(
                 formal: expected_ty,
                 value_expr: result.typed,
                 span: result.typed.span,
                 module_name: scope.module_name,
                 type_env: scope.type_env
-              )
-            )
+              )))
           }
       }
     Absent => result
@@ -3317,12 +3360,12 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
               )) {
             InferResult {
               typed: result.typed,
-              diagnostics: concat(result.diagnostics, [type_mismatch_error(
+              emissions: infer_emissions_concat(left: result.emissions, right: infer_emissions_of_diagnostics(diagnostics: [type_mismatch_error(
                 expected: node_type_shape(n: formal, source_indices: scope.type_env.source_indices),
                 got: node_type_shape(n: resolved_type(n: result.typed), source_indices: scope.type_env.source_indices),
                 span: element.span,
                 module_name: scope.module_name
-              )])
+              )]))
             }
           } else { result }
         _ => result
@@ -7219,14 +7262,6 @@ type UnresolvedMethodFrontierRow {
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   [
     {
-      module_name: "v1.compiler.trace",
-      method: "map",
-      occurrences: 1,
-      receiver_shape: "Product(SpanMapping)",
-      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
-      dissolution: unbound_dissolution(description: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup")
-    },
-    {
       module_name: "test.claim.sccache_local_content_verified_on_read",
       method: "contains",
       occurrences: 1,
@@ -7432,7 +7467,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
+      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: instantiate_scrutinee_expansion(use_site: scrutinee_type, expanded: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type), env: scope.type_env)))
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>
@@ -7693,15 +7728,15 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
 
 fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, site: SourceSpan, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
   match pattern {
-    Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
-    Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
-    LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
+    Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), emissions: infer_emissions_empty() }
+    Wildcard => PatternScopeResult { scope: scope, emissions: infer_emissions_empty() }
+    LitPattern { value: _ } => PatternScopeResult { scope: scope, emissions: infer_emissions_empty() }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, site: site, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
-      fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
+      fold(bindings, init: PatternScopeResult { scope: scope, emissions: infer_emissions_of_diagnostics(diagnostics: variant_diags) }, f: (acc, fb) =>
         let field_name = field_binding_name_at(n: fb, source_indices: scope.type_env.source_indices)
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices)
         let field_subject = lookup_result_subject(result: field_lookup)
@@ -7711,13 +7746,13 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
         match fb_pattern {
           Bind { declaration: declaration } => PatternScopeResult {
             scope: extend_scope_match_bound(scope: acc.scope, name: declaration.name, resolved: field_type, provenance: field_provenance),
-            diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
+            emissions: infer_emissions_concat(left: acc.emissions, right: infer_emissions_of_diagnostics(diagnostics: field_lookup.diagnostics))
           }
           _ =>
             let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb_pattern, scrutinee_subject: field_subject, site: fb.span, scrutinee_provenance: field_provenance)
             PatternScopeResult {
               scope: nested.scope,
-              diagnostics: concat(acc.diagnostics, concat(field_lookup.diagnostics, nested.diagnostics))
+              emissions: infer_emissions_concat_all(chunks: [acc.emissions, infer_emissions_of_diagnostics(diagnostics: field_lookup.diagnostics), nested.emissions])
             }
         }
       )
@@ -7758,7 +7793,7 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     match init_arg {
       Present { value: ia } =>
         let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
-        Present { value: ArgInferResult { typed_arg: make_arg_node(occurrence_identity: ia.occurrence_identity, name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
+        Present { value: ArgInferResult { typed_arg: make_arg_node(occurrence_identity: ia.occurrence_identity, name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), emissions: init_result.emissions } }
       Absent => none
     }
   } else { none }
@@ -7834,7 +7869,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         enclosing_declared_type_param_names: scope.enclosing_declared_type_param_names
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
-      ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: ar.emissions }
       Absent => infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
       }
     } else {
@@ -7864,14 +7899,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         ContractUnavailable =>
           let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
           let contract_diag = categorized_error(message: "no declared argument contract is available for this method call; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-          ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+          ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: infer_emissions_concat(left: ar.emissions, right: infer_emissions_of_diagnostics(diagnostics: [contract_diag])) }
         ContractKnown { types: declared_types } =>
           match declared_types |> skip(idx) |> first {
             Present { value: declared_type } => infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
             Absent =>
               let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
               let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-              ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+              ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: infer_emissions_concat(left: ar.emissions, right: infer_emissions_of_diagnostics(diagnostics: [contract_diag])) }
           }
       }
     }
@@ -7975,25 +8010,95 @@ fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: In
 // judges (expression_value_type through expand_nominal_alias_rhs), so a qualified
 // v2.std.text.String value whose raw resolved node still reads as the spelling String is not
 // mistaken for host text and unfolded twice.
-fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
+//
+// THE NODE IS A CALL TO THE DECLARATION THE PLAN NAMES, NEVER A SPELLING. The plan is selected by the
+// crossing's two endpoints (std.coercion select_text_crossing_plan) and judged by its own route through
+// judge_conversion_plan, the judgment an authored route call receives. The generated call carries that
+// route as a SourceDeclarationCall, spelled by its qualified identity, so no authored import is
+// consulted and no same-spelled `chars` in scope can capture it. The call demands its provider
+// (std.generated_provider, cause GeneratedConversionRoute, at the crossed value's authored span): when
+// the route is outside this closure the crossing is "needs acquisition", the value is left as it was,
+// and the acquisition loop acquires the route's module and checks the closure again; only a provider the
+// loop cannot supply refuses (GeneratedProviderUnavailable). A plan that is absent, ambiguous, or does
+// not run between these endpoints refuses here with its own reason and demands nothing.
+fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> InferResult {
   match value.inferred {
     Present { value: Resolved { node: _ } } =>
       match argument_text_representation(value: value, type_env: scope.type_env) {
         HostText =>
           if destination_declares_scalar_sequence_unfold(destination_type: destination_type, scope: scope) {
-            make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
-              name: "chars", expr_data: ExprMethodCall { method_semantics: Present { value: PlainMethodSemantics } },
-              children: [value],
-              inferred: Present { value: Resolved { node: destination_type } },
-              span: value.span,
-              name_span: elaborated_span(name: "chars")
-            )
-          } else { value }
-        CodePointSequence => value
-        NotText => value
-        TextRepresentationUnidentified => value
+            host_text_crossing_call(value: value, destination_type: destination_type, scope: scope)
+          } else { ok_infer(texpr: value) }
+        CodePointSequence => ok_infer(texpr: value)
+        NotText => ok_infer(texpr: value)
+        TextRepresentationUnidentified => ok_infer(texpr: value)
       }
-    _ => value
+    _ => ok_infer(texpr: value)
+  }
+}
+
+fn host_text_crossing_refused(value: Node, message: String, scope: InferScope) -> InferResult {
+  InferResult {
+    typed: value,
+    emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: concat("host-text crossing: ", message), span: value.span, module_name: scope.module_name)])
+  }
+}
+
+fn host_text_crossing_demand(route: DeclarationRef, value: Node) -> GeneratedProviderDemand {
+  generated_provider_demand(declaration: route, site: GeneratedProviderSite {
+    cause: GeneratedConversionRoute,
+    at: value.span,
+    occurrence: match value.occurrence_identity {
+      OccurrenceSynthetic => Absent
+      _ => Present { value: value.occurrence_identity }
+    }
+  })
+}
+
+fn host_text_crossing_call(value: Node, destination_type: Node, scope: InferScope) -> InferResult {
+  match select_text_crossing_plan(rows: conversion_plan_rows, source: HostText, target: CodePointSequence) {
+    CrossingPlanNone => host_text_crossing_refused(value: value, message: "no conversion plan in gunbc.structural_realization_bindings conversion_plan_rows runs from host text to a code-point sequence", scope: scope)
+    CrossingPlanSeveral { routes: rs } => host_text_crossing_refused(value: value, message: concat(to_string(rs |> count), " conversion plans run from host text to a code-point sequence; the roster must name one"), scope: scope)
+    CrossingPlanJudged { judgment: j } =>
+      match j {
+        ConversionPlanAdmitted { plan: plan } => host_text_crossing_admitted(route: plan.route, value: value, destination_type: destination_type, scope: scope)
+        ConversionPlanAbsent { route: r } => host_text_crossing_refused(value: value, message: concat("no conversion plan names ", r.module_path, ".", r.decl_name), scope: scope)
+        ConversionPlanAmbiguous { route: r, row_count: n } => host_text_crossing_refused(value: value, message: concat(to_string(n), " conversion plans name ", r.module_path, ".", r.decl_name), scope: scope)
+        ConversionPlanEndpointMismatch { plan: p } => host_text_crossing_refused(value: value, message: concat("the plan ", p.route.module_path, ".", p.route.decl_name, " does not run from host text to a code-point sequence"), scope: scope)
+        ConversionPlanEndpointNotText { source: _, target: _ } => host_text_crossing_refused(value: value, message: "one side of the crossing is not identified text", scope: scope)
+      }
+  }
+}
+
+fn host_text_crossing_admitted(route: DeclarationRef, value: Node, destination_type: Node, scope: InferScope) -> InferResult {
+  let demand = infer_emissions_of_provider_demand(demand: host_text_crossing_demand(route: route, value: value))
+  let identity = DeclaredCallableIdentity { owner_module_path: route.module_path as String, decl_name: route.decl_name as String }
+  let qualified = callable_identity(id: identity)
+  match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: qualified) {
+    FuncSigResolved { sig: sig, declared: declared } =>
+      if declared.owner_module_path != identity.owner_module_path || declared.decl_name != identity.decl_name {
+        InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " resolved to ", callable_identity(id: declared), ", not to itself"), scope: scope).emissions) }
+      } else {
+        match sig.params |> first {
+          Absent => InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " declares no parameter to take the host text"), scope: scope).emissions) }
+          Present { value: param } =>
+            let param_name = param_node_name_at(n: param, source_indices: scope.type_env.source_indices)
+            InferResult {
+              typed: make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
+                name: qualified,
+                expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name } } }, descent_evidence: none },
+                children: [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: param_name }, value: value, span: value.span, name_span: elaborated_span(name: param_name))],
+                inferred: Present { value: Resolved { node: destination_type } },
+                span: value.span,
+                name_span: elaborated_span(name: qualified)
+              ),
+              emissions: demand
+            }
+        }
+      }
+    FuncSigUnresolved => InferResult { typed: value, emissions: demand }
+    FuncSigAmbiguous { candidates: _ } =>
+      InferResult { typed: value, emissions: infer_emissions_concat(left: demand, right: host_text_crossing_refused(value: value, message: concat("the route ", qualified, " resolves ambiguously in this closure"), scope: scope).emissions) }
   }
 }
 
@@ -8072,7 +8177,8 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
     let ar = if formal_is_code_point_sequence {
-      InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
+      let crossed = host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope)
+      InferResult { typed: crossed.typed, emissions: infer_emissions_concat(left: ar_inferred.emissions, right: crossed.emissions) }
     } else { ar_inferred }
     let next_subst = if !has_formal {
       st.subst
@@ -8090,7 +8196,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
     }
     ArgGenericFoldState {
-      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
+      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: ar.emissions }]),
       subst: next_subst
     }
   )
@@ -8110,7 +8216,7 @@ fn empty_override_map() -> Map<String, Node> {
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Present { value: element_type })
-  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), emissions: ar.emissions }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -8387,7 +8493,7 @@ fn unfold_peano_image(n: Int, zero: String, succ: String, prev_field: String, pa
 // character grain -- the same primitive the tokenizer's SourceRef is built from -- so a non-ASCII
 // literal's element count and values are its scalars, never its UTF-8 bytes.
 fn unfold_scalar_sequence_image(s: String, destination_type: Node, span: SourceSpan) -> Node {
-  let scalar_nodes = chars(s) |> map(cp =>
+  let scalar_nodes = unicode_scalar_unfold(s: s) |> map(cp =>
     make_expr_node(
       occurrence_identity: OccurrenceSynthetic,
       expr_data: ExprLiteral { value: LitInt { value: cp } },
@@ -8652,7 +8758,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span
           ))
         LiteralBoundaryRefused { message: m } =>
-          InferResult { typed: plain, diagnostics: [inference_error(message: m, span: span, module_name: scope.module_name)] }
+          InferResult { typed: plain, emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: m, span: span, module_name: scope.module_name)]) }
       }
 
     ExprElaboratedLiteral { value: _, elaboration: _ } =>
@@ -8667,7 +8773,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       InferResult {
         typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: kind, message: message, span: span),
-        diagnostics: diagnostics
+        emissions: infer_emissions_of_diagnostics(diagnostics: diagnostics)
       }
 
     ExprVar { binding_kind: _ } =>
@@ -8698,7 +8804,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   span: span,
                   name_span: span
                 ),
-                diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+                emissions: infer_emissions_of_diagnostics(diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name)))
               }
             Absent =>
               if name_is_enclosing_declared_type_parameter(name: name, scope: scope) {
@@ -8711,7 +8817,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     span: span,
                     name_span: span
                   ),
-                  diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
+                  emissions: infer_emissions_of_diagnostics(diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)])
                 }
               } else {
               let binding_kind = infer_var_binding_kind(scope: scope, name: name)
@@ -8766,7 +8872,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           span: span,
                           name_span: span
                         ),
-                        diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+                        emissions: infer_emissions_of_diagnostics(diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name)))
                       }
                     Absent =>
                       match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
@@ -8781,7 +8887,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               span: span,
                               name_span: span
                             ),
-                            diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                            emissions: infer_emissions_of_diagnostics(diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum }))
                           }
                         Absent =>
                           if name_is_enclosing_declared_type_parameter(name: name, scope: scope) {
@@ -8794,7 +8900,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                                 span: span,
                                 name_span: span
                               ),
-                              diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)]
+                              emissions: infer_emissions_of_diagnostics(diagnostics: [make_error_node(diagnostic: TypeParameterInValuePosition { name: name, span: span }, module_name: scope.module_name)])
                             }
                           } else if binding_names_a_coproduct_arm(binding: gbinding, name: name, scope: scope) {
                             variant_outside_declared_scope_refusal(name: name, span: span, scope: scope)
@@ -8809,7 +8915,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                               span: span,
                               name_span: span
                             ),
-                            diagnostics: bare_product_reference_missing_field_diagnostics(scope: scope, name: name, span: span)
+                            emissions: infer_emissions_of_diagnostics(diagnostics: bare_product_reference_missing_field_diagnostics(scope: scope, name: name, span: span))
                           }
                           }
                       }
@@ -8828,7 +8934,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                           span: span,
                           name_span: span
                         ),
-                        diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                        emissions: infer_emissions_of_diagnostics(diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum }))
                       }
                     Absent =>
                       let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
@@ -8845,11 +8951,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       )
                       InferResult {
                         typed: err_texpr,
-                        diagnostics: [inference_error(
+                        emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(
                           message: concat("undefined variable '", name, "'"),
                           span: span,
                           module_name: scope.module_name
-                        )]
+                        )])
                       }
                       }
                   }
@@ -8869,7 +8975,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent =>
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
       let base_typed = base_result.typed
-      let base_diags = base_result.diagnostics
+      let base_emissions = base_result.emissions
       let base_rt = resolved_type(n: base_typed)
       let base_expansion = if is_deferred_field_access_base(n: base_rt, env: scope.type_env) {
         NodeResolveResult { resolved: base_rt, diagnostics: [] }
@@ -8882,7 +8988,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       if resolved_base_is_error {
         InferResult {
           typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "error type cascade", span: span),
-          diagnostics: concat(base_diags, resolved_base_diags)
+          emissions: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: resolved_base_diags))
         }
       } else {
       let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
@@ -8904,7 +9010,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           )
           InferResult {
             typed: fa_texpr,
-            diagnostics: concat(base_diags, resolved_base_diags)
+            emissions: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: resolved_base_diags))
           }
         Absent =>
           let defer_field_miss = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
@@ -8920,7 +9026,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             )
             InferResult {
               typed: fa_texpr,
-              diagnostics: concat(base_diags, resolved_base_diags)
+              emissions: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: resolved_base_diags))
             }
           } else {
             match check_service_field_access_node(base_type: base_rt, field: field_name, service_registry: scope.service_registry, source_indices: scope.type_env.source_indices) {
@@ -8935,18 +9041,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 )
                 InferResult {
                   typed: fa_texpr,
-                  diagnostics: concat(base_diags, resolved_base_diags)
+                  emissions: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: resolved_base_diags))
                 }
               Absent =>
                 let error_message = concat("no field '", field_name, "' on type '", type_node_label(n: resolved_base, source_indices: scope.type_env.source_indices), "'")
                 let fa_texpr = make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
-                  diagnostics: concat(concat(base_diags, resolved_base_diags), [inference_error(
+                  emissions: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(resolved_base_diags, [inference_error(
                     message: error_message,
                     span: span,
                     module_name: scope.module_name
-                  )])
+                  )])))
                 }
             }
           }
@@ -9033,7 +9139,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             subst: st.subst,
             results: concat(st.results, [ArgInferResult {
               typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
-              diagnostics: ar.diagnostics
+              emissions: ar.emissions
             }])
           }
         )
@@ -9049,7 +9155,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
-              [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
+              [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), emissions: first_result.emissions }],
               remaining_results
             )
           Absent =>
@@ -9093,17 +9199,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => none
         }
       }
-      let arg_diags = concat(
-        concat(flat_map(arg_infer_results, air => air.diagnostics), local_call_diags),
-        function_value_call_named_arg_diags(
+      let arg_emissions = infer_emissions_concat(left: infer_emissions_concat_all(chunks: map(arg_infer_results, air => air.emissions)), right: infer_emissions_of_diagnostics(diagnostics: concat(local_call_diags, function_value_call_named_arg_diags(
           func_name: func_name,
           typed_args: typed_args,
           type_env: scope.type_env,
           module_name: scope.module_name,
           body_locals: scope.body_locals,
           callable_type: callable_local
-        )
-      )
+        ))))
       let formal_authority_diags = if declared_formal_authority_failed {
         [make_error_node(diagnostic: InternalError { message: concat("resolved direct-call formal authority unavailable for ", func_name, ": ", formal_authority_refusal_reason), span: span }, module_name: scope.module_name)]
       } else { [] }
@@ -9121,7 +9224,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(formal_authority_diags, arg_diags)
+            emissions: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: formal_authority_diags), right: arg_emissions)
           }
         } else {
         let resolved_type = match sig {
@@ -9180,7 +9283,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, concat(generic_type_argument_inhabitance_diags, sibling_effect_order_arg_diags)))))))
+          emissions: infer_emissions_concat_all(chunks: [infer_emissions_of_diagnostics(diagnostics: formal_authority_diags), arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(arg_shape_diags, arg_compat_diags, structured_arg_diags, inhabitance_arg_diags, generic_type_argument_inhabitance_diags, sibling_effect_order_arg_diags))])
         }
         }
       } else {
@@ -9280,7 +9383,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name)))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -9302,10 +9405,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     span: span,
                     name_span: node_name_span(n: texpr)
                   ),
-                  diagnostics: arg_diags
+                  emissions: arg_emissions
                 }
               } else {
-                let empty_map_diags = concat(arg_diags, [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)])
+                let empty_map_emissions = infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)]))
                 match bare_m {
                   Present { value: map_t } =>
                     InferResult {
@@ -9316,7 +9419,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         span: span,
                         name_span: node_name_span(n: texpr)
                       ),
-                      diagnostics: empty_map_diags
+                      emissions: empty_map_emissions
                     }
                   Absent =>
                     InferResult {
@@ -9327,7 +9430,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         span: span,
                         name_span: node_name_span(n: texpr)
                       ),
-                      diagnostics: concat(empty_map_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
+                      emissions: infer_emissions_concat(left: empty_map_emissions, right: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)]))
                     }
                 }
               }
@@ -9342,7 +9445,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       span: span,
                       name_span: node_name_span(n: texpr)
                     ),
-                    diagnostics: arg_diags
+                    emissions: arg_emissions
                   }
                 Absent =>
                   InferResult {
@@ -9353,7 +9456,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       span: span,
                       name_span: node_name_span(n: texpr)
                     ),
-                    diagnostics: concat(arg_diags, [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)])
+                    emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: "empty_map(): Map kernel container profile missing", span: span, module_name: scope.module_name)]))
                   }
               }
           }
@@ -9377,10 +9480,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     span: span,
                     name_span: node_name_span(n: texpr)
                   ),
-                  diagnostics: arg_diags
+                  emissions: arg_emissions
                 }
               } else {
-                let empty_set_diags = concat(arg_diags, [inference_error(message: "empty_set(): expected type is not Set<...>", span: span, module_name: scope.module_name)])
+                let empty_set_emissions = infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: "empty_set(): expected type is not Set<...>", span: span, module_name: scope.module_name)]))
                 match bare_s {
                   Present { value: set_t } =>
                     InferResult {
@@ -9391,7 +9494,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         span: span,
                         name_span: node_name_span(n: texpr)
                       ),
-                      diagnostics: empty_set_diags
+                      emissions: empty_set_emissions
                     }
                   Absent =>
                     InferResult {
@@ -9402,7 +9505,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         span: span,
                         name_span: node_name_span(n: texpr)
                       ),
-                      diagnostics: concat(empty_set_diags, [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)])
+                      emissions: infer_emissions_concat(left: empty_set_emissions, right: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)]))
                     }
                 }
               }
@@ -9417,7 +9520,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       span: span,
                       name_span: node_name_span(n: texpr)
                     ),
-                    diagnostics: arg_diags
+                    emissions: arg_emissions
                   }
                 Absent =>
                   InferResult {
@@ -9428,7 +9531,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       span: span,
                       name_span: node_name_span(n: texpr)
                     ),
-                    diagnostics: concat(arg_diags, [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)])
+                    emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: "empty_set(): Set kernel container profile missing", span: span, module_name: scope.module_name)]))
                   }
               }
           }
@@ -9448,7 +9551,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(concat(arg_diags, tier2b.kernel_diags), builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope))))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
@@ -9480,7 +9583,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 span: span,
                 name_span: node_name_span(n: texpr)
               ),
-              diagnostics: arg_diags
+              emissions: arg_emissions
             }
           } else {
           match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected) {
@@ -9537,7 +9640,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   span: span,
                   name_span: node_name_span(n: texpr)
                 ),
-                diagnostics: concat(arg_diags, call_diags)
+                emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: call_diags))
               }
           }
         }
@@ -9587,7 +9690,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent =>
       let recv_result = infer_expr(texpr: recv, scope: scope, expected: none)
       let recv_typed = recv_result.typed
-      let recv_diags = recv_result.diagnostics
+      let recv_emissions = recv_result.emissions
       let recv_rt = resolve_method_receiver_type(receiver_type: resolved_type(n: recv_typed), env: scope.type_env)
       let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       let mc_method_name = Present { value: method_name }
@@ -9602,7 +9705,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices, expand_field_type: n => expand_type_for_field_access(n: n, env: scope.type_env, module_name: scope.module_name).resolved)
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
-      let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
+      let mc_arg_emissions = infer_emissions_concat_all(chunks: map(mc_arg_infer_results, air => air.emissions))
       let refined_fold_acc_type: Node? = match fold_acc_type {
         Present { value: acc } =>
           if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) {
@@ -9663,7 +9766,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name)), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name))
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name)))])
       }
       }
 
@@ -9673,7 +9776,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let arm_nodes = match_arm_nodes(texpr: texpr)
       let scrut_result = infer_expr(texpr: scrut, scope: scope, expected: none)
       let scrut_typed = scrut_result.typed
-      let scrut_diags = scrut_result.diagnostics
+      let scrut_emissions = scrut_result.emissions
       let scrut_rt = resolved_type(n: scrut_typed)
       let scrut_subject = pattern_subject_from_inferred(n: scrut_typed.inferred)
       let scrut_provenance = classify_binding_provenance(val: scrut, scope: scope)
@@ -9690,7 +9793,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: arm_subject, site: arm_node.span, scope: scope)
         let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: arm_subject, site: arm_node.span, scrutinee_provenance: scrut_provenance)
         let arm_scope = pattern_result.scope
-        let pattern_diags = pattern_result.diagnostics
+        let pattern_emissions = pattern_result.emissions
         let guard_result = if arm_g != none {
           Present { value: infer_expr(texpr: arm_g.value, scope: arm_scope, expected: none) }
         } else {
@@ -9698,12 +9801,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
         let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: expected)
         let body_typed = body_result.typed
-        let body_diags = body_result.diagnostics
+        let body_emissions = body_result.emissions
         let guard_unwrapped = match guard_result {
           Present { value: gr } => gr
-          Absent => InferResult { typed: arm_b, diagnostics: [] }
+          Absent => InferResult { typed: arm_b, emissions: infer_emissions_empty() }
         }
-        let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
+        let guard_emissions = if guard_result != none { infer_emissions_concat(left: guard_unwrapped.emissions, right: infer_emissions_of_diagnostics(diagnostics: condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope))) } else { infer_emissions_empty() }
         ArmInferResult {
           typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
             pattern: typed_pattern,
@@ -9711,7 +9814,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             body: body_typed,
             span: span
           ),
-          diagnostics: concat(pattern_diags, concat(guard_diags, body_diags)),
+          emissions: infer_emissions_concat_all(chunks: [pattern_emissions, guard_emissions, body_emissions]),
           body_type: resolved_type(n: body_typed)
         }
       )
@@ -9743,7 +9846,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let original_list = arm_infer_results |> enumerate |> filter(ap => ap.first == idx) |> map(ap => ap.second)
           let original = match original_list |> first {
             Present { value: ar } => ar
-            Absent => ArmInferResult { typed_arm: arm_node, diagnostics: [], body_type: scrut_rt }
+            Absent => ArmInferResult { typed_arm: arm_node, emissions: infer_emissions_empty(), body_type: scrut_rt }
           }
           if arm_body_diverges(body: arm_body(n: arm_node)) {
             original
@@ -9754,18 +9857,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, site: arm_node.span, scope: scope)
             let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, site: arm_node.span, scrutinee_provenance: scrut_provenance)
             let arm_scope = pattern_result.scope
-            let pattern_diags = pattern_result.diagnostics
+            let pattern_emissions = pattern_result.emissions
             let guard_result = if arm_g != none {
               Present { value: infer_expr(texpr: arm_g.value, scope: arm_scope, expected: none) }
             } else { none }
             let body_result = infer_expr(texpr: arm_b, scope: arm_scope, expected: Present { value: unified_arm_type })
             let body_typed = body_result.typed
-            let body_diags = body_result.diagnostics
+            let body_emissions = body_result.emissions
             let guard_unwrapped = match guard_result {
               Present { value: gr } => gr
-              Absent => InferResult { typed: arm_b, diagnostics: [] }
+              Absent => InferResult { typed: arm_b, emissions: infer_emissions_empty() }
             }
-            let guard_diags = if guard_result != none { concat(guard_unwrapped.diagnostics, condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope)) } else { [] }
+            let guard_emissions = if guard_result != none { infer_emissions_concat(left: guard_unwrapped.emissions, right: infer_emissions_of_diagnostics(diagnostics: condition_obligation_diags(label: "match-arm guard", typed: guard_unwrapped.typed, scope: arm_scope))) } else { infer_emissions_empty() }
             ArmInferResult {
               typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
                 pattern: typed_pattern,
@@ -9773,14 +9876,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 body: body_typed,
                 span: span
               ),
-              diagnostics: concat(pattern_diags, concat(guard_diags, body_diags)),
+              emissions: infer_emissions_concat_all(chunks: [pattern_emissions, guard_emissions, body_emissions]),
               body_type: resolved_type(n: body_typed)
             }
           } else { original }
         )
       } else { arm_infer_results }
       let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
-      let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
+      let arm_emissions = infer_emissions_concat_all(chunks: map(arm_infer_results, ar => ar.emissions))
       let arm_join_diags = flat_map(arm_infer_results, ar =>
         match_arm_join_diagnostics(
           unified_arm_type: unified_arm_type,
@@ -9836,7 +9939,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let match_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprMatch, children: concat([scrut_typed], typed_arms), inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: match_texpr,
-        diagnostics: concat(scrut_diags, arm_diags, arm_join_diags, empty_arms_diags, exhaustiveness_diags, unresolved_present_arm_diags)
+        emissions: infer_emissions_concat_all(chunks: [scrut_emissions, arm_emissions, infer_emissions_of_diagnostics(diagnostics: concat(arm_join_diags, empty_arms_diags, exhaustiveness_diags, unresolved_present_arm_diags))])
       }
 
     ExprIf =>
@@ -9846,10 +9949,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let else_expr = if_else_branch(texpr: texpr)
       let cond_result = infer_expr(texpr: cond, scope: scope, expected: none)
       let cond_typed = cond_result.typed
-      let cond_diags = concat(cond_result.diagnostics, condition_obligation_diags(label: "if condition", typed: cond_typed, scope: scope))
+      let cond_emissions = infer_emissions_concat(left: cond_result.emissions, right: infer_emissions_of_diagnostics(diagnostics: condition_obligation_diags(label: "if condition", typed: cond_typed, scope: scope)))
       let then_result = infer_expr(texpr: then_expr, scope: scope, expected: expected)
       let then_typed = then_result.typed
-      let then_diags = then_result.diagnostics
+      let then_emissions = then_result.emissions
       match else_expr {
         Present { value: else_branch } =>
           let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
@@ -9862,9 +9965,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             infer_expr(texpr: else_branch, scope: scope, expected: Present { value: then_rt })
           } else { else_result }
           let then_typed = then_result.typed
-          let then_diags = then_result.diagnostics
+          let then_emissions = then_result.emissions
           let else_typed = else_result.typed
-          let else_diags = else_result.diagnostics
+          let else_emissions = else_result.emissions
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
           let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
@@ -9895,13 +9998,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let if_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIf, children: [cond_typed, then_typed, else_typed], inferred: Present { value: Resolved { node: unified } }, span: span)
           InferResult {
             typed: if_texpr,
-            diagnostics: concat(cond_diags, then_diags, else_diags, branch_diags)
+            emissions: infer_emissions_concat_all(chunks: [cond_emissions, then_emissions, else_emissions, infer_emissions_of_diagnostics(diagnostics: branch_diags)])
           }
         Absent =>
           let if_texpr2 = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIf, children: [cond_typed, then_typed], inferred: Present { value: Resolved { node: unit_type } }, span: span)
           InferResult {
             typed: if_texpr2,
-            diagnostics: concat(cond_diags, then_diags)
+            emissions: infer_emissions_concat(left: cond_emissions, right: then_emissions)
           }
       }
 
@@ -9947,23 +10050,23 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           } else { [] }
         Absent => []
       }
-      let val_diags = concat(val_result.diagnostics, val_annotation_diags)
+      let val_emissions = infer_emissions_concat(left: val_result.emissions, right: infer_emissions_of_diagnostics(diagnostics: val_annotation_diags))
       let bound_type = annotated_let_bound_type(declared: declared_let_type, val_type: val_type)
       if body_expr == none {
         let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: bound_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr,
-          diagnostics: val_diags
+          emissions: val_emissions
         }
       } else {
         let extended = extend_scope(scope: scope, name: let_name, resolved: bound_type, provenance: classify_binding_provenance(val: val_typed, scope: scope))
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
-        let body_diags = body_result.diagnostics
+        let body_emissions = body_result.emissions
         let let_texpr2 = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr2,
-          diagnostics: concat(val_diags, body_diags)
+          emissions: infer_emissions_concat(left: val_emissions, right: body_emissions)
         }
       }
 
@@ -10001,7 +10104,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           )
         Absent => list_literal_optional_member_diags(typed_elements: typed_elements, scope: scope)
       }
-      let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
+      let elem_emissions = infer_emissions_concat(left: infer_emissions_concat_all(chunks: map(elem_results, r => r.emissions)), right: infer_emissions_of_diagnostics(diagnostics: elem_inhabitance_diags))
       let declared_callable_elem = declared_callable_list_element(elem_expected: elem_expected, elements: elements)
       let elem_type_node = match declared_callable_elem {
         Present { value: de } => de
@@ -10040,7 +10143,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let ll_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprListLit, children: typed_elements, inferred: Present { value: Resolved { node: list_k.ty } }, span: span)
       InferResult {
         typed: ll_texpr,
-        diagnostics: concat(concat(elem_diags, empty_list_diags), list_k.miss_diags)
+        emissions: infer_emissions_concat(left: elem_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(empty_list_diags, list_k.miss_diags)))
       }
 
     ExprBinOp { op: op, algebra_field: _ } =>
@@ -10050,10 +10153,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let operands = infer_binop_operands(left_expr: left_expr, right_expr: right_expr, scope: scope)
       let left_result = operands.left
       let left_typed = left_result.typed
-      let left_diags = left_result.diagnostics
+      let left_emissions = left_result.emissions
       let right_result = operands.right
       let right_typed = right_result.typed
-      let right_diags = right_result.diagnostics
+      let right_emissions = right_result.emissions
       let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env)
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
       let refinement_diags = match op {
@@ -10070,7 +10173,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
-        diagnostics: concat(concat(concat(left_diags, right_diags), eq_wall_diags), refinement_diags)
+        emissions: infer_emissions_concat_all(chunks: [left_emissions, right_emissions, infer_emissions_of_diagnostics(diagnostics: concat(eq_wall_diags, refinement_diags))])
       }
 
     ExprUnaryOp { op: op } =>
@@ -10078,7 +10181,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let operand_expr = unaryop_operand(texpr: texpr)
       let operand_result = infer_expr(texpr: operand_expr, scope: scope, expected: none)
       let operand_typed = operand_result.typed
-      let operand_diags = operand_result.diagnostics
+      let operand_emissions = operand_result.emissions
       let result_type = match op {
         Not => bool_type
         Neg => resolved_type(n: operand_typed)
@@ -10086,7 +10189,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let uo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: uo_texpr,
-        diagnostics: operand_diags
+        emissions: operand_emissions
       }
 
     ExprLambda =>
@@ -10161,7 +10264,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
-      let body_diags = body_result.diagnostics
+      let body_emissions = body_result.emissions
       let typed_param_nodes = lam_param_nodes |> enumerate |> map(pair =>
         let pn = pair.second
         let param_name = match lam_params |> skip(pair.first) |> first { Present { value: n } => n  Absent => "" }
@@ -10186,7 +10289,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: lam_texpr,
-        diagnostics: body_diags
+        emissions: body_emissions
       }
 
     ExprStringInterp =>
@@ -10203,22 +10306,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
         }
       )
-      let interp_diags = texpr.children |> flat_map(part_node =>
+      let interp_emissions = infer_emissions_concat_all(chunks: texpr.children |> map(part_node =>
         match part_node.expr_data {
-          ExprLiteral { value: _ } => []
+          ExprLiteral { value: _ } => infer_emissions_empty()
           _ =>
             match part_node.children |> first {
               Present { value: inner } =>
                 let r = infer_expr(texpr: inner, scope: scope, expected: none)
-                r.diagnostics
-              Absent => []
+                r.emissions
+              Absent => infer_emissions_empty()
             }
         }
-      )
+      ))
       let si_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprStringInterp, children: typed_part_nodes, inferred: Present { value: Resolved { node: string_type } }, span: span)
       InferResult {
         typed: si_texpr,
-        diagnostics: interp_diags
+        emissions: interp_emissions
       }
 
     ExprBlock =>
@@ -10227,13 +10330,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       if count(stmts) > 0 {
         let state = infer_block_stmts(
           remaining: stmts, remaining_count: count(stmts), scope: scope,
-          typed_stmts: [], diag_chunks: [],
+          typed_stmts: [], emission_chunks: [],
           last_type: unit_type, expected: expected
         )
         let blk_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBlock, children: state.typed_stmts, inferred: Present { value: Resolved { node: state.last_type } }, span: span)
         InferResult {
           typed: blk_texpr,
-          diagnostics: flat_map(state.diag_chunks, c => c)
+          emissions: infer_emissions_concat_all(chunks: state.emission_chunks)
         }
       } else {
         ok_infer(texpr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBlock, children: [], inferred: Present { value: Resolved { node: unit_type } }, span: span))
@@ -10245,7 +10348,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let target_type = cast_target(texpr: texpr)
       let inner_result = infer_expr(texpr: cast_inner, scope: scope, expected: none)
       let inner_typed = inner_result.typed
-      let inner_diags = inner_result.diagnostics
+      let inner_emissions = inner_result.emissions
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name)
@@ -10271,7 +10374,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let cast_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        diagnostics: concat(concat(concat(concat(inner_diags, cast_diags), cast_optional_diags), cast_sole_ctor_diags), cast_refinement_diags)
+        emissions: infer_emissions_concat(left: inner_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(cast_diags, cast_optional_diags, cast_sole_ctor_diags, cast_refinement_diags)))
       }
 
     ExprForEach =>
@@ -10281,17 +10384,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let body_expr = foreach_body(texpr: texpr)
       let coll_result = infer_expr(texpr: coll, scope: scope, expected: none)
       let coll_typed = coll_result.typed
-      let coll_diags = coll_result.diagnostics
+      let coll_emissions = coll_result.emissions
       let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed), source_indices: scope.type_env.source_indices)
       let elem_provenance = derive_element_provenance(coll_expr: coll_typed, elem_type: elem_type_node, scope: scope)
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: elem_provenance)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
-      let body_diags = body_result.diagnostics
+      let body_emissions = body_result.emissions
       let fe_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
       InferResult {
         typed: fe_texpr,
-        diagnostics: concat(coll_diags, body_diags)
+        emissions: infer_emissions_concat(left: coll_emissions, right: body_emissions)
       }
 
     ExprIndex =>
@@ -10300,10 +10403,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let idx_key = index_expr(texpr: texpr)
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
       let base_typed = base_result.typed
-      let base_diags = base_result.diagnostics
+      let base_emissions = base_result.emissions
       let index_result = infer_expr(texpr: idx_key, scope: scope, expected: none)
       let index_typed = index_result.typed
-      let index_diags = index_result.diagnostics
+      let index_emissions = index_result.emissions
       let index_check = match base_typed.inferred {
         Present { value: Resolved { node: base_type } } =>
           match index_typed.inferred {
@@ -10335,7 +10438,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let idx_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIndex, children: [base_typed, index_typed], inferred: idx_inferred, span: span)
       InferResult {
         typed: idx_texpr,
-        diagnostics: concat(base_diags, index_diags, index_access_diags)
+        emissions: infer_emissions_concat_all(chunks: [base_emissions, index_emissions, infer_emissions_of_diagnostics(diagnostics: index_access_diags)])
       }
 
     ExprSlice =>
@@ -10345,13 +10448,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let end_expr = slice_end(texpr: texpr)
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
       let base_typed = base_result.typed
-      let base_diags = base_result.diagnostics
+      let base_emissions = base_result.emissions
       let start_result = infer_expr(texpr: start_expr, scope: scope, expected: none)
       let start_typed = start_result.typed
-      let start_diags = start_result.diagnostics
+      let start_emissions = start_result.emissions
       let end_result = infer_expr(texpr: end_expr, scope: scope, expected: none)
       let end_typed = end_result.typed
-      let end_diags = end_result.diagnostics
+      let end_emissions = end_result.emissions
       let slice_check = match base_typed.inferred {
         Present { value: Resolved { node: base_type } } =>
           match start_typed.inferred {
@@ -10392,7 +10495,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let slc_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprSlice, children: [base_typed, start_typed, end_typed], inferred: slc_inferred, span: span)
       InferResult {
         typed: slc_texpr,
-        diagnostics: concat(base_diags, start_diags, end_diags, slice_access_diags)
+        emissions: infer_emissions_concat_all(chunks: [base_emissions, start_emissions, end_emissions, infer_emissions_of_diagnostics(diagnostics: slice_access_diags)])
       }
 
     ExprReturn =>
@@ -10402,18 +10505,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let ret_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprReturn, children: [inner_result.typed], inferred: inner_result.typed.inferred, span: span)
       InferResult {
         typed: ret_texpr,
-        diagnostics: inner_result.diagnostics
+        emissions: inner_result.emissions
       }
 
     _ =>
       let span = texpr.span
       InferResult {
         typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "unhandled expression variant in infer_expr", span: span),
-        diagnostics: [inference_error(
+        emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(
           message: "unhandled expression variant in infer_expr",
           span: span,
           module_name: scope.module_name
-        )]
+        )])
       }
   }
 }
@@ -10448,7 +10551,7 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
                           )
                           Present { value: InferResult {
                             typed: semantic_expr_error_node(message: msg, span: arg.span),
-                            diagnostics: [inference_error(message: msg, span: arg.span, module_name: scope.module_name)]
+                            emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: msg, span: arg.span, module_name: scope.module_name)])
                           } }
                         Absent =>
                           let payload_expr = arg_value(n: arg)
@@ -10477,7 +10580,7 @@ fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, f
                   )
                   Present { value: InferResult {
                     typed: semantic_expr_error_node(message: arity_msg, span: span),
-                    diagnostics: [inference_error(message: arity_msg, span: span, module_name: scope.module_name)]
+                    emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(message: arity_msg, span: span, module_name: scope.module_name)])
                   } }
                 }
               } else { none }
@@ -10981,7 +11084,7 @@ fn variant_tag_reference_argument_results(func_name: String, callee_is_body_bind
                 if variant_owner_node(scope: scope, name: tn) != none {
                   ArgInferResult {
                     typed_arg: air.typed_arg,
-                    diagnostics: air.diagnostics |> filter(d =>
+                    emissions: infer_emissions_filter_diagnostics(emissions: air.emissions, keep: d =>
                       match d.diagnostic {
                         MissingField { field: _, type_name: t, span: _ } => t != tn
                         _ => true
@@ -11027,7 +11130,7 @@ fn infer_map_literal(occurrence_identity: NodeOccurrenceIdentity, map_node: Node
         name_span: node_name_span(n: fi)
       ),
       infer_result: ar,
-      diagnostics: ar.diagnostics
+      emissions: ar.emissions
     }
   )
   InferResult {
@@ -11037,7 +11140,7 @@ fn infer_map_literal(occurrence_identity: NodeOccurrenceIdentity, map_node: Node
       inferred: Present { value: Resolved { node: map_node } },
       span: span
     ),
-    diagnostics: flat_map(fi_results, fir => fir.diagnostics)
+    emissions: infer_emissions_concat_all(chunks: fi_results |> map(fir => fir.emissions))
   }
 }
 
@@ -11132,11 +11235,11 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
     Present { value: sp } =>
       InferResult {
         typed: semantic_expr_error_node(message: concat("expected type '", sp, "' names no identifiable declaration; its Optional payload cannot be stamped"), span: span),
-        diagnostics: [inference_error(
+        emissions: infer_emissions_of_diagnostics(diagnostics: [inference_error(
           message: concat("the expected type spelled '", sp, "' resolves to no declaration the census can identify, so whether it is std.optional Optional is undecidable here; refusing rather than leaving its payload unstamped"),
           span: span,
           module_name: scope.module_name
-        )]
+        )])
       }
     Absent =>
   match map_literal_expected_keyed_node(type_name: type_name, expected: expected, scope: scope) {
@@ -11628,7 +11731,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
     let ar_typed = ar.typed
-    let ar_diags = ar.diagnostics
+    let ar_emissions = ar.emissions
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
@@ -11732,32 +11835,30 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     FieldInferResult {
       typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(concat(concat(ar_diags, field_type_diags), present_payload_diags), unknown_field_diags), bare_none_field_construction_diags(
+      emissions: infer_emissions_concat(left: ar_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(field_type_diags, present_payload_diags, unknown_field_diags, bare_none_field_construction_diags(
         fi: fi,
         fi_name: fi_name,
         field_declared_type: field_declared_type,
         type_name_for_message: tn_str,
         scope: scope
-      ))
+      ))))
     }
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
-  let fi_own_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
+  let fi_own_emissions = infer_emissions_concat_all(chunks: fi_infer_results |> map(fir => fir.emissions))
   let record_effectful_fields = flat_map(typed_fields, tf =>
     match effectful_callee_name_of_expr(v: field_init_node_value(n: tf), scope: scope) {
       Present { value: n } => [n]
       Absent => []
     }
   )
-  let fi_diags = concat(
-    fi_own_diags,
-    sibling_effect_order_diags(
+  let fi_emissions = infer_emissions_concat(left: fi_own_emissions, right: infer_emissions_of_diagnostics(diagnostics: sibling_effect_order_diags(
       construct: match type_name { Present { value: tn } => tn  Absent => "record literal" },
       effectful: record_effectful_fields,
       span: span,
       module_name: scope.module_name
     )
-  )
+  ))
   if type_name == none {
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
@@ -11777,7 +11878,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
-      diagnostics: concat(fi_diags, alias_struct_diags)
+      emissions: infer_emissions_concat(left: fi_emissions, right: infer_emissions_of_diagnostics(diagnostics: alias_struct_diags))
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
@@ -11947,7 +12048,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else { [] }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(concat(concat(concat(union_name_no_record_constructor_diags, fi_diags), alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags))
+      emissions: infer_emissions_concat_all(chunks: [infer_emissions_of_diagnostics(diagnostics: union_name_no_record_constructor_diags), fi_emissions, infer_emissions_of_diagnostics(diagnostics: concat(alias_struct_diags, type_diags, sole_ctor_diags, missing_field_diags, presence_ambiguity_diags, optional_owner_unrecovered_diags))])
     }
   }
 }
@@ -14151,12 +14252,12 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
 
 type InferPropertiesResult {
   props: List<Node>
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type InferTransportResult {
   transport: Node?
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
@@ -14173,12 +14274,12 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
         has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
         module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
       },
-      diagnostics: val_result.diagnostics
+      emissions: val_result.emissions
     }
   )
   InferPropertiesResult {
     props: results |> map(r => r.prop),
-    diagnostics: results |> flat_map(r => r.diagnostics)
+    emissions: infer_emissions_concat_all(chunks: results |> map(r => r.emissions))
   }
 }
 
@@ -14217,7 +14318,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
 // is what it cost — so both folds now carry the same name.
 type PropertyInferenceResult {
   prop: Node
-  diagnostics: List<ErrorNode>
+  emissions: InferEmissions
 }
 
 type ServiceConfigFieldJudgment
@@ -14282,12 +14383,12 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
             has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
             module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
           },
-          diagnostics: val_result.diagnostics
+          emissions: val_result.emissions
         }
       FieldDeferred { trigger: t } =>
         PropertyInferenceResult {
           prop: p,
-          diagnostics: [make_error_node(
+          emissions: infer_emissions_of_diagnostics(diagnostics: [make_error_node(
             diagnostic: ServiceConfigReferenceJudgmentDeferred {
               field: field,
               referenced_name: service_config_property_referenced_name(p: p, scope: scope),
@@ -14295,14 +14396,14 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
               span: p.span
             },
             module_name: scope.module_name
-          )]
+          )])
         }
-      FieldCarriesNoReference => PropertyInferenceResult { prop: p, diagnostics: [] }
+      FieldCarriesNoReference => PropertyInferenceResult { prop: p, emissions: infer_emissions_empty() }
     }
   )
   InferPropertiesResult {
     props: results |> map(r => r.prop),
-    diagnostics: results |> flat_map(r => r.diagnostics)
+    emissions: infer_emissions_concat_all(chunks: results |> map(r => r.emissions))
   }
 }
 
@@ -14312,7 +14413,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
 // stamp body expressions already receive.
 fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportResult {
   match transport {
-    Absent => InferTransportResult { transport: none, diagnostics: [] }
+    Absent => InferTransportResult { transport: none, emissions: infer_emissions_empty() }
     Present { value: t } => {
       let prop_result = infer_property_values(props: t.properties, scope: scope)
       let argv_results = if (is_shell_transport(t: t)) {
@@ -14331,7 +14432,7 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
           has_non_tail_self_call: t.has_non_tail_self_call, match_pattern: t.match_pattern,
           module_item_kind: t.module_item_kind, declaration_marker: t.declaration_marker, declaration: t.declaration, expr_data: t.expr_data
         } },
-        diagnostics: concat(prop_result.diagnostics, argv_results |> flat_map(r => r.diagnostics))
+        emissions: infer_emissions_concat(left: prop_result.emissions, right: infer_emissions_concat_all(chunks: argv_results |> map(r => r.emissions)))
       }
     }
   }
@@ -14344,10 +14445,10 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   } else { scope }
   let transport_result = infer_transport_node(transport: item.transport, scope: transport_scope)
   let typed_transport = transport_result.transport
-  let transport_diags = transport_result.diagnostics
+  let transport_emissions = transport_result.emissions
   let props_result = infer_service_config_properties(props: item.properties, scope: scope)
   let typed_properties = props_result.props
-  let props_diags = props_result.diagnostics
+  let props_emissions = props_result.emissions
   if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
@@ -14357,7 +14458,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      diagnostics: concat(transport_diags, props_diags)
+      emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
     }
   }
   else if item.body != none && (item.params |> count > 0 || item.inferred != none) {
@@ -14383,7 +14484,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let fn_return_expected = if item.inferred != none { Present { value: resolved_type(n: item) } } else { none }
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: fn_return_expected)
     let body_typed = body_result.typed
-    let body_diags = body_result.diagnostics
+    let body_emissions = body_result.emissions
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     let return_conformance_diags = if item.inferred != none {
       concat(
@@ -14405,19 +14506,14 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), in_tail: true, source_indices: scope.type_env.source_indices),
         match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      diagnostics: concat(transport_diags, props_diags, concat(body_diags, return_conformance_diags))
+      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, body_emissions, infer_emissions_of_diagnostics(diagnostics: return_conformance_diags)])
     }
   }
   else if item.body != none && item.params |> count == 0 {
     let data_expected = if item.type_annotation != none { Present { value: item.type_annotation.value } } else { none }
     let val_result = infer_expr(texpr: item.body.value, scope: scope, expected: data_expected)
     let val_typed = val_result.typed
-    let val_diags = if item.type_annotation != none {
-      concat(
-        val_result.diagnostics,
-        declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), span: item.body.value.span, scope: scope)
-      )
-    } else { val_result.diagnostics }
+    let val_emissions = if item.type_annotation != none { infer_emissions_concat(left: val_result.emissions, right: infer_emissions_of_diagnostics(diagnostics: declared_type_conformance_diags(position: PositionDataInitializer, subject: "", declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), span: item.body.value.span, scope: scope))) } else { val_result.emissions }
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
     TypedItemResult {
       item: Node {
@@ -14427,7 +14523,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      diagnostics: concat(transport_diags, props_diags, val_diags)
+      emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, val_emissions])
     }
   }
   else if item.params |> count > 0 && item.body == none {
@@ -14439,7 +14535,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      diagnostics: concat(transport_diags, props_diags)
+      emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
     }
   }
   else {
@@ -14451,7 +14547,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
-      diagnostics: concat(transport_diags, props_diags)
+      emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
     }
   }
 }
@@ -14619,16 +14715,33 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Present { value: fc } =>
-        match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
-          Absent => acc
-        }
-      Absent => acc
-    }
+  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) {
+    unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
+}
+
+// A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
+// positionally; one rule serves every arity. A position is read RAW, not through child_type_node:
+// a formal child is a type expression whose inferred is its own TypeVariable, and child_type_node
+// answers error_type for anything not Resolved, so reading it through that would drop the very
+// binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
+// unbound). First-wins binding is unchanged.
+fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+  match formals |> first {
+    Present { value: f } =>
+      match actuals |> first {
+        Present { value: a } =>
+          unify_generic_child_pairs(
+            formals: formals |> skip(1),
+            actuals: actuals |> skip(1),
+            generic_names: generic_names,
+            source_indices: source_indices,
+            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
+          )
+        Absent => acc
+      }
+    Absent => acc
+  }
 }
 
 // A callable denotes its parameters in params and its return in inferred (make_callable_type), so
@@ -17044,9 +17157,12 @@ fn build_module_context(contributions: List<ItemContribution>,
   }
 }
 
+// The module's diagnostics are finalized here (the stage boundary); its provider demands leave
+// beside them, ungrouped, for the closure's acquisition boundary to group over the whole pass.
 type TypecheckModuleResult {
   typed: TypedModule
   diagnostics: List<ErrorNode>
+  provider_demands: List<GeneratedProviderDemand>
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
@@ -18083,6 +18199,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         occurrence_transport: Present { value: resolved.occurrence_transport },
       },
       diagnostics: concat(env_diags, seed_diags),
+      provider_demands: [],
       binding_forks: env_result.binding_forks
     }
   }
@@ -18124,7 +18241,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   }
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
-  let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
+  let infer_emissions = infer_emissions_concat_all(chunks: map(typed_item_results, tir => tir.emissions))
   let updated_func_env = populate_output_provenance(
     typed_items: typed_items, func_env: ctx.func_env,
     type_env: env, locals: data_locals
@@ -18180,7 +18297,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     diagnostics: frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
       module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_emissions.diagnostics, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
+    provider_demands: infer_emissions.provider_demands,
     binding_forks: env_result.binding_forks
   }
 }
@@ -18307,21 +18425,14 @@ fn topo_resolve_types(
   )
 }
 
-fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> ParentModulesResult {
-  let modules = flat_map(resolved.resolved_imports, imp =>
-    match map_get(module_index, imp.module_path) {
-      Present { value: typed } => [typed]
-      Absent => []
-    }
-  )
+fn missing_parent_env_diagnostics(resolved: ResolvedModule, module_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let resolved_mod_name = authored_name_at(source_indices: source_indices, node: resolved.module)
-  let diagnostics = flat_map(resolved.resolved_imports, imp =>
+  flat_map(resolved.resolved_imports, imp =>
     match map_get(module_index, imp.module_path) {
       Present { value: _ } => []
       Absent => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved_mod_name, "'"), span: imp.target_module.value.span }, module_name: resolved_mod_name)]
     }
   )
-  ParentModulesResult { modules: modules, diagnostics: diagnostics }
 }
 
 fn variant_has_positional_payload_shape(variant: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -18514,9 +18625,98 @@ type RealizeState {
   variant_surfaces: Map<String, VariantExportSurface>
   item_registry: Map<String, ItemInfo>
   diags_by_name: Map<String, List<ErrorNode>>
+  demands_by_name: Map<String, List<GeneratedProviderDemand>>
 }
 
-fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
+// THE SEED'S ACQUISITION BOUNDARY, read from the checked closure. Whether a demanded module is in the
+// closure, which declarations it has there, and which of those were refused are facts of the typed
+// modules and the closure's own diagnostics; how the pool answered for a module outside the closure
+// is the builder's typed observation (ProviderPoolObservation, one per demanded module). The decision
+// itself is std.generated_provider's.
+//
+// A declaration is refused when a blocking diagnostic of this closure is located inside it: inside
+// its own span or inside its body's (a function item's span does not reach its body).
+fn span_contains(outer: SourceSpan, inner: SourceSpan) -> Bool {
+  outer.file == inner.file && inner.start >= outer.start && inner.end <= outer.end
+}
+
+fn declaration_covers(item: Node, at: SourceSpan) -> Bool {
+  span_contains(outer: item.span, inner: at)
+    || match item.body {
+      Present { value: b } => span_contains(outer: b.span, inner: at)
+      Absent => false
+    }
+}
+
+fn declaration_refused_in_closure(item: Node, diagnostics: List<ErrorNode>) -> Bool {
+  diagnostics |> any(d => is_interpreter_blocking_diagnostic(d: d.diagnostic) && declaration_covers(item: item, at: diagnostic_to_span(d: d.diagnostic)))
+}
+
+fn item_declared_names(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<NonEmptyStr> {
+  items
+    |> map(i => authored_name_at(source_indices: source_indices, node: i))
+    |> filter(n => n != "")
+    |> map(n => n as NonEmptyStr)
+}
+
+// A demanded module outside the closure with no pool observation is a builder that skipped its one
+// obligation; judge_closure supplies an observation for every demanded module path, and the absent
+// answer reads as not in the pool so the refusal still names the module rather than acquiring it.
+fn closure_provider_module_fact(module_path: String, modules: List<TypedModule>, diagnostics: List<ErrorNode>, source_indices: Map<String, NewlineIndex>, pool: List<ProviderPoolObservation>) -> ProviderModuleFact {
+  match modules |> filter(m => authored_name_at(source_indices: source_indices, node: m.module) == module_path) |> first {
+    Present { value: m } =>
+      ModuleInClosure {
+        declarations: item_declared_names(items: m.items, source_indices: source_indices),
+        refused: item_declared_names(items: m.items |> filter(i => declaration_refused_in_closure(item: i, diagnostics: diagnostics)), source_indices: source_indices)
+      }
+    Absent =>
+      match pool |> filter(p => p.module_path == module_path) |> first {
+        Present { value: p } => p.fact
+        Absent => ModuleNotInPool
+      }
+  }
+}
+
+fn closure_provider_acquisition_step(demands: List<GeneratedProviderDemand>, modules: List<TypedModule>, diagnostics: List<ErrorNode>, source_indices: Map<String, NewlineIndex>, pool: List<ProviderPoolObservation>) -> ProviderAcquisitionStep {
+  provider_acquisition_step(
+    observed: demands |> map(d => observe_provider_demand(demand: d, fact: closure_provider_module_fact(module_path: d.declaration.module_path, modules: modules, diagnostics: diagnostics, source_indices: source_indices, pool: pool))),
+    closure_modules: modules
+      |> map(m => authored_name_at(source_indices: source_indices, node: m.module))
+      |> filter(n => n != "")
+      |> map(n => n as NonEmptyStr)
+  )
+}
+
+// A REFUSED ACQUISITION, AS THE COMPILER'S OWN DIAGNOSTICS: one GeneratedProviderUnavailable per
+// demanding site, located at the authored boundary that site names, so every builder reports the
+// refusal through the same channel as any other blocking diagnostic.
+fn generated_provider_unavailable_diagnostics(step: ProviderAcquisitionStep) -> List<ErrorNode> {
+  match step {
+    ProviderAcquisitionRefused { refusals: rs } =>
+      ([rs.head] |> concat(rs.tail)) |> flat_map(r =>
+        ([r.demand.sites.head] |> concat(r.demand.sites.tail)) |> map(site =>
+          make_error_node(diagnostic: GeneratedProviderUnavailable { declaration: r.demand.declaration, cause: r.cause, span: site.at }, module_name: "")
+        )
+      )
+    AcquisitionComplete => []
+    AcquireModules { modules: _ } => []
+  }
+}
+
+// THE PASS OUTPUT: the typed program and, beside it rather than inside it, the provider demands its
+// generated references owe. TypedGraph stays the semantic program; demands are orchestration facts
+// about completing its closure, grouped once over the whole pass for the acquisition boundary.
+type TypecheckPass {
+  graph: TypedGraph
+  provider_demands: List<GeneratedProviderDemand>
+}
+
+type ReconciledPass {
+  graph: ResolvedGraph
+  provider_demands: List<GeneratedProviderDemand>
+}
+
+fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckPass {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
@@ -18527,7 +18727,8 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     module_index: empty_map(),
     variant_surfaces: empty_map(),
     item_registry: empty_map(),
-    diags_by_name: empty_map()
+    diags_by_name: empty_map(),
+    demands_by_name: empty_map()
   }, f: (st, rm) =>
     realize_module(
       name: authored_name_at(source_indices: source_indices, node: rm.module),
@@ -18561,10 +18762,19 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     EffectsIncomplete { partial: _, causes: causes } => causes
   }
   let incompleteness_diagnostics = effect_incompleteness_diagnostics(causes: incompleteness_causes)
-  TypedGraph {
-    modules: modules,
-    item_registry: analysed_registry,
-    diagnostics: concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics)
+  let demand_chunks = graph.modules |> map(rm =>
+    match map_get(state.demands_by_name, authored_name_at(source_indices: source_indices, node: rm.module)) {
+      Present { value: d } => d
+      Absent => []
+    }
+  )
+  TypecheckPass {
+    graph: TypedGraph {
+      modules: modules,
+      item_registry: analysed_registry,
+      diagnostics: concat(flat_map(diag_chunks, c => c), incompleteness_diagnostics)
+    },
+    provider_demands: group_provider_demands(demands: flat_map(demand_chunks, c => c))
   }
 }
 
@@ -18638,7 +18848,7 @@ fn realize_module(
               global_variant_base: global_variant_base
             )
           )
-          let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
+          let parent_diagnostics = missing_parent_env_diagnostics(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
           let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
@@ -18650,7 +18860,8 @@ fn realize_module(
               build_variant_export_surface(tm: typed, surfaces: dep_state.variant_surfaces, source_indices: source_indices)
             ),
             item_registry: map_merge(dep_state.item_registry, typed.item_registry),
-            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics))
+            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_diagnostics, tc_result.diagnostics)),
+            demands_by_name: map_insert(dep_state.demands_by_name, typed_path, tc_result.provider_demands)
           }
       }
   }
@@ -18686,11 +18897,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true }
 }
 
-fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let index_seed: Map<String, TypedModule> = empty_map()
-  let index = fold(modules, init: index_seed, f: (acc, m) =>
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
-  )
+fn rewire_type_env_parent_links(modules: List<TypedModule>, index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   let shared_kernel = match modules |> flat_map(m =>
       match m.type_env.parents |> last {
         Present { value: kernel } => if map_is_empty(kernel.bindings) { [] } else { [kernel] }
@@ -18742,11 +18949,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
   )
 }
 
-fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let index_seed: Map<String, TypedModule> = empty_map()
-  let index = fold(modules, init: index_seed, f: (acc, m) =>
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
-  )
+fn rewire_func_env_parent_links(modules: List<TypedModule>, index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   map(modules, m =>
     let parents = merge_func_env_views_by_owner(flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
@@ -18773,14 +18976,22 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
   )
 }
 
-fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
-  let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
-  let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
-  let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  ResolvedGraph {
-    modules: modules,
-    item_registry: typed.item_registry,
-    item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
-    diagnostics: typed.diagnostics,
+fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ReconciledPass {
+  let pass = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
+  let typed = pass.graph
+  let index_seed: Map<String, TypedModule> = empty_map()
+  let index = fold(typed.modules, init: index_seed, f: (acc, m) =>
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
+  )
+  let modules = rewire_type_env_parent_links(modules: typed.modules, index: index, source_indices: source_indices)
+  let modules = rewire_func_env_parent_links(modules: modules, index: index, source_indices: source_indices)
+  ReconciledPass {
+    graph: ResolvedGraph {
+      modules: modules,
+      item_registry: typed.item_registry,
+      item_leaf_owner_modules: leaf_owner_modules_from_registry(registry: typed.item_registry),
+      diagnostics: typed.diagnostics,
+    },
+    provider_demands: pass.provider_demands
   }
 }

@@ -1,11 +1,15 @@
 module gunbc.recurring_failure_mode.guest_image_digest_is_a_one_build_receipt
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data guest_image_digest_is_a_one_build_receipt: RecurringFailureMode = RecurringFailureMode {
   identity: "guest_image_digest_is_a_one_build_receipt" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "when a second, independent producer must agree with the first -- third-party verification, or a rebuild that must match a running image." } },
 
   receipts: [
     "INVALID STATE: a guest image's SHA-256 (workspace image, revision-job image) read as a promise that rebuilding from the same pinned inputs yields the same bytes, or as a correctness oracle.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.sibling_key_that_is_never_empty_read_in_place_of_the_subject
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data sibling_key_that_is_never_empty_read_in_place_of_the_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "sibling_key_that_is_never_empty_read_in_place_of_the_subject" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a sibling key that is never empty, read in place of the subject** (a reader keys on a NEIGHBOURING member of the same object -- one whose population is not a variable of the question -- so it answers affirmatively for every input and has no failing case of its own to be found by).",

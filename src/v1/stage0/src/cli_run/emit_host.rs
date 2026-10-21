@@ -165,7 +165,7 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
                 resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
                     .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
             record_fixture_closure(&sources);
-            compile_fixture_rendering_only_what_is_read(sources, None)
+            compile_fixture_rendering_only_what_is_read(sources, None, &module_index)
         })
     }));
     let result = match compiled {
@@ -448,7 +448,18 @@ pub fn compile_dag_multi_module_fixture(
         })
         .collect();
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        // A hermetic fixture's pool is empty: its manifest is its whole closure, so a generated
+        // provider outside it refuses (GeneratedProviderUnavailable) instead of reaching the tree.
+        let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+            files,
+            &|_: &str| super::provider_acquire::PoolAnswer::Lacks,
+            &|module: &str| {
+                Err(super::provider_acquire::ClosureOfError::Closure(format!(
+                    "hermetic fixture: no pool holds '{module}'"
+                )))
+            },
+        )
+        .unwrap_or_else(|cause| unreachable!("an empty pool never asks for acquisition: {cause}"));
         let module_count = match resolved.graph.clone() {
             Some(g) => g.modules.len() as i64,
             None => 0,
@@ -1146,10 +1157,15 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
         crate::cli_run::ResolvedCallEdgeCensus,
     > {
         match resolved {
-            Ok((graph, _)) => {
-                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-                    graph.diagnostics.clone(),
-                );
+            // THE INDEX WAS ALREADY HERE and thrown away with `_`. The refusal lines this census
+            // carries to the terminal are reader-facing, so they go through the located renderer
+            // rather than the 1-arg name that formats `{file}:{start}-{end}`.
+            Ok((graph, source_indices)) => {
+                let blocking =
+                    crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                        graph.diagnostics.clone(),
+                        source_indices,
+                    );
                 if !blocking.is_empty() {
                     let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
                     return Err(ResolvedCallEdgeCensus::Refused {
@@ -1487,9 +1503,13 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
     v1_rt::trace_mark("primitive-call-edges.walk.begin".to_string());
     let Some(graph) = resolved.graph.clone() else {
-        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-            resolved.diagnostics.clone(),
-        );
+        // `resolved` CARRIES THE INDEX (`ResolvedPipelineResult::source_indices`); the 1-arg call
+        // below just never passed it, so this refusal arrived as `{file}:{start}-{end}`.
+        let blocking =
+            crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                resolved.diagnostics.clone(),
+                resolved.source_indices.clone(),
+            );
         return PrimitiveCallEdgeCensus::Refused {
             cause: format!(
                 "primitive call edges: the corpus did not resolve to a graph: {}",
@@ -1501,9 +1521,11 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     let mut blocked_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for d in resolved.diagnostics.iter() {
         if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-                Rc::new(vec![d.clone()].into()),
-            )
+            let message =
+                crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                    Rc::new(vec![d.clone()].into()),
+                    resolved.source_indices.clone(),
+                )
             .iter()
             .next()
             .cloned()
@@ -2006,7 +2028,8 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
     let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
         .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     record_fixture_closure(&sources);
-    let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
+    let result =
+        compile_fixture_rendering_only_what_is_read(sources, Some(file_path), &module_index)?;
     let hard_diagnostics = result
         .diagnostics
         .iter()
@@ -2067,11 +2090,53 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 ///
 /// The control that the selected bytes equal the full render's is
 /// [`compile_dag_render_selection_agreement`], which runs the full render for real.
+/// The witness-root module index's answer for a demanded module: Lacks when no file declares it,
+/// Unreadable when the index names a file whose bytes cannot be read now, Holds otherwise. The answer
+/// reads the bytes rather than inspecting the path, so Holds means a read succeeded. The index panics
+/// on two files for one module path when it is built, so no answer here is ambiguous.
+pub(crate) fn fixture_pool_answer(
+    module: &str,
+    pool: &HashMap<String, String>,
+) -> super::provider_acquire::PoolAnswer {
+    match pool.get(module) {
+        None => super::provider_acquire::PoolAnswer::Lacks,
+        Some(path) => match std::fs::read_to_string(process_workspace_root().join(path)) {
+            Ok(_) => super::provider_acquire::PoolAnswer::Holds,
+            Err(_) => super::provider_acquire::PoolAnswer::Unreadable,
+        },
+    }
+}
+
+/// A demanded provider joins an emit-check fixture with its own import closure, read from the
+/// witness-root module index the way the fixture's own imports were. A read failure is the model's
+/// Unreadable, never a prose error; a failure to close the provider's own imports is a closure error.
+pub(crate) fn fixture_pool_closure_of(
+    module: &str,
+    pool: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, super::provider_acquire::ClosureOfError> {
+    let Some(path) = pool.get(module) else {
+        return Err(super::provider_acquire::ClosureOfError::Unreadable);
+    };
+    // Read the way the fixture's own imports are read: the index holds workspace-relative paths,
+    // resolved against the process workspace root, never against the current directory.
+    let content = std::fs::read_to_string(process_workspace_root().join(path))
+        .map_err(|_| super::provider_acquire::ClosureOfError::Unreadable)?;
+    resolve_virtual_source_with_imports(&workspace_relative_repo_path(path), &content, pool)
+        .map_err(super::provider_acquire::ClosureOfError::Closure)
+}
+
 pub(crate) fn compile_fixture_rendering_only_what_is_read(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     read_path: Option<&str>,
+    pool: &HashMap<String, String>,
 ) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
-    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    // The witness-root module index is this surface's pool for generated providers.
+    let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+        sources,
+        &|module: &str| fixture_pool_answer(module, pool),
+        &|module: &str| fixture_pool_closure_of(module, pool),
+    )
+    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     let selection = fixture_render_selection(&resolved, read_path)?;
     Ok(v1_compiler_compile::emit_resolved_for_target_selected(
         resolved,

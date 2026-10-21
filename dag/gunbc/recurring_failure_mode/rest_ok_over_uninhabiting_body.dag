@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.rest_ok_over_uninhabiting_body
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data rest_ok_over_uninhabiting_body: RecurringFailureMode = RecurringFailureMode {
   identity: "rest_ok_over_uninhabiting_body" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a REST 200 whose body does not inhabit the declared output is still reported as RestOk** (INVALID STATE: the performer maps a success-status body into the operation output, leaves required payload fields Null or fills them from a fabricated decode, then attaches RestOk.",

@@ -15,10 +15,10 @@ import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, Lex
 import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
 import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
-import v2.std.node { positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
+import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import v2.std.node_query { declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
@@ -27,6 +27,8 @@ import v2.std.fold_assembly { node_list_from_node }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref, primitive_contract_qualified_name }
 
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -177,6 +179,19 @@ fn fixed_tokens_of(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
     empty: Empty,
     cons: fn(acc, tc) { list_snoc_item(xs: acc, item: FixedToken { token_class: tc }) }
   )
+}
+
+// Whether the target realizes primitive calls through typed rows. A target without rows says
+// Unwired, so a primitive call on it refuses typed rather than looking up an empty list.
+type TargetPrimitiveRealizations
+  = PrimitiveRealizationsUnwired
+  | PrimitiveRealizationsWired { rows: List<TargetPrimitiveRealization> }
+
+// The target's realization catalogs a value expression is tokenized against: the operator rows
+// (a Node wire) and the typed primitive rows.
+type TargetRealizationCatalog {
+  operators: Node
+  primitives: TargetPrimitiveRealizations
 }
 
 type ProducedDeclSupport
@@ -908,6 +923,7 @@ type TargetModel {
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
+  primitive_realizations: TargetPrimitiveRealizations
 }
 
 fn target_model_declared_inhabitants(target: TargetModel) -> Outcome<Node> {
@@ -935,6 +951,7 @@ fn target_model_make_with_emit_transforms(
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: lex,
@@ -1779,6 +1796,46 @@ type TargetCallApplyShape {
   open: Symbol
   separator: Symbol
   close: Symbol
+}
+
+// THE REALIZATION OF A NAMED std.primitives CONTRACT IS A TARGET ROW, KEYED BY THE CONTRACT'S OWN DECLARATION.
+// The text a target emits for a call to string_length, to_string, join... was built in seed Rust
+// (v1_compiler_emit_rust over rt_function_registry), so no v2 target could inhabit it: TargetCallApplyShape spells
+// every call as `callee(args)` and has no column for a different callee spelling, a call form, a per-argument label
+// or a passing mode. The row below is that column. It is keyed by the std.decl_ref DeclarationRef of the contract
+// (std.primitives.<name>_contract, named by v2.std.primitive_contract_ref), never by a path String (DESIGN 3: a
+// string key is a nickname).
+//
+// Argument labels have no producer yet (Rust rows carry none), so there is no label slot; a label returns with the
+// first Swift primitive row that needs it, in the same change as that row.
+
+// How the argument reaches the callee. Rust's string_length takes `&str`, so the String argument is passed by shared
+// reference; the prefix is the target's own token, not a Rust spelling in this module.
+type TargetPrimitiveArgumentPassing
+  = PrimitivePassByValue
+  | PrimitivePassBySharedReference { prefix_token: Symbol }
+
+type TargetPrimitiveArgument {
+  passing: TargetPrimitiveArgumentPassing
+}
+
+// FreeCall is `callee(args)`. MethodCall is `receiver.method(rest)`, the first argument being the receiver. A member
+// path (`receiver.m1.m2`, no application) returns with the first Swift primitive row that needs it, in the same change.
+type TargetPrimitiveCallForm
+  = PrimitiveFreeCall { callee: Symbol }
+  | PrimitiveMethodCall { method: Symbol }
+
+// What the call yields. The seed's rt_function_registry `wraps_result` is this arm: the result is put in the
+// target's shared handle by calling `constructor` on it.
+type TargetPrimitiveResult
+  = PrimitiveResultAsReturned
+  | PrimitiveResultInSharedHandle { constructor: Symbol }
+
+type TargetPrimitiveRealization {
+  primitive: DeclarationRef
+  form: TargetPrimitiveCallForm
+  arguments: List<TargetPrimitiveArgument>
+  result: TargetPrimitiveResult
 }
 
 type TargetEffectCalleeRow {
@@ -2898,6 +2955,8 @@ fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
     )
   )
 }
+
+
 
 fn target_value_projection_field_missing_diagnostic(bundle: Node, field: Symbol) -> Diagnostic {
   Diagnostic {
@@ -5792,39 +5851,8 @@ type TargetValueExprMatchArmSlot {
   body: TargetValueExpression
 }
 
-type TargetValueExprMatchArmEdgeFold {
-  edges: List<Edge>
-  skipped_scrutinee: Bool
-}
-
 fn target_value_expr_positional_child_optional(node: Node, index: Int) -> Optional<Node> {
   list_at_optional(xs: positional_child_target_nodes(node: node), index: index)
-}
-
-fn target_value_expr_match_arm_edges_after_scrutinee(children: List<Edge>) -> List<Edge> {
-  let folded = fold(
-    children,
-    init: TargetValueExprMatchArmEdgeFold { edges: Empty, skipped_scrutinee: false },
-    f: fn(acc, edge) {
-      match edge.label {
-        StructuralLabel { label: _ } => acc
-        Positional =>
-          if !acc.skipped_scrutinee {
-            TargetValueExprMatchArmEdgeFold {
-              edges: acc.edges,
-              skipped_scrutinee: true
-            }
-          } else {
-            TargetValueExprMatchArmEdgeFold {
-              edges: list_snoc_item(xs: acc.edges, item: edge),
-              skipped_scrutinee: true
-            }
-          }
-        Authored { name: _ } => acc
-      }
-    }
-  )
-  folded.edges
 }
 
 fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
@@ -5884,6 +5912,67 @@ fn target_value_expr_callable_arg_edges(
       }
     }
   )
+}
+
+// A CALL WHOSE CALLEE RESOLVED TO A std.primitives CONTRACT DECLARATION. The identity is the resolved declaration
+// (v2.compiler.resolve binds a primitive head to std.primitives.<name>_contract), carried as the presence of this edge;
+// a callee that resolved anywhere else, a user fn spelled string_length included, never has it and emits as an ordinary
+// call. The spelling alone is never the join (DESIGN 3: a name is not the declaration it was bound to).
+fn target_value_expression_resolved_primitive_call(
+  callee: Symbol,
+  args: List<TargetValueExpression>
+) -> TargetValueExpression {
+  let base = target_value_expression_callable_apply(callee: callee, args: args)
+  TargetValueExpression {
+    kind: base.kind,
+    node: Node {
+      kind: base.node.kind,
+      children: list_append(
+        left: base.node.children,
+        right: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_resolved_primitive,
+            target: target_model_type_atom_node(identity: callee)
+          )
+        ]
+      ),
+      occurrence_id: base.node.occurrence_id
+    }
+  }
+}
+
+// WHETHER THE CALLABLE-APPLY WIRE CARRIES THE RESOLVED-PRIMITIVE MARKER: one found / missing / ambiguous decision from
+// v2.std.node_query child_lookup_step (named_child_lookup itself reads only Conj/Computation roots; this wire is an Atom). A duplicated marker edge is ambiguous and refuses typed (review 82774).
+fn target_value_expr_callable_apply_is_resolved_primitive(wire: Node) -> Outcome<Bool> {
+  match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == ^target_value_expr_field_resolved_primitive, target: e.target)
+    }
+  }) {
+    NamedChildFound { target: _ } => outcome_accepted(value: true)
+    NamedChildMissing => outcome_accepted(value: false)
+    NamedChildAmbiguous => outcome_rejected(Diagnostic {
+      reason: ^target_value_expr_resolved_primitive_marker_ambiguous,
+      at: node_locus(node: wire),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+  }
+}
+
+// WHETHER A RESOLVED CALLEE NODE IS THE std.primitives CONTRACT DECLARATION OF ITS OWN LEAF: its resolved qualified path
+// equals the contract path derived from the leaf. A same-leaf declaration elsewhere resolves to another path.
+fn target_transform_callee_is_resolved_primitive(body: Node, callee: Symbol) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+    Absent => false
+    Present { value: child } =>
+      match declaration_reference_path_optional(node: child) {
+        Absent => false
+        Present { value: path } =>
+          path == primitive_contract_qualified_name(head: callee)
+      }
+  }
 }
 
 fn target_value_expression_callable_apply(
@@ -6084,7 +6173,8 @@ fn target_operator_realization_catalog_wire_schema_valid(catalog: Node) -> Outco
             match e.label {
               StructuralLabel { label: _ } => false
               Positional => false
-              Authored { name: n } => n == ^target_operator_realization_row_edge
+              Authored { name: n } =>
+                n == ^target_operator_realization_row_edge
             }
           } else {
             false
@@ -6188,6 +6278,72 @@ fn target_operator_realization_catalog_lookup_otherwise(catalog: Node) -> Outcom
   outcome_rejected(
     target_operator_realization_catalog_miss_diagnostic(catalog: catalog)
   )
+}
+
+
+// A PRIMITIVE WITH NO ROW REFUSES, typed and located at the call that names it. The catalog is the target's whole
+// statement of how it spells primitives, so absence is not a bare call (that was the seed-fact escape: the text was
+// built outside the rows and the v2 door passed the name through unrealized).
+fn target_primitive_realization_missing_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realization_missing,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_realization_ambiguous_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realization_ambiguous,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_realizations_unwired_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realizations_unwired,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_realization_lookup_step(
+  acc: PassingCandidateFold<TargetPrimitiveRealization>,
+  row: TargetPrimitiveRealization,
+  primitive: DeclarationRef
+) -> PassingCandidateFold<TargetPrimitiveRealization> {
+  if declaration_ref_eq(a: row.primitive, b: primitive) {
+    match acc {
+      NoPassingCandidate => OnePassingCandidate { candidate: row }
+      OnePassingCandidate { candidate: _ } => ManyPassingCandidates
+      ManyPassingCandidates => ManyPassingCandidates
+    }
+  } else {
+    acc
+  }
+}
+
+// The rows are typed end to end: a target without them says Unwired and a primitive call on it refuses typed, so
+// the only causes here are the three a reader of the target can act on (unwired, missing, ambiguous).
+fn target_primitive_realization_lookup(
+  primitives: TargetPrimitiveRealizations,
+  primitive: DeclarationRef,
+  at: Node
+) -> Outcome<TargetPrimitiveRealization> {
+  match primitives {
+    PrimitiveRealizationsUnwired => outcome_rejected(target_primitive_realizations_unwired_diagnostic(at: at))
+    PrimitiveRealizationsWired { rows: rows } =>
+      match fold(
+        rows,
+        init: NoPassingCandidate,
+        f: fn(acc, row) { target_primitive_realization_lookup_step(acc: acc, row: row, primitive: primitive) }
+      ) {
+        NoPassingCandidate => outcome_rejected(target_primitive_realization_missing_diagnostic(at: at))
+        OnePassingCandidate { candidate: row } => Accepted { value: row, diagnostics: None }
+        ManyPassingCandidates => outcome_rejected(target_primitive_realization_ambiguous_diagnostic(at: at))
+      }
+  }
 }
 
 fn target_value_expr_primitive_apply_operation_from_wire(wire: Node) -> Outcome<CanonicalOperation> {
@@ -6380,7 +6536,7 @@ fn target_operator_shape_emit_primitive_apply_tokens(
 fn target_value_expression_primitive_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: expr.node),
@@ -6393,7 +6549,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
             f: fn(bindings) {
               bind_outcome(
                 o: target_operator_realization_catalog_lookup(
-                  catalog: catalog,
+                  catalog: catalog.operators,
                   canonical_op: canonical_op
                 ),
                 f: fn(operator_row) {
@@ -6845,7 +7001,7 @@ fn bind_let_statement_sequenced_tokens(
 fn target_value_expression_bind_let_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_bind_let_wire_schema_valid(wire: expr.node),
@@ -6989,7 +7145,7 @@ fn statement_sequenced_block_construct_guard(
 fn target_value_expression_loop_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -7009,7 +7165,7 @@ fn target_value_expression_loop_to_concrete_tokens(
 fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_loop_wire_schema_valid(wire: expr.node),
@@ -7173,7 +7329,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
 fn target_value_expr_record_construct_field_tokens(
   slots: List<TargetValueExprFieldInitSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     slots,
@@ -7238,7 +7394,7 @@ fn target_value_expr_record_construct_field_tokens(
 fn target_value_expression_record_construct_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_record_construct_wire_schema_valid(wire: expr.node),
@@ -7722,7 +7878,7 @@ fn target_value_expr_field_access_field_from_wire(wire: Node) -> Outcome<Symbol>
 fn target_value_expression_field_access_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_field_access_wire_schema_valid(wire: expr.node),
@@ -7967,7 +8123,7 @@ fn concrete_syntax_tokens_snoc_fixed(
 fn target_value_expr_match_arm_tokens(
   arms: List<TargetValueExprMatchArmSlot>,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match fold(
     arms,
@@ -8154,7 +8310,7 @@ fn target_value_expr_is_source_bool_literal_atom(
 fn target_value_expression_match_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -8174,7 +8330,7 @@ fn target_value_expression_match_to_concrete_tokens(
 fn target_value_expression_match_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_match_wire_schema_valid(wire: expr.node),
@@ -8377,7 +8533,7 @@ fn conditional_delimited_tokens(
 fn target_value_expression_conditional_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_conditional_wire_schema_valid(wire: expr.node),
@@ -8503,6 +8659,8 @@ fn target_value_expr_callable_apply_args_from_wire(
                 )
               } else if n == ^target_value_expr_field_callee {
                 acc
+              } else if n == ^target_value_expr_field_resolved_primitive {
+                acc
               } else {
                 outcome_rejected(
                   target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -8525,7 +8683,7 @@ fn target_value_expr_callable_apply_args_from_wire(
 fn target_value_expr_tokenize_intersperse(
   exprs: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
-  catalog: Node,
+  catalog: TargetRealizationCatalog,
   separator: Symbol
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold(
@@ -8565,10 +8723,200 @@ fn target_value_expr_tokenize_intersperse(
   )
 }
 
+// Argument tokens of one primitive call, with the row's remaining argument shapes consumed in order.
+type TargetPrimitiveArgumentFold {
+  tokens: List<ConcreteSyntaxToken>,
+  pending_arguments: List<TargetPrimitiveArgument>,
+  count: Int
+}
+
+fn target_primitive_argument_prefix_tokens(argument: TargetPrimitiveArgument) -> List<ConcreteSyntaxToken> {
+  match argument.passing {
+    PrimitivePassByValue => Empty
+    PrimitivePassBySharedReference { prefix_token: t } =>
+      Cons { head: FixedToken { token_class: t }, tail: Empty }
+  }
+}
+
+fn target_primitive_arguments_to_tokens(
+  args: List<TargetValueExpression>,
+  row: TargetPrimitiveRealization,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog,
+  separator: Symbol,
+  at: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: fold(
+      args,
+      init: Accepted {
+        value: TargetPrimitiveArgumentFold { tokens: Empty, pending_arguments: row.arguments, count: 0 },
+        diagnostics: None
+      },
+      f: fn(acc, e) {
+        bind_outcome(
+          o: acc,
+          f: fn(state) {
+            match state.pending_arguments {
+              Empty => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
+              Cons { head: shape, tail: rest } =>
+                bind_outcome(
+                  o: target_value_expression_to_concrete_tokens(expr: e, projection: projection, catalog: catalog),
+                  f: fn(et) {
+                    outcome_accepted(
+                      TargetPrimitiveArgumentFold {
+                        tokens: list_append(
+                          left: state.tokens,
+                          right: list_append(
+                            left: match state.count {
+                              0 => Empty
+                              _ => Cons { head: FixedToken { token_class: separator }, tail: Empty }
+                            },
+                            right: list_append(left: target_primitive_argument_prefix_tokens(argument: shape), right: et)
+                          )
+                        ),
+                        pending_arguments: rest,
+                        count: state.count + 1
+                      }
+                    )
+                  }
+                )
+            }
+          }
+        )
+      }
+    ),
+    f: fn(state) {
+      match state.pending_arguments {
+        Empty => outcome_accepted(state.tokens)
+        Cons { head: _, tail: _ } => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
+      }
+    }
+  )
+}
+
+fn target_primitive_realization_arity_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_primitive_realization_arity_mismatch,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_primitive_call_to_concrete_tokens(
+  row: TargetPrimitiveRealization,
+  args: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog,
+  at: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match row.form {
+    PrimitiveFreeCall { callee: c } =>
+      bind_outcome(
+        o: target_primitive_arguments_to_tokens(
+          args: args, row: row, projection: projection, catalog: catalog,
+          separator: projection.callable_apply_form.separator, at: at
+        ),
+        f: fn(arg_tokens) {
+          outcome_accepted(
+            list_append(
+              left: list_append(
+                left: Cons {
+                  head: BoundToken { token_class: projection.callable_apply_form.callee_ident_token, binding: c },
+                  tail: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: Empty }
+                },
+                right: arg_tokens
+              ),
+              right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+            )
+          )
+        }
+      )
+    PrimitiveMethodCall { method: m } =>
+      match args {
+        Empty => outcome_rejected(target_primitive_realization_arity_diagnostic(at: at))
+        Cons { head: receiver, tail: rest } =>
+          bind_outcome(
+            o: target_value_expression_to_concrete_tokens(expr: receiver, projection: projection, catalog: catalog),
+            f: fn(rt) {
+              bind_outcome(
+                o: target_primitive_arguments_to_tokens(
+                  args: rest, row: row, projection: projection, catalog: catalog,
+                  separator: projection.callable_apply_form.separator, at: at
+                ),
+                f: fn(arg_tokens) {
+                  outcome_accepted(
+                    list_append(
+                      left: list_append(
+                        left: list_append(
+                          left: list_append(
+                            left: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: rt },
+                            right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+                          ),
+                          right: Cons {
+                            head: FixedToken { token_class: projection.field_access_form.dot },
+                            tail: Cons {
+                              head: BoundToken { token_class: projection.callable_apply_form.callee_ident_token, binding: m },
+                              tail: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: Empty }
+                            }
+                          }
+                        ),
+                        right: arg_tokens
+                      ),
+                      right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+                    )
+                  )
+                }
+              )
+            }
+          )
+      }
+  }
+}
+
+fn target_value_expression_primitive_row_call_to_concrete_tokens(
+  callee: Symbol,
+  args: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog,
+  at: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_primitive_realization_lookup(
+      primitives: catalog.primitives,
+      primitive: primitive_contract_declaration_ref(head: callee),
+      at: at
+    ),
+    f: fn(row) {
+      bind_outcome(
+        o: target_primitive_call_to_concrete_tokens(row: row, args: args, projection: projection, catalog: catalog, at: at),
+        f: fn(call_tokens) {
+          match row.result {
+            PrimitiveResultAsReturned => outcome_accepted(call_tokens)
+            PrimitiveResultInSharedHandle { constructor: k } =>
+              outcome_accepted(
+                list_append(
+                  left: Cons {
+                    head: BoundToken { token_class: projection.callable_apply_form.callee_ident_token, binding: k },
+                    tail: Cons { head: FixedToken { token_class: projection.callable_apply_form.open }, tail: Empty }
+                  },
+                  right: list_append(
+                    left: call_tokens,
+                    right: Cons { head: FixedToken { token_class: projection.callable_apply_form.close }, tail: Empty }
+                  )
+                )
+              )
+          }
+        }
+      )
+    }
+  )
+}
+
 fn target_value_expression_callable_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
@@ -8576,6 +8924,14 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
       bind_outcome(
         o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
         f: fn(args) {
+          bind_outcome(
+            o: target_value_expr_callable_apply_is_resolved_primitive(wire: expr.node),
+            f: fn(is_primitive) {
+          if is_primitive {
+            target_value_expression_primitive_row_call_to_concrete_tokens(
+              callee: callee, args: args, projection: projection, catalog: catalog, at: expr.node
+            )
+          } else {
           bind_outcome(
             o: target_value_expr_tokenize_intersperse(
               exprs: args,
@@ -8609,6 +8965,9 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
                   }
                 )
               )
+            }
+          )
+          }
             }
           )
         }
@@ -8703,7 +9062,7 @@ fn target_value_expr_closure_param_tokens(
 fn target_value_expression_closure_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: statement_sequenced_block_construct_guard(
@@ -8723,7 +9082,7 @@ fn target_value_expression_closure_to_concrete_tokens(
 fn target_value_expression_closure_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_open),
@@ -8746,7 +9105,7 @@ fn target_value_expression_closure_to_concrete_tokens_inner(
 fn target_value_expression_closure_plain_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_value_expr_closure_params_from_wire(wire: expr.node),
@@ -8816,7 +9175,7 @@ fn target_value_expression_closure_plain_tokens(
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
-  catalog: Node
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match expr.kind {
     TargetValueExprBindingRef =>
@@ -13590,6 +13949,7 @@ fn target_model_with_produced_scaffold(
   scaffold: TargetBodiedArrowStatementScaffold
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: target.primitive_realizations,
     produced_decl_support: target.produced_decl_support,
     bundle: target_model_bundle_replace_edge_target(
       bundle: target.bundle,
@@ -13643,6 +14003,7 @@ fn target_model_augment_use_site_ownership_catalog(
           Present { value: catalog } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -13698,6 +14059,7 @@ fn target_model_augment_value_semantics_carriers(
           Present { value: carriers_node } =>
             outcome_accepted(
               TargetModel {
+                primitive_realizations: target.primitive_realizations,
                 produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
@@ -14458,6 +14820,19 @@ fn target_transform_positional_operand_binding(node: Node, index: Int) -> Outcom
   }
 }
 
+fn target_bind_binder_binding(bind: Node) -> Outcome<Symbol> {
+  match bind_slot_target(n: bind, slot: BindBinderSlot) {
+    Present { value: child } => target_transform_positional_operand_binding_atom(child: child)
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: bind
+        )
+      )
+  }
+}
+
 fn target_transform_surface_op_atom(node: Node) -> Outcome<Symbol> {
   target_transform_positional_operand_binding(node: node, index: 0)
 }
@@ -14898,7 +15273,11 @@ fn target_project_transform_callable_apply_in_arrow_scope(
             ),
             f: fn(args) {
               outcome_accepted(
-                target_value_expression_callable_apply(callee: callee, args: args)
+                if target_transform_callee_is_resolved_primitive(body: body, callee: callee) {
+                  target_value_expression_resolved_primitive_call(callee: callee, args: args)
+                } else {
+                  target_value_expression_callable_apply(callee: callee, args: args)
+                }
               )
             }
           )
@@ -14912,17 +15291,13 @@ fn target_value_expr_branch_bool_gate(
   node: Node,
   source_bool_form: TargetBoolLiteralShape
 ) -> Bool {
-  if length(xs: positional_child_target_nodes(node: node)) != 3 {
-    false
-  } else {
-    match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
-      Present { value: cond } =>
-        target_value_expr_is_source_bool_literal_atom(
-          node: cond,
-          source_bool_form: source_bool_form
-        )
-      Absent => false
-    }
+  match branch_slot_target(n: node, slot: BranchConditionSlot) {
+    Present { value: cond } =>
+      target_value_expr_is_source_bool_literal_atom(
+        node: cond,
+        source_bool_form: source_bool_form
+      )
+    Absent => false
   }
 }
 
@@ -15444,13 +15819,13 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
 
 fn target_value_expr_match_project_arms(
   arrow: Node,
-  children: List<Edge>,
+  match_node: Node,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<List<TargetValueExprMatchArmSlot>> {
   match fold(
-    target_value_expr_match_arm_edges_after_scrutinee(children: children),
+    list_map(xs: match_role_slots(n: match_node, role: MatchArmSlot), f: fn(slot) { child_slot_edge(slot: slot) }),
     init: Accepted { value: Empty, diagnostics: None },
     f: fn(acc, arm_edge) {
       match acc {
@@ -15491,7 +15866,7 @@ fn target_project_match(
       )
     )
   } else {
-    match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+    match match_slot_target(n: body, slot: MatchScrutineeSlot) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15512,7 +15887,7 @@ fn target_project_match(
             bind_outcome(
               o: target_value_expr_match_project_arms(
                 arrow: arrow,
-                children: body.children,
+                match_node: body,
                 target: target,
                 source_bool_form: source_bool_form,
                 handle_transform: handle_transform
@@ -15550,7 +15925,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       } else {
-        match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
+        match branch_slot_target(n: body, slot: BranchConditionSlot) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -15559,7 +15934,7 @@ fn target_project_branch_bool_if_else(
           )
         )
       Present { value: cond } =>
-        match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+        match branch_slot_target(n: body, slot: BranchThenSlot) {
           Absent =>
             outcome_rejected(
               target_value_expr_diagnostic(
@@ -15568,7 +15943,7 @@ fn target_project_branch_bool_if_else(
               )
             )
           Present { value: then_arm } =>
-            match list_at_optional(xs: positional_child_target_nodes(node: body), index: 2) {
+            match branch_slot_target(n: body, slot: BranchElseSlot) {
               Absent =>
                 outcome_rejected(
                   target_value_expr_diagnostic(
@@ -15705,7 +16080,7 @@ fn target_project_bind_let(
         )
       Absent =>
         bind_outcome(
-          o: target_transform_positional_operand_binding(node: body, index: 0),
+          o: target_bind_binder_binding(bind: body),
           f: fn(key_binding) {
             bind_outcome(
               o: target_project_bind_tail(
@@ -15717,7 +16092,7 @@ fn target_project_bind_let(
                 handle_transform: handle_transform
               ),
               f: fn(projected_tail) {
-                match list_at_optional(xs: positional_child_target_nodes(node: body), index: 1) {
+                match bind_slot_target(n: body, slot: BindValueSlot) {
                   Absent =>
                     outcome_rejected(
                       target_value_expr_diagnostic(
@@ -15761,7 +16136,7 @@ fn target_project_bind_tail(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  match list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2) {
+  match bind_slot_target(n: bind, slot: BindBodySlot) {
     Absent =>
       outcome_rejected(
         target_value_expr_diagnostic(
@@ -16188,11 +16563,14 @@ fn target_value_expression_tokens_from_target(
       bundle: target.bundle,
       name: ^target_model_edge_operator_realizations
     ),
-    f: fn(catalog) {
+    f: fn(operators) {
       target_value_expression_to_concrete_tokens(
         expr: expr,
         projection: projection,
-        catalog: catalog
+        catalog: TargetRealizationCatalog {
+          operators: operators,
+          primitives: target.primitive_realizations
+        }
       )
     }
   )
