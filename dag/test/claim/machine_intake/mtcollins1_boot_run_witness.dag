@@ -40,7 +40,8 @@ import gunbc.host.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_mtcollins1_boot_grant_await_if, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account }
+import test.claim.fleet.fleet_converge_checkout_trust { fleet_converge_checkout_trust_holds }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_mtcollins1_boot_grant_await_if, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account }
 import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
@@ -713,11 +714,9 @@ fn step_inputs_text(s: Step) -> String {
 // expression and that the clause resolves to github.sha before any dispatch input.
 test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
   let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
-  fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
+  fleet_converge_checkout_trust_holds()
     && !string_contains(s: inputs, pattern: "expected_revision")
     && string_contains(s: inputs, pattern: "${{ github.sha }}")
-    && fleet_converge_checkout_ref_expr == "${{ github.sha }}"
-    && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
 }
 
 fn runner_labels(r: RunnerSpec) -> List<String> {
