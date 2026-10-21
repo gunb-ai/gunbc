@@ -45,6 +45,7 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
   param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
+  render_span_location,
   qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at,
   field_node_type_expr, generic_param_name_at, ExprData, NoExprData, ExprLiteral, ExprElaboratedLiteral, ExprError,
@@ -705,7 +706,11 @@ fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>
   match n.children |> first {
     Present { value: elem } =>
       render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: false)
-    Absent => emit_rust_compile_error_expr(message: concat("optional carrier payload type node absent for ", n.name, " at ", n.span.file, ":", to_string(n.span.start)))
+    // The location in this refusal is TEXT A HUMAN READS -- it lands in a `compile_error!` -- so it
+    // goes through the authority, in the units the reader can open. It used to print
+    // `file:349`, a byte offset wearing a `line:col` shape: the colon made it look like a position
+    // while the number could never be found in an editor.
+    Absent => emit_rust_compile_error_expr(message: concat("optional carrier payload type node absent for ", n.name, " at ", render_span_location(span: n.span, source_indices: source_indices)))
   }
 }
 
@@ -1507,8 +1512,18 @@ fn is_machine_width_phantom_token(name: String) -> Bool {
   name == "Word8" || name == "Word16" || name == "Word32" || name == "Word64" || name == "Word128"
 }
 
-fn emit_width_type_arg_identity_refusal(n: Node, name: String) -> String {
-  emit_rust_compile_error_expr(message: concat("width type argument has no Rust type identity at ", n.span.file, ":", to_string(n.span.start), " (", name, ")"))
+fn emit_width_type_arg_identity_refusal(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> String {
+  // READER-FACING TEXT, SO IT IS LOCATED BY THE ONE AUTHORITY. This string lands in a
+  // `compile_error!`, so the same rule that brought the Absent arm into scope brings this one: the
+  // old form printed `file:BYTE`, which is a number no editor can open. An unlocatable span renders
+  // its typed cause rather than a position.
+  emit_rust_compile_error_expr(message: concat(
+    "width type argument has no Rust type identity at ",
+    render_span_location(span: n.span, source_indices: source_indices),
+    " (",
+    name,
+    ")"
+  ))
 }
 
 // A type argument's Rust identity is decided from the declaration visible in this module, never
@@ -1528,21 +1543,21 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
       UnitVariantPhantomPresent { variant: _ } => Present { value: name }
       UnitVariantPhantomAbsent =>
         if is_width_nat_type_literal(n: n) && !width_position {
-          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name, source_indices: source_indices) }
         } else if is_width_nat_type_literal(n: n) {
           match expr_literal_int_optional(expr: n) {
             Present { value: v } =>
               match static_width_index_declaring_module(env: env) {
                 Present { value: declaring } => Present { value: concat("crate::", module_to_filename(name: declaring), "::", static_width_index_arm_name(), "<", to_string(v), ">") }
-                Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+                Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name, source_indices: source_indices) }
               }
-            Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+            Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name, source_indices: source_indices) }
           }
         } else if is_machine_width_phantom_token(name: name) {
-          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name, source_indices: source_indices) }
         } else { none }
       UnitVariantPhantomEvidenceUnavailable =>
-        Present { value: emit_rust_compile_error_expr(message: concat("unit-variant marker identity evidence unavailable for ", name, " at ", n.span.file, ":", to_string(n.span.start))) }
+        Present { value: emit_rust_compile_error_expr(message: concat("unit-variant marker identity evidence unavailable for ", name, " at ", render_span_location(span: n.span, source_indices: source_indices))) }
     }
   }
 }
@@ -12076,12 +12091,51 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
+// A PARAMETRIC DECLARATION NAMED WITHOUT ITS ARGUMENTS IS NOT A RENDERABLE TURBOFISH ARGUMENT. child_type_node
+// projects an alias reference to its resolved declaration node, and the env-resolved alias binding's
+// resolved_type drops the RHS type argument, so `Map<Symbol, QualifiedName>` (QualifiedName = FreeMonoid<Symbol>)
+// reached the renderer as the childless head `FreeMonoid` and emitted `rc_empty_map::<Symbol, Rc<FreeMonoid>>()`,
+// rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
+// parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
+// head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
+// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
+// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
+// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
+// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
+fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  n.children |> any(c =>
+    let t = child_type_node(ch: c)
+    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+      || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+}
+
+// The declaration's parameter count is read from the env binding; the render is bare when it is the head name
+// alone, with or without the shared wrap, whatever children the projected node still carries.
+fn rust_type_renders_bare_parametric_head(t: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  if !type_node_declares_parameters(n: t, env: emit_info.fn_type_env) {
+    false
+  } else {
+    let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t))
+    let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    rendered == head || rendered == concat("Rc<", head, ">")
+  }
+}
+
+fn type_node_declares_parameters(n: Node, env: TypeEnv) -> Bool {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: binding } => (binding.params |> count) > 0
+    Absent => false
+  }
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
     || type_node_carries_erased_type_argument(n: map_type)
+    || type_node_carries_applicationless_parametric_head(n: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
@@ -13916,7 +13970,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
+  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
@@ -14568,9 +14623,12 @@ fn fm_lowering_refusal_message(cause: FmLoweringRefusal) -> String {
   }
 }
 
-fn fm_located_refusal(cause: FmLoweringRefusal, arm: Node) -> String {
+// The position half of this text comes from the ONE authority, like every other refusal a .dag
+// author reads (DESIGN 6b). It used to print `to_string(value: arm.span.start)` -- a raw byte
+// offset, which reads as a position and is not one.
+fn fm_located_refusal(cause: FmLoweringRefusal, arm: Node, si: Map<String, NewlineIndex>) -> String {
   concat("v1.compiler.emit_rust will not lower ", fm_lowering_refusal_message(cause: cause),
-    " at ", arm.span.file, ":", to_string(value: arm.span.start),
+    " at ", render_span_location(span: arm.span, source_indices: si),
     " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm")
 }
 
@@ -14712,9 +14770,9 @@ fn fm_plans_refusal(plans: List<FmArmPlan>) -> FmArmPlan? {
   }
 }
 
-fn fm_plan_refusal_text(plan: FmArmPlan) -> String {
+fn fm_plan_refusal_text(plan: FmArmPlan, si: Map<String, NewlineIndex>) -> String {
   match plan.analysis {
-    FmUnsupportedArm { cause: c } => fm_located_refusal(cause: c, arm: plan.arm)
+    FmUnsupportedArm { cause: c } => fm_located_refusal(cause: c, arm: plan.arm, si: si)
     FmSpine { exact: _, len: _, head_binds: _, tail_bind: _ } => "v1.compiler.emit_rust internal: refusal requested for a supported FreeMonoid arm"
   }
 }
@@ -14781,7 +14839,7 @@ fn fm_spine_condition(len: Int, exact: Bool, cursor: String) -> String {
 // runs, so the unsupported arm is unreachable in production -- and it still emits a located refusal
 // rather than a fabricated branch, because a total function that cannot lie is worth more than an
 // unreachable! that asserts the caller checked (DESIGN section 5).
-fn fm_chain_piece(plan: FmArmPlan, body: String, cursor: String) -> FmChainPiece {
+fn fm_chain_piece(plan: FmArmPlan, body: String, cursor: String, si: Map<String, NewlineIndex>) -> FmChainPiece {
   match plan.analysis {
     FmSpine { exact: e, len: l, head_binds: hbs, tail_bind: tb } =>
       FmChainPiece {
@@ -14790,7 +14848,7 @@ fn fm_chain_piece(plan: FmArmPlan, body: String, cursor: String) -> FmChainPiece
         body: body
       }
     FmUnsupportedArm { cause: c } =>
-      FmChainPiece { cond: "true", binds: "", body: emit_rust_compile_error_expr(message: fm_located_refusal(cause: c, arm: plan.arm)) }
+      FmChainPiece { cond: "true", binds: "", body: emit_rust_compile_error_expr(message: fm_located_refusal(cause: c, arm: plan.arm, si: si)) }
   }
 }
 
@@ -14816,9 +14874,9 @@ fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: M
   let si = scope.type_env.source_indices
   let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
   match fm_plans_refusal(plans: plans) {
-    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad))
+    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad, si: si))
     Absent =>
-      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: "",
+      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: "", si: si,
         body: emit_typed_expr(texpr: arm_body(n: p.arm), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
       concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
@@ -17080,9 +17138,9 @@ fn emit_native_freemonoid_tco_match(scrut_str: String, cursor: String, arms: Lis
   let si = scope.type_env.source_indices
   let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
   match fm_plans_refusal(plans: plans) {
-    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad))
+    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad, si: si))
     Absent =>
-      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: cursor,
+      let pieces = plans |> map(p => fm_chain_piece(plan: p, cursor: cursor, si: si,
         body: emit_typed_tco_expr(texpr: arm_body(n: p.arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)))
       concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
@@ -18130,7 +18188,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
       } else if shell_argv_element_is_string_word(arg: arg, scope: argv_scope, emit_info: emit_info, source_indices: source_indices) {
         concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info), ")")
       } else {
-        concat("    .arg(", emit_rust_compile_error_expr(message: concat("argv element is not String or List<String> at ", arg.span.file, ":", to_string(arg.span.start))), ")")
+        concat("    .arg(", emit_rust_compile_error_expr(message: concat("argv element is not String or List<String> at ", render_span_location(span: arg.span, source_indices: source_indices))), ")")
       }
     )
   } else { [] }
@@ -19707,7 +19765,7 @@ fn emit_retained_host_main_mod_uses(crate_name: String, pipeline_module: String)
     "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
     "use ", crate_name, "::", core_mod, "::", "{",
     "\n    diagnostic_to_message, diagnostic_to_span,\n",
-    "    byte_to_line_col, source_line_at, NewlineIndex,\n",
+    "    byte_to_line_col, source_line_at, NewlineIndex, render_span_location, located_span_of,\n",
     "    CompilerDiagnostic,\n",
     "}", ";\n",
     "use ", crate_name, "::cli_run;\n")
@@ -22297,17 +22355,20 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "    let message = diagnostic_to_message(d.diagnostic.clone());\n",
     "    let span = diagnostic_to_span(d.diagnostic.clone());\n",
     "\n",
-    "    let location = if !span.file.is_empty() {\n",
-    "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
-    "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n",
+    "    // THE LOCATION IS THE AUTHORITY'S, not this function's. One renderer in the seed owns\n",
+    "    // `file:line:col` AND the words for \"there is no position\", which is what keeps this CLI\n",
+    "    // line and the compile lane's line for the SAME diagnostic in the same units -- they were\n",
+    "    // measured disagreeing (`(m.dag:133-134)` here, `error[m.dag:9:5]` there) while both were\n",
+    "    // arithmetically right. A diagnostic with no file at all falls back to its module name,\n",
+    "    // which is attribution rather than a location.\n",
+    "    let location = if span.file.is_empty() {\n",
+    "        if d.module_name.is_empty() {\n",
+    "            String::new()\n",
     "        } else {\n",
-    "            span.file.clone()\n",
+    "            d.module_name.clone()\n",
     "        }\n",
-    "    } else if !d.module_name.is_empty() {\n",
-    "        d.module_name.clone()\n",
     "    } else {\n",
-    "        String::new()\n",
+    "        ", core_mod, "::render_span_location(span.clone(), Rc::new(index_map.clone()))\n",
     "    };\n",
     "\n",
     "    if location.is_empty() {\n",
@@ -22318,15 +22379,20 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "    if !span.file.is_empty() {\n",
     "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
-    "            let line_text = source_line_at(idx.clone(), lc.line);\n",
-    "            let line_num = format!(\"{}\", lc.line);\n",
+    "            // The excerpt below is THIS printer's layout, but its LINE AND COLUMN come from\n",
+    "            // the authority, so the caret cannot drift away from the location printed above\n",
+    "            // it. No located span, no excerpt: a caret at a column we do not know is the\n",
+    "            // fabricated position this whole block exists to stop.\n",
+    "            let located = ", core_mod, "::located_span_of(span.clone(), Rc::new(index_map.clone()));\n",
+    "            if let Some(at) = located.as_ref() {\n",
+    "            let line_text = source_line_at(idx.clone(), at.start_line);\n",
+    "            let line_num = format!(\"{}\", at.start_line);\n",
     "            let gutter_width = line_num.len();\n",
     "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n",
     "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n",
     "\n",
     "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n",
-    "            let col_offset = (lc.col - 1) as usize;\n",
+    "            let col_offset = (at.start_col - 1) as usize;\n",
     "            eprintln!(\n",
     "                \"{} {} | {}{}\",\n",
     "                indent,\n",
@@ -22334,6 +22400,7 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "                \" \".repeat(col_offset),\n",
     "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n",
     "            );\n",
+    "            }\n",
     "        }\n",
     "    }\n",
     "}\n")

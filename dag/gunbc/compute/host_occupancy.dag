@@ -9,7 +9,7 @@ import extdeps.nvidia.system_management_interface {
   NvidiaComputeApp, ComputeAppUsedMemory, UsedMemoryReported, UsedMemoryWithheld,
   NvidiaComputeAppsRead, ComputeAppsParsed, ComputeAppsUnparsed, parse_compute_apps,
 }
-import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.host.host_operation_exec {
   HostOperation, SystemctlIsActive, ProcfsReadMeminfo, NvidiaSmiQueryComputeApps,
   host_operation_materialize_argv, host_operation_label,

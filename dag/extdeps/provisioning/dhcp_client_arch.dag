@@ -1,6 +1,7 @@
 module extdeps.provisioning.dhcp_client_arch
 
-import std.types { Int }
+import std.types { Int, List }
+import std.list { first_where }
 import extdeps.toolchain.types {
   Architecture,
   X86_64,
@@ -46,6 +47,20 @@ fn dhcp_processor_architecture_code(a: DhcpProcessorArchitecture) -> Int {
     HttpBootX86_64 => 16
     HttpBootArm64 => 19
   }
+}
+
+// THE INVERSE OF THE FORWARD TABLE, beside it: an observed option-93 code read back to the
+// architecture it names. Absent is a code outside this set, which a consumer carries as read and
+// never guesses onto a member. A new member is one arm in the forward match above AND one entry in
+// this list. Only the match is compiler-forced; the list is author discipline, and its completeness
+// is a typed frontier row (gunbc.fleet.site_pxe_edge_receipts site_pxe_edge_receipts_frontier_rows).
+// WHY HERE AND NOT IN A CONSUMER: IANA authors what an architecture code means, so the inverse is an
+// upstream fact and lives in extdeps; a conclusion our own extraction drew (e.g. a casper digest)
+// is authored by us and lives in gunbc.*. The test is who authors the fact.
+data dhcp_processor_architecture_members: List<DhcpProcessorArchitecture> = [BiosX86, UefiX86_64, UefiArm64, HttpBootX86_64, HttpBootArm64]
+
+fn dhcp_processor_architecture_from_code(code: Int) -> DhcpProcessorArchitecture? {
+  first_where(xs: dhcp_processor_architecture_members, keep: a => dhcp_processor_architecture_code(a: a) == code)
 }
 
 fn legacy_bios_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture? {

@@ -2,7 +2,7 @@ module gunbc.host_command_model
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { second }
-import v2.std.operation_argv { OperationRef, InputText, InputTextList }
+import std.operation_argv { OperationRef, InputText, InputTextList }
 import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
   ShellObserved,
@@ -44,7 +44,7 @@ fn local_command_words(command: ArgvCommand) -> List<String> {
   argv_words(command: command)
 }
 
-fn dispatched_words(bindings: List<v2.std.operation_argv.OperationInputBinding>, name: String) -> List<String>? {
+fn dispatched_words(bindings: List<std.operation_argv.OperationInputBinding>, name: String) -> List<String>? {
   fold(bindings, init: none, f: fn(acc, b) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -58,7 +58,7 @@ fn dispatched_words(bindings: List<v2.std.operation_argv.OperationInputBinding>,
   })
 }
 
-fn invocation_words(bindings: List<v2.std.operation_argv.OperationInputBinding>, inputs: List<String>) -> List<String>? {
+fn invocation_words(bindings: List<std.operation_argv.OperationInputBinding>, inputs: List<String>) -> List<String>? {
   fold(inputs, init: Present { value: [] }, f: fn(acc, name) {
     match acc {
       Absent => none
