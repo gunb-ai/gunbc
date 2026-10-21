@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.wire_projection_names_a_field_the_envelope_lacks
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data wire_projection_names_a_field_the_envelope_lacks: RecurringFailureMode = RecurringFailureMode {
   identity: "wire_projection_names_a_field_the_envelope_lacks" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a wire projection names a field the envelope does not carry** (a service operation declares an output projected `from \"<path>\"`, the response arrives successfully, the path resolves to nothing, and the operation yields NULL. The call SUCCEEDED -- a real 200 from the real upstream -- so nothing downstream has any reason to doubt the value it was handed.",

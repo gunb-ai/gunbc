@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.v2_native_route_exceeds_the_default_remote_r
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data v2_native_route_exceeds_the_default_remote_runner_memory: RecurringFailureMode = RecurringFailureMode {
   identity: "v2_native_route_exceeds_the_default_remote_runner_memory" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "neither route that runs the v2 emit pipeline over a real dag/ closure fits the default remote build runner's memory. The two routes are the seed interpreter evaluating v2.compiler.self_host.compiler_closure_emit, and the seed emitting and building v2.cli.compile_cli for //gunbc/instruments:v2-native-cli (INVALID STATE: the instrument that establishes the v2-exclusive door, and the only v2 route that emits a named module's closure, cannot execute on the executor sessions are directed to use. HARM: a session that asks the v2 route what it refuses for a module gets an OOM kill with no stage marker instead of a located diagnostic, so the v2 emitter's refusals for real modules stay unmeasured, and a v2 change that breaks the door is caught only on a larger host).",

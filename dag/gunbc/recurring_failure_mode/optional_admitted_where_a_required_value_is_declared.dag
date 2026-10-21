@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data optional_admitted_where_a_required_value_is_declared: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_admitted_where_a_required_value_is_declared" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "NEIGHBOUR: optional_payload_never_judged_against_declared_carrier is a different invalid state (a Present payload never judged against the declared T, the Present{\"s\"} at Int? hole); both shared the former undecidable-carrier mechanism.",
     "INVALID STATE: a value that carries optionality -- a CardOptional T? or the nominal Optional coproduct -- stands at a position whose declared type is Required and non-generic: a direct-call argument, a list element, or a member of a list literal whose type was elected from a Required head element. Absent inhabits no Required type, so the program has no meaning at that position; the floor obligation 'values inhabit declared types' (DESIGN 4b, the floor first) is broken.",

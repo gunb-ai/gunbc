@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.service_interface_member_has_no_carrier
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data service_interface_member_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "service_interface_member_has_no_carrier" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a member of a v2 service declaration has no typed carrier, so the declaration-grade lowering (`v2.compiler.body_lowering_fold` `body_lower_service_decl`) cannot lower it. The members fall into two classes, per DESIGN section 3 and docs/plans/service-interface-and-uses-carriers.md. INTERFACE facts: the operation modifiers `readonly` / `idempotent` / `hermetic` and an io field's `= default`. REALIZATION facts: `transport`, `config`, `exit`, `response`, `mock_response`, and an io field's `from \"key\"` wire key, which names the field of one transport's observation that fills a declared output and so is a decode projection of that transport, never part of the interface. Today's lowering sets the interface members aside as `body_lowering_reason_interface_member_unmodeled` and the realization members as `body_lowering_reason_realization_member_set_aside`, except that it still files the io `from` key under the interface reason because it reads the io tail as one unit; that misfiling is part of this class and moves with the realization binding.",
