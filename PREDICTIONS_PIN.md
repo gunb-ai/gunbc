@@ -814,3 +814,19 @@ from dispatch N, so risk is nil, but the slip is recorded rather than papered ov
 ## Dispatch U3 — #14612 row after the §5→§4b meta-obligation citation fix (review 83742's remark,
 ## verified true: the four meta-obligations are under the ## 4b header; §5 is Fail-closed).
  Text-only receipt edit. PREDICT: U3BUILD_RC=0, U3ROW_RC=1 cause NoSuchFunction{name:"main"}.
+
+## Pre-staged recipe — Acc⊕C1.2c family disposition (fires when C1.2c lands on main)
+1. git worktree pr2-fbp: git reset --hard origin/session/quiet-hawk-507 (Acc head; PR #14152 @97e47f8e562b
+   — re-check for a newer PR head first via gh pr view 14152 headRefOid).
+2. Merge the LANDED C1.2c (main, post-#14594) — conflicts and resolutions:
+   (a) src/v1/04_infer.dag unify_generics: keep BOTH — their arity-N child-pair loop AND PR-2's Acc
+       fold + text/module_name diagnostic params (same fn, disjoint edits).
+   (b) mirrored seed .rs (v1_compiler_infer.rs, v1_compiler_infer_types.rs, v1_tests_claim_generic_identity_census.rs):
+       regenerate from merged .dag (stage0 = emitter output; fixed point installed=0, hash-verify).
+   (c) one_type_variable_bound_to_two_distinct_coproducts.dag: keep both appended receipts (their C1.2c
+       receipt + PR-2's Acc receipt).
+   (d) constructor_tag_route_probe_red.dag: KEEP OURS (restore verbatim per warm-wolf-570 agreement).
+3. Run gate_two_closures_14152.sh (HEAD=merge, BASE=main) + tools/rebind_census.sh on head + main logs
+   (dispatch R pattern, /tmp/dispatchR.txt). Question: do the Map(Primitive(K),Primitive(V)) identities
+   (59/76, 34 at map_insert) clear on the merge vs Acc-head-alone? Acc-head-alone baseline: 76/67
+   distinct/occurrences, 17/18 ids (strip-vs-head diffs in /tmp/report_strip.md).
