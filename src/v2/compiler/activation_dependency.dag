@@ -10,8 +10,8 @@ module v2.compiler.activation_dependency
 // arm a prerequisite and run the untaken ones with their effects. The same reason the selector is not
 // projected as a DataDependsOn row to each arm: gating an arm is activation, not data flow, and a reader of
 // the flat views must not be able to see an arm as something to schedule (parent ruling on this change).
-// A4 (v2.program's run) projects ActivationDemand itself beside A1's ValueUseDependencies; that consumer is
-// a declared frontier, not a gap in this module.
+// The consumer is v2.workflow.runtime_run (v2.program's run), which evaluates a site's selector, asks the
+// interpretation to choose, checks the choice against these alternatives and evaluates only the chosen one.
 //
 // ROLES ARE READ BY SLOT. The normalized tree shares equal nodes, so a condition equal to an arm is two
 // edges that compare equal; the condition, scrutinee and arms are found through v2.std.node's slot tables
@@ -30,8 +30,8 @@ module v2.compiler.activation_dependency
 //
 // ONLY A COMPLETE POPULATION SUPPORTS AN INDEPENDENCE CONCLUSION. ActivationDependencies is demands PLUS
 // not_derived, as A1's ValueUseDependencies is relations plus not_derived: a consumer that reads only the
-// demands and drops not_derived would read a missing relation as independence. A4 refuses when not_derived
-// is non-empty for the population it schedules.
+// demands and drops not_derived would read a missing relation as independence. v2.workflow.runtime_run refuses
+// the whole run when not_derived is non-empty.
 //
 // ACTIVATION IS A RUNTIME DEMAND FACT ONLY. An untaken alternative contributes no runtime read, refusal or
 // effect, but inference and typing still judge every arm: nothing here suppresses compile-time checking.
