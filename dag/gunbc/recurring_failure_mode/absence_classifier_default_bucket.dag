@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.absence_classifier_default_bucket
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data absence_classifier_default_bucket: RecurringFailureMode = RecurringFailureMode {
   identity: "absence_classifier_default_bucket" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**absence-classifier default bucket, unprotected by its residual refusal** (a classifier whose ACCEPTED bucket is defined by the ABSENCE of properties is only as complete as the enumeration of kinds it was derived from, and it fails silently TOWARD THE DEFAULT rather than toward its refusal arm.",

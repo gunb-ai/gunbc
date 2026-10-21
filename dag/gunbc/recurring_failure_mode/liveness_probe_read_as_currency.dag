@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.liveness_probe_read_as_currency
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data liveness_probe_read_as_currency: RecurringFailureMode = RecurringFailureMode {
   identity: "liveness_probe_read_as_currency" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a liveness probe read as currency** (a probe answers whether a thing is RUNNING and its answer is consumed as whether it is running the CURRENT definition.",

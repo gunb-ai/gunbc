@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.a_checkpoint_announces_an_adjudication_that_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data a_checkpoint_announces_an_adjudication_that_only_happens_at_the_turn_cap: RecurringFailureMode = RecurringFailureMode {
   identity: "a_checkpoint_announces_an_adjudication_that_only_happens_at_the_turn_cap" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: an epoch-boundary checkpoint is presented as an adjudication of the work, while the modeled supervisor adjudication runs only when a lineage reaches continuation_turn_cap. HARM: operators and later turns treat a cadence stop as a judged resume, so unfinished work continues or stops on a label that no adjudicator produced (DESIGN section 5; a second meaning for one announcement is section 3's meaning fork).",

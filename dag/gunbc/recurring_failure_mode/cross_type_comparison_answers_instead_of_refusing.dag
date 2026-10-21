@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.cross_type_comparison_answers_instead_of_refusing
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data cross_type_comparison_answers_instead_of_refusing: RecurringFailureMode = RecurringFailureMode {
   identity: "cross_type_comparison_answers_instead_of_refusing" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: an equality or ordering whose two operands have DIFFERENT types is accepted and ANSWERS, rather than being refused. The observed instance compares a Measure record against a bare integer literal -- `o == 4104` where o is a ByteSize -- and evaluates FALSE. std.measure declares ByteSize = Measure<Memory, One, Nat> and Measure is a RECORD with a count field, so this is not two numeric types that might plausibly unify: it is a record against a scalar, maximally distinguishable, with both operand types present at the site.",

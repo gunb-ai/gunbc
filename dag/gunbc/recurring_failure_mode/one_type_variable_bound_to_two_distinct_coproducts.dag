@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.one_type_variable_bound_to_two_distinct_copr
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data one_type_variable_bound_to_two_distinct_coproducts: RecurringFailureMode = RecurringFailureMode {
   identity: "one_type_variable_bound_to_two_distinct_coproducts" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a generic fn `same_arm<T>(a: T, b: T)` is called with one argument of coproduct Pa and the other of a DIFFERENT coproduct Pb, so one type variable T is bound to two distinct declarations. It compiles and runs, answering false. (An `==` over `ConstructorTag<T>` against `ConstructorTag<U>` was probed earlier in the session but no probe for it is enrolled, so it is NOT claimed here.) This is DESIGN section 4b's compiler floor, `values inhabit declared types`, not a property of any carrier.",
