@@ -32,6 +32,10 @@ import gunbc.instruments.host_prelude {
   WitnessBinReadiness,
   WitnessBinRefusalReason,
   claim_batch_claims_argv,
+  // Declared rather than left to same-package resolution: this is the builder whose argv the fold's parsed
+  // stdout is matched against, so a reader of the import list should not have to guess that the dispatch and
+  // the gate share it (review 83981).
+  claim_batch_claims_argv_route,
   gunbc_claims_readiness,
   witness_bin_release_path
 }

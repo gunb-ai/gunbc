@@ -24,7 +24,8 @@ import gunbc.instruments.known_red_derivation {
   known_red_placed_identity_claim, known_red_entry_print, known_red_missing_dispatch,
   known_red_subject_defect_text,
   known_red_is_green, known_red_held_rows, known_red_max_claims_per_child,
-  known_red_disposition_name, known_red_no_line_cause, known_red_row_was_observed,
+  known_red_disposition_name, known_red_no_line_cause, known_red_undecodable_cause,
+  known_red_row_was_observed,
   known_red_exit_code_of,
   known_red_exit_code_of_all, KnownRedDerivationRefusal,
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
@@ -1373,7 +1374,18 @@ test fn a_verdict_line_no_arm_owns_is_refused_as_undecodable() -> Bool {
     predicate: fn(r) {
       known_red_refusal_name(r: r) == "PrintedLineUndecodable" && known_red_exit_code_of(r: r) == 2
     }
-  ) && (known_red_held_rows(rows: d.rows) |> length) == 0
+  )
+    && (known_red_held_rows(rows: d.rows) |> length) == 0
+    // THE TWO ABSENCES ARE DIFFERENT FACTS, and the row must say which one happened. 'A line came back whose
+    // shape no arm owns' is not 'no line came back': the first is a `claim_batch` print arm that drifted from
+    // this decoder (fix this file), the second is a child that never spoke about the claim (fix the run). If
+    // the two cause strings ever collapse into one, this is the arm that says so -- a single shared cause
+    // would make an undecodable line reportable as mere silence, which is coverage the instrument does not
+    // have.
+    && known_red_first_row(rows: d.rows).terminal
+         == NotAttempted { halted_by: known_red_undecodable_cause }
+    && known_red_first_row(rows: d.rows).terminal
+         != NotAttempted { halted_by: known_red_no_line_cause }
 }
 
 // TWO CLAIMS SHARING A FUNCTION NAME DO NOT TRADE VERDICTS, AND THE KEEPER OF THAT FACT IS THE ENTRY. Two
