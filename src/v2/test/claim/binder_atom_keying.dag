@@ -82,12 +82,16 @@ fn edge_declaration_row(edge: Edge, depth: Int, spelling: String, index: Map<Occ
       match edge.label {
         Authored { name: n } =>
           if symbol_lexeme(sym: n) == spelling {
-            match map_lookup(m: index, key: authored_occurrence_of_identity(identity: occ)) {
-              Absent => ["E" + int_to_decimal_string(value: depth) + "/miss:" + identity_text(identity: occ)]
-              Present { value: r } =>
-                match r.role {
-                  DeclarationRole => ["E" + int_to_decimal_string(value: depth) + "/DECL"]
-                  ReferenceRole => ["E" + int_to_decimal_string(value: depth) + "/REF"]
+            match authored_occurrence_of_identity(identity: occ) {
+              Absent => ["E" + int_to_decimal_string(value: depth) + "/unkeyable"]
+              Present { value: id } =>
+                match map_lookup(m: index, key: id) {
+                  Absent => ["E" + int_to_decimal_string(value: depth) + "/miss:" + identity_text(identity: occ)]
+                  Present { value: r } =>
+                    match r.role {
+                      DeclarationRole => ["E" + int_to_decimal_string(value: depth) + "/DECL"]
+                      ReferenceRole => ["E" + int_to_decimal_string(value: depth) + "/REF"]
+                    }
                 }
             }
           } else {
