@@ -198,6 +198,13 @@ data fork_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
 // of what the call ADDRESSED — the only thing a caller can still get wrong from outside.
 data gate_owner: NonEmptyStr = "gunb-ai"
 data gate_repo: NonEmptyStr = "gunbc"
+// THE FOREIGN ACCOUNT for the M1s standing RED and the M6 act RED: another OWNER on the same repository
+// NAME (someone-else/gunbc vs gunb-ai/gunbc). Declared HERE, not borrowed -- the identically-named
+// foreign_owner in github_app_manifest_witness is a GitHubUser (an installation account), and the compiler
+// resolved the bare name there, which is what made the whole index refuse (a name it could not
+// authenticate as a local declaration, not a red witness). This one is the plain NonEmptyStr the
+// subject mints take for an owner label.
+data foreign_owner: NonEmptyStr = "someone-else"
 data other_repo: NonEmptyStr = "someone-elses-fork"
 // would change WHICH endpoint is addressed if it were spliced into a route unexamined
 data hostile_repo: NonEmptyStr = "gunbc/../other"
@@ -1945,6 +1952,7 @@ test fn the_act_refuses_a_standing_sealed_for_another_account_or_another_reposit
             installation_id: canonical_installation_id,
             identity_repo: other_repo,
             rule_id: canonical_rule_id,
+            enabled: true,
           ),
         ),
         boundary: fork_boundary,
