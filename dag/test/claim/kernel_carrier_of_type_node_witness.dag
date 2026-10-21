@@ -78,7 +78,7 @@ test fn a_declared_non_alias_type_refuses_as_reaching_no_kernel_atom() -> Bool {
 }
 
 // RED for the walk's termination bound: an alias cycle authored as FIXTURE SOURCE and reached through a
-// pool root of its own (the accepted corpus cannot hold one). Reflection reaches it, so the reader
+// pool root of its own. The front end accepts the cycle (see the fixture header), so the reader
 // must refuse typed and name the atom the walk revisited rather than recurse.
 fn cycle_pool() -> List<String> { ["src/v2/test/fixture/alias_cycle"] }
 
