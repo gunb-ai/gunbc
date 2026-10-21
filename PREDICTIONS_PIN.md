@@ -791,3 +791,9 @@ Pre-registered BEFORE the run. Claim-run --source-root dag.
    emitted=2; census Map-class 0 on BOTH — instrument scope negative (Acc lives only on PR-2 head);
    reported to fierce-bee-518 + tidy-raven-397. Correct arm = Acc-head ⊕ C1.2c vs Acc-head, queued
    into PR-2 rebase.
+
+## Dispatch T1 — #14597 @7e8b463 (review-83725 fixes)
+Changes are text-only (row receipts + comments; CONTROL 4 test MOVED verbatim, no member logic
+edits). Predicted: identical to S2 — 13 PASS, kc_local_alias_of_the_carrier_admits_its_constructor
+FAIL (pre-existing), ROW NoSuchFunction{main}. Any member flip here means the comment move broke a
+parse (e.g. orphaned fn) — would need an immediate fix.
