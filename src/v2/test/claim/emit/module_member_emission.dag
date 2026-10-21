@@ -180,7 +180,7 @@ fn member_emission_supplied_refinement() -> String {
   }
   match emit_module_member(
     edge: member,
-    module_name: [],
+    module_name: Empty,
     target: rust_target_model(),
     realization_host: rust_target_model(),
     kinds: [DeclaredRefinement { name: ^Pos }],
