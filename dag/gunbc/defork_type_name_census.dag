@@ -19,9 +19,9 @@ import v2.std.decl_ref_resolution_host { resolve_declaration_ref_live, declarati
 // authored half cannot drift from the derived half without the plan's generation refusing, and
 // with it the required generated-artifact drift gate.
 //
-// "Declares a type" is the seed's item kind: `TypeItem` (a record or coproduct) or `OtherItem` (a
-// declaration with no connective, transport or body -- on these two roots, exactly the `type`
-// aliases). The node kind cannot be used instead: a function's declaration node is its signature,
+// "Declares a type" is the seed's item kind: `TypeItem` (a record or coproduct) or `OtherItem` (the
+// host's cannot-classify answer; `type` aliases read TypeItem since decl_index item_kind keys on the declaration kind,
+// so on these roots the OtherItem arm is kept only as the fail-closed over-inclusion). The node kind cannot be used instead: a function's declaration node is its signature,
 // a TypeNode. Any over-inclusion by `OtherItem` fails CLOSED: a non-type declaration entering the
 // population is a name no disposition row carries, and that refuses.
 data defork_census_dag_root: String = "dag/std"
