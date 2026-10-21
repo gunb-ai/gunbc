@@ -1,0 +1,52 @@
+module gunbc.rung_drop.instrument_dispatch_upper_edge_unmeasured
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
+
+// DECLARED 2026-10-21 (review 83744 on gunbc#14613). THE INSTRUMENT DISPATCH QUEUE HAD AN UPPER EDGE
+// BEFORE THIS CHANGE, AND KEYING THE GROUP PER DISPATCH REMOVED IT: one group name for every label let
+// at most ONE instrument run at a time on the self-hosted pool, so instrument load could never crowd
+// out the required lane. Keying by (ref, label) admits refs × labels at once, bounded only by runner
+// capacity. That is the operator's decision (gunbc.design_ruling
+// instrument_measurement_queues_run_in_parallel), and it is the right trade -- a lane no longer waits
+// behind an unrelated instrument's 4-hour timeout -- but the edge it removes is real and this row is
+// where it is written down rather than narrated as if it were still held.
+//
+// WHY THE LOST EDGE WAS NOT RE-ESTABLISHED AS A MEASUREMENT HERE. The instrument fleet and the required
+// v2-bootstrap job request the same labels (dag/gunbc/ci/ci_runner_placement puts both on
+// self-hosted linux arm64, and per-host CPU is divided by committed width), so the only honest
+// statement of the bound is the pool's committed width and the required lane's observed queue wait
+// during a parallel window. Neither is a SEED value today: the pool width lives in
+// gunbc.runner.runner_slot_allocation rows with no total committed slots projection, and the queue wait
+// is a platform fact no instrument reads. Claiming a "ship gate" that measures it would be the
+// fabricated instrument DESIGN section 5 refuses, so the loss is declared at the rung it can actually
+// reach and the next trigger names the two carriers that must exist first.
+//
+// THE CARRIER IT IS A PASSENGER ON, NOT A SUBSTITUTE FOR IT. The key is still asserted injective --
+// test.claim.instruments.instrument_dispatch_workflow_witness the_concurrency_group_is_keyed_per_ref_and_label_holds
+// refuses a key that collapses two different labels on one ref, and no_global_group_name_survives_in_the_emitted_workflow_holds
+// refuses any spelling that puts every label back behind one name -- and the per-(ref, label) bound is
+// held by the emitted concurrency block. Those rows bound the LOWER edge (one measurement cannot run
+// twice against itself). Nothing holds the upper edge, and this row says so where a consumer can find
+// it.
+
+data instrument_dispatch_upper_edge_unmeasured_population: List<String> = [
+  "gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_concurrency_group — the (ref, label) key, which admits refs × labels at once",
+  "gunbc.ci.ci_runner_placement — the shared self-hosted arm64 pool the instrument job and the required v2-bootstrap job both request, with no row bounding instrument concurrency against it",
+  "gunbc.runner.runner_slot_allocation — the committed slot widths, which have no total-committed-slots projection for a bound to read",
+]
+
+data instrument_dispatch_upper_edge_unmeasured: RungDrop = RungDrop {
+  identity: "instrument_dispatch_upper_edge_unmeasured" as NonEmptyStr,
+  subject: "a bound on how many instrument dispatches may occupy the shared self-hosted pool at once",
+  declared: "2026-10-21",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: DeletedWithoutReplacement,
+    population: instrument_dispatch_upper_edge_unmeasured_population,
+    restoration_trigger: "A required-context row reads the committed slot widths as a total and refuses when the rostered instrument labels times a stated per-ref fan-out exceed them, and an instrument reports the required lane's queue wait over a parallel-dispatch window; the bound then names the pool it protects and is judged on the gate, not in a comment."
+  }
+}
