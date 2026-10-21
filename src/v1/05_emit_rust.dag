@@ -12258,7 +12258,9 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
           }
         Absent => NeedsBoxRefuse { leaf: field, cause: "FieldAccessDeclaringFieldAbsent" }
       }
-    _ => NeedsBoxRefuse { leaf: field, cause: "FieldAccessBaseNamesNoDeclaration" }
+    TypeDeclLeafAmbiguous { leaf: l } => NeedsBoxRefuse { leaf: field, cause: concat("FieldAccessBaseLeafAmbiguous:", l) }
+    TypeDeclKernelSpellingUndecided { leaf: l } => NeedsBoxRefuse { leaf: field, cause: concat("FieldAccessBaseKernelSpellingUndecided:", l) }
+    TypeDeclNotDeclared => NeedsBoxRefuse { leaf: field, cause: concat("FieldAccessBaseNamesNoDeclaration:", authored_name_at(source_indices: si, node: resolved_type(n: base))) }
   }
 }
 
