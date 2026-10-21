@@ -277,12 +277,20 @@ fn p4_is_citation_shape(w: String) -> Bool {
 // reading is total in practice; the `_` arm exists because a match must be total, and it
 // yields the one thing that cannot resolve -- an empty module -- rather than a guess.
 fn p4_parse(w: String) -> P4Citation {
-  match w.split(delimiter: "::") {
+  // Bound with an explicit element type rather than matched in place: a List produced straight
+  // off `split` in a pattern leaves the element type as a bare variable, and `rest.split` then
+  // fails to resolve (the receiver's type is T, which establishes no method surface). The repo's
+  // own readers annotate the bind -- materialization_store_local.dag does exactly this.
+  let parts: List<String> = w.split(delimiter: "::")
+  match parts {
     Cons { head: m, tail: Cons { head: rest, tail: Empty } } =>
-      match rest.split(delimiter: ".") {
+      {
+      let dots: List<String> = rest.split(delimiter: ".")
+      match dots {
         Cons { head: d, tail: Cons { head: fld, tail: Empty } } =>
           P4Citation { module_path: m, decl_name: d, field_name: fld, has_field: true }
         _ => P4Citation { module_path: m, decl_name: rest, field_name: "", has_field: false }
+      }
       }
     _ => P4Citation { module_path: "", decl_name: "", field_name: "", has_field: false }
   }
