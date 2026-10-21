@@ -96,8 +96,9 @@ fn dependency_view_relations(views: List<DependencyView>) -> List<DependencyRela
 //
 // The subject is a parameter exactly as DependencyRelation's is: the compiler instantiates it over Node,
 // the demand engine over demand identity. The selector kind (condition or scrutinee) is not carried: it is
-// the site's own behavior. The alternatives are a FreeSemigroup because a selection among none is
-// meaningless; the head field is the construction wall.
+// the site's own behavior. The alternatives are a FreeSemigroup because a demand carries a real choice: a
+// site with none (a scrutinee-only Match, admitted when inference judges the scrutinee uninhabited) is not
+// an ActivationDemand and gets its own disposition in the deriving module; no alternative is fabricated.
 type ActivationDemand<Subject> {
   site: Subject
   selector: Subject

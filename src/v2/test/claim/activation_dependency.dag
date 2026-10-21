@@ -11,7 +11,6 @@ import v2.compiler.activation_dependency {
   BranchNotConditionThenElse,
   MatchArmMalformed,
   MatchScrutineeAbsent,
-  MatchWithoutArms,
   activation_dispositions,
   activation_dispositions_of_root
 }
@@ -25,7 +24,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.compilers.body_lowering { MatchArmPatternEdge, MatchArmBodyEdge }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.dependency { ActivationAlternative, ActivationDemand, SelectedByBranchSlot, SelectedByPattern }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, Locus, LocusAnchor, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.node {
   Atom,
   Branch,
@@ -44,6 +43,8 @@ import v2.std.node {
   TypeNode,
   branch_slot_target,
   core_edge_label,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
   match_slot_target,
   node_subtree_nodes
 }
@@ -159,8 +160,35 @@ fn acd_is_site(n: Node) -> Int {
   }
 }
 
+// EVERY SITE IS IN EXACTLY ONE POPULATION, BY IDENTITY AND MULTIPLICITY: for each site occurrence in the tree,
+// the number of rows (demand, not_derived, zero_alternatives) naming that node equals the number of times the
+// node occurs, so an omitted site and a duplicated one cannot cancel, and a shared node occurring twice is
+// owed two rows. No row names a node that is not a site.
 fn acd_total(d: ActivationDependencies, root: Node) -> Bool {
-  length(xs: d.demands) + length(xs: d.not_derived) == acd_sites(root: root)
+  acd_rows_total(d: d) == acd_sites(root: root)
+    && fold_list(
+      xs: node_subtree_nodes(root: root),
+      empty: true,
+      cons: fn(ok, n) { ok && (acd_is_site(n: n) == 0 || acd_rows_at(d: d, site: n) == acd_occurrences(root: root, n: n)) }
+    )
+}
+
+fn acd_rows_total(d: ActivationDependencies) -> Int {
+  length(xs: d.demands) + length(xs: d.not_derived) + length(xs: d.zero_alternatives)
+}
+
+fn acd_rows_at(d: ActivationDependencies, site: Node) -> Int {
+  fold_list(xs: d.demands, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x.site == site) })
+    + fold_list(xs: d.not_derived, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x.site == site) })
+    + fold_list(xs: d.zero_alternatives, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x.site == site) })
+}
+
+fn acd_hit(b: Bool) -> Int {
+  if b { 1 } else { 0 }
+}
+
+fn acd_occurrences(root: Node, n: Node) -> Int {
+  fold_list(xs: node_subtree_nodes(root: root), empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x == n) })
 }
 
 fn acd_branch_slots_are_then_else(demand: ActivationDemand<Node>) -> Bool {
@@ -506,26 +534,214 @@ fn acd_scrutinee_then(arms: List<Node>) -> List<Edge> {
   Cons { head: acd_positional(target: acd_atom(s: ^acd_scrut)), tail: fold_list(xs: arms, empty: Empty, cons: fn(acc, a) { list_snoc_item(xs: acc, item: acd_positional(target: a)) }) }
 }
 
-// (l) AN ILL-TYPED UNTAKEN ARM STILL REFUSES AT COMPILE TIME: activation is a runtime demand fact, so
-// inference judges every arm. The else arm adds a Bool to an Int; the tree resolves and still fails to infer,
-// and the same function with a well-typed else arm infers.
+// (l) AN ILL-TYPED UNTAKEN ARM STILL REFUSES AT COMPILE TIME, BY INFERENCE: activation is a runtime demand
+// fact, so inference judges every arm. The condition is the literal `true`, so the else arm is statically
+// untaken; it adds a Bool to an Int. The stages are separate and each must hold: both fixtures ASSEMBLE (an
+// assembly defect in the negative fixture is a failure of this test, never the refusal), the valid fixture
+// INFERS, and the invalid one is REJECTED BY INFERENCE with the transform-operand mismatch located INSIDE the
+// else arm's alternative root (read from the derivation) and not inside the then arm's.
 test fn acd_l_ill_typed_untaken_arm_still_refuses_at_compile_time_holds() -> Bool {
-  acd_infers(src: acd_well_typed_source) && !acd_infers(src: acd_ill_typed_source)
-}
-
-fn acd_infers(src: String) -> Bool {
-  match acd_assemble(src: src) {
+  match acd_assemble(src: acd_well_typed_source) {
     Absent => false
-    Present { value: tree } =>
-      match infer(tree: tree) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+    Present { value: good } =>
+      match acd_assemble(src: acd_ill_typed_source) {
+        Absent => false
+        Present { value: bad } =>
+          acd_inference_accepts(tree: good) && acd_rejection_is_in_the_else_arm(tree: bad)
       }
   }
 }
 
-data acd_well_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { a } else { a + 1 }\n}\n"
-data acd_ill_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if c { a } else { a + c }\n}\n"
+fn acd_inference_accepts(tree: ResolvedTree) -> Bool {
+  match infer(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn acd_rejection_is_in_the_else_arm(tree: ResolvedTree) -> Bool {
+  match infer(tree: tree) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^infer_transform_operand_type_mismatch
+        && match acd_first_demand(d: activation_dispositions(tree: tree)) {
+          Absent => false
+          Present { value: demand } =>
+            match acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) {
+              Absent => false
+              Present { value: else_root } =>
+                match acd_locus_node(l: diagnostics_fatal(d: d).at) {
+                  Absent => false
+                  Present { value: at } =>
+                    acd_within(n: at, root: else_root) && !acd_within(n: at, root: demand.alternatives.head.root)
+                }
+            }
+        }
+  }
+}
+
+fn acd_locus_node(l: Locus) -> Optional<Node> {
+  match l {
+    NodeLocus { anchor: a } => optional_present(value: a.at)
+    _ => optional_absent()
+  }
+}
+
+data acd_well_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if true { a } else { a + 1 }\n}\n"
+data acd_ill_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int {\n  if true { a } else { a + c }\n}\n"
+
+// (m) AN ARM'S STORAGE ORDER IS NOT ITS MEANING: the same Match twice, the second with ONE arm's pattern and
+// body edges stored in the opposite order. The selector, each arm's pattern, ordinal and alternative root are
+// the same. (Reordering whole arms is a different thing and is acd_k.)
+test fn acd_m_arm_edge_storage_order_does_not_change_the_alternative_holds() -> Bool {
+  acd_match_summary(arms: [
+    acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
+    acd_arm(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
+  ]) == acd_match_summary(arms: [
+    acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
+    acd_arm_body_first(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
+  ])
+    && acd_match_summary(arms: [
+      acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
+      acd_arm_body_first(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
+    ]) != optional_absent()
+}
+
+fn acd_arm_body_first(pattern: Node, body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body },
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+type AcdSummary {
+  selector: Node
+  roots: List<Node>
+  patterns: List<Node>
+  ordinals: List<Int>
+}
+
+fn acd_match_summary(arms: List<Node>) -> Optional<AcdSummary> {
+  match acd_first_demand(d: activation_dispositions_of_root(root: acd_match_of(children: acd_scrutinee_then(arms: arms)))) {
+    Absent => optional_absent()
+    Present { value: demand } =>
+      optional_present(value: AcdSummary {
+        selector: demand.selector,
+        roots: acd_map_alts(alts: acd_alternative_list(demand: demand), which: 0),
+        patterns: acd_map_alts(alts: acd_alternative_list(demand: demand), which: 1),
+        ordinals: acd_alt_ordinals(alts: acd_alternative_list(demand: demand))
+      })
+  }
+}
+
+fn acd_map_alts(alts: List<ActivationAlternative<Node>>, which: Int) -> List<Node> {
+  fold_list(
+    xs: alts,
+    empty: [],
+    cons: fn(acc, a) { list_snoc_item(xs: acc, item: acd_alt_node(a: a, which: which)) }
+  )
+}
+
+fn acd_alt_node(a: ActivationAlternative<Node>, which: Int) -> Node {
+  if which == 0 {
+    a.root
+  } else {
+    match a.selected_by {
+      SelectedByPattern { ordinal: _, pattern: p } => p
+      SelectedByBranchSlot { slot: _ } => a.root
+    }
+  }
+}
+
+fn acd_alt_ordinals(alts: List<ActivationAlternative<Node>>) -> List<Int> {
+  fold_list(
+    xs: alts,
+    empty: [],
+    cons: fn(acc, a) { list_snoc_item(xs: acc, item: acd_alt_ordinal(a: a)) }
+  )
+}
+
+fn acd_alt_ordinal(a: ActivationAlternative<Node>) -> Int {
+  match a.selected_by {
+    SelectedByPattern { ordinal: PositionalOrdinal { index: i }, pattern: _ } => i
+    _ => -1
+  }
+}
+
+// (n) A MISSING OR DUPLICATE MARKER IS STILL A TYPED not_derived ROW: an arm with two pattern edges, one with
+// no body edge, and one with two body edges are each MatchArmMalformed, never read as an alternative.
+test fn acd_n_missing_or_duplicate_arm_marker_is_not_derived_holds() -> Bool {
+  acd_arm_is_malformed(arm: acd_conj_of(edges: [acd_pattern_edge(t: ^acd_p1), acd_pattern_edge(t: ^acd_p2), acd_body_edge(t: ^acd_b1)]))
+    && acd_arm_is_malformed(arm: acd_conj_of(edges: [acd_pattern_edge(t: ^acd_p1)]))
+    && acd_arm_is_malformed(arm: acd_conj_of(edges: [acd_pattern_edge(t: ^acd_p1), acd_body_edge(t: ^acd_b1), acd_body_edge(t: ^acd_b2)]))
+}
+
+fn acd_conj_of(edges: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: edges, occurrence_id: OccurrenceSynthetic }
+}
+
+fn acd_pattern_edge(t: Symbol) -> Edge {
+  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t) }
+}
+
+fn acd_body_edge(t: Symbol) -> Edge {
+  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t) }
+}
+
+fn acd_arm_is_malformed(arm: Node) -> Bool {
+  match activation_dispositions_of_root(root: acd_match_of(children: acd_scrutinee_then(arms: [arm]))) {
+    d =>
+      acd_demand_count(d: d) == 0
+        && length(xs: d.zero_alternatives) == 0
+        && match d.not_derived {
+          Cons { head: r, tail: Empty } =>
+            match r.reason {
+              MatchArmMalformed { arm: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+  }
+}
+
+// (o) A SCRUTINEE-ONLY MATCH IS ITS OWN CASE, NEVER A FABRICATED ALTERNATIVE OR A DROPPED SELECTOR, AND ITS
+// VALIDITY IS INFERENCE'S: `fn f(n: Never) -> Int { match (n) { } }` is fed through the real front end. The
+// derivation records ActivationZeroAlternatives with the scrutinee as selector, no demand and nothing
+// malformed, and inference ACCEPTS it. The paired control is an INHABITED scrutinee with the same empty
+// Match: the derivation gives the same disposition (it does not infer uninhabitedness from the absence of
+// arms) and inference REFUSES it with the non-exhaustive-match diagnostic, so the verdict lives where the
+// semantic judgment does.
+test fn acd_o_scrutinee_only_match_is_its_own_case_and_validity_is_inferences_holds() -> Bool {
+  acd_zero_alternatives_then_infers(src: acd_never_source, accepted: true)
+    && acd_zero_alternatives_then_infers(src: acd_inhabited_empty_source, accepted: false)
+}
+
+fn acd_zero_alternatives_then_infers(src: String, accepted: Bool) -> Bool {
+  match acd_assemble(src: src) {
+    Absent => false
+    Present { value: tree } =>
+      match activation_dispositions(tree: tree) {
+        d =>
+          acd_demand_count(d: d) == 0
+            && length(xs: d.not_derived) == 0
+            && acd_total(d: d, root: tree.root)
+            && match d.zero_alternatives {
+              Cons { head: z, tail: Empty } =>
+                match_slot_target(n: z.site, slot: MatchScrutineeSlot) == optional_present(value: z.selector)
+                  && length(xs: z.site.children) == 1
+              _ => false
+            }
+            && acd_inference_accepts(tree: tree) == accepted
+      }
+  }
+}
+
+data acd_never_source: String = "module acd\n\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+data acd_inhabited_empty_source: String = "module acd\n\ntype T = A | B\n\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
 
 // (h) A MALFORMED SITE IS A TYPED ROW, NEVER A DEMAND OR A SKIP: a two-child Branch, a Match with no arms, a
 // Match with no children at all, and a Match whose arm is not (pattern, body).
@@ -545,18 +761,6 @@ test fn acd_h_malformed_sites_are_typed_not_derived_holds() -> Bool {
           _ => false
         }
   }
-    && match activation_dispositions_of_root(root: acd_match_of(children: [acd_positional(target: acd_atom(s: ^acd_s))])) {
-      d =>
-        acd_demand_count(d: d) == 0
-          && match d.not_derived {
-            Cons { head: r, tail: Empty } =>
-              match r.reason {
-                MatchWithoutArms => true
-                _ => false
-              }
-            _ => false
-          }
-    }
     && match activation_dispositions_of_root(root: acd_match_of(children: [])) {
       d =>
         acd_demand_count(d: d) == 0
