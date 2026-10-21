@@ -41,6 +41,14 @@ import gunbc.dispatch_credential_acquisition {
   CredentialLaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.roadmap.dispatch_worker_reach {
+  dispatch_worker_reach_for_plan,
+  dispatch_worker_reach_wire,
+  DispatchWorkerReach,
+  DispatchWorkerReachAdmitted,
+  DispatchWorkerAncestorNotTraversable,
+  DispatchWorkerReachCouldNotLook,
+}
 import gunbc.dispatch_attempt_launch {
   PreparedAttemptLaunch,
   SnapshotLaunch,
@@ -1504,6 +1512,29 @@ fn belt_credential_admit_before_spawn(prepared: PreparedAttemptLaunch) -> BeltCr
         LaunchLostDiscardFailed { reason: r } =>
           BeltCredentialAdmitLost { detail: r as String }
       }
+  }
+}
+
+// THE WORKER'S REACH IS ESTABLISHED BEFORE ANYTHING IS CLAIMED FOR THE UNIT. A unit whose worker uid
+// cannot traverse an ancestor of a handed path fails at start (200/CHDIR) with the worker never
+// having run, after the credential snapshot, placement grant and request have been consumed. This
+// refuses first, so no placement record is written and no start request is enqueued.
+// The tmux container runs as the controller itself and hands no User=, so only a unit container
+// climbs.
+fn belt_worker_reach_outcome(reach: DispatchWorkerReach) -> BeltExecStepsOutcome {
+  match reach {
+    DispatchWorkerReachAdmitted => ExecStepsOk
+    DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: _, observed_owner: _, observed_mode: _ } =>
+      ExecStepFailed { step: "worker-reach", detail: dispatch_worker_reach_wire(reach: reach) }
+    DispatchWorkerReachCouldNotLook { worker: _, handed_path: _, subject: _, reason: _ } =>
+      ExecStepFailed { step: "worker-reach", detail: dispatch_worker_reach_wire(reach: reach) }
+  }
+}
+
+fn belt_worker_reach_before_spawn(instance: HostDashboardInstance, container: DispatchSessionContainer) -> BeltExecStepsOutcome {
+  match container {
+    TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => ExecStepsOk
+    SystemdUnitContainer { plan } => belt_worker_reach_outcome(reach: dispatch_worker_reach_for_plan(instance: instance, plan: plan))
   }
 }
 
@@ -3429,6 +3460,16 @@ fn belt_spawn_admitted(
             launch: launch,
           }
         AttemptWorktreePresent { path: _ } =>
+      match belt_worker_reach_before_spawn(instance: instance, container: cmds.session_container) {
+        ExecStepFailed { step, detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: step,
+            detail: detail,
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        ExecStepsOk =>
       match belt_attempt_state_initialize_for_instance(
         instance: instance,
         node: node,
@@ -3538,6 +3579,7 @@ fn belt_spawn_admitted(
               }
               }
           }
+      }
       }
       }
   }

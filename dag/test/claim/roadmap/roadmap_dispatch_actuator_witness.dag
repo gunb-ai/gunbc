@@ -687,7 +687,7 @@ test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
     && string_contains(s: wire, pattern: ".[0:4096]")
     && string_contains(
       s: wire,
-      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/projection-node-current/provider-events.jsonl",
+      pattern: "\0/opt/gunbc-lab/codex-provider-feedback-v0/attempt-state/projection-node-current/provider-events.jsonl",
     )
     && !string_contains(s: wire, pattern: "aggregated_output")
 }
