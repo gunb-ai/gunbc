@@ -842,33 +842,6 @@ pub fn symbol_index_insert_service(
     }
 }
 
-pub fn empty_scope() -> Rc<Scope> {
-    Rc::new(Scope {
-        locals: v1_rt::rc_empty_map::<String, Rc<ScopeBinding>>(),
-    })
-}
-
-pub fn scope_lookup(scope: Rc<Scope>, name: String) -> Option<Rc<ScopeBinding>> {
-    v1_rt::map_get(&scope.locals.clone(), name.clone())
-}
-
-pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
-    {
-        let __rb_0_0 =
-            v1_rt::rc_map_insert(scope.locals.clone(), binding.name.clone(), binding.clone());
-        let mut __rb_h = scope;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.locals = __rb_0_0;
-            }
-            None => {
-                __rb_h = Rc::new(Scope { locals: __rb_0_0 });
-            }
-        }
-        __rb_h
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnvCache {
     pub deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
@@ -923,10 +896,6 @@ pub fn source_tree_of(file: String) -> String {
             }
         }
     }
-}
-
-pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
-    (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1314,16 +1283,6 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
             }
         }
         __rb_h
-    }
-}
-
-pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
-        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
-            Some(binding) => Some(binding.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
-        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2385,29 +2344,6 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
             )
         }
     })
-}
-
-pub fn is_inductive_field(
-    env: Rc<TypeEnv>,
-    type_name: String,
-    variant_name: String,
-    field_name: String,
-) -> bool {
-    {
-        let mut __found = false;
-        for f in inductive_fields_for(env.clone(), type_name.clone())
-            .iter()
-            .cloned()
-        {
-            if ((f.variant_name.clone() == variant_name.clone())
-                && (f.field_name.clone() == field_name.clone()))
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
 }
 
 pub fn put_inductive_field_guard_note() -> String {

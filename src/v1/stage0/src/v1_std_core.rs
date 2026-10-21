@@ -50,6 +50,10 @@ pub use crate::std_coercion::{
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
+use crate::std_generated_provider::GeneratedProviderUnavailableCause::*;
+pub use crate::std_generated_provider::{
+    generated_provider_unavailable_message, GeneratedProviderUnavailableCause,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -641,6 +645,11 @@ pub enum CompilerDiagnostic {
         route: String,
         span: Rc<SourceSpan>,
     },
+    GeneratedProviderUnavailable {
+        declaration: Rc<DeclarationRef>,
+        cause: GeneratedProviderUnavailableCause,
+        span: Rc<SourceSpan>,
+    },
     AlgebraApplicationEvidenceUnavailable {
         receiver_type: String,
         argument_index: i64,
@@ -1022,6 +1031,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { span: s, .. } => s.clone(),
+        CompilerDiagnostic::GeneratedProviderUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
@@ -1101,6 +1111,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text crossing with no implicit route: expected ".to_string(), e.clone()), ", got ".to_string()), g.clone()), " -- host text and a code-point sequence meet only through a declared conversion plan; call ".to_string()), r.clone()), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)".to_string()),
+    CompilerDiagnostic::GeneratedProviderUnavailable { declaration: d, cause: c, .. } => crate::std_generated_provider::generated_provider_unavailable_message(d.clone(), c.clone()),
     CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { position: p, .. } => v1_rt::concat(v1_rt::concat("text boundary unjudged at ".to_string(), p.clone()), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), v1_rt::concat(v1_rt::concat("' no longer matches what this module contains: the row declares ".to_string(), (d.clone()).to_string()), v1_rt::concat(" occurrence(s) and ".to_string(), (o.clone()).to_string()))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
@@ -1266,6 +1277,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::GeneratedProviderUnavailable { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -2345,10 +2360,6 @@ pub fn variant_node_fields(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
 }
 
-pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
-    n.span.clone()
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChildRole {
     pub name: String,
@@ -2421,10 +2432,6 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         }
         __found
     })
-}
-
-pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
-    v1_rt::map_get(&expr_child_roles(), variant_name.clone())
 }
 
 #[derive(
@@ -3584,10 +3591,6 @@ pub fn transport_verb(
     )
 }
 
-pub fn transport_has_argv(t: Rc<Node>) -> bool {
-    ((t.children.clone().len() as i64) > 0)
-}
-
 pub fn is_rest_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4305,24 +4308,6 @@ pub fn service_config_properties(
     }
 }
 
-pub fn has_service_config(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let mut __found = false;
-        for p in n.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone())
-                == "svc_endpoint".to_string())
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
 pub fn service_config_endpoint(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4341,17 +4326,6 @@ pub fn service_config_auth(
     find_property(
         n.properties.clone(),
         "svc_auth".to_string(),
-        source_indices.clone(),
-    )
-}
-
-pub fn service_config_rate_limit(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    find_property(
-        n.properties.clone(),
-        "svc_rate_limit".to_string(),
         source_indices.clone(),
     )
 }
@@ -5350,13 +5324,6 @@ pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Some(id.clone()),
         std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
-    match v1_rt::map_get(&table.index.clone(), s.clone()) {
-        Some(id) => id.clone(),
-        std::option::Option::None => 0,
     }
 }
 

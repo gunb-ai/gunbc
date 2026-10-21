@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.rust_ingest_lexer_missing_a_bare_operator_spelling
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data rust_ingest_lexer_missing_a_bare_operator_spelling: RecurringFailureMode = RecurringFailureMode {
   identity: "rust_ingest_lexer_missing_a_bare_operator_spelling" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: v2.extdeps.languages.rust rust_extended_lex_rules, the INGEST rule set that carries whitespace trivia and re-spells emission tokens as bare lexemes (kw_let, =, >, ;), has no bare spelling for an operator whose only spelling is the emission one with baked spacing (rust_fn_add_lex_rules spells plus as space-plus-space). Ordinary Rust source with an unspaced operator (`z=x+1`) is unlexable.",
