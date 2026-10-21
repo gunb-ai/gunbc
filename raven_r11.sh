@@ -189,6 +189,16 @@ echo "matrix=OFF (corpus population must stay pure)"
 timeout 1500 ./target/release/gunbc test //gunbc/instruments:v2-native-census-scoped > /tmp/cen_k.out 2>/tmp/cen_k.err
 echo "census_kind_rc=$?"
 echo "--- cen_k.err tail (r15+ relay) ---"; tail -30 /tmp/cen_k.err | fold -w 195 | sed "s/^/CENKERR /"; echo "--- cen_k.out head ---"; head -8 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKOUT /"; grep -ac "panic\|Panicked" /tmp/cen_k.err | sed "s/^/CENK_PANIC_LINES=/"; grep -a "panic\|Panicked" /tmp/cen_k.err | head -6 | fold -w 300 | sed "s/^/CENKPANIC /"
+echo "--- cen_k.out content (r17+) ---"
+grep -acE "\(dag/|\(src/" /tmp/cen_k.out | sed "s/^/CENK_ROWISH=/"
+head -10 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKHEAD /"
+tail -6 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKTAIL /"
+echo "--- emitted-clone forensics ---"
+d=$(ls -dt /tmp/gunbc-emit-compile-* 2>/dev/null | head -1)
+echo "PROBE_ROOT=$d"
+f="$d/src_v2_compiler_source_root_eval_dag/src/bin/gunbc-emitted-closure-src-v2-compiler-source-root-eval-dag.rs"
+if [ -f "$f" ]; then sed -n 586,598p "$f" | cat -n | fold -w 190 | sed "s/^/EMITLINE /"; else echo EMITFILE_ABSENT; fi
+grep -B2 -A10 "does nothing" /tmp/cen_k.err | head -30 | fold -w 195 | sed "s/^/RUSTCCTX /"
 cat /tmp/cen_k.out /tmp/cen_k.err > /tmp/kin.txt
 python3 /tmp/analyze.py > /tmp/analysis_kin.txt 2>&1; echo "analyze_kin_rc=$?"
 grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1-190
@@ -319,6 +329,16 @@ echo "matrix=OFF (corpus population must stay pure)"
 timeout 1500 ./target/release/gunbc test //gunbc/instruments:v2-native-census-scoped > /tmp/cen_k.out 2>/tmp/cen_k.err
 echo "census_kind_rc=$?"
 echo "--- cen_k.err tail (r15+ relay) ---"; tail -30 /tmp/cen_k.err | fold -w 195 | sed "s/^/CENKERR /"; echo "--- cen_k.out head ---"; head -8 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKOUT /"; grep -ac "panic\|Panicked" /tmp/cen_k.err | sed "s/^/CENK_PANIC_LINES=/"; grep -a "panic\|Panicked" /tmp/cen_k.err | head -6 | fold -w 300 | sed "s/^/CENKPANIC /"
+echo "--- cen_k.out content (r17+) ---"
+grep -acE "\(dag/|\(src/" /tmp/cen_k.out | sed "s/^/CENK_ROWISH=/"
+head -10 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKHEAD /"
+tail -6 /tmp/cen_k.out | fold -w 195 | sed "s/^/CENKTAIL /"
+echo "--- emitted-clone forensics ---"
+d=$(ls -dt /tmp/gunbc-emit-compile-* 2>/dev/null | head -1)
+echo "PROBE_ROOT=$d"
+f="$d/src_v2_compiler_source_root_eval_dag/src/bin/gunbc-emitted-closure-src-v2-compiler-source-root-eval-dag.rs"
+if [ -f "$f" ]; then sed -n 586,598p "$f" | cat -n | fold -w 190 | sed "s/^/EMITLINE /"; else echo EMITFILE_ABSENT; fi
+grep -B2 -A10 "does nothing" /tmp/cen_k.err | head -30 | fold -w 195 | sed "s/^/RUSTCCTX /"
 cat /tmp/cen_k.out /tmp/cen_k.err > /tmp/kin.txt
 python3 /tmp/analyze.py > /tmp/analysis_kin.txt 2>&1; echo "analyze_kin_rc=$?"
 grep -a "KIN_total\|KIN_cause\|GROUP" /tmp/analysis_kin.txt | head -20 | cut -c1-190
