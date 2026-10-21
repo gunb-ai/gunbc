@@ -133,6 +133,25 @@ test fn onc_none_unsolved_let_agrees_with_bare_absent() -> Bool {
   onc_none_assembles(body: "fn mk() -> Int { let x = none\n 1 }\n") && onc_none_infer_accepted(body: "fn mk() -> Int { let x = none\n 1 }\n") == onc_infer_accepted(body: "fn mk() -> Int { let x = Absent\n 1 }\n")
 }
 
+fn onc_infer_refusal_reason_is_unsolved(assembled: Outcome<ResolvedTree>) -> Bool {
+  match assembled {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_unsolved_constructor_type_variable
+      }
+  }
+}
+
+test fn onc_let_none_is_the_unsolved_constructor_refusal() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_none_assemble(body: "fn mk() -> Int { let x = none\n 1 }\n"))
+}
+
+test fn onc_let_absent_is_the_unsolved_constructor_refusal() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_assemble(body: "fn mk() -> Int { let x = Absent\n 1 }\n"))
+}
+
 test fn onc_none_at_a_non_optional_position_refuses() -> Bool {
   onc_none_assembles(body: "fn mk() -> Int { none }\n") && !onc_none_infer_accepted(body: "fn mk() -> Int { none }\n")
 }
