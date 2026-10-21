@@ -4,7 +4,13 @@ import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { FreeSemigroup }
 import std.markdown { MarkdownDocument }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.rung_drop { dissolved_is_admissible, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, Enumerated, PopulationDeleted, DeletedWithoutReplacement }
+import std.types { CommitSha }
+import std.optional { Optional, Present, Absent }
+import std.removal_tombstone { RemovalTombstone, RemovalVerdict, RemovalHolds, RemovedModuleStillExists, RemovedModuleUnobservable, RemovalCommitDoesNotResolve, RemovalCommitUnobservable, ModuleObservation, ModulePresent, ModuleAbsent, ModuleUnobservable, CommitObservation, CommitResolves, CommitDoesNotResolve, CommitUnobservable, removal_tombstone_verdict, removal_tombstone_holds }
+import v2.lens.module_impact_query { ModuleIdentity }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import gunbc.source_layout { layout_module_storage_path }
+import gunbc.rung_drop { population_arm_fits_standing, PopulationRestored, dissolved_is_admissible, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, Enumerated, PopulationDeleted, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.standing { standing_rung_drops_of, dissolved_populations_empty, superseded_loss_holders_stand }
@@ -165,7 +171,7 @@ test fn w_RED_a_dissolved_row_over_a_live_population_is_refused() -> Bool {
   }
   let empty = RungDrop {
     identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted, restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted { removal: fixture_tombstone() }, restoration_trigger: "t" }
   }
   (dissolved_populations_empty(drops: [live]) == false) && dissolved_populations_empty(drops: [empty])
 }
@@ -182,7 +188,7 @@ test fn w_RED_the_standing_accounting_keeps_an_invalid_dissolved_row_live() -> B
   }
   let empty = RungDrop {
     identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted, restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted { removal: fixture_tombstone() }, restoration_trigger: "t" }
   }
   let kept = map(standing_rung_drops_of(ds: [live, empty]), d => d.identity as String)
   length(xs: filter(kept, i => i == "fixture.live")) == 1 && length(xs: filter(kept, i => i == "fixture.empty")) == 0
@@ -199,7 +205,7 @@ test fn w_RED_an_invalid_dissolved_row_does_not_render_as_dissolved() -> Bool {
   }
   let empty = RungDrop {
     identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted, restoration_trigger: "t" }
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: PopulationDeleted { removal: fixture_tombstone() }, restoration_trigger: "t" }
   }
   let bad = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: live.standing, admissible: dissolved_is_admissible(drop: live)) })
   let good = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: empty.standing, admissible: dissolved_is_admissible(drop: empty)) })
@@ -208,4 +214,109 @@ test fn w_RED_an_invalid_dissolved_row_does_not_render_as_dissolved() -> Bool {
     && rung_drop_standing_suffix(standing: live.standing, admissible: dissolved_is_admissible(drop: live)) == " · INVALID DISSOLVED"
     && bad_sentence.contains("INVALID DISSOLVED") && (bad_sentence.contains("nothing remains") == false)
     && good.contains("NO LONGER EXISTS")
+}
+
+
+data fixture_removed_commit: CommitSha = "fa44b9810259b88f721e55ae0a3bd3cf7bc9b46f" as CommitSha
+
+fn tombstone_over(modules: FreeSemigroup<ModuleIdentity>) -> RemovalTombstone {
+  RemovalTombstone { removed_modules: modules, removed_at: fixture_removed_commit, ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr }
+}
+
+fn fixture_tombstone() -> RemovalTombstone {
+  tombstone_over(modules: FreeSemigroup { head: ModuleIdentity { name: "fixture.gone" }, tail: [] })
+}
+
+fn module_looked_up(name: String, modules: List<ModuleDeclarationFact>) -> ModuleObservation {
+  match layout_module_storage_path(module: name) {
+    Absent => ModuleUnobservable
+    Present { value: path } => if length(xs: modules) == 0 {
+      ModuleUnobservable
+    } else if length(xs: filter(modules, m => m.path == path)) > 0 {
+      ModulePresent
+    } else {
+      ModuleAbsent
+    }
+  }
+}
+
+data tombstone_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn tree_module_observer(m: ModuleIdentity) -> ModuleObservation {
+  module_looked_up(name: m.name, modules: module_declaration_facts_live(pool_roots: tombstone_pool_roots))
+}
+
+fn commit_not_observable(c: CommitSha) -> CommitObservation { CommitUnobservable }
+
+fn supplied_modules(present: List<String>) -> fn(ModuleIdentity) -> ModuleObservation {
+  m => if length(xs: filter(present, p => p == m.name)) > 0 { ModulePresent } else { ModuleAbsent }
+}
+
+// POSITIVE CONTROL + RED OF THE CONSUMER, over supplied observations. A named module still present
+// must refuse as RemovedModuleStillExists; all absent with a resolving commit holds; an unobservable
+// module or commit is a typed verdict and never Holds.
+test fn w_RED_a_tombstone_naming_a_still_present_module_refuses() -> Bool {
+  let t = tombstone_over(modules: FreeSemigroup { head: ModuleIdentity { name: "a.gone" }, tail: [ModuleIdentity { name: "a.back" }] })
+  let resolves = (c => CommitResolves)
+  let held = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: []), observe_commit: resolves)
+  let refused = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: ["a.back"]), observe_commit: resolves)
+  let blind = removal_tombstone_verdict(tombstone: t, observe_module: (m => ModuleUnobservable), observe_commit: resolves)
+  let missing = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: []), observe_commit: (c => CommitDoesNotResolve))
+  let unseen = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: []), observe_commit: commit_not_observable)
+  (match held { RemovalHolds => true  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => false })
+    && (match refused { RemovalHolds => false  RemovedModuleStillExists { module: m } => m.name == "a.back"  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => false })
+    && (match blind { RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => true  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => false })
+    && (match missing { RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => true  RemovalCommitUnobservable => false })
+    && (match unseen { RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => true })
+}
+
+// THE STANDING FIXES THE ARM. RED: a Retired row over PopulationDeleted and a Dissolved row over
+// PopulationRestored must each refuse; the paired arms are the controls.
+test fn w_RED_a_population_arm_under_the_wrong_standing_is_refused() -> Bool {
+  let retired = Retired { trigger_fired: "fired" as NonEmptyStr }
+  let dissolved = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let row = (st, pop) => RungDrop {
+    identity: "fixture.arm" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: pop, restoration_trigger: "t" }
+  }
+  let deleted = PopulationDeleted { removal: fixture_tombstone() }
+  (population_arm_fits_standing(d: row(retired, deleted)) == false)
+    && (population_arm_fits_standing(d: row(dissolved, PopulationRestored)) == false)
+    && population_arm_fits_standing(d: row(retired, PopulationRestored))
+    && population_arm_fits_standing(d: row(dissolved, deleted))
+    && (dissolved_populations_empty(drops: [row(retired, deleted)]) == false)
+    && (dissolved_populations_empty(drops: [row(dissolved, PopulationRestored)]) == false)
+    && dissolved_populations_empty(drops: [row(dissolved, deleted)])
+}
+
+// THE LIVE ROSTER'S TOMBSTONES AGAINST THE EVALUATED TREE. The observer reads the corpus through
+// the storage lookup; a module that is present (gunbc.rung_drop) must read ModulePresent, so an
+// observer that answers Absent for everything cannot pass. The commit half is typed unobservable:
+// a claim has no git, so Holds is not claimed here.
+test fn the_live_roster_tombstones_name_modules_absent_from_the_tree() -> Bool {
+  let present = tree_module_observer(ModuleIdentity { name: "gunbc.rung_drop" })
+  let dissolved = filter(rung_drop_roster, d => match d.standing {
+    Standing => false
+    Retired { trigger_fired: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => true
+  })
+  let verdicts = map(dissolved, d => match d.declaration {
+    TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => match p {
+      PopulationDeleted { removal: t } => match removal_tombstone_verdict(tombstone: t, observe_module: tree_module_observer, observe_commit: commit_not_observable) {
+        RemovalCommitUnobservable => true
+        RemovalHolds => false
+        RemovedModuleStillExists { module: _ } => false
+        RemovedModuleUnobservable { module: _ } => false
+        RemovalCommitDoesNotResolve => false
+      }
+      Enumerated { members: _ } => false
+      DerivedBy { label: _ } => false
+      NotYetCounted { cause: _ } => false
+      PopulationRestored => false
+    }
+    AuthoredProse { legacy: _, authored: _ } => false
+  })
+  (match present { ModulePresent => true  ModuleAbsent => false  ModuleUnobservable => false })
+    && length(xs: verdicts) == 2 && all(verdicts, v => v)
 }

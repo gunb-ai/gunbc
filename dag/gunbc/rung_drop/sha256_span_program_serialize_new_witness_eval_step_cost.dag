@@ -1,6 +1,9 @@
 module gunbc.rung_drop.sha256_span_program_serialize_new_witness_eval_step_cost
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, CommitSha }
+import std.algebra { FreeSemigroup }
+import std.removal_tombstone { RemovalTombstone }
+import v2.lens.module_impact_query { ModuleIdentity }
 import gunbc.rung_drop { RungDrop, Dissolved, TypedDeclaration, PopulationDeleted, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -56,7 +59,12 @@ data sha256_span_program_serialize_new_witness_eval_step_cost: RungDrop = RungDr
     reason: ReplacementStaged {
       replacement: "the serialized byte-span program reaching a claim frame as a served value rather than being re-rendered inside it, or a serialization that fits the budget",
     },
-    population: PopulationDeleted,
+    population: PopulationDeleted { removal: RemovalTombstone {
+      removed_modules: FreeSemigroup { head: ModuleIdentity { name: "gunbc.spark.v41_checkpoint_materialize" }, tail: [ModuleIdentity { name: "test.claim.spark.v41_checkpoint_materialize_witness" }, ModuleIdentity { name: "gunbc.sha256sum_byte_span" }] },
+      removed_at: "fa44b9810259b88f721e55ae0a3bd3cf7bc9b46f" as CommitSha,
+      ruling: "Group A decommissioned (operator, 2026-10-07, relayed by valiant-crab-775); deleted in gunbc#13641" as NonEmptyStr,
+      decision_record: "dashboard messages msg_5d88338f and msg_9e5a2fee, both 2026-10-07" as NonEmptyStr,
+    } },
     restoration_trigger: "THE CAPABILITY, EITHER CLAUSE SATISFIES IT, AND BOTH ARE STATED BECAUSE THE CAUSE IS NOT YET ESTABLISHED. (i) gunbc.sha256sum_byte_span sha256sum_byte_span_program is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path; WHAT THAT MUST BE SUFFICIENT FOR: a required-floor claim asserting the real byte-span argv carries the really-serialized program does not re-render it inside its own frame. A share row not covering this identity's demand does not satisfy this clause. OR (ii) v2.workflow.bash_command_fold_serialize serializes a fourteen-word statement list inside the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives -- whether by repair of a cost-shape defect there or by any other means. IN EITHER CASE this identity must measure under that budget WHILE STILL EXECUTING the real serialization route. Deleting the identity, supplying the program as a fixture, asserting only length(argv), or relocating it to a home that does not execute it satisfies neither clause.",
   }
 }
