@@ -44,7 +44,7 @@ import gunbc.machine_intake.bmc_recovery_route_frontier {
 import extdeps.ssh.known_hosts { openssh_standard_port }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.machine_intake.bmc_recovery_route {
-  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_rescue_host_address, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
+  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_rescue_host_address, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_proof_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
 import gunbc.machine_intake.arrival_converge {
   ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
@@ -607,14 +607,14 @@ test fn every_convergence_step_names_a_declaration_the_tree_actually_contains() 
   })
     // the handoff's precondition list is a roster too: a step that stopped existing would silently remove
     // a precondition from the fold
-    && all(recovery_handoff_requires(), fn(step) {
+    && all(recovery_proof_requires(), fn(step) {
          any(xs: recovery_live_decl_facts, predicate: fn(d) {
            d.qualified_name == concat(step.module_path as String, concat(".", step.decl_name as String))
          })
        })
     // and the two are genuinely different lists -- the handoff requires a subset of the six the route runs.
     // Equal lengths would mean the ordering law had collapsed into one list.
-    && list_length(items: recovery_convergence_steps()) != list_length(items: recovery_handoff_requires())
+    && list_length(items: recovery_convergence_steps()) != list_length(items: recovery_proof_requires())
 }
 
 // EVERY REFUSAL TELLS SOMEONE WHAT TO DO NEXT, AND NO TWO SAY THE SAME THING. A cause with no

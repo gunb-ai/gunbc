@@ -8,6 +8,7 @@ import gunbc.auth.privileged_effect_census { human_intervention_frequency_fronti
 import gunbc.ci.deploy_route_requirement { deploy_route_requirement_frontier_rows }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
   bmc_recovery_route_consumer_frontier_rows,
+  bmc_recovery_route_onboarding_consumer_frontier_rows,
   bmc_recovery_route_pairing_frontier_rows,
 }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
@@ -179,6 +180,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     serving_provision_derivation_frontier_rows,
     host_assimilation_program_frontier_rows,
     bmc_recovery_route_consumer_frontier_rows(),
+    bmc_recovery_route_onboarding_consumer_frontier_rows(),
     bmc_recovery_route_pairing_frontier_rows(),
   ]
 }

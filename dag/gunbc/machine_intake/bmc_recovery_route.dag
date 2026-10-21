@@ -58,6 +58,9 @@ import extdeps.bmc.redfish {
 import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.network.ipv4 {
   Ipv4Address,
+  Ipv4ParseError,
+  parse_ipv4_address,
+  render_ipv4_address,
 }
 // THE PORT IS NOT RE-INVENTED HERE. extdeps.ssh.known_hosts already models what port sshd answers on
 // and why (openssh_standard_port, with the sshd(8)/ssh(1) bracketing rule that makes the port part of
@@ -88,9 +91,12 @@ import gunbc.host.managed_host_unit_hold {
 // Administrator password is unknown has no route at all: every existing arm asks, first, for the
 // thing that is missing. This module models the one route that starts without it -- reach the
 // machine's own host OS, write an temporary Administrator password over the in-band system interface
-// (SSIF), then actuate a factory reset over the BMC's OUT-OF-BAND management interface --
-// and it terminates by handing the factory credential to the EXISTING bmc_secure / bmc_onboard
-// factory-login-then-rotate path.
+// (SSIF), then actuate a factory reset over the BMC's OUT-OF-BAND management interface -- and it
+// terminates at a PROOF CARRIER saying that happened. It terminates there, and only there: no
+// bmc_secure fold, no bmc_onboard fold and no arrival entry consumes that carrier today (git grep;
+// gunbc.machine_intake.bmc_recovery_route_frontier rosters the missing onboarding consumer as a
+// pending frontier row). Claiming the route "hands the unit to onboarding" would name a consumer that
+// does not exist; the standing is the proof that recovery happened, nothing more.
 //
 // WHAT IT DELIBERATELY IS NOT. Ruled with the cut-2 owner (gunbc.host.host_control_route /
 // gunbc.host.bmc_control_binding, PR #14063): this is not a control route and not a third arm of
@@ -908,6 +914,13 @@ type InBandChannelObservation {
   // observed_at, which is when these bytes were read: the node predates the reading, and here it even
   // predates the reset the reading describes.
   device_node_created_at: CapturedInstant
+  // THE ADDRESS THE BMC REPORTS ABOUT ITSELF, read over the in-band channel (`ipmitool lan print` on
+  // this board; 02_inband_channel.txt's lan block). This is a fact the CONTROLLER stated about itself
+  // through a transport that cannot be pointed at another machine, which is why the bind below may ask
+  // it what machine it is: the rescue host's own address says only what the host is, and the Redfish
+  // endpoint says only where someone knocked. Only a self-report can be compared against the knock.
+  // Absent means the capture did not record one, and a bind cannot be built from what was not read.
+  bmc_self_reported_address: Optional<Ipv4Address>
 }
 
 // The channel has to have been read FROM THE HOST THAT WAS DECLARED REACHABLE, on the device and
@@ -2114,13 +2127,11 @@ fn recovery_bind_observation(
   route: RecoveryInBandRoute,
   readback: RecoveryFactoryCredentialReadback,
 ) -> Optional<RecoveryBoundRecoveryObservation> {
-  // (1) THE TWO READINGS MUST BE READINGS OF ONE CONTROLLER, or there is nothing to bind. See the function:
-  // this is the Redfish release against the IPMI release, across transports, and it fails when the two
-  // readings are of different machines.
-  match recovery_controller_readings_agree(
-    controller: route.controller,
-    in_band_device_identity: route.in_band_device_identity,
-  ) {
+  // (1) THE ROUTE MUST BE BINDABLE AT ALL: one unit, one controller, one address that agrees with what
+  // the BMC itself reported. recovery_bind_refusal is the whole question, arm by arm; the bind refuses on
+  // ANY refusal and the fold recomputes the SAME function to report which arm fired -- the cause is the
+  // same Optional the bind consulted, never a paraphrase of it.
+  match recovery_bind_refusal(route: route) {
     Present { value: _ } => Absent
     Absent =>
     // (2) the bytes must be there to be checked. Every arm of the readback carries its evidence ref now,
@@ -2151,42 +2162,123 @@ fn recovery_bind_observation(
   }
 }
 
-// THE TWO READINGS OF THE SAME CONTROLLER, ASKED WHETHER THEY AGREE.
-//
-// WHY THIS IS THE JOIN THAT MATTERS AND WHY IT IS NOT A FIELD-WISE VALIDATION. The route holds two readings
-// of the machine it is about to reset, taken over two DIFFERENT transports by two different upstreams:
-//   * the Redfish discovery reading — a BmcAccessObservation whose identity reports a firmware release;
-//   * the in-band Get Device ID reading — an IpmiDeviceIdentity whose device id, manufacturer id, product id
-//     and firmware major/minor came back over SSIF.
-// Each is well-formed on its own, and a standing that paired the Redfish answer about one board with the
-// in-band answer about another would satisfy every check this module ever had. The agreement is therefore
-// demanded ACROSS the carriers, on the release both of them report: the Redfish string against the two
-// numbers IPMI publishes for the same field. It can fail, which is the test of whether it is a check — feed
-// a controller observation whose release is 9.99 against an in-band 3.22 and the bind below refuses.
-//
-// WHY NOT A BOOL NAMED `is_same_controller`. It would be a bool over two records whose meaning is "these
-// two readings agree on what they read", and the fold that consumes it needs to say WHICH reading disagreed;
-// the refusal below carries the release each side reported, which a Bool throws away.
-fn recovery_controller_readings_agree(
-  controller: BmcAccessObservation,
-  in_band_device_identity: IpmiDeviceIdentity,
-) -> Optional<NonEmptyStr> {
-  // THE COMPARISON. IPMI's Get Device ID publishes Firmware Revision as major.minor only (the third field is
-  // the auxiliary/audit byte, which is not part of a release identity), so those two numbers are what both
-  // sides genuinely hold in common, and the Redfish string must be exactly them, dotted. Absent when they
-  // agree; the cause when they do not. The release is carried non-optionally on BmcObservedIdentity, so
-  // there is no "no release reported" arm to write: a reading that got that far always has one.
-  let ipmi_release = join([to_string(value: in_band_device_identity.firmware_revision_major),
-                          ".",
-                          to_string(value: in_band_device_identity.firmware_revision_minor)], "")
-  if controller.identity.firmware.raw_version != ipmi_release {
+// WHAT A BIND REFUSES, IN THE TERMS THE REPAIR NEEDS. The fold that reports a refused bind must send
+// someone to a DIFFERENT repair per cause -- re-file the bytes, re-point the endpoint, stop -- so the
+// refusal is a declared sum, and the one site that renders advice reads its arms (DESIGN section 5: a
+// failing path fails with a typed, located diagnostic; section 4c: a status belongs in a carrier, not a
+// string). One prose string for five causes is how a swapped cause keeps passing the controls that match
+// on a word. Absent from the Optional below means "no refusal" -- and the fold's no-cause arm stays the
+// bytes-never-filed case, which is a separate refusal with its own sentence downstream.
+type RecoveryBindRefusal
+  // THE UNIT THE CHANNEL OBSERVATION CLAIMS AND THE UNIT THE ROUTE DRIVES ARE NOT ONE UNIT. The channel
+  // observation is a carrier a caller constructs; the route's subject is what the fold's admissions are
+  // bound to (each admission names the subject it authorises for). A standing that bound the readings of
+  // two chassis would satisfy every other check this module has -- which is exactly the defect the bind
+  // exists to stop, so the comparison is demanded at construction of the bound carrier, not assumed
+  // because both sides came from `route` a few lines up.
+  = RecoveryBindSubjectsDisagree { route_subject: MachineIntakeSubject, channel_subject: MachineIntakeSubject }
+  // THE CHANNEL NEVER SAID WHAT ADDRESS THE BMC HAS. The bind's controller join asks the BMC, over the
+  // in-band channel, what it is; a capture that never recorded the answer cannot vouch for anything, and
+  // a bind built from what was not read is a fabricated pairing (DESIGN section 5: no plausible output
+  // is fabricated). The repair is a re-capture, not a re-typing of a better-looking address.
+  | RecoveryBindChannelReportedNoAddress { endpoint_host: NonEmptyStr }
+  // THE ENDPOINT IS NOT A TEXTUAL ADDRESS AT ALL. The Redfish reading's endpoint is wire text; parsing is
+  // the ipv4 module's own parser, which REFUSES malformed input with the located error rather than
+  // inventing an address. The error is carried, not flattened -- "three octets" and "octet 3 = 299" send
+  // someone to different lines of a different file.
+  | RecoveryBindEndpointNotAnAddress { endpoint_host: NonEmptyStr, error: Ipv4ParseError }
+  // THE KNOCK AND THE SELF-REPORT DISAGREE: someone addressed the Redfish endpoint at one address while
+  // the BMC, asked over SSIF which cannot be pointed elsewhere, named another. Two machines are in the
+  // room. Both hosts are carried so the refusal says which was knocked and which spoke.
+  | RecoveryBindEndpointDisagreesWithChannelReport {
+      endpoint_host: NonEmptyStr
+      reported_host: NonEmptyStr
+    }
+  // THE FIRMWARE ANSWERS DISAGREE: the Redfish release string against the release IPMI's Get Device ID
+  // publishes for the same field, across transports (IPMI publishes major.minor only -- the auxiliary
+  // byte is not part of a release identity -- so those two numbers are what both sides genuinely hold in
+  // common, and the Redfish string must be exactly them, dotted). It can fail, which is the test of
+  // whether it is a check: feed a controller reading whose release is 9.99 against an in-band 3.22 and
+  // the bind below refuses.
+  | RecoveryBindReadingsDisagreeOnRelease { redfish_release: NonEmptyStr, ipmi_release: NonEmptyStr }
+
+// THE BIND'S REFUSALS, IN THE ORDER THE REPAIRS ARE CHEAPEST TO TRY. WHY A FUNCTION AND NOT THE BOOL
+// `recovery_controller_readings_agree` IT REPLACES: a Bool over two records whose meaning was "these two
+// readings agree on what they read" threw away WHICH reading disagreed, and the fold that reports the
+// refusal needs to say so -- the refusal carries the fields each repair needs. WHY THE ORDER: the
+// subject check is about the machine being driven at all, so it answers first; "was the address ever
+// read" precedes "does it parse", which precedes "does it agree" -- each later question presupposes the
+// earlier answer exists. A missing self-report is NOT folded into disagreement: inventing an address to
+// compare against would be the fabrication this module exists to refuse.
+// THE ipv4 PARSE ERROR SAID WHERE IT HURT; the refusal carries it and this is the only site that reads
+// it aloud. Each arm names the position or count the parser located, because "three octets" and "octet
+// 3 = 299" send the reader to different lines of a different file.
+fn recovery_ipv4_parse_error_text(error: Ipv4ParseError) -> NonEmptyStr {
+  match error {
+    Ipv4WrongOctetCount { observed_count: n } =>
+      join([to_string(value: n), " octets where four were expected"], "") as NonEmptyStr
+    Ipv4OctetNotNumeric { position: p, raw: raw } =>
+      join(["octet ", to_string(value: p), " (", raw as String, ") is not a number"], "") as NonEmptyStr
+    Ipv4OctetOutOfRange { position: p, value: v } =>
+      join(["octet ", to_string(value: p), " is ", to_string(value: v), ", outside 0..255"], "") as NonEmptyStr
+  }
+}
+
+fn recovery_bind_refusal(route: RecoveryInBandRoute) -> Optional<RecoveryBindRefusal> {
+  // (1) THE OBSERVATION MUST BE ABOUT THE UNIT THE ROUTE DRIVES. Every consumer used to read the subject
+  // off the route -- both fields came from the same construction site, so the observation's own subject
+  // was read by NO fold and a channel observation of another unit passed as this unit's. That is §3c's
+  // dangling fact wearing a carrier's clothes, and it is why this line exists.
+  if route.in_band.subject != route.subject {
     Present {
-      value: join(["the Redfish reading reported firmware ", controller.identity.firmware.raw_version as String,
-                  " while the in-band Get Device ID reported ", ipmi_release as String,
-                  " -- two readings of two different controllers"], "") as NonEmptyStr,
+      value: RecoveryBindSubjectsDisagree {
+        route_subject: route.subject,
+        channel_subject: route.in_band.subject,
+      },
     }
   } else {
-    Absent
+    match route.in_band.bmc_self_reported_address {
+      // (2) THE CHANNEL MUST HAVE SAID WHAT THE BMC IS, before anyone can be told the endpoint is wrong.
+      Absent =>
+        Present { value: RecoveryBindChannelReportedNoAddress { endpoint_host: route.controller.endpoint.host } }
+      Present { value: reported } =>
+        match parse_ipv4_address(text: route.controller.endpoint.host as String) {
+          // (3) THE ENDPOINT MUST BE A TEXTUAL ADDRESS. The parser's own located error is carried.
+          Ipv4ParseFailed { error: error } =>
+            Present {
+              value: RecoveryBindEndpointNotAnAddress {
+                endpoint_host: route.controller.endpoint.host,
+                error: error,
+              },
+            }
+          Ipv4Parsed { address: endpoint_address } =>
+            // (4) THE KNOCK MUST MATCH THE SELF-REPORT. Rendered through the ipv4 module's own renderer,
+            // so two addresses are compared as what they ARE, not as how someone typed them.
+            if render_ipv4_address(addr: endpoint_address) != render_ipv4_address(addr: reported) {
+              Present {
+                value: RecoveryBindEndpointDisagreesWithChannelReport {
+                  endpoint_host: route.controller.endpoint.host,
+                  reported_host: render_ipv4_address(addr: reported),
+                },
+              }
+            } else {
+              // (5) THE FIRMWARE ANSWERS MUST AGREE, across transports, as before.
+              let ipmi_release = join([to_string(value: route.in_band_device_identity.firmware_revision_major),
+                                      ".",
+                                      to_string(value: route.in_band_device_identity.firmware_revision_minor)], "")
+              if route.controller.identity.firmware.raw_version != ipmi_release {
+                Present {
+                  value: RecoveryBindReadingsDisagreeOnRelease {
+                    redfish_release: route.controller.identity.firmware.raw_version,
+                    ipmi_release: ipmi_release,
+                  },
+                }
+              } else {
+                Absent
+              }
+            }
+        }
+    }
   }
 }
 
@@ -2202,15 +2294,17 @@ fn recovery_readback_evidence(readback: RecoveryFactoryCredentialReadback) -> Op
 
 // ── THE TERMINAL STANDING ──────────────────────────────────────────────────────────────────────
 //
-// ONE SEALED CARRIER, AND THE HANDOFF IS ITS ONLY SUCCESS ARM. RecoveryHandedToOnboarding carries no
-// credential and no binding: it carries the handoff -- the observed controller the existing
-// factory-login-then-rotate path is pointed at -- and the readback that justifies believing the
-// factory credential is active. From there gunbc.machine_intake.bmc_secure produces the
-// BmcSecureStanding and the control-route join mints the binding; this module does neither. Every
-// other arm is a named reason the route stopped, and each is a DIFFERENT next action for whoever is
-// standing at the machine.
+// ONE SEALED CARRIER, AND THE PROOF ARM IS ITS ONLY SUCCESS ARM. RecoveryRouteProofComplete carries
+// no credential and no binding: it carries what the route PROVED -- the observed controller, the
+// bound join, the readback that justifies believing the factory credential is active, and the ledger
+// of both privileged writes. It claims nothing past that. In particular no fold re-enters onboarding
+// through it: the factory-login-then-rotate consumer that would give this arm its production purpose
+// does not exist yet, and its absence is a pending frontier row in
+// gunbc.machine_intake.bmc_recovery_route_frontier, not a sentence in this file. Every other arm is a
+// named reason the route stopped, and each is a DIFFERENT next action for whoever is standing at the
+// machine.
 type InBandRecoveryOutcome
-  = RecoveryHandedToOnboarding {
+  = RecoveryRouteProofComplete {
       // ONE BOUND JOIN, NOT THREE FACTS THAT HAPPEN TO BE TRUE. This field used to be the
       // BmcAccessObservation: an endpoint host string and a firmware triple a caller could type by hand,
       // sitting next to a readback whose evidence ref this module attached by itself. Each fact was
@@ -2256,7 +2350,7 @@ type InBandRecoveryOutcome
   // agreed and it was the FILED BYTES that were not this controller's.
   | RecoveryReadbackNotBoundToThisController {
       readback: RecoveryFactoryCredentialReadback
-      cause: Optional<NonEmptyStr>
+      cause: Optional<RecoveryBindRefusal>
     }
 
 type InBandRecoveryStanding sole_constructor {
@@ -2306,7 +2400,7 @@ data recovery_factory_credential_readback_step: DeclarationRef = decl_ref(
 // The hand-off step names the fold, because the fold is the declaration that WRITES the hand-off arm -- and
 // it can only write it holding a ProvenResetReadback. A step named after a predicate would point at a check
 // that performs nothing; this one points at the actuation that performs it.
-data recovery_onboard_handoff_step: DeclarationRef = decl_ref(
+data recovery_route_proof_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
   decl_name: "converge_in_band_recovery",
 )
@@ -2318,7 +2412,7 @@ data recovery_onboard_handoff_step: DeclarationRef = decl_ref(
 // representation of one fact (§2/§3) that could disagree with the ruling actually presented -- and a
 // decorative field that looks like a control is worse than no field, because a reader assumes the check
 // happens. The readback is likewise carried where it is PROVED (the standing's
-// RecoveryHandedToOnboarding.readback, whose content the gate checks) rather than named.
+// RecoveryRouteProofComplete.readback, whose content the gate checks) rather than named.
 fn recovery_convergence_steps() -> List<DeclarationRef> {
   [
     recovery_reachable_host_step,
@@ -2326,14 +2420,14 @@ fn recovery_convergence_steps() -> List<DeclarationRef> {
     recovery_in_band_password_write_step,
     recovery_reset_to_defaults_step,
     recovery_factory_credential_readback_step,
-    recovery_onboard_handoff_step,
+    recovery_route_proof_step,
   ]
 }
 
-// What the handoff requires to have been read back first. The readback step is required as a STEP and
+// What the proof arm requires to have been read back first. The readback step is required as a STEP and
 // its content is required again in the standing: one makes the sequence honest, the other makes the
 // standing unprovable from an operator's word that the reset "looked like it worked".
-fn recovery_handoff_requires() -> List<DeclarationRef> {
+fn recovery_proof_requires() -> List<DeclarationRef> {
   [
     recovery_reachable_host_step,
     recovery_channel_observation_step,
@@ -2343,7 +2437,7 @@ fn recovery_handoff_requires() -> List<DeclarationRef> {
 }
 
 // THE ONE CONSTRUCTOR, AND WHAT IT REFUSES. Every step is checked here, so there is no path to
-// RecoveryHandedToOnboarding that skips the readback, ignores a NotMeasured firmware, enters on a
+// RecoveryRouteProofComplete that skips the readback, ignores a NotMeasured firmware, enters on a
 // declared-but-unexecuted medium, or accepts a PreserveNetworkAndUsers as a recovery. The writes are
 // checked for having been ATTEMPTED against the arm the route names (their own byte capture is not the
 // success condition, per RecoveryWriteRecord); the readback is checked for HAVING PROVEN the factory
@@ -2560,19 +2654,17 @@ fn converge_after_admissions(
                   route: route,
                   outcome: RecoveryReadbackNotBoundToThisController {
                     readback: readback,
-                    // the cause is recomputed by the same function the bind used, so what the operator reads
-                    // is the disagreement itself and not a paraphrase of it
-                    cause: recovery_controller_readings_agree(
-                      controller: route.controller,
-                      in_band_device_identity: route.in_band_device_identity,
-                    ),
+                    // the cause is recomputed by the SAME FUNCTION the bind consulted, so what the
+                    // operator reads is the refusal itself, in the refusal's own fields -- not a
+                    // paraphrase of it, and not a second question that could answer differently
+                    cause: recovery_bind_refusal(route: route),
                   },
                 }
               Present { value: bound } =>
                 InBandRecoveryStanding {
                   subject: route.subject,
                   route: route,
-                  outcome: RecoveryHandedToOnboarding {
+                  outcome: RecoveryRouteProofComplete {
                     bound: bound,
                     proven: proven,
                     writes: [in_band_write, reset_write],
@@ -2602,14 +2694,14 @@ fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcF
 // demand opposite repairs. Every consumer now matches the arms of PublishedPasswordWritePolicySighting
 // directly, which is the same question asked without discarding the answer's content.
 
-// THE HANDOFF IS AN OUTCOME ARM, NOT A RECORD THIS MODULE BUILDS. The standing's own
-// RecoveryHandedToOnboarding { controller, readback, writes } arm already IS the handoff -- sealed to its
+// THE PROOF IS AN OUTCOME ARM, NOT A RECORD THIS MODULE BUILDS. The standing's own
+// RecoveryRouteProofComplete { bound, proven, writes } arm already IS the proof -- sealed to its
 // subject, naming the controller it was observed at and the readback that proved it. A second container for
 // the same facts is a second representation of them (§2), free to disagree with the arm about which
 // controller was recovered -- which is how a reflash-staleness defect gets built. And a predicate over a
-// value nobody constructs is a declaration with a hypothetical consumer (§3c). The existing onboard path
-// builds whatever it needs from the standing it is handed; this module's dependency stays one-way (it ->
-// BmcSecureStanding -> the control-route join) and it mints neither.
+// value nobody constructs is a declaration with a hypothetical consumer (§3c). Whatever eventually consumes
+// the proof builds what it needs from the standing it is handed; this module's dependency stays one-way and
+// it mints neither a BmcSecureStanding nor a binding.
 
 // THE ROUTE'S REFUSAL, AS ONE CAUSE THE CONSUMER CAN BRANCH ON -- carried on the AccessDiscover arm
 // in gunbc.machine_intake.arrival_converge. RecoveryRouteUnavailable is deliberately NOT
@@ -2661,7 +2753,10 @@ type RecoveryRouteUnavailable
   | RecoveryReadbackDoesNotConfirmReset { readback: RecoveryFactoryCredentialReadback }
   // THE READBACK BELONGS TO ANOTHER CONTROLLER, and the disagreement between the two readings is carried
   // rather than summarised: a reader of the refusal sees which release each side reported.
-  | RecoveryReadbackFromAnotherController { readback: RecoveryFactoryCredentialReadback, cause: NonEmptyStr }
+  | RecoveryReadbackFromAnotherController {
+      readback: RecoveryFactoryCredentialReadback
+      refusal: RecoveryBindRefusal
+    }
   // THE TWO READINGS AGREE AND THE BYTES ARE STILL NOT THIS BOARD'S: the readback cites a capture that was
   // never filed against this controller's IPMI identity. Distinguished from the arm above because the repair
   // is different -- one is a mis-paired route, this one is a citation that came from somewhere else.
@@ -2753,12 +2848,36 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
     // because the readback is not the thing at fault here: the reset's EFFECT is unconfirmed, so the next
     // action is to establish the effect, not to fetch a body that was already fetched.
     RecoveryReadbackDoesNotConfirmReset { readback: _ } =>
-      "the post-reset login answered, but not with the password-change refusal that proves the factory credential took: establish the reset's effect before handing this unit to onboarding" as NonEmptyStr
+      "the post-reset login answered, but not with the password-change refusal that proves the factory credential took: establish the reset's effect before this unit can be called recovered" as NonEmptyStr
     // NOT the sentence above: nothing is wrong with the answer, it is the wrong board's answer, and
     // re-establishing a reset effect on this unit would not move it.
-    RecoveryReadbackFromAnotherController { readback: _, cause: cause } =>
-      join(["the readback this standing rests on is not this controller's: ", cause as String,
-            " -- pair the route, the readings and the capture for one board before anything is handed to onboarding"], "") as NonEmptyStr
+    // THE ONE SITE THAT RENDERS THE BIND REFUSAL INTO ADVICE, arm by arm, from the refusal's own fields.
+    // The sum carries structured facts precisely so that rendering lives here and nowhere else: a
+    // consumer that wanted the sentence would have to re-derive it, and re-derivation is where two
+    // causes start sharing a sentence. Each arm below sends the reader to different work, which is the
+    // test that the typing was worth having.
+    RecoveryReadbackFromAnotherController { readback: _, refusal: refusal } =>
+      match refusal {
+        RecoveryBindSubjectsDisagree { route_subject: rs, channel_subject: cs } =>
+          join(["the channel observation is a reading of unit ", cs.subject.unit_key as String,
+                " while the route drives ", rs.subject.unit_key as String,
+                " -- two readings of two different machines: re-read the channel of the unit this route drives"], "") as NonEmptyStr
+        RecoveryBindChannelReportedNoAddress { endpoint_host: h } =>
+          join(["the in-band capture never recorded the address the BMC reports for itself, so nothing can be ",
+                "matched against the endpoint ", h as String,
+                " -- re-capture the channel with the BMC's own address"], "") as NonEmptyStr
+        RecoveryBindEndpointNotAnAddress { endpoint_host: h, error: e } =>
+          join(["the controller endpoint ", h as String, " is not an address (",
+                recovery_ipv4_parse_error_text(error: e) as String,
+                ") -- the Redfish reading cannot be compared with what the BMC reported"], "") as NonEmptyStr
+        RecoveryBindEndpointDisagreesWithChannelReport { endpoint_host: h, reported_host: r } =>
+          join(["the Redfish reading knocked ", h as String, " while the BMC, asked over the in-band channel, ",
+                "named ", r as String, " -- two controllers: address the one that spoke"], "") as NonEmptyStr
+        RecoveryBindReadingsDisagreeOnRelease { redfish_release: rf, ipmi_release: ip } =>
+          join(["the Redfish reading reported firmware ", rf as String,
+                " while the in-band Get Device ID reported ", ip as String,
+                " -- two readings of two different controllers: pair the route, the readings and the capture for one board"], "") as NonEmptyStr
+      }
     RecoveryReadbackBytesNotFiledForThisController { readback: _ } =>
       "the readback cites capture bytes that were never filed against this controller's Get Device ID answer: file the reading with the controller it came from, or read this one" as NonEmptyStr
     // The census refusal's sentence is DERIVED from the carrier it holds, never written beside it: which
@@ -2772,7 +2891,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
 
 fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRouteUnavailable? {
   match standing.outcome {
-    RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => none
+    RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => none
     RecoveryHostUnreachable { cause: c } => Present { value: NoReachableRescueHost { cause: c } }
     // THE CAUSE IS CARRIED OUT AS THE CAUSE THAT WAS COMPUTED UPSTREAM.
     // A standing whose channel was never observed used to arrive here as RecoveryReadbackInconclusive, and
@@ -2813,9 +2932,11 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
     // fine, chasing a firmware answer nobody disputed.
     RecoveryReadbackNotBoundToThisController { readback: r, cause: cause } =>
       match cause {
-        Present { value: c } =>
-          Present { value: RecoveryReadbackFromAnotherController { readback: r, cause: c } }
+        Present { value: refusal } =>
+          Present { value: RecoveryReadbackFromAnotherController { readback: r, refusal: refusal } }
         Absent =>
+          // no bind refusal at all means the readings agreed and it was the FILED BYTES that were not
+          // this controller's -- the separate refusal with its own sentence downstream
           Present { value: RecoveryReadbackBytesNotFiledForThisController { readback: r } }
       }
   }
@@ -2968,6 +3089,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     evidence: recovery_inband_channel_capture_ref,
     observed_at: recovery_inband_channel_instant(),
     device_node_created_at: recovery_device_node_creation_instant(),
+    bmc_self_reported_address: Present { value: recovery_controller_address() },
   }
   // WHY THE VERDICT IS MATCHED RATHER THAN ASKED FOR AS A BOOL. A Bool here could say "refused" without
   // saying why, and then this claim would stay green for a channel refused over its modules, its account,
@@ -2991,6 +3113,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
         evidence: observation.evidence,
         observed_at: observation.observed_at,
         device_node_created_at: observation.device_node_created_at,
+        bmc_self_reported_address: observation.bmc_self_reported_address,
       },
       reachability: reached,
     ) {
@@ -3030,6 +3153,7 @@ fn recovery_admitted_channel_fixture() -> AdmittedChannelFixture {
       evidence: recovery_inband_channel_capture_ref,
       observed_at: recovery_inband_channel_instant(),
       device_node_created_at: recovery_device_node_creation_instant(),
+      bmc_self_reported_address: Present { value: recovery_controller_address() },
     },
     reachability: rescue_host_reachable(
       address: recovery_rescue_host_address(),
@@ -3077,6 +3201,7 @@ fn recovery_perturbed_channel_observation(
     evidence: fixture.observation.evidence,
     observed_at: observed_at,
     device_node_created_at: device_node_created_at,
+    bmc_self_reported_address: Present { value: recovery_controller_address() },
   }
 }
 
@@ -3874,7 +3999,7 @@ test fn a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset() 
         ControllerNeverMeasured { observed: o } =>
           o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
             && match standing.outcome {
-              RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
+              RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => false
               _ => true
             }
             // matched, not compared: an optional compared against a Present literal answers by
@@ -3957,7 +4082,7 @@ test fn the_sighting_carries_both_readings_so_a_refusal_is_locatable() -> Bool {
 // that refused in both cases would look identical here and be useless in the field. The cause stays
 // locatable -- the readback that named no PasswordChangeRequired message is a different repair from a
 // controller nobody measured.
-test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
+test fn the_standing_refuses_to_claim_proof_without_the_readback() -> Bool {
   let route = recovery_test_route(reading: recovery_measured_identity())
   let without_readback = converge_in_band_recovery(
     route: route,
@@ -3983,12 +4108,12 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
   // is no ProvenResetReadback value to put in the hand-off arm for a ReadbackInconclusive, so the fold
   // cannot reach that arm at all -- which is a stronger claim than the Bool this replaces ever made.
   (match without_readback.outcome {
-    RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
+    RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => false
     RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
     _ => false
   })
     && (match with_readback.outcome {
-      RecoveryHandedToOnboarding { bound: b, proven: p, writes: w } =>
+      RecoveryRouteProofComplete { bound: b, proven: p, writes: w } =>
         b.in_band_device_identity == route.in_band_device_identity && list_length(items: w) == 2
           // the carrier carries the identity it was minted from, and that identity is still the one
           // extdeps.bmc.redfish recognises -- checked by ITS predicate, not against a literal here
@@ -4057,7 +4182,7 @@ test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recov
            none => false
          })
       && (match standing.outcome {
-           RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
+           RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => false
            _ => true
          })
     _ => false
@@ -4158,13 +4283,27 @@ fn recovery_test_subject() -> MachineIntakeSubject {
   }
 }
 
-fn recovery_test_controller_observation() -> BmcAccessObservation {
+// THE CONTROLLER READING AS A LITERAL WITH ITS JOIN-RELEVANT PARTS AS PARAMETERS. The two fields the
+// bind asks of this carrier -- the endpoint the Redfish answer was fetched from, and the firmware release
+// it carries -- are the parameters, because the only honest way to test a refusal is to build the route
+// that causes it, and a builder without them would make every refusal claim rebuild this fifteen-field
+// literal and drift from it. recovery_test_controller_observation() below is the good path: the host is
+// the one the readback bytes show was requested, and the release is the one the measured Get Device ID
+// publishes.
+fn recovery_test_controller_with(
+  endpoint_host: NonEmptyStr,
+  release: BmcFirmwareReleaseIdentity,
+) -> BmcAccessObservation {
   BmcAccessObservation {
-    endpoint: BmcControllerEndpoint { host: "bmc-recovery-fixture-controller" },
+    // THE ADDRESS THAT WAS KNOCKED, as a parameter -- 04_post_reset_readback.txt's request line is
+    // "### request: GET https://192.168.1.250/redfish/v1/Managers/bmc", and the good path below passes
+    // exactly that host; a fixture endpoint disagreeing with its own captured request would make every
+    // fold claim silently exercise the disagreement arm.
+    endpoint: BmcControllerEndpoint { host: endpoint_host },
     identity: BmcObservedIdentity {
       board: BoardFruNotRead { cause: BoardAreaFieldsUnreadable },
       chassis_part_number: none,
-      firmware: recovery_test_release(),
+      firmware: release,
     },
     discovered_surfaces: [],
     boot_control_routes: [],
@@ -4176,7 +4315,44 @@ fn recovery_test_controller_observation() -> BmcAccessObservation {
   }
 }
 
-fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
+fn recovery_test_controller_observation() -> BmcAccessObservation {
+  recovery_test_controller_with(endpoint_host: "192.168.1.250", release: recovery_test_release())
+}
+
+// THE CHANNEL OBSERVATION AS A LITERAL WITH ITS JOIN-RELEVANT PARTS AS PARAMETERS, same reason: the
+// bind compares the SUBJECT and the BMC's SELF-REPORTED ADDRESS, so the refusal claims must be able to
+// set exactly those, and the good path passes the fixture's own subject and the address the capture
+// records (02_inband_channel.txt's lan print: 192.168.1.250).
+fn recovery_test_channel_with(
+  subject: MachineIntakeSubject,
+  reported: Optional<Ipv4Address>,
+) -> InBandChannelObservation {
+  InBandChannelObservation {
+    subject: subject,
+    rescue_host_address: recovery_rescue_host_address(),
+    device_node: recovery_ipmi_device_node,
+    kernel_modules: recovery_ipmi_kernel_modules,
+    channel: InBandChannelPasswordless { transport: OpenIpmiDriver },
+    administrator: recovery_administrator_account(),
+    evidence: recovery_inband_channel_capture_ref,
+    observed_at: recovery_inband_channel_instant(),
+    device_node_created_at: recovery_device_node_creation_instant(),
+    bmc_self_reported_address: reported,
+  }
+}
+
+fn recovery_test_channel() -> InBandChannelObservation {
+  recovery_test_channel_with(
+    subject: recovery_test_subject(),
+    reported: Present { value: recovery_controller_address() },
+  )
+}
+
+fn recovery_route_with(
+  channel: InBandChannelObservation,
+  controller: BmcAccessObservation,
+  reading: IpmiDeviceIdentity,
+) -> RecoveryInBandRoute {
   RecoveryInBandRoute {
     subject: recovery_test_subject(),
     rescue_host: rescue_host_reachable(
@@ -4185,20 +4361,18 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
       ipmi: recovery_complete_ipmi_presence(),
       medium: recovery_usb_medium(),
     ),
-    in_band: InBandChannelObservation {
-      subject: recovery_test_subject(),
-      rescue_host_address: recovery_rescue_host_address(),
-      device_node: recovery_ipmi_device_node,
-      kernel_modules: recovery_ipmi_kernel_modules,
-      channel: InBandChannelPasswordless { transport: OpenIpmiDriver },
-      administrator: recovery_administrator_account(),
-      evidence: recovery_inband_channel_capture_ref,
-      observed_at: recovery_inband_channel_instant(),
-      device_node_created_at: recovery_device_node_creation_instant(),
-    },
-    controller: recovery_test_controller_observation(),
+    in_band: channel,
+    controller: controller,
     in_band_device_identity: reading,
   }
+}
+
+fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
+  recovery_route_with(
+    channel: recovery_test_channel(),
+    controller: recovery_test_controller_observation(),
+    reading: reading,
+  )
 }
 
 // WHAT converge IS HANDED: THE DECISIONS THE RUN OBTAINED FROM THE TWO GATES. They are parameters rather
@@ -4249,11 +4423,188 @@ fn recovery_password_admission_for_another_operation() -> PasswordWriteAuthoriza
   }
 }
 
+// ---- THE BIND BINDS: four crossed routes, each refused by its own typed arm, each with the unmodified
+// route as a control half so no claim can be satisfied by a fold that refuses everything. Before these
+// claims existed, the subject and the endpoint-vs-self-report of the carrier called "bound" were checked
+// by nobody: both were copied out of the route beside the bind, so a channel observation of a DIFFERENT
+// chassis, or a Redfish answer knocked at a different address than the one the BMC named for itself,
+// produced the same standing as the matched route.
+
+fn recovery_subject_of_another_chassis() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    // the same attempt, a different unit -- the only thing that differs is which chassis the reading is
+    // about, the exact axis the bound carrier used to be blind to
+    subject: QualificationSubject {
+      unit_key: "bmc-recovery-another-unit",
+      assembly_manifest_digest: content_hash_of_value(value: "assembly-digest-for-in-band-recovery-fixtures"),
+      firmware_manifest_digest: content_hash_of_value(value: "firmware-digest-for-in-band-recovery-fixtures"),
+    },
+    attempt_id: "in-band-recovery-attempt-1",
+  }
+}
+
+fn recovery_fold_with(channel: InBandChannelObservation, controller: BmcAccessObservation) -> InBandRecoveryStanding {
+  converge_in_band_recovery(
+    route: recovery_route_with(
+      channel: channel,
+      controller: controller,
+      reading: recovery_measured_identity(),
+    ),
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+}
+
+fn recovery_control_standing() -> InBandRecoveryStanding {
+  recovery_fold_with(
+    channel: recovery_test_channel(),
+    controller: recovery_test_controller_observation(),
+  )
+}
+
+// THE UNIT IDENTITY IS PART OF THE BIND. The channel observation names a different chassis than the
+// route drives: the fold must refuse the bind, and the refusal must SAY so -- naming both subjects, so
+// the reader learns which reading is about which machine. The control half is the unmodified route
+// reaching the proof arm, which is what makes the refusal side non-vacuous.
+test fn the_bind_refuses_a_channel_observation_of_another_unit() -> Bool {
+  let crossed = recovery_fold_with(
+    channel: recovery_test_channel_with(
+      subject: recovery_subject_of_another_chassis(),
+      reported: Present { value: recovery_controller_address() },
+    ),
+    controller: recovery_test_controller_observation(),
+  )
+  (match crossed.outcome {
+    RecoveryReadbackNotBoundToThisController {
+      readback: _,
+      cause: Present {
+        value: RecoveryBindSubjectsDisagree { route_subject: rs, channel_subject: cs },
+      },
+    } => rs == recovery_test_subject() && cs == recovery_subject_of_another_chassis()
+    _ => false
+  })
+    && (match recovery_control_standing().outcome {
+      RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => true
+      _ => false
+    })
+}
+
+// THE ENDPOINT MUST BE THE ADDRESS THE BMC NAMED FOR ITSELF. The BMC, asked over SSIF (a transport that
+// cannot be pointed at another machine), said 192.168.1.250; the Redfish answer was knocked at .249.
+// That is two machines in the room, and firmware agreement between them is what makes the mistake fatal:
+// two controllers of the same OpenBMC build answer identically while being different boards.
+test fn the_bind_refuses_an_endpoint_the_bmc_never_reported() -> Bool {
+  let crossed = recovery_fold_with(
+    channel: recovery_test_channel(),
+    controller: recovery_test_controller_with(endpoint_host: "192.168.1.249", release: recovery_test_release()),
+  )
+  (match crossed.outcome {
+    RecoveryReadbackNotBoundToThisController {
+      readback: _,
+      cause: Present {
+        value: RecoveryBindEndpointDisagreesWithChannelReport { endpoint_host: h, reported_host: r },
+      },
+    } => h == "192.168.1.249" && r == "192.168.1.250"
+    _ => false
+  })
+    && (match recovery_control_standing().outcome {
+      RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => true
+      _ => false
+    })
+}
+
+// A PROSE ENDPOINT IS REFUSED AT PARSE, WITH THE PARSER'S OWN LOCATED ERROR. The old fixture endpoint
+// ("bmc-recovery-fixture-controller", no dots) now falls to the parser rather than being waved through:
+// the refusal carries the ipv4 module's error -- which position, which value -- so the repair points at
+// a field of a different module instead of blaming the comparison.
+test fn the_bind_refuses_an_endpoint_that_is_not_an_address() -> Bool {
+  let crossed = recovery_fold_with(
+    channel: recovery_test_channel(),
+    controller: recovery_test_controller_with(
+      endpoint_host: "bmc-recovery-fixture-controller",
+      release: recovery_test_release(),
+    ),
+  )
+  (match crossed.outcome {
+    RecoveryReadbackNotBoundToThisController {
+      readback: _,
+      cause: Present {
+        value: RecoveryBindEndpointNotAnAddress { endpoint_host: h, error: e },
+      },
+    } => h == "bmc-recovery-fixture-controller"
+      && (match e {
+        // one field, not four dotted numbers -- the parser located exactly that
+        Ipv4WrongOctetCount { observed_count: 1 } => true
+        _ => false
+      })
+    _ => false
+  })
+    && (match recovery_control_standing().outcome {
+      RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => true
+      _ => false
+    })
+}
+
+// NO SELF-REPORT, NO BIND. A capture that never recorded the BMC's own address cannot vouch for which
+// machine the endpoint belongs to, and filling the gap with the endpoint's own address -- the obvious
+// shortcut -- would make the comparison a tautology and the check silently always pass. The absence is
+// its OWN arm, with a re-capture as the repair.
+test fn the_bind_refuses_a_channel_that_reported_no_address() -> Bool {
+  let crossed = recovery_fold_with(
+    channel: recovery_test_channel_with(subject: recovery_test_subject(), reported: Absent),
+    controller: recovery_test_controller_observation(),
+  )
+  (match crossed.outcome {
+    RecoveryReadbackNotBoundToThisController {
+      readback: _,
+      cause: Present { value: RecoveryBindChannelReportedNoAddress { endpoint_host: h } },
+    } => h == "192.168.1.250"
+    _ => false
+  })
+    && (match recovery_control_standing().outcome {
+      RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => true
+      _ => false
+    })
+}
+
+// THE FIRMWARE JOIN STILL BITES AFTER THE ADDRESS JOIN: the same route, endpoint and self-report
+// agreeing, with only the Redfish release swapped to one the measured Get Device ID contradicts. If
+// the address match made the firmware check redundant, this claim would stay green without it -- it
+// does not, and the refusal must carry BOTH releases so the reader sees which answer disagrees.
+test fn the_bind_refuses_release_answers_that_disagree() -> Bool {
+  let crossed = recovery_fold_with(
+    channel: recovery_test_channel(),
+    controller: recovery_test_controller_with(
+      endpoint_host: "192.168.1.250",
+      release: BmcFirmwareReleaseIdentity { family: OpenBmc, raw_version: "9.99", semantic_version: none },
+    ),
+  )
+  (match crossed.outcome {
+    RecoveryReadbackNotBoundToThisController {
+      readback: _,
+      cause: Present {
+        value: RecoveryBindReadingsDisagreeOnRelease { redfish_release: rf, ipmi_release: ip },
+      },
+    } => rf == "9.99" && ip == "3.22"
+    _ => false
+  })
+    && (match recovery_control_standing().outcome {
+      RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => true
+      _ => false
+    })
+}
+
 fn recovery_admitted_in_band_write() -> PasswordWriteAuthorization
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_reset_arm_that_keeps_the_user_table_is_never_a_recovery"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset"),
-    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_hand_off_without_the_readback"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_claim_proof_without_the_readback"),
+    // the bind claims all drive the fold through this one helper, which is the direct caller of
+    // both mints; admitting the claims themselves would roster a caller that never calls
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "recovery_fold_with"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered"),
     // the ticket-binding claim needs an ADMITTED pair as its control: without it, the two refusals
     // above could be what every call returns
@@ -4284,7 +4635,10 @@ fn recovery_admitted_reset_write() -> ResetWriteAuthorization
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_reset_arm_that_keeps_the_user_table_is_never_a_recovery"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset"),
-    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_hand_off_without_the_readback"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "the_standing_refuses_to_claim_proof_without_the_readback"),
+    // the bind claims all drive the fold through this one helper, which is the direct caller of
+    // both mints; admitting the claims themselves would roster a caller that never calls
+    decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "recovery_fold_with"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered"),
     // the ticket-binding claim needs an ADMITTED pair as its control: without it, the two refusals
     // above could be what every call returns
@@ -4716,7 +5070,7 @@ test fn an_admission_bound_to_another_unit_or_another_operation_is_refused() -> 
              none => false
            })
         && (match for_another_unit.outcome {
-             RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => false
+             RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => false
              _ => true
            })
     _ => false
@@ -4734,7 +5088,7 @@ test fn an_admission_bound_to_another_unit_or_another_operation_is_refused() -> 
       _ => false
     })
     && (match control.outcome {
-      RecoveryHandedToOnboarding { bound: _, proven: _, writes: _ } => true
+      RecoveryRouteProofComplete { bound: _, proven: _, writes: _ } => true
       _ => false
     })
 }
