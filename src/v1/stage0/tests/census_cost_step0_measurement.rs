@@ -1,24 +1,25 @@
-// STEP 0 of the census cost-shape scoping (measurement only — the numbers go to the manager
-// before any behavior change is proposed; nothing here judges acceptance).
+// STEP 0 of the census cost-shape scoping. It began as measurement only (the numbers went to
+// the manager before any behavior change was proposed, mgr msg_f3513042) and became the
+// REGRESSION GATE for the overlay fix: the assertions below are the ones a regression trips.
 //
 // WHAT IT MEASURES, at the seams where a `compile_dag_diagnostic_census` call can pay for the
-// whole corpus (counters exposed exactly like the existing
-// `compile_dag_diagnostic_census_memo_counts`, same file, same pattern):
-//  * the module-path index a call receives is a full clone of the memoized corpus index
-//    (INDEX_CLONES, INDEX_ENTRIES = entries materialized per clone);
-//  * the scratch route clones the corpus-length source-file vec per call (VEC_CLONES, VEC_LEN);
-//  * every real disk read the resolve path performs (READS, DISK_BYTES) — this is what settles
+// whole corpus:
+//  * the module-path index a call receives (INDEX_CLONES, INDEX_ENTRIES = entries materialized
+//    per clone) -- GATED at zero per warm call; the resolve borrows the memo entry for entry, so
+//    an owned corpus index materializing is the defect coming back;
+//  * the scratch route's source-file map clone (VEC_CLONES, VEC_LEN);
+//  * every real disk read the resolve path performs (READS, DISK_BYTES) — this is what settled
 //    closure-scale vs corpus-scale with numbers.
 // Cross-checked per call against the PROCESS-level counters /proc/self/io rchar + read_bytes and
 // getrusage CPU, so the counter claim and the kernel's books cannot disagree.
 //
 // SHAPE: one 4-line fixture that imports std.algebra; N=1 calls and N=4 identical calls in one
-// process. The census memo is inert (its floor guard was deleted with run_required_floor), so
-// each call really does the work — the printed MEMO counts prove it (they must read (0, 0)).
+// process, then a collision-named fixture, then one ordinary call again. Nothing caches the
+// census anymore (the memo is deleted; see its entry point's deletion story), so each call does
+// its own work — which is what makes the per-call counters the right instrument.
 use std::time::Instant;
 use v1_compiler::cli_run::{
-    compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
-    compile_dag_diagnostic_census_memo_counts, pre_entry_phase,
+    compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts, pre_entry_phase,
     reset_compile_dag_diagnostic_census_cost_counts, resolve_stage_totals,
 };
 
@@ -152,15 +153,6 @@ fn digest_of(line: &str) -> &str {
 
 #[test]
 fn step0_census_cost_one_and_four_calls() {
-    let (mh, mm) = compile_dag_diagnostic_census_memo_counts();
-    println!(
-        "MEMO HITS={mh} MISSES={mm} (must read 0 0: the memo is inert, every call does the work)"
-    );
-    assert_eq!(
-        (mh, mm),
-        (0, 0),
-        "the memo must be inert for these numbers to mean per-call cost"
-    );
     // N=1 then N=4 of the ordinary fixture: the before/after cost series.
     let n1 = sample(1, FIXTURE, "STD");
     for line in &n1 {

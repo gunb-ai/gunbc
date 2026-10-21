@@ -173,8 +173,7 @@ pub use emit_host::{
 };
 pub use emit_host::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
-    compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
-    reset_compile_dag_diagnostic_census_cost_counts,
+    compile_dag_rust_emit_check_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3972,20 +3971,9 @@ pub enum CompileDiagnosticCensus {
     NotRunnable(String),
 }
 
-thread_local! {
-    static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, CompileDiagnosticCensus>,
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
 // STEP 0 COST COUNTERS (census cost-shape scoping — measurement only, no behavior change).
-// Process-wide, atomic, read/reset through the pub fns in emit_host exactly like the memo
-// counts above; a receipt is process-differential (deltas around calls in one process).
+// Process-wide, atomic, read/reset through the pub fns in emit_host; a receipt is
+// process-differential (deltas around calls in one process).
 // What each one sees is the point of each one:
 //  * INDEX_CLONES / INDEX_CLONED_ENTRIES — every `build_module_path_index` call deep-clones
 //    the whole corpus-keyed module-path index (one String key + one String path per corpus
@@ -32884,7 +32872,6 @@ pub fn release_process_caches_at_exit() {
     MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
-    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
         "[floor-teardown] released process caches without freeing them in {} ms (the residue after \
          this line is whatever main's return still drops)",

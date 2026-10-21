@@ -92,24 +92,11 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// `(hits, misses)` for the `compile_dag_diagnostic_census` memo across the whole process.
-/// Report-only; no consumer branches on it. Same accounting shape, and the same reason for it,
-/// as [`compile_dag_rust_emit_check_memo_counts`]: a hit count with no denominator is not a
-/// measurement.
-pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
-    (
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
-    )
-}
-
-// STEP 0 COST COUNTERS (census cost-shape scoping, mgr msg_f3513042 — measurement only,
-// no behavior change). One process-wide pair of atomic counters at the two seams where a
-// census call can pay for the corpus: (1) the module-path index entry (a HashMap clone of
-// the whole corpus index on every cache hit), and (2) every real disk read the census's
-// resolve path performs. The census memo is inert since the floor-guard deletion, so
-// (hits, misses) above permanently reads (0, 0) and measures nothing — these two do.
-// Exposed exactly like compile_dag_diagnostic_census_memo_counts above: a pub fn read by an
+// CENSUS COST COUNTERS (census cost-shape fix). One process-wide set of atomic counters at the
+// seams where a census call can pay for the corpus: (1) the module-path index entry (which used
+// to clone the whole corpus index on every cache hit -- gated at zero by
+// tests/census_cost_step0_measurement.rs), (2) the scratch's source-file map clone, and
+// (3) every real disk read the census's resolve path performs. Exposed as a pub fn read by an
 // in-process observer, so a receipt is process-differential (deltas around calls in one
 // process), never a claim about another process.
 pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64) {
@@ -137,39 +124,36 @@ pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64,
     )
 }
 
-/// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
-/// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
-/// same program through the same pipeline and differ only in what they report, so they must not
-/// disagree about when a compile may be reused).
+/// THIS IS THE BUILTIN'S ONLY ENTRY POINT, and there is no separate uncached body. It used to be
+/// a memoized wrapper over a `pub(crate)` `_uncached` function, and BOTH halves of that split are
+/// gone: the memo is deleted (see the deletion story below), and a wrapper that only forwards is
+/// authored duplication (§3, one fact one home; the sibling `compile_dag_rust_emit_check` keeps
+/// its split for a reason this one never had -- its `_uncached` returns `EmitCheckRead`, a
+/// different type, while these two had identical signatures).
 ///
-/// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
-/// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
-/// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
-/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
-/// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
-/// pure function of an input already compiled in the same run. That is the DESIGN §6
-/// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
-/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms CPU
-/// safety deadline standing at the time, a FAIL-STOP protecting the executor and explicitly "never
-/// a budget, tolerance, or target" — so the admissible repair is to stop recomputing, never to
-/// raise the line. That deadline is gone (the claim ceiling gates on
-/// `claim_eval_step_budget_for_identity` since 2026-09-12 and CPU is observed-only), which does
-/// NOT retire this memo: the defect it repairs is a recomputation, and a recomputation costs the
-/// same whether or not a clock refuses on it.
+/// THE DELETION STORY, because a future reader must not re-add what is deleted here. A memo
+/// once sat on top of this function, and it was NOT arbitrary caching: it was the repair for a
+/// measured cost-shape defect (the sibling `compile_dag_rust_emit_check` was memoized and this
+/// was not, so `neither_green_source_refuses_and_neither_mis_resolves` in
+/// `test.claim.callable_candidate_ambiguity_witness` recomputed half its compiles -- 5437 ms CPU
+/// against the then-standing 5000 ms claim CPU refusal). The memo then lost its soundness
+/// precondition: it keyed on source PLUS the floor's prepared-inventory content digest, because
+/// `build_module_path_index_from_witness_roots` reads those bytes. `run_required_floor` was
+/// deleted, so the guard could never arm, every call fell through to disk, and what remained
+/// was a `HashMap`-shaped monument plus two atomics reporting (0, 0) forever.
 ///
-/// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
-/// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
-/// digest, because `build_module_path_index_from_witness_roots` reads those bytes and the census
-/// is therefore a function of the corpus as well as of the source. Outside the guard there is no
-/// snapshot, so a hit would be a claim about disk that nothing established — DESIGN's
-/// cache-impurity rule (key on declared-input content), and the reason this is not simply a
-/// `HashMap` on the source string.
-pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
-    // The floor prepared-inventory guard that armed the content-keyed memo is deleted
-    // with `run_required_floor`. Disk is the only remaining source.
-    compile_dag_diagnostic_census_uncached(source)
-}
-
+/// WHY DELETION AND NOT A RE-ARMED GUARD. The deleted key was complete ONLY under the frozen
+/// floor snapshot -- with the snapshot gone, a content-keyed memo would have to declare every
+/// input it reads (corpus bytes, floor inventory, and the process-level cache state this
+/// function now reads through), which is a stronger claim than anything here can establish.
+/// DESIGN's cache-impurity rule forbids a hit that asserts disk. So the recomputation is not
+/// cached, it is DELETED at its two sources, which is the same defect class the memo was
+/// invented for and is strictly cheaper than the memo ever was: a warm census call measured
+/// 12.9 s before this change and 0.34 s after it (Step 0 series, `census_cost_step0_measurement`,
+/// which now gates the corpus-index clone count at zero). Where the memo made the repeat call
+/// free by asserting a fact about disk, these make the repeat call cheap by not doing the work.
+/// The `hits/misses` atomics and the memo cell went with it; nothing ever branched on them.
+///
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
 /// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
@@ -191,7 +175,7 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
 /// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
-pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             // THE MODULE-PATH INDEX IS LENT, NOT COPIED (CENSUS COST). This asked for the
