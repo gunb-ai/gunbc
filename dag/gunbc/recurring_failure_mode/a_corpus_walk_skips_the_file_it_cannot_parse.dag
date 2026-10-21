@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.a_corpus_walk_skips_the_file_it_cannot_parse
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, NoRungStated }
+
+data a_corpus_walk_skips_the_file_it_cannot_parse: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_corpus_walk_skips_the_file_it_cannot_parse" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "INVALID STATE: a reader over the source roots that needs a file's parse treats a file it cannot parse as ABSENT and carries on with a smaller population. The census built over it keeps passing, because a count over fewer files is still a count: a `concept_index_*` row that excludes the module that broke reads as \"that module declares nothing\", and a `decls_parse_only_from_disk`-style consumer that DOES refuse sits beside it over the same roots disagreeing with it about whether an unparsable file is a finding.",
+
+    "HARM: the failure is invisible in the output (a smaller fact list is also what a legitimately narrow pool produces), so the population that lost the file is cited as coverage. Found by census, not by incident: every caller of the parse layer was classified as refusing (module index, `decls_parse_only_from_disk`, the PublishedMockCase scan, claim_batch's --entry validation) or skipping, and exactly one reader skipped -- coproduct_reflection decl_facts_corpus_walk, which counted `files_scanned` and `files_parsed` beside the facts. NO consumer read the two counters, so the gap between them was a signal that existed and went unread.",
+
+    "THE FLIP, AT THE EARLIEST UNJUSTIFIED BOUNDARY (DESIGN 6b): the walk owns the corpus population, so the refusal is in the walk, not at its callers: it collects one located cause per unreadable or unparsable file and stops the line through `refuse_unparseable_corpus_sources`, the same refusal the module index uses, so two readers over the same roots cannot disagree. The unread counters are deleted with the tolerance they described. `parse_dag_content` keeps its Option signature and its stderr line; the typed `try_parse_dag_content` is what the walk consumes.",
+
+    "WHAT IS DELIBERATELY STILL TOLERANT, with its reason: entry_resolve's `parse_module_heads_tolerant` reads module HEADS to build the import graph for an entry's closure, and an unparsable module OUTSIDE the closure must not refuse an entry that never imports it; an unparsable module INSIDE it is refused by the resolve that follows, located. That tolerance answers a closure question, not a corpus-population one. NEXT TRIGGER: the module-index refusal still fires for an unparsable file outside the entry's closure as well as inside it (claim_batch_parse_gate_witness records this); the split by reachability is parse_refusal_exits_as_failed_observation's trigger, not this row's.",
+
+    "EVIDENCE, EXECUTED: test.claim.decl_facts_walk_refusal_witness plants a two-file pool in a mktemp directory under target/ (never committed, and NOT a source root, so the module index does not refuse first) and runs claim_batch over an entry that calls `decl_facts` on it. RED: the second pool file does not parse -> exit 1, `decl_facts corpus walk refused` naming that file with line and column, no PASS or FAIL line. CONTROL: the same entry over a pool whose second file parses -> exit 0 and PASS. Run with the flip reverted the RED fails, which is the discrimination.",
+
+    "RUNG FOUND AT: outside the ladder -- silent wrongness. RUNG NOW: mitigatable, at operation grain: the refusal is a typed, located cause per file but the exit is a process exit, not a typed result returned to the caller.",
+
+    "CEILING: structurally guaranteed. A corpus walk's result type could carry the population's refusals so a consumer cannot be handed a walk that lost a file; today the walk exits the process. NEXT-RUNG TRIGGER: the walk returns a Result whose Err carries the per-file causes, with the process exit moved to the command boundary (the same trigger refuse_unparseable_module_sources names).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.decl_facts_walk_refusal_witness", decl_name: "an_unparsable_pool_file_refuses_the_decl_facts_walk_with_exit_1", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.decl_facts_walk_refusal_witness", decl_name: "a_parseable_pool_reaches_a_real_pass_verdict", field: WholeDeclaration },
+  ],
+}
