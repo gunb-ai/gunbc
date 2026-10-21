@@ -8,16 +8,17 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import std.decl_ref { DeclarationRef, decl_ref }
 
-// S0 IMPORT, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
-// (S0); this module emits it and defines none of it. Nothing outside this block names where these
-// types live.
+// OBSERVATION VOCABULARY IMPORTS. The shared Secure Boot carrier and read refusal live in
+// gunbc.secure_boot_observation; the rest of the vocabulary belongs to gunbc.firmware_network_boot_standing
+// (S0). This module emits them and defines none of it; nothing outside these two imports names where
+// they live.
+import gunbc.secure_boot_observation { FirmwareReadRefusal, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation, FirmwareReadRefusal, BootOrderEntry, BootOption, firmware_boot_observation,
-  BootOrderObservation, BootOptionsObservation, NicsObservation, SecureBootObservation, BiosVersionObservation,
+  FirmwareBootObservation, BootOrderEntry, BootOption, firmware_boot_observation,
+  BootOrderObservation, BootOptionsObservation, NicsObservation, BiosVersionObservation,
   BootOrderObserved, BootOrderUnobserved, BootOrderRefused,
   BootOptionsObserved, BootOptionsUnobserved, BootOptionsRefused,
   NicsObserved, NicsUnobserved, NicsRefused,
-  SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused,
   BiosVersionObserved, BiosVersionUnobserved, BiosVersionRefused,
 }
 

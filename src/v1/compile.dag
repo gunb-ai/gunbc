@@ -4,6 +4,7 @@ import extdeps.languages.dag.syntax { dag_parse_environment }
 
 import std.syntax { LiteralValue, BinOp, ParseEnvironment }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
+import std.generated_provider { GeneratedProviderDemand }
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
@@ -771,35 +772,11 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, Ne
   }
 }
 
-fn serialize_named_arg(arg: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  concat(
-    "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_indices: source_indices)),
-    ", \"value\": ", serialize_node_ref(node: arg_value(n: arg), key_to_id: key_to_id),
-    "}")
-}
-
-fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  concat(
-    "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
-    ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
-    ", \"body\": ", serialize_node_ref(node: arm_body(n: arm), key_to_id: key_to_id),
-    "}")
-}
-
 fn serialize_field_init(field_init: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_indices: source_indices)),
     ", \"value\": ", serialize_node_ref(node: field_init_node_value(n: field_init), key_to_id: key_to_id),
     "}")
-}
-
-fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  match part {
-    Text { value: inner } =>
-      concat("{\"kind\": \"Text\", \"value\": ", json_quote(s: inner), "}")
-    Interpolation { expr: inner } =>
-      concat("{\"kind\": \"Interpolation\", \"expr\": ", serialize_node_ref(node: inner, key_to_id: key_to_id), "}")
-  }
 }
 
 fn serialize_resolved_call_formal(value: ResolvedCallFormal, key_to_id: Map<String, String>) -> String {
@@ -1084,17 +1061,6 @@ fn serialize_resource_use(resource_use: Node, source_indices: Map<String, Newlin
     "{\"name\": ", json_quote(s: resource_use_name_at(n: resource_use, source_indices: source_indices)),
     ", \"resource\": ", serialize_node_ref(node: resource_use_resource(n: resource_use), key_to_id: key_to_id),
     ", \"span\": ", serialize_span(span: resource_use.span),
-    "}")
-}
-
-fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  concat(
-    "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
-    ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
-    ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
-    ", \"default_value\": ", json_optional_node_ref(value: field_node_default_value(n: field), key_to_id: key_to_id),
-    ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
-    ", \"span\": ", serialize_span(span: field_node_span(n: field)),
     "}")
 }
 
@@ -1632,6 +1598,7 @@ fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) 
 type ResolvedPipelineResult {
   graph: ResolvedGraph?
   diagnostics: List<ErrorNode>
+  provider_demands: List<GeneratedProviderDemand>
   source_indices: Map<String, NewlineIndex>
   complexity: ComplexityReport
   ownership: List<OwnershipProof>
@@ -1655,6 +1622,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       ResolvedPipelineResult {
         graph: none,
         diagnostics: frontend.diagnostics,
+        provider_demands: [],
         source_indices: empty_map(),
         complexity: empty_complexity_report(),
         ownership: [],
@@ -1665,7 +1633,8 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let pass = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let typed = pass.graph
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
@@ -1686,6 +1655,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       ResolvedPipelineResult {
         graph: typed,
         diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
+        provider_demands: pass.provider_demands,
         source_indices: source_indices,
         complexity: complexity,
         ownership: ownership,
