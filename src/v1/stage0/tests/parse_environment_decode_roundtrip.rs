@@ -302,3 +302,258 @@ fn the_kernel_guard_compares_names_not_bytes() {
 
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+/// THE HISTORICAL-REVISION CASE (the prefix/postfix-operator declaration's migration).
+///
+/// A revision older than the commit that declared `prefix_operators` / `postfix_operators` in
+/// `std.syntax` encodes a SyntaxSpec with NEITHER field — the type did not have them, and the
+/// parser read `min_bp: 12` at the prefix arms and literals at the postfix arms instead. This test
+/// builds exactly such a revision in a scratch repository — the materialized environment module and
+/// its `std.syntax` closure file, edited back to their pre-declaration shape, committed — and loads
+/// it through `load_parse_environment_at`, the base/head loader's own route. Before the migration
+/// in `decode_environment_wire` this refused with a serde "missing field `prefix_operators`"-shaped
+/// `ValueNotDecodable`, which the namespace baseline read as `NotEvaluated`; it must now decode,
+/// and the filled rows must be the HISTORICAL powers (prefix 12/12, postfix 21/21/13) that make
+/// this binary's table-driven parser reproduce that revision's own parse decisions — not the current
+/// 18/19/21, and the rest of the environment must come through unchanged.
+#[test]
+fn the_loader_decodes_a_pre_declaration_revision_with_historical_rows() {
+    let root = workspace_root();
+    let scratch =
+        std::env::temp_dir().join(format!("gunbc-env-historical-probe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("create scratch repo");
+
+    // The environment closure AND std.syntax, both edited back below. std.syntax is not in the
+    // environment module's import closure unless imported by name; materializing the environment
+    // module's closure brings it, so materialize the closure through the same path the loader uses
+    // and edit whatever landed.
+    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"]).unwrap_or_else(|e| {
+        panic!(
+            "materializing the scratch corpus failed: {}",
+            environment_load_refusal_text(&e)
+        )
+    });
+
+    let env_path = scratch.join(ENVIRONMENT_MODULE_PATH);
+    let std_syntax_path = scratch.join("dag/std/syntax.dag");
+    let env_original = std::fs::read_to_string(&env_path).expect("read scratch environment module");
+    let std_original = std::fs::read_to_string(&std_syntax_path).expect("read scratch std.syntax");
+
+    // Edit the type back: drop the two declared-row fields from SyntaxSpec...
+    let std_edited = std_original
+        .replace("  prefix_operators: List<PrefixOperatorSpec>\n", "")
+        .replace("  postfix_operators: List<PostfixOperatorSpec>\n", "");
+    // Whichever field the checked-out revision already lacks stays lacking; nothing to strip.
+    let stripped_std = std_edited != std_original;
+    // ...and the environment module back: drop the two data declarations and the two constructor
+    // fields. (These are exactly the lines the declaration commit added; deleting them reproduces
+    // the historical source.)
+    let mut env_edited = env_original.clone();
+    let mut stripped_env = false;
+    for (field, data_marker) in [
+        ("prefix", "data dag_prefix_operators:"),
+        ("postfix", "data dag_postfix_operators:"),
+    ] {
+        let ctor_line = format!("  {field}_operators: dag_{field}_operators,\n");
+        if env_edited.contains(&ctor_line) {
+            env_edited = env_edited.replace(&ctor_line, "");
+            stripped_env = true;
+        }
+        if env_edited.contains(data_marker) {
+            env_edited = drop_data_block(&env_edited, data_marker);
+            stripped_env = true;
+        }
+    }
+    assert!(
+        stripped_std || stripped_env,
+        "the revision carried neither row field to strip; the test's premise (a revision that          predates the declaration) cannot be built from it"
+    );
+
+    std::fs::write(&std_syntax_path, &std_edited).expect("write historical std.syntax");
+    std::fs::write(&env_path, &env_edited).expect("write historical environment");
+
+    git(&scratch, &["init", "--quiet"]);
+    git(&scratch, &["config", "user.email", "probe@example.invalid"]);
+    git(&scratch, &["config", "user.name", "probe"]);
+    git(&scratch, &["add", "-A"]);
+    git(
+        &scratch,
+        &["commit", "--quiet", "-m", "pre-declaration environment"],
+    );
+    let historical_rev = git(&scratch, &["rev-parse", "HEAD"]);
+
+    let loaded = match load_parse_environment_at(&scratch, &historical_rev) {
+        Ok(env) => env,
+        Err(e) => panic!(
+            "the loader refused a pre-declaration revision instead of migrating it: {}",
+            environment_load_refusal_text(&e)
+        ),
+    };
+
+    let prefix: Vec<(String, i64)> = loaded
+        .syntax_spec
+        .prefix_operators
+        .iter()
+        .map(|r| (r.symbol.clone(), r.binding_power))
+        .collect();
+    let postfix: Vec<(String, i64)> = loaded
+        .syntax_spec
+        .postfix_operators
+        .iter()
+        .map(|r| (r.symbol.clone(), r.binding_power))
+        .collect();
+    assert_eq!(
+        prefix,
+        vec![("-".to_string(), 12i64), ("!".to_string(), 12i64)],
+        "a historical environment did not receive the parser's historical prefix powers"
+    );
+    assert_eq!(
+        postfix,
+        vec![
+            ("(".to_string(), 21i64),
+            ("[".to_string(), 21i64),
+            ("as".to_string(), 13i64),
+            ("{".to_string(), 13i64)
+        ],
+        "a historical environment did not receive the parser's historical postfix gates"
+    );
+
+    // The migration fills ONLY the absent rows: the rows the revision DID declare — its operator
+    // table and item forms — come through as that revision wrote them, which here means equal to
+    // the environment compiled into this binary (neither was touched by the declaration commit).
+    let live = dag_parse_environment();
+    assert_eq!(
+        loaded.syntax_spec.operators, live.syntax_spec.operators,
+        "the migration disturbed the operator rows the historical revision already declared"
+    );
+    assert_eq!(
+        loaded.syntax_spec.item_forms, live.syntax_spec.item_forms,
+        "the migration disturbed the item forms the historical revision already declared"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Drop a top-level `data NAME ... = [...]` declaration, bracket-balanced, with its leading comment
+/// block kept out of scope: only the declaration itself is removed.
+fn drop_data_block(source: &str, marker: &str) -> String {
+    let start = match source.find(marker) {
+        Some(i) => i,
+        None => panic!("{marker} was not present to strip"),
+    };
+    let open = source[start..]
+        .find('[')
+        .unwrap_or_else(|| panic!("{marker} carried no list initializer"));
+    let mut depth = 0usize;
+    let bytes = source.as_bytes();
+    let mut end = start + open;
+    while end < bytes.len() {
+        match bytes[end] {
+            b'[' => depth += 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+        end += 1;
+    }
+    let mut end = end + 1;
+    while end < bytes.len() && bytes[end] != b'\n' {
+        end += 1;
+    }
+    if end < bytes.len() {
+        end += 1;
+    }
+    let mut out = String::with_capacity(source.len());
+    out.push_str(&source[..start]);
+    out.push_str(&source[end..]);
+    out
+}
+
+/// THE WIRE-LEVEL CASE, exercised directly at the decode seam.
+///
+/// The current encoder's output for the live environment, with the two row fields removed from the
+/// SyntaxSpec object, must decode (through `decode_environment_wire`) to the historical rows; and —
+/// the discrimination — a document that HAS the fields is never touched, so a current-encoder bug
+/// that dropped them would not be masked here: the live roundtrip above compares whole values
+/// against the declared 18/19/21, and a current environment whose rows went missing on the way out
+/// decodes to 12/13/21 there and fails THAT equality.
+#[test]
+fn the_wire_migration_fills_only_absent_row_fields() {
+    let live = dag_parse_environment();
+    let wire = serde_json::to_value(&*live.syntax_spec).expect("encode the live SyntaxSpec");
+
+    // Present: untouched. Decoding the live object must give the DECLARED powers back.
+    let declared = v1_compiler::cli_run::namespace_baseline::decode_environment_wire(
+        &serde_json::json!({
+            "syntax_spec": wire,
+            "non_name_keywords": {},
+            "non_pattern_binder_keywords": {},
+        }),
+        "test-present",
+    )
+    .expect("a current-shaped environment must decode");
+    assert_eq!(
+        declared
+            .syntax_spec
+            .prefix_operators
+            .iter()
+            .map(|r| r.binding_power)
+            .collect::<Vec<_>>(),
+        vec![18i64, 18i64],
+        "the migration changed a document that declared its own prefix rows"
+    );
+    assert_eq!(
+        declared
+            .syntax_spec
+            .postfix_operators
+            .iter()
+            .map(|r| r.binding_power)
+            .collect::<Vec<_>>(),
+        vec![21i64, 21i64, 19i64],
+        "the migration changed a document that declared its own postfix rows"
+    );
+
+    // Absent: filled with the historical powers.
+    let mut historical = wire.clone();
+    let obj = historical
+        .as_object_mut()
+        .expect("SyntaxSpec encodes as an object");
+    obj.remove("prefix_operators");
+    obj.remove("postfix_operators");
+    let filled = v1_compiler::cli_run::namespace_baseline::decode_environment_wire(
+        &serde_json::json!({
+            "syntax_spec": historical,
+            "non_name_keywords": {},
+            "non_pattern_binder_keywords": {},
+        }),
+        "test-absent",
+    )
+    .expect("a pre-declaration-shaped environment must decode through the migration");
+    assert_eq!(
+        filled
+            .syntax_spec
+            .prefix_operators
+            .iter()
+            .map(|r| r.binding_power)
+            .collect::<Vec<_>>(),
+        vec![12i64, 12i64],
+        "a pre-declaration document did not receive the historical prefix powers"
+    );
+    assert_eq!(
+        filled
+            .syntax_spec
+            .postfix_operators
+            .iter()
+            .map(|r| r.binding_power)
+            .collect::<Vec<_>>(),
+        vec![21i64, 21i64, 13i64, 13i64],
+        "a pre-declaration document did not receive the historical postfix gates"
+    );
+    // Everything the document DID carry survives.
+    assert_eq!(filled.syntax_spec.operators, live.syntax_spec.operators);
+}

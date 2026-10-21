@@ -39,6 +39,8 @@ fn canon_v1_source(body: String) -> String {
     "!a && b" => "a: Bool, b: Bool"
     "!a || b" => "a: Bool, b: Bool"
     "!a * b" => "a: Bool, b: Bool"
+    "!a |> f" => "a: Bool, b: Bool"
+    "!a.b" => "a: Bool, b: Bool"
     _ => "a: Int, b: Int"
   }
   concat("module probe.unary_prefix.canon\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
@@ -68,6 +70,21 @@ fn v1_canon(body: String) -> String {
   }
 }
 
+// THE CANONICAL SHAPE, keyed on node KIND (not arity alone) so the dot, pipe and cast arms are not
+// collapsed to a leaf -- a walker that flattened `.`/`|>`/`as` to `l` would let the two parsers
+// "agree" on a wrong tree. Contract with the v2 lib (measured, not guessed: the shape probes read
+// these node kinds off each parser at this head -- v1 ExprBinOp/ExprUnaryOp/ExprCast/ExprFieldAccess/
+// ExprMethodCall; v2 head-labelled Transforms and the CONJ a dot lowers to):
+//   I(a,b) infix over operands a, b      (v1 ExprBinOp, 2 children; v2 Transform arity 3, operator head)
+//   P(x)   prefix over operand x         (v1 ExprUnaryOp, 1 child;   v2 Transform arity 2, minus/bang head)
+//   C(x)   a cast of principal operand x (v1 ExprCast, first child is the value; v2 Transform `as` head)
+//   F(x)   a field access on principal x  (v1 ExprFieldAccess, child is the object; v2 CONJ, first child is the object)
+//   M(x)   a pipe/method on principal x  (v1 ExprMethodCall, child is the receiver; v2 Transform `pipe` head)
+//   l      a leaf (literal or variable)
+// C/F/M keep ONLY the principal operand: the cast target type, the field name and the pipe's right
+// side are identifiers the two parsers represent differently (v1 carries them in variant data, v2 in
+// trailing operand atoms), and the DEFECT is prefix scope, not those positions. An unexpected shape
+// is "?", never a silent leaf, so a future parse that changes these node kinds fails rather than passes.
 fn canon_shape_v1(node: Node) -> String {
   match node.expr_data {
     ExprBinOp { op: _, algebra_field: _, operand: _ } =>
@@ -82,6 +99,31 @@ fn canon_shape_v1(node: Node) -> String {
       } else {
         "?"
       }
+    ExprCast =>
+      if node.children |> count == 2 {
+        concat("C(", canon_first_child_v1(node: node), ")")
+      } else {
+        "?"
+      }
+    ExprFieldAccess { summary: _ } =>
+      if node.children |> count == 1 {
+        concat("F(", canon_first_child_v1(node: node), ")")
+      } else {
+        "?"
+      }
+    ExprMethodCall { method_semantics: _ } =>
+      if node.children |> count == 1 {
+        concat("M(", canon_first_child_v1(node: node), ")")
+      } else {
+        "?"
+      }
     _ => "l"
+  }
+}
+
+fn canon_first_child_v1(node: Node) -> String {
+  match node.children |> first {
+    Present { value: c } => canon_shape_v1(node: c)
+    Absent => "?"
   }
 }

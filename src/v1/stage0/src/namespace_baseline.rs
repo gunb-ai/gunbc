@@ -2007,12 +2007,79 @@ pub fn decode_environment_value(
             cause: format!("wire-encode: {e}"),
         }
     })?;
+    decode_environment_wire(&wire, revision)
+}
+
+/// Decode already-wire-encoded environment bytes into this binary's `ParseEnvironment`.
+///
+/// The public seam exists so the historical-environment migration below can be exercised directly
+/// (a test feeding the decoder the exact wire shape a pre-declaration revision's environment
+/// encodes) without a materialized revision in the way.
+pub fn decode_environment_wire(
+    wire: &serde_json::Value,
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let mut wire = wire.clone();
+    migrate_syntax_spec_wire(&mut wire);
     serde_json::from_value::<crate::std_syntax::ParseEnvironment>(wire)
         .map(std::rc::Rc::new)
         .map_err(|e| EnvironmentLoadRefusal::ValueNotDecodable {
             revision: revision.to_string(),
             cause: e.to_string(),
         })
+}
+
+/// The binding powers the seed parser used as LITERALS before the operator rows were declared.
+///
+/// A revision older than the declaration commit encodes a `SyntaxSpec` with no `prefix_operators`
+/// and no `postfix_operators` key; that revision's parser read `min_bp: 12` for every prefix arm
+/// and the literals `21 < min_bp` (call, index), `13 < min_bp` (`as`) and `14 <= min_bp` (the record
+/// literal, whose consume-iff-scale row is therefore 13) at each postfix arm. Filling
+/// the absent fields with THOSE values is what preserves revision-specific semantics: the decoded
+/// environment, read by this binary's table-driven parser, makes the same consume/decline decisions
+/// that revision's own parser made against that revision's tree. These are not this revision's
+/// powers (18 / 19 / 21 -- see extdeps.languages.dag.syntax); they are the historical ones, and
+/// they live here, in the reader of historical wire, and nowhere else.
+fn historical_operator_rows(field: &str) -> Vec<serde_json::Value> {
+    let row = |symbol: &str, binding_power: i64| serde_json::json!({ "symbol": symbol, "binding_power": binding_power });
+    match field {
+        "prefix_operators" => vec![row("-", 12), row("!", 12)],
+        "postfix_operators" => vec![row("(", 21), row("[", 21), row("as", 13), row("{", 13)],
+        other => unreachable!("historical rows requested for unknown field {other}"),
+    }
+}
+
+/// Fill the operator-row fields a historical environment predates. Recursive over the wire document
+/// so it is independent of the encoder's tagging: any object that has `item_forms` and `operators`
+/// (the SyntaxSpec's shape) and lacks one of the two row fields gets the historical rows for it.
+/// A field that IS present is never touched, so this migration cannot mask a current-encoder bug --
+/// the live-tree roundtrip (`the_decoder_reproduces_the_compiled_in_environment`) compares whole
+/// values against rows 18/19/21, and a modern environment whose rows went missing on the way out
+/// would decode to the historical 12/13/21 there and fail that equality.
+fn migrate_syntax_spec_wire(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if map.contains_key("item_forms") && map.contains_key("operators") {
+                for field in ["prefix_operators", "postfix_operators"] {
+                    if !map.contains_key(field) {
+                        map.insert(
+                            field.to_string(),
+                            serde_json::Value::Array(historical_operator_rows(field)),
+                        );
+                    }
+                }
+            }
+            for v in map.values_mut() {
+                migrate_syntax_spec_wire(v);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for v in items {
+                migrate_syntax_spec_wire(v);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Evaluate the parse environment out of an already-materialized corpus rooted at `root`.

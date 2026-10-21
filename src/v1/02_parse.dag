@@ -103,7 +103,7 @@ import std.syntax {
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
-  OperatorSpec, SyntaxSpec
+  OperatorSpec, PrefixOperatorSpec, PostfixOperatorSpec, SyntaxSpec
 }
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
@@ -1341,6 +1341,25 @@ fn find_prefix_binding_power(ops: List<PrefixOperatorSpec>, symbol: String) -> I
     Present { value: first(matching).value.binding_power }
   } else {
     none
+  }
+}
+
+// Whether the language's DECLARED PostfixOperatorSpec row admits consuming this postfix operator
+// at `min_bp` -- the same read `find_prefix_binding_power` gives the prefix arms, for the sibling
+// arms. Before these rows existed, each postfix arm of `try_postfix` carried its threshold as a
+// literal (`21 < min_bp` for call and index, `13 < min_bp` for `as`); the `as` literal is precisely
+// the misalignment the v1-vs-v2 agreement claim would otherwise have caught: 13 sits below the
+// additive rows, so v1 read `a + b as T` as `(a + b) as T` while v2's structurally closed postfix
+// production read `a + (b as T)`, and it admitted `(-a) as T` once the prefix power moved above it.
+// NO ROW, NO CONSUME: a language that declares no row for a symbol does not have that postfix
+// operator, so the layer declines to consume it and the ordinary downstream refusal reports the
+// leftover token -- the same refusal discipline `parse_prefix` applies to an undeclared prefix row.
+fn declared_postfix_gate_admits(ops: List<PostfixOperatorSpec>, symbol: String, min_bp: Int) -> Bool {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    min_bp <= first(matching).value.binding_power
+  } else {
+    false
   }
 }
 
@@ -5767,7 +5786,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
   match sh {
     Present { value: ShLParen } => {
 
-      if 21 < min_bp {
+      if !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "(", min_bp: min_bp) {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
         let r = parse_call_args(tokens: tokens, ctx: ctx)
@@ -5779,7 +5798,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
     }
     Present { value: ShIdent } => {
       if tok.value.text == "as" {
-        if 13 < min_bp {
+        if !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "as", min_bp: min_bp) {
           PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
         } else {
           let r = parse_type_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
@@ -5793,7 +5812,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
     }
     Present { value: ShLBracket } => {
 
-      if 21 < min_bp {
+      if !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "[", min_bp: min_bp) {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
         if is_constraint_bracket(tokens: tokens) {
@@ -5809,7 +5828,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
       match lhs.expr_data {
         ExprVar { binding_kind: _ } => {
           let n = expr_var_name_at(texpr: lhs, source_indices: ctx.source_indices)
-          if is_uppercase_start(name: n) && 14 <= min_bp {
+          if is_uppercase_start(name: n) && !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "{", min_bp: min_bp) {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
             if is_uppercase_start(name: n) {
@@ -5823,7 +5842,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
         }
         ExprFieldAccess { summary: _ } => {
           let last_seg = field_access_field_at(texpr: lhs, source_indices: ctx.source_indices)
-          if is_uppercase_start(name: last_seg) && 14 <= min_bp {
+          if is_uppercase_start(name: last_seg) && !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "{", min_bp: min_bp) {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
             if is_uppercase_start(name: last_seg) {
@@ -6095,14 +6114,14 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, l
     }
     let tokens = skip_continuation_newlines(tokens: tokens, env: ctx.env)
 
-    if tok_is_lparen(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
+    if tok_is_lparen(tok: token_stream_first(stream: tokens)) && declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "(", min_bp: min_bp) {
       let r = parse_call_args(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let span = token_span(tok: token_stream_first(stream: tokens))
       let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
       let new_lhs = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
       parse_expr_loop_no_brace(tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: minted.ctx, absorbed: lhs, into: minted.identity), lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
-    } else if tok_is_lbracket(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
+    } else if tok_is_lbracket(tok: token_stream_first(stream: tokens)) && declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "[", min_bp: min_bp) {
       let span = token_span(tok: token_stream_first(stream: tokens))
       let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, base_from: lhs_from, span: span)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }

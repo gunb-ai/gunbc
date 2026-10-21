@@ -4,7 +4,7 @@ import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
   BodyKind,
   ExprBody, BlockBody, TypeBody, NoBody,
-  OperatorSpec, PrefixOperatorSpec, SyntaxSpec,
+  OperatorSpec, PrefixOperatorSpec, PostfixOperatorSpec, SyntaxSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or,
   LiteralValue, LitBool
@@ -89,10 +89,24 @@ data rust_prefix_operators: List<PrefixOperatorSpec> = [
   PrefixOperatorSpec { symbol: "!", binding_power: 18 }
 ]
 
+// See dag_postfix_operators in extdeps.languages.dag.syntax; this realization's expressions pass
+// the same parser, so its rows carry the same thresholds.
+data rust_postfix_operators: List<PostfixOperatorSpec> = [
+  PostfixOperatorSpec { symbol: "(", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "[", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "as", binding_power: 19 },
+  // The record-literal arm's threshold. Historically the parser REFUSED the brace when
+  // `14 <= min_bp`, i.e. consumed it only at min_bp <= 13; on this table's consume-iff-scale that
+  // is 13, and the row is declared there so the shared read reproduces the historical decision
+  // exactly (`-Foo { x: 1 }` keeps binding its record literal inside a unary operand).
+  PostfixOperatorSpec { symbol: "{", binding_power: 13 }
+]
+
 data rust_syntax_spec: SyntaxSpec = SyntaxSpec {
   item_forms: rust_item_forms,
   operators: rust_operators,
   prefix_operators: rust_prefix_operators,
+  postfix_operators: rust_postfix_operators,
   keyword_literals: rust_keyword_literals,
   keyword_set: rust_keyword_set
 }

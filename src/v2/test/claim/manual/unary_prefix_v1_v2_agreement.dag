@@ -30,10 +30,14 @@ import std.process { ProcessExit, exit_failure, ExitSuccess }
 import v2.test.claim.manual.unary_prefix_v1_canon_lib { v1_canon }
 import v2.test.claim.manual.unary_prefix_v2_canon_lib { v2_canon }
 
-// THE ARMS: the brief's defect cases and controls, plus the manager's ruling additions (!a && b,
-// !a || b beside the minus ones) and the two boundary probes that pinned the declared power at 18
-// by agreement with v2's postfix closure: '-a.b' (v2 consumes '.' inside the operand -> P(I..)) and
-// '-a |> f' (v2 keeps '|>' outside -> I(P..)).
+// THE ARMS: the brief's defect cases and controls, the manager's ruling additions (!a && b, !a || b
+// beside the minus ones), and the boundary arms that pin the DECLARED powers by agreement with v2's
+// structurally closed postfix production -- cast (-a as T, -(a as T), a + b as T), field access
+// (-a.b -> P(F(l)), (-a).b -> F(P(l))) and pipe (-a |> f, !a |> f -> M(P(l))): each is a shape one
+// parser can get wrong if a postfix gate is a literal instead of a declared row. The 12-arm list
+// this replaces advertised a dot and pipe arm it did not contain and collapsed `.`/`|>`/`as` to a
+// leaf in both walkers, so those shapes agreed vacuously; all 22 arms are MEASURED (see the expected
+// map) and the walkers key on node kind and head identity.
 data agreement_arms: List<String> = [
   "-1 - 2",
   "-(1 - 2)",
@@ -46,12 +50,31 @@ data agreement_arms: List<String> = [
   "!a * b",
   "a - b",
   "a * b",
-  "-a < b"
+  "-a < b",
+  "-a as T",
+  "-(a as T)",
+  "a + b as T",
+  "-a.b",
+  "(-a).b",
+  "a |> f",
+  "-a |> f",
+  "!a |> f",
+  "!a.b",
+  "-a.b + c"
 ]
 
 // THE SHAPE EACH SIDE MUST PRODUCE, stated from v2's closed production and v1's declared table --
 // both sides must equal it, so agreement is checked against an authority and not merely between
 // two parsers that could agree on a wrong tree.
+// Every expectation below is MEASURED, not read off the tables: the shape probes
+// (git history of the WIP branch session/nimble-otter-791, lane receipt in the PR body) print this
+// canonical shape for each arm under each parser at this head, and both sides print the same string.
+// The cast arms are the ones the side chat's finding turned on: with the prefix gate declared at 18
+// but `as` left an undeclared literal at 13, v1 read `-a as T` as (-a) as T = C-outermost while v2's
+// closed postfix production kept -(a as T) -- the P-outermost shape stated here. Declaring `as` at 19
+// above the prefix rows is what makes v1 print P(C(l)) and agree. `a + b as T` is the other cast
+// control: v2 has always read the cast over the RIGHT operand (the tightest binding), and the
+// declared rows move v1 onto that meaning too.
 fn agreement_expected(body: String) -> String {
   match body {
     "-1 - 2" => "I(P(l),l)"
@@ -66,6 +89,16 @@ fn agreement_expected(body: String) -> String {
     "a - b" => "I(l,l)"
     "a * b" => "I(l,l)"
     "-a < b" => "I(P(l),l)"
+    "-a as T" => "P(C(l))"
+    "-(a as T)" => "P(C(l))"
+    "a + b as T" => "I(l,C(l))"
+    "-a.b" => "P(F(l))"
+    "(-a).b" => "F(P(l))"
+    "a |> f" => "M(l)"
+    "-a |> f" => "M(P(l))"
+    "!a |> f" => "M(P(l))"
+    "!a.b" => "P(F(l))"
+    "-a.b + c" => "I(P(F(l)),l)"
     _ => "?"
   }
 }

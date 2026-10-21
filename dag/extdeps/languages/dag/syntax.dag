@@ -111,6 +111,24 @@ data dag_prefix_operators: List<PrefixOperatorSpec> = [
   PrefixOperatorSpec { symbol: "!", binding_power: 18 }
 ]
 
+// Postfix rows of this language's table, beside the prefix and infix rows (see PostfixOperatorSpec
+// in std.syntax for why these are declared and not literals). `(` and `[` carry 21, the value both
+// postfix arms of the parser compared against before; `as` moves from the parser's literal 13 to 19
+// -- above the prefix rows at 18 so a unary operand consumes its cast (`-a as T` is -(a as T), the
+// shape v2's closed production has always given and v1's old gate paired with a 12-power prefix to
+// give as well), and above the pipe's right power at 18 so `a |> f as T` casts the piped value,
+// matching v2's postfix repeat.
+data dag_postfix_operators: List<PostfixOperatorSpec> = [
+  PostfixOperatorSpec { symbol: "(", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "[", binding_power: 21 },
+  PostfixOperatorSpec { symbol: "as", binding_power: 19 },
+  // The record-literal arm's threshold. Historically the parser REFUSED the brace when
+  // `14 <= min_bp`, i.e. consumed it only at min_bp <= 13; on this table's consume-iff-scale that
+  // is 13, and the row is declared there so the shared read reproduces the historical decision
+  // exactly (`-Foo { x: 1 }` keeps binding its record literal inside a unary operand).
+  PostfixOperatorSpec { symbol: "{", binding_power: 13 }
+]
+
 data v3_supported_dag_operators: Map<String, Bool> = {
   "||": true, "&&": true,
   "==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true,
@@ -122,6 +140,7 @@ data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
   item_forms: dag_item_forms,
   operators: dag_operators,
   prefix_operators: dag_prefix_operators,
+  postfix_operators: dag_postfix_operators,
   keyword_literals: dag_keyword_literals,
   keyword_set: dag_keyword_set
 }
