@@ -24,7 +24,7 @@ import v2.std.type_binder { edge_is_type_alias, type_alias_wrapper_is, type_decl
 import v2.std.node { Authored, Node, NodeFold, Positional, StructuralLabel, fold_node, symbol_lexeme }
 import v2.std.node_query { construct_field_edges, construct_tag_path_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
-import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, DeclRefDisposition, decl_ref_disposition_roster }
+import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, ComputedDeclName, DeclRefDisposition, decl_ref_disposition_roster }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (a pure reader; the verb is
@@ -278,7 +278,7 @@ fn literal_scan_add(scan: LiteralScan, file: Symbol, n: Node, lc: LiteralCtx) ->
       }
     Present { value: m } =>
       match string_value(n: field_target(n: n, name: "decl_name")) {
-        Absent => literal_unreadable(scan: scan, file: file)
+        Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), " computed-decl ", m)) }
         Present { value: d } =>
           match declared_field_of(v: field_target(n: n, name: "field"), lc: lc) {
             Absent =>
@@ -643,6 +643,7 @@ fn subject_is_citation(d: DeclRefDisposition, r: DeclarationRef) -> Bool {
   match d.subject {
     CitedDeclaration { reference: x } => declaration_ref_eq(a: x, b: r)
     CitedSpan { text: _ } => false
+    ComputedDeclName { site: _ } => false
   }
 }
 
@@ -650,6 +651,7 @@ fn subject_is_span(d: DeclRefDisposition, span: String) -> Bool {
   match d.subject {
     CitedDeclaration { reference: _ } => false
     CitedSpan { text: t } => t == span
+    ComputedDeclName { site: _ } => false
   }
 }
 
@@ -657,7 +659,24 @@ fn roster_subject_text(d: DeclRefDisposition) -> String {
   match d.subject {
     CitedDeclaration { reference: x } => declaration_ref_display_key(ref: x)
     CitedSpan { text: t } => t
+    ComputedDeclName { site: t } => t
   }
+}
+
+fn subject_is_site(d: DeclRefDisposition, site: String) -> Bool {
+  match d.subject {
+    CitedDeclaration { reference: _ } => false
+    CitedSpan { text: _ } => false
+    ComputedDeclName { site: t } => t == site
+  }
+}
+
+fn unreadable_is_rostered(site: String) -> Bool {
+  any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is_site(d: d, site: site) })
+}
+
+fn unrostered_unreadable(c: DeclRefCensus) -> List<String> {
+  fold_list(xs: c.unreadable, empty: [], cons: fn(acc, u) { if unreadable_is_rostered(site: u) { acc } else { list_snoc_item(xs: acc, item: u) } })
 }
 
 fn roster_has_span(span: String) -> Bool {
@@ -717,6 +736,7 @@ fn resolution_is_refusal(r: DeclarationRefResolution, refused: List<String>) -> 
 fn roster_row_matched(d: DeclRefDisposition, c: DeclRefCensus) -> Bool {
   any(xs: c.resolutions, predicate: fn(r) { resolution_is_unresolved(r: r, refused: c.refused_files) && roster_row_matches_resolution(d: d, r: r) })
     || any(xs: c.prose, predicate: fn(s) { span_is_stale(s: s) && subject_is_span(d: d, span: s.span) })
+    || any(xs: c.unreadable, predicate: fn(u) { subject_is_site(d: d, site: u) })
 }
 
 fn unmatched_roster_rows(c: DeclRefCensus) -> List<DeclRefDisposition> {
@@ -752,7 +772,7 @@ fn span_counts(xs: List<ProseSpan>) -> SpanCounts {
 }
 
 fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
-  if count_refused_resolutions(xs: c.resolutions, refused: c.refused_files) + count_refused_spans(xs: c.prose, refused: c.refused_files) + length(xs: c.unreadable) + length(xs: unmatched_roster_rows(c: c)) == 0 {
+  if count_refused_resolutions(xs: c.resolutions, refused: c.refused_files) + count_refused_spans(xs: c.prose, refused: c.refused_files) + length(xs: unrostered_unreadable(c: c)) + length(xs: unmatched_roster_rows(c: c)) == 0 {
     0
   } else {
     1
@@ -847,7 +867,7 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
           } else { acc }
         }
       ),
-      right: fold_list(xs: c.unreadable, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref unreadable-literal ", f)) })
+      right: fold_list(xs: unrostered_unreadable(c: c), empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref unreadable-literal ", f)) })
     )
   )
 }
@@ -863,7 +883,7 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
         " contested=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).contested),
         " seed_layer=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).seed_layer),
         " uncheckable=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).uncheckable),
-        " unreadable=", to_string(n: length(xs: c.unreadable))),
+        " unreadable=", to_string(n: length(xs: unrostered_unreadable(c: c)))),
       concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
         " resolves=", to_string(n: span_counts(xs: c.prose).resolves),
         " stale=", to_string(n: span_counts(xs: c.prose).stale),

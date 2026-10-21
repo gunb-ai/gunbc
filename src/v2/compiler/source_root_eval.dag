@@ -3191,10 +3191,12 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
   }
 }
 
-// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (`decl-ref-census`). The resolver's facts are the
-// native ingest's own ResolutionContext (native_test_context_from_ingest), the same one the compiler
-// resolves with; the tokens are the lexer's, read once per file. Every decision is
-// v2.compiler.decl_ref_census (exit 0 held, 1 a refused reference or stale symbol span, 2 no
+// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (`decl-ref-census`). Cut to its demand: the
+// candidates (modules whose Node tree constructs a DeclarationRef, or whose prose cites a symbol) and
+// the targets those cite, each reached by one path lookup in the layout and a normalize, never the
+// corpus-wide ResolutionContext. A literal's head is identified by the module's own import rows; a bare
+// head (no import) is a typed counted refusal, stricter than the resolver by design. Every decision is
+// v2.compiler.decl_ref_census (exit 0 held, 1 a refused reference, bare head or stale symbol span, 2 no
 // observation); this function only reads the ingest. Prose is scoped to the two ledgers named below.
 data native_decl_ref_census_prose_scope_rfm: String = "gunbc/recurring_failure_mode"
 
