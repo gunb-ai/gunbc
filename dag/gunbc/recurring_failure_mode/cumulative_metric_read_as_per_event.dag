@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data cumulative_metric_read_as_per_event: RecurringFailureMode = RecurringFailureMode {
   identity: "cumulative_metric_read_as_per_event" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a metric that ACCOUNTS is read as a metric that MEASURES (an upstream counter or histogram whose observation is booked once per request, per retention decision or per accounting event, consumed as though it described one event, one step or one instant; the arithmetic succeeds, the units look right, and the answer is about a different quantity).",

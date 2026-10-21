@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data bare_reference_channel_declines_a_pull_in_silence: RecurringFailureMode = RecurringFailureMode {
   identity: "bare_reference_channel_declines_a_pull_in_silence" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "bare reference channel declines a pull in silence: the loader's bare-reference channel decides, per NAME, whether to pull the module that declares it. Every arm that declines is a bare `continue` -- no diagnostic, no count, no record carried past the loader -- so a module whose type reference was declined is simply not compile-clean. It then drops out of the compiled closure into the NAME CENSUS ONLY, the item registry is built over REALIZED modules only, and the first LOUD symptom is `ResolvedCalleeRegistryRowAbsent` (`effect summary incomplete`) raised once per CALLING witness, modules away from the file that carries the defect. DESIGN section 5's absorbing fallback: a precise, located fact (this reference names a module nothing pulled) replaced by a wider, quieter state, with the locating signal destroyed.",

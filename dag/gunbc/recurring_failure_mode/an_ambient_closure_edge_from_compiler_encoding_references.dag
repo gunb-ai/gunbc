@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_ambient_closure_edge_from_compiler_encoding_references
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data an_ambient_closure_edge_from_compiler_encoding_references: RecurringFailureMode = RecurringFailureMode {
   identity: "an_ambient_closure_edge_from_compiler_encoding_references" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "an ambient closure edge from compiler-encoding references: the reference-site collector counts a node the compiler itself minted as a mention the author wrote, so module acquisition requests a declaration no authored text names. Every Arrow carries its parameter labels as a FreeMonoid introduction under ^arrow_signature_order_edge, so every fn or data member requested std.algebra.FreeMonoid, and through it std.optional, std.error_primitives and std.float. A module that wrote no list had a closure of five members; its closure was never its authored demand.",
