@@ -144,6 +144,10 @@ fn slot_state_stopped(active: SystemdUnitActiveState) -> Bool {
   match active { Inactive => true Failed => true Active => false Activating => false Reloading => false Deactivating => false }
 }
 
+fn slot_state_stopping(active: SystemdUnitActiveState) -> Bool {
+  match active { Deactivating => true Active => false Activating => false Reloading => false Inactive => false Failed => false }
+}
+
 fn slot_file_is(file: extdeps.systemd.systemctl.UnitFileState?, enabled: Bool) -> Bool {
   match file {
     Absent => false
