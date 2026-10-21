@@ -14405,8 +14405,23 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                let computed =
-                                    index_insert_typed(index, typed_key.clone(), computed)?;
+                                // A RESULT COMPUTED WHILE A DEMANDED PROVIDER WAS OUTSIDE THIS CLOSURE IS NOT
+                                // THE MODULE'S ANSWER. Its generated references were left as
+                                // needs-acquisition, and the content key (source hash plus direct-import
+                                // interfaces) cannot see a provider no import names, so caching it would
+                                // serve the unacquired result again after the provider joins. Only a
+                                // result whose every demanded provider is in the closure it was computed
+                                // against is cached; the draft is recomputed on the grown closure.
+                                let providers_held = computed.provider_demands.iter().all(|d| {
+                                    closure_names
+                                        .iter()
+                                        .any(|n| *n == d.declaration.module_path)
+                                });
+                                let computed = if providers_held {
+                                    index_insert_typed(index, typed_key.clone(), computed)?
+                                } else {
+                                    computed
+                                };
                                 Ok(computed)
                             };
 
