@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_derivation_key_that_does_not_pin_bytes_across_build_hosts
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_derivation_key_that_does_not_pin_bytes_across_build_hosts: RecurringFailureMode = RecurringFailureMode {
   identity: "a_derivation_key_that_does_not_pin_bytes_across_build_hosts" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: extdeps.provisioning.ubuntu_seeded_install_media seeded_install_media_build_key names a derivation by its inputs, and the pinned-dates replay (extdeps.provisioning.ubuntu_seeded_install_media_remaster) is written as though one key determines one output -- but the same key built on two hosts gives two different images. The key pins the INPUTS it hashes and not an input the bytes also depend on.",

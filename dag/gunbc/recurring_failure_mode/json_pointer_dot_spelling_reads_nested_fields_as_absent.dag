@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.json_pointer_dot_spelling_reads_nested_fields_as_absent
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data json_pointer_dot_spelling_reads_nested_fields_as_absent: RecurringFailureMode = RecurringFailureMode {
   identity: "json_pointer_dot_spelling_reads_nested_fields_as_absent" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a JSON pointer spelled with dots where the transport expects slashes yields a successful exchange whose nested fields read as absent** (an operation declares output paths such as `result.id`; the response arrives well-formed with those members nested; the path resolver treats the dotted spelling as one key, not a descent; RestOk fires; every nested projection is NULL.",

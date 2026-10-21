@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.artifact_declares_a_threshold_it_is_not_measured_against
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data artifact_declares_a_threshold_it_is_not_measured_against: RecurringFailureMode = RecurringFailureMode {
   identity: "artifact_declares_a_threshold_it_is_not_measured_against" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**an artifact's column names a governing threshold and carries a constant that is not the threshold enforced, so the artifact cannot predict the refusal it exists to explain** (INVALID STATE: a machine-readable receipt carries a field named for the limit its subject is judged against, and the value is a constant unrelated to the limit the judge actually applies.",

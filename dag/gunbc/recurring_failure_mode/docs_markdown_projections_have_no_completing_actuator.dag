@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.docs_markdown_projections_have_no_completing
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data docs_markdown_projections_have_no_completing_actuator: RecurringFailureMode = RecurringFailureMode {
   identity: "docs_markdown_projections_have_no_completing_actuator" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**generated `docs/*.md` ledger projections have no ProcessExit actuator and no regen coverage, so an EDIT to a still-present row can sit in the authority, absent from the projection, with every completing instrument green** (INVALID STATE: `gunbc.recurring_failure_mode` is the authority; `docs/design-failure-modes.md` is the projection DESIGN.md points readers at. `expected_design_failure_modes_md` returns `String`. The refusal exits 2 with EMPTY STDOUT and interpolates the rendered value into the diagnostic on stderr: classify_exit's non-variant arm is type_name: ctx.format_value(other). Executed: wise-badger-902, EXIT=2, stdout 0 bytes, stderr 578588 bytes opening with the markdown heading; quick-heron-85, proj3.err 1062137 bytes, same delimiters. The enrolled control `non_process_exit_refuses_rather_than_printing_and_succeeding` forbids print-AND-SUCCEED, and holds. The content is therefore obtainable ONLY by scraping a half-megabyte stderr diagnostic between delimiters that are message prose (returned-open-quote and not-ProcessExit-close-quote), unversioned and enrolled by nothing. Extractable only by scraping an unversioned diagnostic — which is why the ProcessExit regen is the repair. `claim_executor --required-regen` compares only `is_compared_generated_basename` = ends_with .rs into `target/stage0-regen-candidate`. HARM: three rows can be edited in `.dag` after the last projection and nothing that exits 0 will say the markdown is stale. The meaning-fork in the field named type_name is a separate row, `type_name_field_carries_rendered_value`, not this class.",

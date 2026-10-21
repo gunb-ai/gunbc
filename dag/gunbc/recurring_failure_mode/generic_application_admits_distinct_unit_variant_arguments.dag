@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generic_application_admits_distinct_unit_variant_arguments
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data generic_application_admits_distinct_unit_variant_arguments: RecurringFailureMode = RecurringFailureMode {
   identity: "generic_application_admits_distinct_unit_variant_arguments" as NonEmptyStr,
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
   receipts: [
     "SUBJECT: unit variants of one closed coproduct used to distinguish generic applications. Source: module application; type Marker = First | Second; type Record<P> { n: Int }; fn take(q: Record<First>) -> Int { q.n }; fn probe(q: Record<Second>) -> Int { take(q: q) }. A value at Record<Second> is accepted at Record<First>; agreement of runtime record fields does not establish agreement of the authored arguments.",
     "BASELINE: 03a3b91fb4c1ea7e408df2cb484f475d75080a7f, archived compiler SHA256 8692902cd6540b0cd1bd5f73701c6a3910bb3c87a73110f8125b0c00cdbfa02b, invocation https://app.buildbuddy.io/invocation/8979a487-2456-41ac-a190-322814d49638. One source, six emitted Rust files, exit 0, two UnlistedImportUse advisories naming First and Second. The same binary's Out/Other generic foreign constructor also accepts at zero diagnostics; its Acc counterpart accepts at zero.",
