@@ -27,6 +27,9 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 import extdeps.exec.command { LocalExec }
 import extdeps.git { git_grep_files_with_matches_command, git_ls_files_command }
 import gunbc.command_runner { run_shell_command_capture }
+import v2.workflow.claim_coverage_census_s1_live {
+  census_head_reading, HeadReading, RevisionRead, RevisionAbsent,
+}
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
   InsideGovernedTree,
@@ -146,6 +149,38 @@ fn listing_paths(text: String) -> List<String> {
     |> map(line => trim(s: line))
 }
 
+// THE CHANNEL THE COMPOSED INSTRUMENT CONSUMES (warm-wolf-570's one-instrument ruling): this census is one
+// source of `gunbc test //gunbc/instruments:claim-coverage-census`, and a source reaches the exit only through
+// a declared sum -- the same shape the wet census contributes `ClaimCoverageStanding` in and S1 contributes
+// `S1Standing` in. A Bool beside a String list would let an unread census and a clean census arrive as the
+// same carrier; here the refusal carries its cause and the finding carries its reasons, so the composition
+// cannot confuse them (DESIGN 4c: an invariant, receipt, ruling belongs in a typed carrier).
+type OutsideRootsChannel
+  = OutsideChannelHeld
+  | OutsideChannelFinding { reasons: List<String> }
+  | OutsideChannelUnread { cause: String }
+
+// THE CHANNEL, DERIVED FROM WHAT WAS OBSERVED, never chosen beside it: findings dominate (a definite finding
+// is a definite non-hold even if some other read failed -- the same Kleene precedence the composed census
+// uses); with nothing found, an unread input is "no observation"; otherwise the census held.
+fn outside_roots_channel(findings: List<String>, unread: Bool) -> OutsideRootsChannel {
+  if !is_empty(findings) {
+    OutsideChannelFinding {
+      reasons: findings |> map(f => concat("outside-discovery-roots-census: ", f))
+    }
+  } else if unread {
+    OutsideChannelUnread { cause: listing_unread_channel_cause }
+  } else {
+    OutsideChannelHeld
+  }
+}
+
+// THE CAUSE SAID WHEN THE READING FAILED OUTSIDE THE CAPTURE: the fold itself declares it unread. The two
+// capture refusals carry their own causes; this arm exists so an empty answer that the fold judged unread
+// still arrives typed rather than silent.
+data listing_unread_channel_cause: String =
+  "outside-discovery-roots-census: the listing arrived but the fold judged it unread"
+
 // The census, composed: rows, findings, refusal, receipt. Pure over the listing the capture handed back.
 type OutsideRootsCensusOutput {
   standing_rows: List<OutsideRootsStanding>,
@@ -154,6 +189,7 @@ type OutsideRootsCensusOutput {
   undeclared: List<String>,
   scan_dir_gap: List<String>,
   unread: Bool,
+  channel: OutsideRootsChannel,
   lines: List<String>
 }
 
@@ -177,6 +213,7 @@ fn outside_roots_census(listing: TrackedListing, bearers: ClaimBearerRead) -> Ou
             undeclared: undeclared,
             scan_dir_gap: gap,
             unread: listing_is_unread(rows: rows),
+            channel: outside_roots_channel(findings: findings, unread: listing_is_unread(rows: rows)),
             lines: concat(
               outside_roots_header_lines(),
               concat(
@@ -208,6 +245,7 @@ fn refused_census(cause: String) -> OutsideRootsCensusOutput {
     // says so. The wet claim reads the two together for exactly that reason.
     scan_dir_gap: [],
     unread: true,
+    channel: OutsideChannelUnread { cause: concat("outside-discovery-roots-census: ", cause) },
     lines: concat(outside_roots_header_lines(), [concat("OUTSIDE-DISCOVERY-ROOTS UNREAD: ", cause)])
   }
 }
@@ -219,5 +257,19 @@ fn head_stamp_line(revision: String) -> String {
     concat("OUTSIDE-DISCOVERY-ROOTS head: ", revision)
   } else {
     "OUTSIDE-DISCOVERY-ROOTS head: no revision supplied"
+  }
+}
+
+// THE RUNNER'S STAMP FOR THE COMPOSED ENTRY, beside the census lines. The locator comes from the same
+// authority the S1 receipt uses (`census_head_reading`: git, then the runner's GITHUB_SHA, then a typed
+// absence) -- one head for one tree, so the two receipts can never disagree about which tree was measured.
+// An unreadable head says so with its cause; it never prints a placeholder dressed as a revision.
+fn outside_roots_head_receipt_line() -> String {
+  match census_head_reading() {
+    RevisionRead { revision: revision } => head_stamp_line(revision: revision)
+    RevisionAbsent { cause: cause } => concat(
+      "OUTSIDE-DISCOVERY-ROOTS head: UNREADABLE: the runner could not locate the tree -- ",
+      cause
+    )
   }
 }
