@@ -266,10 +266,11 @@ type RoleJoinResidual
 
 // The capability that retires the residual, at capability grain (not an artifact): a withheld entry names the
 // slot it stands for, so the join can match it to a slot without counting.
-type RoleJoinResidualRetirementTrigger
-  = WithheldEntriesCarrySlotIdentity
+type RoleJoinResidualRetirement {
+  requires_withheld_entries_to_carry_slot_identity: Bool
+}
 
-data role_join_residual_retirement: RoleJoinResidualRetirementTrigger = WithheldEntriesCarrySlotIdentity
+data role_join_residual_retirement: RoleJoinResidualRetirement = RoleJoinResidualRetirement { requires_withheld_entries_to_carry_slot_identity: true }
 
 fn role_join_residual(expected: List<String>, files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> RoleJoinResidual {
   let rendered = map(filter(files, f => (f.subject as String) == "runner-slot-role-dropin"), f => f.path as String)
@@ -322,7 +323,7 @@ test fn the_count_only_withheld_shape_records_its_residual_and_a_full_render_doe
   role_population_joins(expected: expected, files: [role_file_at(path: pa)], withheld: [role_withheld_entry()])
     && (match counted { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: n, slots_without_a_file: ss } => n == 1 && ss == [pb] RoleJoinFullyAttributed => false })
     && (match full { RoleJoinFullyAttributed => true RoleJoinWithheldCountedNotAttributed { anonymous_withheld: _, slots_without_a_file: _ } => false })
-    && (match role_join_residual_retirement { WithheldEntriesCarrySlotIdentity => true })
+    && role_join_residual_retirement.requires_withheld_entries_to_carry_slot_identity
 }
 
 fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
