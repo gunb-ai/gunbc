@@ -15,8 +15,9 @@ import gunbc.runner.runner_group_restriction_ensure {
 import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction }
 import gunbc.ci.deploy_slot_tenancy {
   deploy_slot_runner_group_name, deploy_slot_job_user, deploy_slot_selected_workflow,
-  DeploySlotReading, deploy_slot_observed_tenancy, srv1_deploy_slot_reading_today,
+  DeploySlotReading, deploy_slot_observed_tenancy,
 }
+import gunbc.runner.runner_slot_job_role { srv1_modeled_deploy_slot_reading }
 import gunbc.ci.deploy_route_requirement { srv1_deploy_route_requirement, deploy_route_switch_admitted }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 
@@ -172,7 +173,7 @@ test fn witness_deploy_slot_admits_the_route_switch_only_when_group_and_uid_both
   let restricted = [default_group(), deploy_group(id: 31, selected: [wf as String])]
   let admit = r => deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: deploy_slot_observed_tenancy(reading: r))
   (wf as String) == "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main"
-    && !admit(srv1_deploy_slot_reading_today())
+    && !admit(srv1_modeled_deploy_slot_reading())
     && admit(deploy_reading(groups: restricted, user: deploy_slot_job_user))
     && !admit(deploy_reading(groups: restricted, user: "ghrunner" as NonEmptyStr))
     && !admit(deploy_reading(groups: [default_group()], user: deploy_slot_job_user))

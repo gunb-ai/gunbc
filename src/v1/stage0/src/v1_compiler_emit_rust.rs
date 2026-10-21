@@ -66,7 +66,7 @@ pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
 pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params, v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
-pub use crate::v1_std_core::{expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v1_std_core::{expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, render_span_location, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::gunbc_cli_dispatch_surface::CliArmRealization::{CliDelegatesToHostFn, CliInvokesBootstrapDagOperation, CliInvokesBoundTargetProducer, CliKnownOperationNoRealization, CliRefusesUnwired, CliRetainedHostKernel};
 use crate::gunbc_cli_dispatch_surface::CliBootstrapExecutionClass::{BootstrapSuccessorOperation};
 use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeated, CliRequired};
@@ -961,18 +961,12 @@ pub fn render_rust_optional_carrier_inner(
         std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "optional carrier payload type node absent for ".to_string(),
-                            n.name.clone(),
-                        ),
-                        " at ".to_string(),
-                    ),
-                    n.span.file.clone(),
+                    "optional carrier payload type node absent for ".to_string(),
+                    n.name.clone(),
                 ),
-                ":".to_string(),
+                " at ".to_string(),
             ),
-            crate::v1_compiler_emit_core_support::to_string(n.span.start.clone()),
+            crate::v1_std_core::render_span_location(n.span.clone(), source_indices.clone()),
         )),
     }
 }
@@ -2093,19 +2087,20 @@ pub fn is_machine_width_phantom_token(name: String) -> bool {
         || (name.clone() == "Word128".to_string()))
 }
 
-pub fn emit_width_type_arg_identity_refusal(n: Rc<Node>, name: String) -> String {
+pub fn emit_width_type_arg_identity_refusal(
+    n: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     emit_rust_compile_error_expr(v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "width type argument has no Rust type identity at ".to_string(),
-                            n.span.file.clone(),
-                        ),
-                        ":".to_string(),
+                    "width type argument has no Rust type identity at ".to_string(),
+                    crate::v1_std_core::render_span_location(
+                        n.span.clone(),
+                        source_indices.clone(),
                     ),
-                    crate::v1_compiler_emit_core_support::to_string(n.span.start.clone()),
                 ),
                 " (".to_string(),
             ),
@@ -2152,21 +2147,23 @@ pub fn rust_type_arg_identity_spelling(
                         Some(emit_width_type_arg_identity_refusal(
                             n.clone(),
                             name.clone(),
+                            source_indices.clone(),
                         ))
                     } else {
                         if crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone()) {
                             match crate::v1_std_core::expr_literal_int_optional(n.clone()) {
     Some(v) => match crate::v1_compiler_infer_env::static_width_index_declaring_module(env.clone()) {
     Some(declaring) => Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), crate::gunbc_rust_emitted_edge::module_to_filename(declaring.clone())), "::".to_string()), crate::v1_compiler_infer_env::static_width_index_arm_name()), "<".to_string()), crate::v1_compiler_emit_core_support::to_string(v.clone())), ">".to_string())),
-    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone())),
+    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone(), source_indices.clone())),
 },
-    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone())),
+    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone(), source_indices.clone())),
 }
                         } else {
                             if is_machine_width_phantom_token(name.clone()) {
                                 Some(emit_width_type_arg_identity_refusal(
                                     n.clone(),
                                     name.clone(),
+                                    source_indices.clone(),
                                 ))
                             } else {
                                 std::option::Option::None
@@ -2178,19 +2175,16 @@ pub fn rust_type_arg_identity_spelling(
                     Some(emit_rust_compile_error_expr(v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "unit-variant marker identity evidence unavailable for "
-                                            .to_string(),
-                                        name.clone(),
-                                    ),
-                                    " at ".to_string(),
-                                ),
-                                n.span.file.clone(),
+                                "unit-variant marker identity evidence unavailable for "
+                                    .to_string(),
+                                name.clone(),
                             ),
-                            ":".to_string(),
+                            " at ".to_string(),
                         ),
-                        crate::v1_compiler_emit_core_support::to_string(n.span.start.clone()),
+                        crate::v1_std_core::render_span_location(
+                            n.span.clone(),
+                            source_indices.clone(),
+                        ),
                     )))
                 }
             }
@@ -8176,27 +8170,21 @@ pub fn anonymous_record_lit_surface_name(
             type_summaries.clone(),
         ) {
             Some(sn) => sn.clone(),
-            std::option::Option::None => match find_unique_struct_name_by_fields(
-                lit_field_names.clone(),
-                type_summaries.clone(),
-            ) {
-                Some(sn) => sn.clone(),
-                std::option::Option::None => {
-                    let rt = crate::v1_compiler_infer_types::resolved_type(n.clone());
-                    let rt_name =
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
-                    if ((rt.ident_span.clone() != std::option::Option::None)
-                        && (crate::v1_compiler_infer_emit_info::type_summary_decided(
-                            type_summaries.clone(),
-                            rt_name.clone(),
-                        ) != std::option::Option::None))
-                    {
-                        rt_name.clone()
-                    } else {
-                        "".to_string()
-                    }
+            std::option::Option::None => {
+                let rt = crate::v1_compiler_infer_types::resolved_type(n.clone());
+                let rt_name =
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
+                if ((rt.ident_span.clone() != std::option::Option::None)
+                    && (crate::v1_compiler_infer_emit_info::type_summary_decided(
+                        type_summaries.clone(),
+                        rt_name.clone(),
+                    ) != std::option::Option::None))
+                {
+                    rt_name.clone()
+                } else {
+                    "".to_string()
                 }
-            },
+            }
         }
     }
 }
@@ -8324,20 +8312,7 @@ pub fn record_lit_resolved_ctor_import_names(
                             Rc::new(vec![])
                         }
                     }
-                    std::option::Option::None => match find_unique_struct_name_by_fields(
-                        lit_field_names.clone(),
-                        type_summaries.clone(),
-                    ) {
-                        Some(sn) => {
-                            if ((sn.clone() != "".to_string()) && (sn.clone() != type_name.clone()))
-                            {
-                                Rc::new(vec![sn.clone()])
-                            } else {
-                                Rc::new(vec![])
-                            }
-                        }
-                        std::option::Option::None => Rc::new(vec![]),
-                    },
+                    std::option::Option::None => Rc::new(vec![]),
                 }
             }
         } else {
@@ -8433,147 +8408,6 @@ pub fn record_lit_ref_names(
         }
         _ => Rc::new(vec![]),
     }
-}
-
-pub fn collect_anonymous_record_lit_heads(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<TypeSummaryIndex>,
-) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let self_head = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                match crate::v1_std_core::record_lit_type_name_at(n.clone(), source_indices.clone())
-                {
-                    Some(_) => Rc::new(vec![]),
-                    std::option::Option::None => {
-                        let inferred =
-                            emit_inferred_type_leaf_name(n.clone(), source_indices.clone());
-                        if ((inferred.clone() != "".to_string())
-                            && (crate::v1_compiler_infer_emit_info::type_summary_decided(
-                                type_summaries.clone(),
-                                inferred.clone(),
-                            ) != std::option::Option::None))
-                        {
-                            Rc::new(vec![inferred.clone()])
-                        } else {
-                            {
-                                let anon = anonymous_record_lit_surface_name(
-                                    n.clone(),
-                                    source_indices.clone(),
-                                    type_summaries.clone(),
-                                );
-                                if (anon.clone() != "".to_string()) {
-                                    Rc::new(vec![anon.clone()])
-                                } else {
-                                    Rc::new(vec![])
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => Rc::new(vec![]),
-        };
-        let list_fields = v1_rt::concat(
-            v1_rt::concat(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_anonymous_record_lit_heads(
-                                c.clone(),
-                                source_indices.clone(),
-                                type_summaries.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.params.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_anonymous_record_lit_heads(
-                                c.clone(),
-                                source_indices.clone(),
-                                type_summaries.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-            ),
-            v1_rt::concat(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.uses.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_anonymous_record_lit_heads(
-                                c.clone(),
-                                source_indices.clone(),
-                                type_summaries.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.properties.clone().iter().cloned() {
-                        __result.extend(
-                            (*collect_anonymous_record_lit_heads(
-                                c.clone(),
-                                source_indices.clone(),
-                                type_summaries.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
-            ),
-        );
-        let opt_fields = v1_rt::concat(
-            match n.body.clone() {
-                Some(b) => collect_anonymous_record_lit_heads(
-                    b.clone(),
-                    source_indices.clone(),
-                    type_summaries.clone(),
-                ),
-                std::option::Option::None => Rc::new(vec![]),
-            },
-            v1_rt::concat(
-                match n.transport.clone() {
-                    Some(t) => collect_anonymous_record_lit_heads(
-                        t.clone(),
-                        source_indices.clone(),
-                        type_summaries.clone(),
-                    ),
-                    std::option::Option::None => Rc::new(vec![]),
-                },
-                match n.type_annotation.clone() {
-                    Some(t) => collect_anonymous_record_lit_heads(
-                        t.clone(),
-                        source_indices.clone(),
-                        type_summaries.clone(),
-                    ),
-                    std::option::Option::None => Rc::new(vec![]),
-                },
-            ),
-        );
-        v1_rt::concat(
-            self_head.clone(),
-            v1_rt::concat(list_fields.clone(), opt_fields.clone()),
-        )
-    })
 }
 
 pub fn collect_items_field_import_surface_names(
@@ -9599,34 +9433,6 @@ pub fn expand_variant_payload_struct_imports(
     })
 }
 
-pub fn reference_derived_authored_source_gate_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "reference_derived_use_lines synthesizes a use-line only for an ATTESTED candidate: two authored-source-text forms decided by reference_derived_candidate_authored (NewlineIndex char_codes), plus one emitter-attested form decided by collect_anonymous_record_lit_heads (emitter_attested_anonymous_head_note — a head the emitter itself renders for an anonymous record literal, which the authored text structurally cannot spell). Direct: the candidate's own name is spelled. Variant-induced: the candidate is a unit-only enum and the module spells at least one variant that binds UNAMBIGUOUSLY back to it — derive_variant_to_enum maps a variant shared by two enums to the empty string, so a homonym never equals the enum name and is REFUSED rather than picked. A name that enters the candidate set only via inferred/type-summary over-collection — attested by neither form — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use — that name is a record, not a unit-only enum, so the variant-induced arm cannot readmit it. Second receipt (Root K): the emitter qualifies variants as Parent::Variant in pattern and nested-argument positions where the source spells only the variant, so asking whether the PARENT was spelled refused a parent the module demonstrably uses — 109 of 132 sites. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable. Declared residue, in two classes that fail at DIFFERENT stages — this gate is a filter over a candidate set, so it can only refuse, never propose. Refused HERE: a parent enum with neither its own name nor any binding variant spelled, and a non-enum candidate whose only evidence is over-collection. Never REACHING here, and therefore unfixable by any gate decision: a name the candidate collector never proposes. Measured by execution — forcing this gate to admit unconditionally and re-emitting v2.lens.complexity_accumulator_copy.analyze still produces no use-line for Behavior, whose unit-only variant Transform is spelled bare in a pattern position and binds unambiguously, so the arm's preconditions hold and the name is simply absent upstream. That class is pre-existing and unchanged by Root K (identical count in both arms), and it is where the remaining sites live: widening this gate further cannot reach them. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-attestation gate is the conservative interim, not the destination.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn module_authored_source_text(
-    module: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    match v1_rt::map_get(&source_indices, module.span.file.clone()) {
-        Some(index) => v1_rt::chars_to_string(
-            &index.char_codes.clone(),
-            0,
-            (index.char_codes.clone().len() as i64),
-        ),
-        std::option::Option::None => "".to_string(),
-    }
-}
-
-pub fn reference_derived_candidate_spelled_in_module(module_source: String, name: String) -> bool {
-    ((module_source.clone() != "".to_string())
-        && v1_rt::string_contains(&module_source, name.clone()))
-}
-
 pub fn host_realized_builtin_needs_no_import_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -9640,64 +9446,6 @@ pub fn reference_is_host_realized_builtin(name: String) -> bool {
     ((crate::v1_compiler_infer_method::infer_builtin_call_type(name.clone())
         != std::option::Option::None)
         || crate::std_types::is_container_type(name.clone()))
-}
-
-pub fn reference_derived_variant_induced_parent_spelled(
-    module_source: String,
-    enum_name: String,
-    type_summaries: Rc<TypeSummaryIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-) -> bool {
-    match crate::v1_compiler_infer_emit_info::type_summary_decided(
-        type_summaries.clone(),
-        enum_name.clone(),
-    ) {
-        Some(summary) => match (*summary.repr.clone()).clone() {
-            TypeRepr::EnumRepr { unit_only: _, .. } => {
-                let mut __found = false;
-                for vn in Rc::new(v1_rt::sorted_map_keys(&summary.variant_name_set.clone()))
-                    .iter()
-                    .cloned()
-                {
-                    if match v1_rt::map_get(&variant_to_enum, vn.clone()) {
-                        Some(parent) => {
-                            (((parent.clone() != "".to_string())
-                                && (crate::v1_std_core::qualified_last_segment(parent.clone())
-                                    == crate::v1_std_core::qualified_last_segment(
-                                        enum_name.clone(),
-                                    )))
-                                && reference_derived_candidate_spelled_in_module(
-                                    module_source.clone(),
-                                    vn.clone(),
-                                ))
-                        }
-                        std::option::Option::None => false,
-                    } {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }
-            _ => false,
-        },
-        std::option::Option::None => false,
-    }
-}
-
-pub fn reference_derived_candidate_authored(
-    module_source: String,
-    name: String,
-    type_summaries: Rc<TypeSummaryIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-) -> bool {
-    (reference_derived_candidate_spelled_in_module(module_source.clone(), name.clone())
-        || reference_derived_variant_induced_parent_spelled(
-            module_source.clone(),
-            name.clone(),
-            type_summaries.clone(),
-            variant_to_enum.clone(),
-        ))
 }
 
 pub fn rust_code_outside_string_literals(s: String) -> String {
@@ -10092,17 +9840,6 @@ pub fn reference_derived_row_diagnostics(
     })
 }
 
-pub fn reference_derived_candidate_survived(
-    disposition: Rc<ReferenceDerivedCandidateDisposition>,
-) -> bool {
-    match (*disposition.clone()).clone() {
-        ReferenceDerivedCandidateDisposition::CandidateSurvived {
-            provider_module: _, ..
-        } => true,
-        _ => false,
-    }
-}
-
 pub fn reference_derived_disposition_name(
     disposition: Rc<ReferenceDerivedCandidateDisposition>,
 ) -> String {
@@ -10299,17 +10036,9 @@ pub fn reference_derived_use_line_plan(
     module_index: Rc<ModuleIndex>,
     shared_types: Rc<BTreeSet<String>>,
     emitted_source: String,
+    applied_type_argument_names: Rc<Vec<String>>,
 ) -> Rc<ReferenceDerivedUseLinePlan> {
     {
-        let module_source = match typed_module_by_name(
-            this_module_name.clone(),
-            typed_modules.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        ) {
-            Some(tm) => module_authored_source_text(tm.module.clone(), source_indices.clone()),
-            std::option::Option::None => "".to_string(),
-        };
         let value_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
@@ -10343,41 +10072,6 @@ pub fn reference_derived_use_line_plan(
         });
         let type_surface_names =
             crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
-        let applied_type_argument_names =
-            crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
-                let mut __result = Vec::new();
-                for occurrence in Rc::new({
-                    let mut __result = Vec::new();
-                    for occurrence in Rc::new({
-                        let mut __result = Vec::new();
-                        for item in items.iter().cloned() {
-                            __result.extend(
-                                (*collect_item_type_surface_occurrences(
-                                    item.clone(),
-                                    source_indices.clone(),
-                                ))
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        if occurrence.applied_argument.clone() {
-                            __result.push(occurrence);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(occurrence.name.clone());
-                }
-                __result
-            }));
         let type_position_set = type_surface_names.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, nm: String| {
@@ -10393,22 +10087,6 @@ pub fn reference_derived_use_line_plan(
             emit_info.type_summaries.clone(),
             emit_info.variant_to_enum.clone(),
         );
-        let emitter_attested_anon_heads =
-            crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
-                let mut __result = Vec::new();
-                for item in items.iter().cloned() {
-                    __result.extend(
-                        (*collect_anonymous_record_lit_heads(
-                            item.clone(),
-                            source_indices.clone(),
-                            emit_info.type_summaries.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }));
         let realized_surface_names =
             crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
                 let mut __result = Vec::new();
@@ -10446,39 +10124,11 @@ pub fn reference_derived_use_line_plan(
             let mut __result = Vec::new();
             for name in Rc::new({
                 let mut __result = Vec::new();
-                for name in Rc::new({
-                    let mut __result = Vec::new();
-                    for name in crate::v1_compiler_emit_core_support::unique_strings(
-                        crate::std_repair_input_origin::repair_input_origin_compatibility_names(
-                            origin_candidates.clone(),
-                        ),
-                    )
-                    .iter()
-                    .cloned()
-                    {
-                        if ((reference_derived_candidate_authored(
-                            module_source.clone(),
-                            name.clone(),
-                            emit_info.type_summaries.clone(),
-                            emit_info.variant_to_enum.clone(),
-                        ) || {
-                            let mut __found = false;
-                            for h in emitter_attested_anon_heads.iter().cloned() {
-                                if (h.clone() == name.clone()) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        }) || crate::v1_compiler_infer_types::emit_map_has(
-                            emitted_source_token_set.clone(),
-                            name.clone(),
-                        )) {
-                            __result.push(name);
-                        }
-                    }
-                    __result
-                })
+                for name in crate::v1_compiler_emit_core_support::unique_strings(
+                    crate::std_repair_input_origin::repair_input_origin_compatibility_names(
+                        origin_candidates.clone(),
+                    ),
+                )
                 .iter()
                 .cloned()
                 {
@@ -10576,43 +10226,19 @@ pub fn reference_derived_use_line_plan(
             }
             __result
         });
-        let unlisted = Rc::new({
-            let mut __result = Vec::new();
-            for r in Rc::new({
-                let mut __result = Vec::new();
-                for r in rows.iter().cloned() {
-                    if reference_derived_candidate_survived(r.disposition.clone()) {
-                        __result.push(r);
-                    }
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                __result.push(r.name.clone());
-            }
-            __result
-        });
         let resolved = Rc::new({
             let mut __result = Vec::new();
-            for name in unlisted.iter().cloned() {
+            for r in rows.iter().cloned() {
                 __result.extend(
-                    (*match (*lookup_item_by_leaf(
-                        name.clone(),
-                        registry.clone(),
-                        emit_info.clone(),
-                    ))
-                    .clone()
-                    {
-                        ItemLookup::ItemFound { info: info, .. } => {
-                            Rc::new(vec![Rc::new(ReferenceDerivedProviderBinding {
-                                name: name.clone(),
-                                provider_module: info.module_name.clone(),
-                            })])
-                        }
-                        ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => Rc::new(vec![]),
-                        ItemLookup::ItemNotFound => Rc::new(vec![]),
+                    (*match (*r.disposition.clone()).clone() {
+                        ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                            provider_module: provider,
+                            ..
+                        } => Rc::new(vec![Rc::new(ReferenceDerivedProviderBinding {
+                            name: r.name.clone(),
+                            provider_module: provider.clone(),
+                        })]),
+                        _ => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -10620,18 +10246,36 @@ pub fn reference_derived_use_line_plan(
             }
             __result
         });
-        let providers = canonical_string_set(Rc::new({
-            let mut __result = Vec::new();
-            for b in resolved.iter().cloned() {
-                __result.push(b.provider_module.clone());
-            }
-            __result
-        }));
+        let grouped_seed = v1_rt::rc_empty_map::<String, Rc<Vec<String>>>();
+        let grouped = resolved.iter().cloned().fold(
+            grouped_seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<ReferenceDerivedProviderBinding>| {
+                if (b.provider_module.clone() == "".to_string()) {
+                    acc.clone()
+                } else {
+                    {
+                        let existing = match v1_rt::map_get(&acc, b.provider_module.clone()) {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        v1_rt::rc_map_insert(
+                            acc.clone(),
+                            b.provider_module.clone(),
+                            v1_rt::concat(existing.clone(), Rc::new(vec![b.name.clone()])),
+                        )
+                    }
+                }
+            },
+        );
+        let providers = Rc::new(v1_rt::sorted_map_keys(&grouped));
         let typed_lines = Rc::new({
             let mut __result = Vec::new();
             for provider in providers.iter().cloned() {
                 __result.extend((*{
-            let names = canonical_string_set(Rc::new({ let mut __result = Vec::new(); for b in Rc::new({ let mut __result = Vec::new(); for b in resolved.iter().cloned() { if (b.provider_module.clone() == provider.clone()) { __result.push(b); } } __result }).iter().cloned() { __result.push(b.name.clone()); } __result }));
+            let names = canonical_string_set(match v1_rt::map_get(&grouped, provider.clone()) {
+    Some(v) => v.clone(),
+    std::option::Option::None => Rc::new(vec![]),
+});
 let plan_module_env = match v1_rt::map_get(&module_index.by_name.clone(), this_module_name.clone()) {
     Some(tm) => Some(tm.type_env.clone()),
     std::option::Option::None => std::option::Option::None,
@@ -10978,41 +10622,6 @@ pub fn qualified_type_reference_use_lines(
     }
 }
 
-pub fn reference_derived_use_lines(
-    items: Rc<Vec<Rc<Node>>>,
-    unlisted_type_names: Rc<Vec<String>>,
-    this_module_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    emit_info: Rc<EmitGraphInfo>,
-    local_type_names: Rc<Vec<String>>,
-    already_imported_names: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-    shared_types: Rc<BTreeSet<String>>,
-    emitted_source: String,
-) -> Rc<Vec<String>> {
-    {
-        let plan = reference_derived_use_line_plan(
-            items.clone(),
-            unlisted_type_names.clone(),
-            this_module_name.clone(),
-            emit_info.clone(),
-            registry.clone(),
-            local_type_names.clone(),
-            already_imported_names.clone(),
-            export_sets.clone(),
-            typed_modules.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-            shared_types.clone(),
-            emitted_source.clone(),
-        );
-        plan.lines.clone()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleEmission {
     pub file: Rc<TextFile>,
@@ -11168,6 +10777,41 @@ pub fn emit_module_full(
         let module_import_items = crate::v1_std_core::module_imports(m.clone());
         let this_module_name =
             crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone());
+        let applied_type_argument_names =
+            crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+                let mut __result = Vec::new();
+                for occurrence in Rc::new({
+                    let mut __result = Vec::new();
+                    for occurrence in Rc::new({
+                        let mut __result = Vec::new();
+                        for item in typed_module.items.clone().iter().cloned() {
+                            __result.extend(
+                                (*collect_item_type_surface_occurrences(
+                                    item.clone(),
+                                    scope.type_env.source_indices.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        if occurrence.applied_argument.clone() {
+                            __result.push(occurrence);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(occurrence.name.clone());
+                }
+                __result
+            }));
         let wire_context_items = v1_rt::concat(
             typed_module.items.clone(),
             contracts_items_for_module(
@@ -11237,6 +10881,7 @@ pub fn emit_module_full(
             typed_module.items.clone(),
             Some(scope.type_env.clone()),
             crate::gunbc_rust_emitted_edge::rust_module_emit_filename(this_module_name.clone()),
+            applied_type_argument_names.clone(),
         );
         let imports_str = rendered_imports.text.clone();
         let dag_import_lines = if (imports_str.clone() == "".to_string()) {
@@ -11286,6 +10931,7 @@ pub fn emit_module_full(
             module_index.clone(),
             shared_types.clone(),
             items_str.clone(),
+            applied_type_argument_names.clone(),
         );
         let reference_use_lines = reference_plan.lines.clone();
         let merged_import_lines = dedupe_rust_import_lines(v1_rt::concat(
@@ -13884,19 +13530,27 @@ pub fn is_emittable_parametric_type_alias_item(
     }
 }
 
-pub fn import_variant_parent_for_name(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportNameClassification {
+    pub is_graph_type: bool,
+    pub local_parent: Option<String>,
+    pub reexport_parent: Option<String>,
+    pub variant_parent: String,
+}
+
+pub fn classify_import_name(
     n: String,
     import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     type_summaries: Rc<TypeSummaryIndex>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     imported_enums: Rc<Vec<String>>,
     import_module_enums: Rc<Vec<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-) -> String {
+) -> Rc<ImportNameClassification> {
     if is_import_graph_type_name(
         n.clone(),
         import_module.clone(),
@@ -13908,7 +13562,12 @@ pub fn import_variant_parent_for_name(
         module_index.clone(),
         variant_to_enum.clone(),
     ) {
-        "".to_string()
+        Rc::new(ImportNameClassification {
+            is_graph_type: true,
+            local_parent: std::option::Option::None,
+            reexport_parent: std::option::Option::None,
+            variant_parent: "".to_string(),
+        })
     } else {
         if {
             let mut __found = false;
@@ -13920,49 +13579,343 @@ pub fn import_variant_parent_for_name(
             }
             __found
         } {
-            "".to_string()
+            Rc::new(ImportNameClassification {
+                is_graph_type: false,
+                local_parent: std::option::Option::None,
+                reexport_parent: std::option::Option::None,
+                variant_parent: "".to_string(),
+            })
         } else {
-            match find_variant_parent_in_module(
-                n.clone(),
-                import_module.clone(),
-                typed_modules.clone(),
-                source_indices.clone(),
-                module_index.clone(),
-            ) {
-                Some(parent) => parent.clone(),
-                std::option::Option::None => match reexport_variant_parent_in_import_module(
+            {
+                let local_parent = find_variant_parent_in_module(
                     n.clone(),
                     import_module.clone(),
-                    registry.clone(),
-                    type_summaries.clone(),
                     typed_modules.clone(),
-                    export_sets.clone(),
                     source_indices.clone(),
                     module_index.clone(),
-                ) {
+                );
+                let reexport_parent = match local_parent.clone() {
+                    Some(_) => std::option::Option::None,
+                    std::option::Option::None => reexport_variant_parent_in_import_module(
+                        n.clone(),
+                        import_module.clone(),
+                        registry.clone(),
+                        type_summaries.clone(),
+                        typed_modules.clone(),
+                        export_sets.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ),
+                };
+                let variant_parent = match local_parent.clone() {
                     Some(parent) => parent.clone(),
-                    std::option::Option::None => {
-                        match crate::v1_compiler_infer_emit_info::find_variant_parent(
-                            type_summaries.clone(),
-                            n.clone(),
-                            imported_enums.clone(),
-                        ) {
-                            Some(parent) => parent.clone(),
-                            std::option::Option::None => {
-                                match crate::v1_compiler_infer_emit_info::find_variant_parent(
-                                    type_summaries.clone(),
-                                    n.clone(),
-                                    import_module_enums.clone(),
-                                ) {
-                                    Some(parent) => parent.clone(),
-                                    std::option::Option::None => "".to_string(),
+                    std::option::Option::None => match reexport_parent.clone() {
+                        Some(parent) => parent.clone(),
+                        std::option::Option::None => {
+                            match crate::v1_compiler_infer_emit_info::find_variant_parent(
+                                type_summaries.clone(),
+                                n.clone(),
+                                imported_enums.clone(),
+                            ) {
+                                Some(parent) => parent.clone(),
+                                std::option::Option::None => {
+                                    match crate::v1_compiler_infer_emit_info::find_variant_parent(
+                                        type_summaries.clone(),
+                                        n.clone(),
+                                        import_module_enums.clone(),
+                                    ) {
+                                        Some(parent) => parent.clone(),
+                                        std::option::Option::None => "".to_string(),
+                                    }
                                 }
                             }
                         }
-                    }
-                },
+                    },
+                };
+                Rc::new(ImportNameClassification {
+                    is_graph_type: false,
+                    local_parent: local_parent.clone(),
+                    reexport_parent: reexport_parent.clone(),
+                    variant_parent: variant_parent.clone(),
+                })
             }
         }
+    }
+}
+
+pub fn extend_import_name_walks(
+    row: Rc<ImportNameClassification>,
+    n: String,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<ImportNameClassification> {
+    {
+        let local_parent = find_variant_parent_in_module(
+            n.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        );
+        let reexport_parent = match local_parent.clone() {
+            Some(_) => std::option::Option::None,
+            std::option::Option::None => reexport_variant_parent_in_import_module(
+                n.clone(),
+                import_module.clone(),
+                registry.clone(),
+                type_summaries.clone(),
+                typed_modules.clone(),
+                export_sets.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            ),
+        };
+        {
+            let __rb_0_0 = row.is_graph_type.clone();
+            let __rb_1_0 = local_parent.clone();
+            let __rb_2_0 = reexport_parent.clone();
+            let __rb_3_0 = row.variant_parent.clone();
+            let mut __rb_h = row;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.is_graph_type = __rb_0_0;
+                    __rb_r.local_parent = __rb_1_0;
+                    __rb_r.reexport_parent = __rb_2_0;
+                    __rb_r.variant_parent = __rb_3_0;
+                }
+                None => {
+                    __rb_h = Rc::new(ImportNameClassification {
+                        is_graph_type: __rb_0_0,
+                        local_parent: __rb_1_0,
+                        reexport_parent: __rb_2_0,
+                        variant_parent: __rb_3_0,
+                    });
+                }
+            }
+            __rb_h
+        }
+    }
+}
+
+pub fn import_name_is_graph_type(
+    n: String,
+    classifications: Rc<HashMap<String, Rc<ImportNameClassification>>>,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    imported_enums: Rc<Vec<String>>,
+    import_module_enums: Rc<Vec<String>>,
+) -> bool {
+    match v1_rt::map_get(&classifications, n.clone()) {
+        Some(row) => row.is_graph_type.clone(),
+        std::option::Option::None => classify_import_name(
+            n.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            registry.clone(),
+            type_summaries.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+            variant_to_enum.clone(),
+            imported_enums.clone(),
+            import_module_enums.clone(),
+        )
+        .is_graph_type
+        .clone(),
+    }
+}
+
+pub fn import_name_variant_parent(
+    n: String,
+    classifications: Rc<HashMap<String, Rc<ImportNameClassification>>>,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    imported_enums: Rc<Vec<String>>,
+    import_module_enums: Rc<Vec<String>>,
+) -> String {
+    match v1_rt::map_get(&classifications, n.clone()) {
+        Some(row) => row.variant_parent.clone(),
+        std::option::Option::None => classify_import_name(
+            n.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            registry.clone(),
+            type_summaries.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+            variant_to_enum.clone(),
+            imported_enums.clone(),
+            import_module_enums.clone(),
+        )
+        .variant_parent
+        .clone(),
+    }
+}
+
+pub fn import_name_local_parent(
+    n: String,
+    parent_walks: Rc<HashMap<String, Rc<ImportNameClassification>>>,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    imported_enums: Rc<Vec<String>>,
+    import_module_enums: Rc<Vec<String>>,
+) -> Option<String> {
+    match v1_rt::map_get(&parent_walks, n.clone()) {
+        Some(row) => row.local_parent.clone(),
+        std::option::Option::None => extend_import_name_walks(
+            classify_import_name(
+                n.clone(),
+                import_module.clone(),
+                typed_modules.clone(),
+                registry.clone(),
+                type_summaries.clone(),
+                export_sets.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+                variant_to_enum.clone(),
+                imported_enums.clone(),
+                import_module_enums.clone(),
+            ),
+            n.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            registry.clone(),
+            type_summaries.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        )
+        .local_parent
+        .clone(),
+    }
+}
+
+pub fn import_name_reexport_parent(
+    n: String,
+    parent_walks: Rc<HashMap<String, Rc<ImportNameClassification>>>,
+    import_module: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<TypeSummaryIndex>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    imported_enums: Rc<Vec<String>>,
+    import_module_enums: Rc<Vec<String>>,
+) -> Option<String> {
+    match v1_rt::map_get(&parent_walks, n.clone()) {
+        Some(row) => row.reexport_parent.clone(),
+        std::option::Option::None => extend_import_name_walks(
+            classify_import_name(
+                n.clone(),
+                import_module.clone(),
+                typed_modules.clone(),
+                registry.clone(),
+                type_summaries.clone(),
+                export_sets.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+                variant_to_enum.clone(),
+                imported_enums.clone(),
+                import_module_enums.clone(),
+            ),
+            n.clone(),
+            import_module.clone(),
+            typed_modules.clone(),
+            registry.clone(),
+            type_summaries.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        )
+        .reexport_parent
+        .clone(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportNameRendering {
+    pub defining_filename: String,
+    pub owner_path: String,
+}
+
+pub fn classify_import_name_rendering(
+    n: String,
+    import_module: String,
+    mod_name: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<ImportNameRendering> {
+    Rc::new(ImportNameRendering {
+        defining_filename: graph_type_import_module_filename(
+            n.clone(),
+            import_module.clone(),
+            mod_name.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        ),
+        owner_path: graph_type_import_module_path(
+            n.clone(),
+            import_module.clone(),
+            mod_name.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        ),
+    })
+}
+
+pub fn import_name_rendering(
+    n: String,
+    renderings: Rc<HashMap<String, Rc<ImportNameRendering>>>,
+    import_module: String,
+    mod_name: String,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<ImportNameRendering> {
+    match v1_rt::map_get(&renderings, n.clone()) {
+        Some(row) => row.clone(),
+        std::option::Option::None => classify_import_name_rendering(
+            n.clone(),
+            import_module.clone(),
+            mod_name.clone(),
+            typed_modules.clone(),
+            export_sets.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        ),
     }
 }
 
@@ -14471,19 +14424,62 @@ pub fn emit_specific_import_use_lines(
                     module_index.clone(),
                     emit_info.variant_to_enum.clone(),
                 );
+                let imported_enums = Rc::new({
+                    let mut __result = Vec::new();
+                    for n in non_marker_names.iter().cloned() {
+                        if {
+                            let mut __found = false;
+                            for e in import_module_enums.iter().cloned() {
+                                if (e.clone() == n.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            __result.push(n);
+                        }
+                    }
+                    __result
+                });
+                let classifications = deduped_names.iter().cloned().fold(
+                    v1_rt::rc_empty_map::<String, Rc<ImportNameClassification>>(),
+                    |acc: Rc<HashMap<String, Rc<ImportNameClassification>>>, n: String| {
+                        v1_rt::rc_map_insert(
+                            acc,
+                            n.clone(),
+                            classify_import_name(
+                                n.clone(),
+                                import_module.clone(),
+                                typed_modules.clone(),
+                                registry.clone(),
+                                type_summaries.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                                emit_info.variant_to_enum.clone(),
+                                imported_enums.clone(),
+                                import_module_enums.clone(),
+                            ),
+                        )
+                    },
+                );
                 let top_level = Rc::new({
                     let mut __result = Vec::new();
                     for n in non_marker_names.iter().cloned() {
-                        if if is_import_graph_type_name(
+                        if if import_name_is_graph_type(
                             n.clone(),
+                            classifications.clone(),
                             import_module.clone(),
                             typed_modules.clone(),
                             registry.clone(),
-                            export_sets.clone(),
                             type_summaries.clone(),
+                            export_sets.clone(),
                             source_indices.clone(),
                             module_index.clone(),
                             emit_info.variant_to_enum.clone(),
+                            imported_enums.clone(),
+                            import_module_enums.clone(),
                         ) {
                             true
                         } else {
@@ -14526,41 +14522,24 @@ pub fn emit_specific_import_use_lines(
                     }
                     __result
                 });
-                let imported_enums = Rc::new({
-                    let mut __result = Vec::new();
-                    for n in non_marker_names.iter().cloned() {
-                        if {
-                            let mut __found = false;
-                            for e in import_module_enums.iter().cloned() {
-                                if (e.clone() == n.clone()) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        } {
-                            __result.push(n);
-                        }
-                    }
-                    __result
-                });
                 let all_parents = Rc::new({
                     let mut __result = Vec::new();
                     for p in Rc::new({
                         let mut __result = Vec::new();
                         for n in non_marker_names.iter().cloned() {
-                            __result.push(import_variant_parent_for_name(
+                            __result.push(import_name_variant_parent(
                                 n.clone(),
+                                classifications.clone(),
                                 import_module.clone(),
+                                typed_modules.clone(),
                                 registry.clone(),
                                 type_summaries.clone(),
-                                typed_modules.clone(),
                                 export_sets.clone(),
                                 source_indices.clone(),
                                 module_index.clone(),
+                                emit_info.variant_to_enum.clone(),
                                 imported_enums.clone(),
                                 import_module_enums.clone(),
-                                emit_info.variant_to_enum.clone(),
                             ));
                         }
                         __result
@@ -14576,21 +14555,58 @@ pub fn emit_specific_import_use_lines(
                 });
                 let parent_list =
                     crate::v1_compiler_emit_core_support::unique_strings(all_parents.clone());
+                let parent_walks = if ((parent_list.clone().len() as i64) == 0) {
+                    v1_rt::rc_empty_map::<String, Rc<ImportNameClassification>>()
+                } else {
+                    deduped_names.iter().cloned().fold(
+                        v1_rt::rc_empty_map::<String, Rc<ImportNameClassification>>(),
+                        |acc: Rc<HashMap<String, Rc<ImportNameClassification>>>, n: String| {
+                            v1_rt::rc_map_insert(
+                                acc,
+                                n.clone(),
+                                extend_import_name_walks(
+                                    classify_import_name(
+                                        n.clone(),
+                                        import_module.clone(),
+                                        typed_modules.clone(),
+                                        registry.clone(),
+                                        type_summaries.clone(),
+                                        export_sets.clone(),
+                                        source_indices.clone(),
+                                        module_index.clone(),
+                                        emit_info.variant_to_enum.clone(),
+                                        imported_enums.clone(),
+                                        import_module_enums.clone(),
+                                    ),
+                                    n.clone(),
+                                    import_module.clone(),
+                                    typed_modules.clone(),
+                                    registry.clone(),
+                                    type_summaries.clone(),
+                                    export_sets.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                ),
+                            )
+                        },
+                    )
+                };
                 let non_variant_top = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.iter().cloned() {
-                        if if (import_variant_parent_for_name(
+                        if if (import_name_variant_parent(
                             n.clone(),
+                            classifications.clone(),
                             import_module.clone(),
+                            typed_modules.clone(),
                             registry.clone(),
                             type_summaries.clone(),
-                            typed_modules.clone(),
                             export_sets.clone(),
                             source_indices.clone(),
                             module_index.clone(),
+                            emit_info.variant_to_enum.clone(),
                             imported_enums.clone(),
                             import_module_enums.clone(),
-                            emit_info.variant_to_enum.clone(),
                         ) != "".to_string())
                         {
                             false
@@ -14660,12 +14676,19 @@ pub fn emit_specific_import_use_lines(
                         if {
                             let mut __found = false;
                             for n in deduped_names.iter().cloned() {
-                                if match find_variant_parent_in_module(
+                                if match import_name_local_parent(
                                     n.clone(),
+                                    parent_walks.clone(),
                                     import_module.clone(),
                                     typed_modules.clone(),
+                                    registry.clone(),
+                                    type_summaries.clone(),
+                                    export_sets.clone(),
                                     source_indices.clone(),
                                     module_index.clone(),
+                                    emit_info.variant_to_enum.clone(),
+                                    imported_enums.clone(),
+                                    import_module_enums.clone(),
                                 ) {
                                     Some(found) => (found.clone() == p.clone()),
                                     std::option::Option::None => false,
@@ -14707,12 +14730,19 @@ pub fn emit_specific_import_use_lines(
                         if ({
                             let mut __found = false;
                             for n in deduped_names.iter().cloned() {
-                                if match find_variant_parent_in_module(
+                                if match import_name_local_parent(
                                     n.clone(),
+                                    parent_walks.clone(),
                                     import_module.clone(),
                                     typed_modules.clone(),
+                                    registry.clone(),
+                                    type_summaries.clone(),
+                                    export_sets.clone(),
                                     source_indices.clone(),
                                     module_index.clone(),
+                                    emit_info.variant_to_enum.clone(),
+                                    imported_enums.clone(),
+                                    import_module_enums.clone(),
                                 ) {
                                     Some(found) => (found.clone() == p.clone()),
                                     std::option::Option::None => false,
@@ -14732,18 +14762,41 @@ pub fn emit_specific_import_use_lines(
                 let merged_direct_names = crate::v1_compiler_emit_core_support::unique_strings(
                     v1_rt::concat(direct_names.clone(), local_parent_names.clone()),
                 );
+                let renderings = merged_direct_names.iter().cloned().fold(
+                    v1_rt::rc_empty_map::<String, Rc<ImportNameRendering>>(),
+                    |acc: Rc<HashMap<String, Rc<ImportNameRendering>>>, n: String| {
+                        v1_rt::rc_map_insert(
+                            acc,
+                            n.clone(),
+                            classify_import_name_rendering(
+                                n.clone(),
+                                import_module.clone(),
+                                mod_name.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            ),
+                        )
+                    },
+                );
                 let direct_mods = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
                     let mut __result = Vec::new();
                     for n in merged_direct_names.iter().cloned() {
-                        __result.push(graph_type_import_module_filename(
-                            n.clone(),
-                            import_module.clone(),
-                            mod_name.clone(),
-                            typed_modules.clone(),
-                            export_sets.clone(),
-                            source_indices.clone(),
-                            module_index.clone(),
-                        ));
+                        __result.push(
+                            import_name_rendering(
+                                n.clone(),
+                                renderings.clone(),
+                                import_module.clone(),
+                                mod_name.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            )
+                            .defining_filename
+                            .clone(),
+                        );
                     }
                     __result
                 }));
@@ -14755,15 +14808,19 @@ pub fn emit_specific_import_use_lines(
                                 let group = Rc::new({
                                     let mut __result = Vec::new();
                                     for n in merged_direct_names.iter().cloned() {
-                                        if (graph_type_import_module_filename(
+                                        if (import_name_rendering(
                                             n.clone(),
+                                            renderings.clone(),
                                             import_module.clone(),
                                             mod_name.clone(),
                                             typed_modules.clone(),
                                             export_sets.clone(),
                                             source_indices.clone(),
                                             module_index.clone(),
-                                        ) == def_mod.clone())
+                                        )
+                                        .defining_filename
+                                        .clone()
+                                            == def_mod.clone())
                                         {
                                             __result.push(n);
                                         }
@@ -14776,15 +14833,18 @@ pub fn emit_specific_import_use_lines(
                                             let mut __result = Vec::new();
                                             for n in group.iter().cloned() {
                                                 __result.push(emit_import_name(
-                                                    graph_type_import_module_path(
+                                                    import_name_rendering(
                                                         n.clone(),
+                                                        renderings.clone(),
                                                         import_module.clone(),
                                                         mod_name.clone(),
                                                         typed_modules.clone(),
                                                         export_sets.clone(),
                                                         source_indices.clone(),
                                                         module_index.clone(),
-                                                    ),
+                                                    )
+                                                    .owner_path
+                                                    .clone(),
                                                     n.clone(),
                                                     registry.clone(),
                                                 ));
@@ -14830,24 +14890,35 @@ pub fn emit_specific_import_use_lines(
                                 let rep_variant = Rc::new({
                                     let mut __result = Vec::new();
                                     for n in deduped_names.iter().cloned() {
-                                        if match find_variant_parent_in_module(
+                                        if match import_name_local_parent(
                                             n.clone(),
+                                            parent_walks.clone(),
                                             import_module.clone(),
                                             typed_modules.clone(),
+                                            registry.clone(),
+                                            type_summaries.clone(),
+                                            export_sets.clone(),
                                             source_indices.clone(),
                                             module_index.clone(),
+                                            emit_info.variant_to_enum.clone(),
+                                            imported_enums.clone(),
+                                            import_module_enums.clone(),
                                         ) {
                                             Some(found) => (found.clone() == p.clone()),
                                             std::option::Option::None => {
-                                                match reexport_variant_parent_in_import_module(
+                                                match import_name_reexport_parent(
                                                     n.clone(),
+                                                    parent_walks.clone(),
                                                     import_module.clone(),
+                                                    typed_modules.clone(),
                                                     registry.clone(),
                                                     type_summaries.clone(),
-                                                    typed_modules.clone(),
                                                     export_sets.clone(),
                                                     source_indices.clone(),
                                                     module_index.clone(),
+                                                    emit_info.variant_to_enum.clone(),
+                                                    imported_enums.clone(),
+                                                    import_module_enums.clone(),
                                                 ) {
                                                     Some(found) => (found.clone() == p.clone()),
                                                     std::option::Option::None => false,
@@ -14886,32 +14957,117 @@ pub fn emit_specific_import_use_lines(
                 let parent_main_lines = Rc::new({
                     let mut __result = Vec::new();
                     for def_mod in parent_defining_mods.iter().cloned() {
-                        __result.extend((*{
-                    let group = Rc::new({ let mut __result = Vec::new(); for p in remote_parent_list.iter().cloned() { if {
-                        let rep_variant = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
-    Some(found) => (found.clone() == p.clone()),
-    std::option::Option::None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
-    Some(found) => (found.clone() == p.clone()),
-    std::option::Option::None => false,
-},
-} { __result.push(n); } } __result }).first().cloned();
-match rep_variant.clone() {
-    Some(v) => (variant_parent_defining_module_filename(p.clone(), v.clone(), import_module.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), registry.clone(), mod_name.clone(), module_index.clone()) == def_mod.clone()),
-    std::option::Option::None => (item_defining_module_filename(p.clone(), module_index.clone(), mod_name.clone()) == def_mod.clone()),
-}
-} { __result.push(p); } } __result });
-if ((group.clone().len() as i64) > 0) {
-                        {
-                            let names_str = group.clone().join(&", ".to_string());
-Rc::new(vec![Rc::new(RustUseLine {
-    target_module: def_mod.clone(),
-    text: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), "use crate::".to_string()), def_mod.clone()), "::{".to_string()), names_str.clone()), "};".to_string()),
-})])
-}
-                    } else {
-                        Rc::new(vec![])
-                    }
-}).iter().cloned());
+                        __result.extend(
+                            (*{
+                                let group = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for p in remote_parent_list.iter().cloned() {
+                                        if {
+                                            let rep_variant = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for n in deduped_names.iter().cloned() {
+                                                    if match import_name_local_parent(
+                                                        n.clone(),
+                                                        parent_walks.clone(),
+                                                        import_module.clone(),
+                                                        typed_modules.clone(),
+                                                        registry.clone(),
+                                                        type_summaries.clone(),
+                                                        export_sets.clone(),
+                                                        source_indices.clone(),
+                                                        module_index.clone(),
+                                                        emit_info.variant_to_enum.clone(),
+                                                        imported_enums.clone(),
+                                                        import_module_enums.clone(),
+                                                    ) {
+                                                        Some(found) => (found.clone() == p.clone()),
+                                                        std::option::Option::None => {
+                                                            match import_name_reexport_parent(
+                                                                n.clone(),
+                                                                parent_walks.clone(),
+                                                                import_module.clone(),
+                                                                typed_modules.clone(),
+                                                                registry.clone(),
+                                                                type_summaries.clone(),
+                                                                export_sets.clone(),
+                                                                source_indices.clone(),
+                                                                module_index.clone(),
+                                                                emit_info.variant_to_enum.clone(),
+                                                                imported_enums.clone(),
+                                                                import_module_enums.clone(),
+                                                            ) {
+                                                                Some(found) => {
+                                                                    (found.clone() == p.clone())
+                                                                }
+                                                                std::option::Option::None => false,
+                                                            }
+                                                        }
+                                                    } {
+                                                        __result.push(n);
+                                                    }
+                                                }
+                                                __result
+                                            })
+                                            .first()
+                                            .cloned();
+                                            match rep_variant.clone() {
+                                                Some(v) => {
+                                                    (variant_parent_defining_module_filename(
+                                                        p.clone(),
+                                                        v.clone(),
+                                                        import_module.clone(),
+                                                        typed_modules.clone(),
+                                                        export_sets.clone(),
+                                                        source_indices.clone(),
+                                                        registry.clone(),
+                                                        mod_name.clone(),
+                                                        module_index.clone(),
+                                                    ) == def_mod.clone())
+                                                }
+                                                std::option::Option::None => {
+                                                    (item_defining_module_filename(
+                                                        p.clone(),
+                                                        module_index.clone(),
+                                                        mod_name.clone(),
+                                                    ) == def_mod.clone())
+                                                }
+                                            }
+                                        } {
+                                            __result.push(p);
+                                        }
+                                    }
+                                    __result
+                                });
+                                if ((group.clone().len() as i64) > 0) {
+                                    {
+                                        let names_str = group.clone().join(&", ".to_string());
+                                        Rc::new(vec![Rc::new(RustUseLine {
+                                            target_module: def_mod.clone(),
+                                            text: v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                rust_visibility_prefix(),
+                                                                "use crate::".to_string(),
+                                                            ),
+                                                            def_mod.clone(),
+                                                        ),
+                                                        "::{".to_string(),
+                                                    ),
+                                                    names_str.clone(),
+                                                ),
+                                                "};".to_string(),
+                                            ),
+                                        })])
+                                    }
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
                     }
                     __result
                 });
@@ -14926,15 +15082,15 @@ Rc::new(vec![Rc::new(RustUseLine {
                         let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
                             false
                         } else {
-                            if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone()) {
+                            if import_name_is_graph_type(n.clone(), classifications.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), type_summaries.clone(), export_sets.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone(), imported_enums.clone(), import_module_enums.clone()) {
                                 false
                             } else {
                                 if { let mut __found = false; for e in import_module_enums.iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
                                     false
                                 } else {
-                                    match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+                                    match import_name_local_parent(n.clone(), parent_walks.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), type_summaries.clone(), export_sets.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone(), imported_enums.clone(), import_module_enums.clone()) {
     Some(found) => (found.clone() == parent.clone()),
-    std::option::Option::None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
+    std::option::Option::None => match import_name_reexport_parent(n.clone(), parent_walks.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), type_summaries.clone(), export_sets.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone(), imported_enums.clone(), import_module_enums.clone()) {
     Some(found) => (found.clone() == parent.clone()),
     std::option::Option::None => match crate::v1_compiler_infer_emit_info::find_variant_parent(type_summaries.clone(), n.clone(), Rc::new(vec![parent.clone()])) {
     Some(_) => true,
@@ -15679,6 +15835,7 @@ pub fn emit_imports(
     supplement_items: Rc<Vec<Rc<Node>>>,
     module_env: Option<Rc<TypeEnv>>,
     from_module: String,
+    applied_type_argument_names: Rc<Vec<String>>,
 ) -> Rc<RenderedUseLines> {
     if ((imports.clone().len() as i64) == 0) {
         Rc::new(RenderedUseLines {
@@ -15687,41 +15844,6 @@ pub fn emit_imports(
         })
     } else {
         {
-            let applied_type_argument_names =
-                crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
-                    let mut __result = Vec::new();
-                    for occurrence in Rc::new({
-                        let mut __result = Vec::new();
-                        for occurrence in Rc::new({
-                            let mut __result = Vec::new();
-                            for item in supplement_items.iter().cloned() {
-                                __result.extend(
-                                    (*collect_item_type_surface_occurrences(
-                                        item.clone(),
-                                        source_indices.clone(),
-                                    ))
-                                    .iter()
-                                    .cloned(),
-                                );
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            if occurrence.applied_argument.clone() {
-                                __result.push(occurrence);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        __result.push(occurrence.name.clone());
-                    }
-                    __result
-                }));
             let import_modules = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
                 let mut __result = Vec::new();
                 for imp in imports.iter().cloned() {
@@ -31936,23 +32058,21 @@ pub fn fm_lowering_refusal_message(cause: Rc<FmLoweringRefusal>) -> String {
 }
 }
 
-pub fn fm_located_refusal(cause: Rc<FmLoweringRefusal>, arm: Rc<Node>) -> String {
+pub fn fm_located_refusal(
+    cause: Rc<FmLoweringRefusal>,
+    arm: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "v1.compiler.emit_rust will not lower ".to_string(),
-                            fm_lowering_refusal_message(cause.clone()),
-                        ),
-                        " at ".to_string(),
-                    ),
-                    arm.span.file.clone(),
+                    "v1.compiler.emit_rust will not lower ".to_string(),
+                    fm_lowering_refusal_message(cause.clone()),
                 ),
-                ":".to_string(),
+                " at ".to_string(),
             ),
-            crate::v1_compiler_emit_core_support::to_string(arm.span.start.clone()),
+            crate::v1_std_core::render_span_location(arm.span.clone(), si.clone()),
         ),
         " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm"
             .to_string(),
@@ -32283,10 +32403,13 @@ pub fn fm_plans_refusal(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<Rc<FmArmPlan>> 
     }
 }
 
-pub fn fm_plan_refusal_text(plan: Rc<FmArmPlan>) -> String {
+pub fn fm_plan_refusal_text(
+    plan: Rc<FmArmPlan>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match (*plan.analysis.clone()).clone() {
         FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => {
-            fm_located_refusal(c.clone(), plan.arm.clone())
+            fm_located_refusal(c.clone(), plan.arm.clone(), si.clone())
         }
         FmArmAnalysis::FmSpine { .. } => {
             "v1.compiler.emit_rust internal: refusal requested for a supported FreeMonoid arm"
@@ -32423,7 +32546,12 @@ pub fn fm_spine_condition(len: i64, exact: bool, cursor: String) -> String {
     }
 }
 
-pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String, cursor: String) -> Rc<FmChainPiece> {
+pub fn fm_chain_piece(
+    plan: Rc<FmArmPlan>,
+    body: String,
+    cursor: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<FmChainPiece> {
     match (*plan.analysis.clone()).clone() {
         FmArmAnalysis::FmSpine {
             exact: e,
@@ -32445,7 +32573,11 @@ pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String, cursor: String) -> Rc<F
         FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => Rc::new(FmChainPiece {
             cond: "true".to_string(),
             binds: "".to_string(),
-            body: emit_rust_compile_error_expr(fm_located_refusal(c.clone(), plan.arm.clone())),
+            body: emit_rust_compile_error_expr(fm_located_refusal(
+                c.clone(),
+                plan.arm.clone(),
+                si.clone(),
+            )),
         }),
     }
 }
@@ -32515,7 +32647,9 @@ pub fn emit_native_freemonoid_match(
             __result
         });
         match fm_plans_refusal(plans.clone()) {
-            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            Some(bad) => {
+                emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone(), si.clone()))
+            }
             std::option::Option::None => {
                 let pieces = Rc::new({
                     let mut __result = Vec::new();
@@ -32532,6 +32666,7 @@ pub fn emit_native_freemonoid_match(
                                 1024,
                             ),
                             "".to_string(),
+                            si.clone(),
                         ));
                     }
                     __result
@@ -35239,72 +35374,43 @@ pub fn emit_typed_record_lit(
                                     }
                                     __result
                                 });
-                                match find_unique_struct_name_by_fields(
+                                let single_candidates = anonymous_record_struct_candidates(
                                     single_field_names.clone(),
+                                    v1_rt::rc_empty_map::<String, String>(),
                                     emit_info.type_summaries.clone(),
-                                ) {
-                                    Some(r_sn) => {
-                                        if rust_record_field_needs_fn_rc(
-                                            scope.clone(),
-                                            r_sn.clone(),
-                                            fname0.clone(),
-                                        ) {
-                                            {
-                                                let wrapped_val = wrap_rust_record_field_value(
-                                                    fval0.clone(),
-                                                    Some(
-                                                        crate::v1_std_core::field_init_node_value(
-                                                            f.clone(),
-                                                        ),
-                                                    ),
-                                                    scope.clone(),
-                                                    emit_info.clone(),
-                                                    shared_types.clone(),
-                                                    r_sn.clone(),
-                                                    fname0.clone(),
-                                                );
-                                                let struct_lit = v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    r_sn.clone(),
-                                                                    " {\n    ".to_string(),
-                                                                ),
-                                                                crate::v1_compiler_emit::emit_ident(
-                                                                    fname0.clone(),
-                                                                    RenderTarget::Rust,
-                                                                ),
-                                                            ),
-                                                            ": ".to_string(),
-                                                        ),
-                                                        wrapped_val.clone(),
-                                                    ),
-                                                    ",\n}".to_string(),
-                                                );
-                                                if v1_rt::set_contains(&shared_types, r_sn.clone())
+                                );
+                                if ((single_candidates.clone().len() as i64) == 1) {
+                                    match single_candidates.clone().first().cloned() {
+                                        Some(cand) => {
+                                            let r_sn = cand.name.clone();
+                                            if rust_record_field_needs_fn_rc(
+                                                scope.clone(),
+                                                r_sn.clone(),
+                                                fname0.clone(),
+                                            ) {
                                                 {
-                                                    rust_shared_wrap_ctor(struct_lit.clone())
-                                                } else {
-                                                    struct_lit.clone()
+                                                    let wrapped_val = wrap_rust_record_field_value(fval0.clone(), Some(crate::v1_std_core::field_init_node_value(f.clone())), scope.clone(), emit_info.clone(), shared_types.clone(), r_sn.clone(), fname0.clone());
+                                                    let struct_lit = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(r_sn.clone(), " {\n    ".to_string()), crate::v1_compiler_emit::emit_ident(fname0.clone(), RenderTarget::Rust)), ": ".to_string()), wrapped_val.clone()), ",\n}".to_string());
+                                                    if v1_rt::set_contains(
+                                                        &shared_types,
+                                                        r_sn.clone(),
+                                                    ) {
+                                                        rust_shared_wrap_ctor(struct_lit.clone())
+                                                    } else {
+                                                        struct_lit.clone()
+                                                    }
                                                 }
+                                            } else {
+                                                fval0.clone()
                                             }
-                                        } else {
-                                            fval0.clone()
                                         }
+                                        std::option::Option::None => fval0.clone(),
                                     }
-                                    std::option::Option::None => {
-                                        if ((struct_candidates_by_field_names(
-                                            single_field_names.clone(),
-                                            emit_info.type_summaries.clone(),
-                                        )
-                                        .len() as i64)
-                                            > 1)
-                                        {
-                                            "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
-                                        } else {
-                                            fval0.clone()
-                                        }
+                                } else {
+                                    if ((single_candidates.clone().len() as i64) > 1) {
+                                        "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
+                                    } else {
+                                        fval0.clone()
                                     }
                                 }
                             }
@@ -35347,22 +35453,48 @@ pub fn emit_typed_record_lit(
                                     }
                                 },
                             );
-                            match find_struct_name_by_fields(
+                            let resolution_candidates = anonymous_record_struct_candidates(
                                 lit_field_names.clone(),
                                 field_type_hints.clone(),
                                 emit_info.type_summaries.clone(),
-                            ) {
-                                Some(resolved_sn) => {
-                                    let field_strs = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for f in fields.iter().cloned() {
-                                            __result.push({
-                                                let fname =
-                                                    crate::v1_std_core::field_init_node_name_at(
-                                                        f.clone(),
-                                                        scope.type_env.source_indices.clone(),
-                                                    );
-                                                let fval = emit_typed_expr(
+                            );
+                            if ((resolution_candidates.clone().len() as i64) == 1) {
+                                match resolution_candidates.clone().first().cloned() {
+                                    Some(cand) => {
+                                        let resolved_sn = cand.name.clone();
+                                        let field_strs = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for f in fields.iter().cloned() {
+                                                __result.push({
+                                    let fname = crate::v1_std_core::field_init_node_name_at(f.clone(), scope.type_env.source_indices.clone());
+let fval = emit_typed_expr(crate::v1_std_core::field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), fval.clone()), ",".to_string())
+});
+                                            }
+                                            __result
+                                        });
+                                        let body = field_strs.clone().join(&"\n".to_string());
+                                        let struct_lit = v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    resolved_sn.clone(),
+                                                    " {\n".to_string(),
+                                                ),
+                                                body.clone(),
+                                            ),
+                                            "\n}".to_string(),
+                                        );
+                                        if v1_rt::set_contains(&shared_types, resolved_sn.clone()) {
+                                            rust_shared_wrap_ctor(struct_lit.clone())
+                                        } else {
+                                            struct_lit.clone()
+                                        }
+                                    }
+                                    std::option::Option::None => {
+                                        let vals = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for f in fields.iter().cloned() {
+                                                __result.push(emit_typed_expr(
                                                     crate::v1_std_core::field_init_node_value(
                                                         f.clone(),
                                                     ),
@@ -35372,76 +35504,48 @@ pub fn emit_typed_record_lit(
                                                     shared_types.clone(),
                                                     emit_info.clone(),
                                                     1024,
-                                                );
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                "    ".to_string(),
-                                                                crate::v1_compiler_emit::emit_ident(
-                                                                    fname.clone(),
-                                                                    RenderTarget::Rust,
-                                                                ),
-                                                            ),
-                                                            ": ".to_string(),
-                                                        ),
-                                                        fval.clone(),
-                                                    ),
-                                                    ",".to_string(),
-                                                )
-                                            });
-                                        }
-                                        __result
-                                    });
-                                    let body = field_strs.clone().join(&"\n".to_string());
-                                    let struct_lit = v1_rt::concat(
+                                                ));
+                                            }
+                                            __result
+                                        });
                                         v1_rt::concat(
-                                            v1_rt::concat(resolved_sn.clone(), " {\n".to_string()),
-                                            body.clone(),
-                                        ),
-                                        "\n}".to_string(),
-                                    );
-                                    if v1_rt::set_contains(&shared_types, resolved_sn.clone()) {
-                                        rust_shared_wrap_ctor(struct_lit.clone())
-                                    } else {
-                                        struct_lit.clone()
+                                            v1_rt::concat(
+                                                "(".to_string(),
+                                                vals.clone().join(&", ".to_string()),
+                                            ),
+                                            ")".to_string(),
+                                        )
                                     }
                                 }
-                                std::option::Option::None => {
-                                    let resolution_candidates = anonymous_record_struct_candidates(
-                                        lit_field_names.clone(),
-                                        field_type_hints.clone(),
-                                        emit_info.type_summaries.clone(),
-                                    );
-                                    if ((resolution_candidates.clone().len() as i64) > 1) {
-                                        "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
-                                    } else {
-                                        {
-                                            let vals = Rc::new({
-                                                let mut __result = Vec::new();
-                                                for f in fields.iter().cloned() {
-                                                    __result.push(emit_typed_expr(
-                                                        crate::v1_std_core::field_init_node_value(
-                                                            f.clone(),
-                                                        ),
-                                                        registry.clone(),
-                                                        scope.clone(),
-                                                        depth.clone(),
-                                                        shared_types.clone(),
-                                                        emit_info.clone(),
-                                                        1024,
-                                                    ));
-                                                }
-                                                __result
-                                            });
+                            } else {
+                                if ((resolution_candidates.clone().len() as i64) > 1) {
+                                    "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
+                                } else {
+                                    {
+                                        let vals = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for f in fields.iter().cloned() {
+                                                __result.push(emit_typed_expr(
+                                                    crate::v1_std_core::field_init_node_value(
+                                                        f.clone(),
+                                                    ),
+                                                    registry.clone(),
+                                                    scope.clone(),
+                                                    depth.clone(),
+                                                    shared_types.clone(),
+                                                    emit_info.clone(),
+                                                    1024,
+                                                ));
+                                            }
+                                            __result
+                                        });
+                                        v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "(".to_string(),
-                                                    vals.clone().join(&", ".to_string()),
-                                                ),
-                                                ")".to_string(),
-                                            )
-                                        }
+                                                "(".to_string(),
+                                                vals.clone().join(&", ".to_string()),
+                                            ),
+                                            ")".to_string(),
+                                        )
                                     }
                                 }
                             }
@@ -36200,7 +36304,6 @@ pub fn dying_literal_plan(
                         __result.push({
                 let f_name = crate::v1_std_core::field_init_node_name_at(f.clone(), si.clone());
 let f_value = crate::v1_std_core::field_init_node_value(f.clone());
-let stored = emit_stored_record_field(f.clone(), rt.clone(), Some(tn.clone()), tn.clone(), tn.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone());
 let direct_rc = match record_field_storage(f_name.clone(), f_value.clone(), tn.clone(), tn.clone(), scope.clone(), shared_types.clone(), emit_info.clone()) {
     FieldStorage::StoredDirectRc => true,
     FieldStorage::StoredPromotedToSome => false,
@@ -36230,7 +36333,7 @@ Rc::new(DyingLitField {
     std::option::Option::None => Rc::new(DyingLitField {
     name: f_name.clone(),
     shape: Rc::new(DyingLitShape::DyingPlain {
-    stored: stored.clone(),
+    stored: emit_stored_record_field(f.clone(), rt.clone(), Some(tn.clone()), tn.clone(), tn.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone()),
 }),
 }),
 }
@@ -38657,7 +38760,9 @@ pub fn emit_native_freemonoid_tco_match(
             __result
         });
         match fm_plans_refusal(plans.clone()) {
-            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            Some(bad) => {
+                emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone(), si.clone()))
+            }
             std::option::Option::None => {
                 let pieces = Rc::new({
                     let mut __result = Vec::new();
@@ -38675,6 +38780,7 @@ pub fn emit_native_freemonoid_tco_match(
                                 emit_info.clone(),
                             ),
                             cursor.clone(),
+                            si.clone(),
                         ));
                     }
                     __result
@@ -41914,15 +42020,68 @@ pub fn emit_shell_call(
             Rc::new({
                 let mut __result = Vec::new();
                 for arg in Rc::new(v1_rt::list_skip(&argv.clone(), 1)).iter().cloned() {
-                    __result.push(if shell_argv_element_is_word_list(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
-                v1_rt::concat(v1_rt::concat("    .args(".to_string(), emit_shell_argv_word_list_element(arg.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone())), ".iter())".to_string())
-            } else {
-                if shell_argv_element_is_string_word(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
-                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), source_indices.clone(), emit_info.clone())), ")".to_string())
-                } else {
-                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat("argv element is not String or List<String> at ".to_string(), arg.span.file.clone()), ":".to_string()), crate::v1_compiler_emit_core_support::to_string(arg.span.start.clone())))), ")".to_string())
-                }
-            });
+                    __result.push(
+                        if shell_argv_element_is_word_list(
+                            arg.clone(),
+                            argv_scope.clone(),
+                            emit_info.clone(),
+                            source_indices.clone(),
+                        ) {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    .args(".to_string(),
+                                    emit_shell_argv_word_list_element(
+                                        arg.clone(),
+                                        registry.clone(),
+                                        argv_scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                    ),
+                                ),
+                                ".iter())".to_string(),
+                            )
+                        } else {
+                            if shell_argv_element_is_string_word(
+                                arg.clone(),
+                                argv_scope.clone(),
+                                emit_info.clone(),
+                                source_indices.clone(),
+                            ) {
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "    .arg(".to_string(),
+                                        emit_shell_argv_element(
+                                            arg.clone(),
+                                            optional_params.clone(),
+                                            registry.clone(),
+                                            argv_scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                            emit_info.clone(),
+                                        ),
+                                    ),
+                                    ")".to_string(),
+                                )
+                            } else {
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "    .arg(".to_string(),
+                                        emit_rust_compile_error_expr(v1_rt::concat(
+                                            "argv element is not String or List<String> at "
+                                                .to_string(),
+                                            crate::v1_std_core::render_span_location(
+                                                arg.span.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        )),
+                                    ),
+                                    ")".to_string(),
+                                )
+                            }
+                        },
+                    );
                 }
                 __result
             })
@@ -44721,6 +44880,39 @@ pub fn native_serve_declares_startup(
         > 0)
 }
 
+pub fn native_serve_startup_bound_name() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "native_serve_startup_bound".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn native_serve_declares_startup_bound(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    pipeline_module: String,
+) -> bool {
+    ((Rc::new({
+        let mut __result = Vec::new();
+        for site in native_effect_decl_sites(
+            modules.clone(),
+            ParsedModuleItemKind::ModuleItemDataValue,
+            native_serve_startup_bound_name(),
+        )
+        .iter()
+        .cloned()
+        {
+            if (site.module_name.clone() == pipeline_module.clone()) {
+                __result.push(site);
+            }
+        }
+        __result
+    })
+    .len() as i64)
+        > 0)
+}
+
 pub fn native_cli_entry_function() -> String {
     thread_local! {
         static CACHED: String = {
@@ -45152,6 +45344,10 @@ pub fn emit_main_rs(
                         pipeline_module.clone(),
                         native_effect_bindings(effects.clone(), crate_name.clone()),
                         native_serve_declares_startup(modules.clone(), pipeline_module.clone()),
+                        native_serve_declares_startup_bound(
+                            modules.clone(),
+                            pipeline_module.clone(),
+                        ),
                     );
                 }
                 if compiler_pipeline_entry_is_direct_ingest(modules.clone()) {
@@ -45210,7 +45406,7 @@ pub fn emit_retained_host_main_mod_uses(crate_name: String, pipeline_module: Str
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
         let core_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename("v1.std.core".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nuse im::HashMap;\n".to_string(), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nuse im::HashMap;\n".to_string(), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex, render_span_location, located_span_of,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
     }
 }
 
@@ -45373,6 +45569,7 @@ pub fn emit_native_serve_driver_main_rs(
     pipeline_module: String,
     bindings: Rc<Vec<Rc<NativeEffectBindingText>>>,
     startup: bool,
+    startup_bound: bool,
 ) -> Rc<TextFile> {
     {
         let pipeline_mod =
@@ -45404,8 +45601,30 @@ pub fn emit_native_serve_driver_main_rs(
         } else {
             "".to_string()
         };
-        let startup_run = if startup.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    // The startup fold runs before any bind: it judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.".to_string(), "\n".to_string()), "    match std::fs::read(\"/proc/self/exe\") {".to_string()), "\n".to_string()), "        Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) {".to_string()), "\n".to_string()), "            NativeServeStartup::NativeServeStartupPassed { note } => println!(\"{}\", native_serve_startup_passed_line(note.clone())),".to_string()), "\n".to_string()), "            NativeServeStartup::NativeServeStartupRefused { reason } => {".to_string()), "\n".to_string()), "                eprintln!(\"{}\", native_serve_startup_refusal_line(reason.clone()));".to_string()), "\n".to_string()), "                std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"{}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: {}\", cause)));".to_string()), "\n".to_string()), "            std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string())
+        let bound_import = if startup_bound.clone() {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("use ".to_string(), crate_name.clone()),
+                            "::".to_string(),
+                        ),
+                        pipeline_mod.clone(),
+                    ),
+                    "::native_serve_startup_bound;".to_string(),
+                ),
+                "\n".to_string(),
+            )
+        } else {
+            "".to_string()
+        };
+        let startup_second = if startup_bound.clone() {
+            "native_serve_startup_bound()".to_string()
+        } else {
+            "contract.startup_deadline.clone()".to_string()
+        };
+        let worker_startup = if startup.clone() {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        // It judges the octets of the running image itself, read through /proc/self/exe (an identity-stable handle on Linux), never a pathname reopened after current_exe.".to_string(), "\n".to_string()), "        let startup_value = match std::fs::read(\"/proc/self/exe\") {".to_string()), "\n".to_string()), "            Ok(octets) => match &*native_serve_startup(Rc::new(octets.iter().map(|b| *b as i64).collect::<Vec<i64>>().into())) {".to_string()), "\n".to_string()), "                NativeServeStartup::NativeServeStartupPassed { line, value } => {".to_string()), "\n".to_string()), "                    if !STARTUP_ANNOUNCED.swap(true, std::sync::atomic::Ordering::SeqCst) { println!(\"{}\", native_serve_startup_passed_line(line.clone())); }".to_string()), "\n".to_string()), "                    value.clone()".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                NativeServeStartup::NativeServeStartupRefused { reason } => {".to_string()), "\n".to_string()), "                    eprintln!(\"{}\", native_serve_startup_refusal_line(reason.clone()));".to_string()), "\n".to_string()), "                    std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "            Err(cause) => {".to_string()), "\n".to_string()), "                eprintln!(\"{}\", native_serve_startup_refusal_line(format!(\"the running executable could not be read: {}\", cause)));".to_string()), "\n".to_string()), "                std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let _ = started_tx.send(());".to_string()), "\n".to_string())
         } else {
             "".to_string()
         };
@@ -45414,14 +45633,83 @@ pub fn emit_native_serve_driver_main_rs(
         } else {
             "".to_string()
         };
-        let worker_call = if effectful.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision".to_string(), handler_effect_args.clone()), ")) {".to_string()), "\n".to_string()), "                Ok(response) => response,".to_string()), "\n".to_string()), "                Err(cause) => native_serve_effect_failed(cause.to_string()),".to_string()), "\n".to_string()), "            };".to_string()), "\n".to_string())
+        let started_decl = if startup.clone() {
+            "    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();\n".to_string()
         } else {
-            "            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision);\n".to_string()
+            "".to_string()
+        };
+        let startup_wait = if startup.clone() {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    if started_rx.recv_timeout(ready_within).is_err() {".to_string(), "\n".to_string()), "        eprintln!(\"{}\", native_serve_startup_refusal_line(\"the startup did not complete within its bound\".to_string()));".to_string()), "\n".to_string()), "        std::process::exit(native_serve_startup_refused_exit_code() as i32);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string())
+        } else {
+            "".to_string()
+        };
+        let timeout_arm = if startup.clone() {
+            "        Err(_) => Err(\"the worker ended before it reported ready\".to_string()),\n"
+                .to_string()
+        } else {
+            "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),\n".to_string()
+        };
+        let ready_within = if startup.clone() {
+            v1_rt::concat(
+                v1_rt::concat(
+                    "std::time::Duration::from_secs(second_count(".to_string(),
+                    startup_second.clone(),
+                ),
+                ") as u64)".to_string(),
+            )
+        } else {
+            "std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64)".to_string()
+        };
+        let ready_name = if startup.clone() {
+            "ready_within".to_string()
+        } else {
+            "deadline".to_string()
+        };
+        let ready_let = if startup.clone() {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("    let ready_within = ".to_string(), ready_within.clone()),
+                    ";".to_string(),
+                ),
+                "\n".to_string(),
+            )
+        } else {
+            "".to_string()
+        };
+        let startup_arg = if startup.clone() {
+            ", startup_value.clone()".to_string()
+        } else {
+            "".to_string()
+        };
+        let startup_static = if startup.clone() {
+            "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n".to_string()
+        } else {
+            "".to_string()
+        };
+        let worker_call = if effectful.clone() {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            let response = match runtime.block_on(native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision".to_string(), startup_arg.clone()), handler_effect_args.clone()), ")) {".to_string()), "\n".to_string()), "                Ok(response) => response,".to_string()), "\n".to_string()), "                Err(cause) => native_serve_effect_failed(cause.to_string()),".to_string()), "\n".to_string()), "            };".to_string()), "\n".to_string())
+        } else {
+            v1_rt::concat(v1_rt::concat("            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision".to_string(), startup_arg.clone()), ");\n".to_string())
+        };
+        let realize_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);".to_string(), "\n".to_string()), ready_let.clone()), "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));".to_string()), "\n".to_string()), "    let mut generation = match realize_generation(&stuck, ".to_string()), ready_name.clone()), ") {".to_string()), "\n".to_string()), "        Ok(generation) => generation,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string());
+        let bind_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) {".to_string(), "\n".to_string()), "        Ok(listener) => listener,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: failed to bind {}:{}: {}\", contract.host, contract.port, cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound = match listener.local_addr() {".to_string()), "\n".to_string()), "        Ok(addr) => addr,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: bound but could not read the bound address: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound_host = bound.ip().to_string();".to_string()), "\n".to_string()), "    let bound_port = bound.port() as i64;".to_string()), "\n".to_string());
+        let first_block = if startup.clone() {
+            realize_block.clone()
+        } else {
+            bind_block.clone()
+        };
+        let second_block = if startup.clone() {
+            bind_block.clone()
+        } else {
+            realize_block.clone()
         };
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::ServeWireResponse;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement,".to_string()), effect_failed_import.clone()), " native_serve_frame, native_serve_handler_name, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,".to_string()), "\n".to_string()), "    native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,".to_string()), "\n".to_string()), "    native_serve_start, NativeServeAdmission, NativeServeContract, NativeServeFrame, NativeServeOutgoing,".to_string()), "\n".to_string()), "    NativeServeRoute, NativeServeStart,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_serve_handle;".to_string()), "\n".to_string()), startup_import.clone()), "\n".to_string()), "// What a worker hands back across the thread boundary: owned plain values, because the compiled".to_string()), "\n".to_string()), "// handler's values are reference-counted and stay on the worker's thread.".to_string()), "\n".to_string()), "struct WireParts {".to_string()), "\n".to_string()), "    status: i64,".to_string()), "\n".to_string()), "    content_type_label: String,".to_string()), "\n".to_string()), "    header_lines: Vec<String>,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn wire_parts(response: &NativeServeOutgoing) -> WireParts {".to_string()), "\n".to_string()), "    WireParts {".to_string()), "\n".to_string()), "        status: response.status,".to_string()), "\n".to_string()), "        content_type_label: response.content_type_label.clone(),".to_string()), "\n".to_string()), "        header_lines: response.header_lines.iter().cloned().collect(),".to_string()), "\n".to_string()), "        body: response.body.clone(),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_parts(stream: &mut std::net::TcpStream, response: &WireParts) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    write_parts(stream, &wire_parts(response));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// A worker's state, shared with the loop: whether the loop stopped waiting for it. The loop counts a".to_string()), "\n".to_string()), "// worker as stuck only when it abandons it, and the worker uncounts itself when it finally returns,".to_string()), "\n".to_string()), "// under one lock, so the count is exact whichever side gets there first.".to_string()), "\n".to_string()), "const WORKER_WAITING: u8 = 0;".to_string()), "\n".to_string()), "const WORKER_ABANDONED: u8 = 1;".to_string()), "\n".to_string()), "const WORKER_DONE: u8 = 2;".to_string()), "\n".to_string()), "\n".to_string()), "fn lock_state<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {".to_string()), "\n".to_string()), "    m.lock().unwrap_or_else(|e| e.into_inner())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// The worker's cleanup, run when its guard drops: on return AND during a panic's unwind. A worker the".to_string()), "\n".to_string()), "// loop abandoned uncounts itself here, exactly once; every worker ends DONE.".to_string()), "\n".to_string()), "struct WorkerGuard {".to_string()), "\n".to_string()), "    state: std::sync::Arc<std::sync::Mutex<u8>>,".to_string()), "\n".to_string()), "    stuck: std::sync::Arc<std::sync::Mutex<usize>>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "impl Drop for WorkerGuard {".to_string()), "\n".to_string()), "    fn drop(&mut self) {".to_string()), "\n".to_string()), "        let mut s = lock_state(&self.state);".to_string()), "\n".to_string()), "        if *s == WORKER_ABANDONED {".to_string()), "\n".to_string()), "            let mut n = lock_state(&self.stuck);".to_string()), "\n".to_string()), "            *n = n.saturating_sub(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        *s = WORKER_DONE;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "struct HandlerCall {".to_string()), "\n".to_string()), "    method: String,".to_string()), "\n".to_string()), "    path: String,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "    tailscale_identity: String,".to_string()), "\n".to_string()), "    release_revision: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// One worker generation: the thread that owns the effect executor and every admitted handle and runs".to_string()), "\n".to_string()), "// handler calls one at a time. Its state is the WorkerGuard protocol above; an abandoned generation".to_string()), "\n".to_string()), "// finishes the call in hand (if it ever does) and ends, uncounting itself.".to_string()), "\n".to_string()), "struct Generation {".to_string()), "\n".to_string()), "    calls: std::sync::mpsc::Sender<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>,".to_string()), "\n".to_string()), "    state: std::sync::Arc<std::sync::Mutex<u8>>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn realize_generation(stuck: &std::sync::Arc<std::sync::Mutex<usize>>, ready_within: std::time::Duration) -> Result<Generation, String> {".to_string()), "\n".to_string()), "    let (calls, inbox) = std::sync::mpsc::channel::<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>();".to_string()), "\n".to_string()), "    let (ready, readiness) = std::sync::mpsc::channel::<Result<(), String>>();".to_string()), "\n".to_string()), "    let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));".to_string()), "\n".to_string()), "    let guard = WorkerGuard { state: state.clone(), stuck: stuck.clone() };".to_string()), "\n".to_string()), "    let worker_state = state.clone();".to_string()), "\n".to_string()), "    std::thread::spawn(move || {".to_string()), "\n".to_string()), "        let _guard = guard;".to_string()), "\n".to_string()), worker_realize.clone()), "        let _ = ready.send(Ok(()));".to_string()), "\n".to_string()), "        while let Ok((call, reply)) = inbox.recv() {".to_string()), "\n".to_string()), worker_call.clone()), "            let _ = reply.send(wire_parts(&native_serve_outgoing(response)));".to_string()), "\n".to_string()), "            if *lock_state(&worker_state) == WORKER_ABANDONED {".to_string()), "\n".to_string()), "                return;".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    match readiness.recv_timeout(ready_within) {".to_string()), "\n".to_string()), "        Ok(Ok(())) => Ok(Generation { calls, state }),".to_string()), "\n".to_string()), "        Ok(Err(cause)) => Err(cause),".to_string()), "\n".to_string()), "        Err(_) => Err(\"the worker ended or did not report ready within the request deadline\".to_string()),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "    Handle(HandlerCall),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            if let Err(cause) = reader.read_exact(&mut body) {".to_string()), "\n".to_string()), "                return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause)));".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeToHandler => Exchange::Handle(HandlerCall {".to_string()), "\n".to_string()), "            method: head.method.clone(),".to_string()), "\n".to_string()), "            path: head.target.clone(),".to_string()), "\n".to_string()), "            body,".to_string()), "\n".to_string()), "            tailscale_identity: head.tailscale_identity.clone(),".to_string()), "\n".to_string()), "            release_revision: contract.release_revision.clone(),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let contract = match &*native_serve_start(Rc::new(argv.into())) {".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeListen { contract } => contract.clone(),".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeStartRefused { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), startup_run.clone()), "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) {".to_string()), "\n".to_string()), "        Ok(listener) => listener,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: failed to bind {}:{}: {}\", contract.host, contract.port, cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound = match listener.local_addr() {".to_string()), "\n".to_string()), "        Ok(addr) => addr,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: bound but could not read the bound address: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound_host = bound.ip().to_string();".to_string()), "\n".to_string()), "    let bound_port = bound.port() as i64;".to_string()), "\n".to_string()), "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);".to_string()), "\n".to_string()), "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));".to_string()), "\n".to_string()), "    let mut generation = match realize_generation(&stuck, deadline) {".to_string()), "\n".to_string()), "        Ok(generation) => generation,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    for accepted in listener.incoming() {".to_string()), "\n".to_string()), "        let mut stream = match accepted {".to_string()), "\n".to_string()), "            Ok(stream) => stream,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: accept error: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &bound_host, bound_port) {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "            Exchange::Handle(call) => {".to_string()), "\n".to_string()), "                let stuck_now = *lock_state(&stuck) as i64;".to_string()), "\n".to_string()), "                match &*native_serve_admission(contract.clone(), stuck_now) {".to_string()), "\n".to_string()), "                    NativeServeAdmission::NativeServeRefuseStuck { response, exit_code } => {".to_string()), "\n".to_string()), "                        write_response(&mut stream, &native_serve_outgoing(response.clone()));".to_string()), "\n".to_string()), "                        std::process::exit(*exit_code as i32);".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                    NativeServeAdmission::NativeServeAdmitWorker => {".to_string()), "\n".to_string()), "                        let (reply, answer) = std::sync::mpsc::channel::<WireParts>();".to_string()), "\n".to_string()), "                        let replace = if generation.calls.send((call, reply)).is_err() {".to_string()), "\n".to_string()), "                            write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                            true".to_string()), "\n".to_string()), "                        } else {".to_string()), "\n".to_string()), "                            match answer.recv_timeout(deadline) {".to_string()), "\n".to_string()), "                                Ok(parts) => {".to_string()), "\n".to_string()), "                                    write_parts(&mut stream, &parts);".to_string()), "\n".to_string()), "                                    false".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {".to_string()), "\n".to_string()), "                                    write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                                    true".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {".to_string()), "\n".to_string()), "                                    {".to_string()), "\n".to_string()), "                                        let mut s = lock_state(&generation.state);".to_string()), "\n".to_string()), "                                        if *s != WORKER_DONE {".to_string()), "\n".to_string()), "                                            *s = WORKER_ABANDONED;".to_string()), "\n".to_string()), "                                            *lock_state(&stuck) += 1;".to_string()), "\n".to_string()), "                                        }".to_string()), "\n".to_string()), "                                    }".to_string()), "\n".to_string()), "                                    write_response(&mut stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));".to_string()), "\n".to_string()), "                                    true".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                            }".to_string()), "\n".to_string()), "                        };".to_string()), "\n".to_string()), "                        if replace {".to_string()), "\n".to_string()), "                            generation = match realize_generation(&stuck, deadline) {".to_string()), "\n".to_string()), "                                Ok(generation) => generation,".to_string()), "\n".to_string()), "                                Err(cause) => {".to_string()), "\n".to_string()), "                                    eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "                                    std::process::exit(native_serve_worker_replacement_exit_code() as i32);".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                            };".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::ServeWireResponse;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count".to_string()), if startup.clone() {
+            ", second_count".to_string()
+        } else {
+            "".to_string()
+        }), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement,".to_string()), effect_failed_import.clone()), " native_serve_frame, native_serve_handler_name, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,".to_string()), "\n".to_string()), "    native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,".to_string()), "\n".to_string()), "    native_serve_start, NativeServeAdmission, NativeServeContract, NativeServeFrame, NativeServeOutgoing,".to_string()), "\n".to_string()), "    NativeServeRoute, NativeServeStart,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_serve_handle;".to_string()), "\n".to_string()), startup_import.clone()), bound_import.clone()), "\n".to_string()), "// What a worker hands back across the thread boundary: owned plain values, because the compiled".to_string()), "\n".to_string()), "// handler's values are reference-counted and stay on the worker's thread.".to_string()), "\n".to_string()), "struct WireParts {".to_string()), "\n".to_string()), "    status: i64,".to_string()), "\n".to_string()), "    content_type_label: String,".to_string()), "\n".to_string()), "    header_lines: Vec<String>,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn wire_parts(response: &NativeServeOutgoing) -> WireParts {".to_string()), "\n".to_string()), "    WireParts {".to_string()), "\n".to_string()), "        status: response.status,".to_string()), "\n".to_string()), "        content_type_label: response.content_type_label.clone(),".to_string()), "\n".to_string()), "        header_lines: response.header_lines.iter().cloned().collect(),".to_string()), "\n".to_string()), "        body: response.body.clone(),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_parts(stream: &mut std::net::TcpStream, response: &WireParts) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    write_parts(stream, &wire_parts(response));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// A worker's state, shared with the loop: whether the loop stopped waiting for it. The loop counts a".to_string()), "\n".to_string()), "// worker as stuck only when it abandons it, and the worker uncounts itself when it finally returns,".to_string()), "\n".to_string()), "// under one lock, so the count is exact whichever side gets there first.".to_string()), "\n".to_string()), "const WORKER_WAITING: u8 = 0;".to_string()), "\n".to_string()), "const WORKER_ABANDONED: u8 = 1;".to_string()), "\n".to_string()), "const WORKER_DONE: u8 = 2;".to_string()), "\n".to_string()), "\n".to_string()), "fn lock_state<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {".to_string()), "\n".to_string()), "    m.lock().unwrap_or_else(|e| e.into_inner())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// The worker's cleanup, run when its guard drops: on return AND during a panic's unwind. A worker the".to_string()), "\n".to_string()), "// loop abandoned uncounts itself here, exactly once; every worker ends DONE.".to_string()), "\n".to_string()), "struct WorkerGuard {".to_string()), "\n".to_string()), "    state: std::sync::Arc<std::sync::Mutex<u8>>,".to_string()), "\n".to_string()), "    stuck: std::sync::Arc<std::sync::Mutex<usize>>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "impl Drop for WorkerGuard {".to_string()), "\n".to_string()), "    fn drop(&mut self) {".to_string()), "\n".to_string()), "        let mut s = lock_state(&self.state);".to_string()), "\n".to_string()), "        if *s == WORKER_ABANDONED {".to_string()), "\n".to_string()), "            let mut n = lock_state(&self.stuck);".to_string()), "\n".to_string()), "            *n = n.saturating_sub(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        *s = WORKER_DONE;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), startup_static.clone()), "struct HandlerCall {".to_string()), "\n".to_string()), "    method: String,".to_string()), "\n".to_string()), "    path: String,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "    tailscale_identity: String,".to_string()), "\n".to_string()), "    release_revision: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// One worker generation: the thread that owns the effect executor and every admitted handle and runs".to_string()), "\n".to_string()), "// handler calls one at a time. Its state is the WorkerGuard protocol above; an abandoned generation".to_string()), "\n".to_string()), "// finishes the call in hand (if it ever does) and ends, uncounting itself.".to_string()), "\n".to_string()), "struct Generation {".to_string()), "\n".to_string()), "    calls: std::sync::mpsc::Sender<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>,".to_string()), "\n".to_string()), "    state: std::sync::Arc<std::sync::Mutex<u8>>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn realize_generation(stuck: &std::sync::Arc<std::sync::Mutex<usize>>, ready_within: std::time::Duration) -> Result<Generation, String> {".to_string()), "\n".to_string()), "    let (calls, inbox) = std::sync::mpsc::channel::<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>();".to_string()), "\n".to_string()), "    let (ready, readiness) = std::sync::mpsc::channel::<Result<(), String>>();".to_string()), "\n".to_string()), "    let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));".to_string()), "\n".to_string()), "    let guard = WorkerGuard { state: state.clone(), stuck: stuck.clone() };".to_string()), "\n".to_string()), "    let worker_state = state.clone();".to_string()), "\n".to_string()), started_decl.clone()), "    std::thread::spawn(move || {".to_string()), "\n".to_string()), "        let _guard = guard;".to_string()), "\n".to_string()), worker_startup.clone()), worker_realize.clone()), "        let _ = ready.send(Ok(()));".to_string()), "\n".to_string()), "        while let Ok((call, reply)) = inbox.recv() {".to_string()), "\n".to_string()), worker_call.clone()), "            let _ = reply.send(wire_parts(&native_serve_outgoing(response)));".to_string()), "\n".to_string()), "            if *lock_state(&worker_state) == WORKER_ABANDONED {".to_string()), "\n".to_string()), "                return;".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), startup_wait.clone()), "    match readiness.recv_timeout(ready_within) {".to_string()), "\n".to_string()), "        Ok(Ok(())) => Ok(Generation { calls, state }),".to_string()), "\n".to_string()), "        Ok(Err(cause)) => Err(cause),".to_string()), "\n".to_string()), timeout_arm.clone()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "    Handle(HandlerCall),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            if let Err(cause) = reader.read_exact(&mut body) {".to_string()), "\n".to_string()), "                return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause)));".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeToHandler => Exchange::Handle(HandlerCall {".to_string()), "\n".to_string()), "            method: head.method.clone(),".to_string()), "\n".to_string()), "            path: head.target.clone(),".to_string()), "\n".to_string()), "            body,".to_string()), "\n".to_string()), "            tailscale_identity: head.tailscale_identity.clone(),".to_string()), "\n".to_string()), "            release_revision: contract.release_revision.clone(),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let contract = match &*native_serve_start(Rc::new(argv.into())) {".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeListen { contract } => contract.clone(),".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeStartRefused { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), first_block.clone()), second_block.clone()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    for accepted in listener.incoming() {".to_string()), "\n".to_string()), "        let mut stream = match accepted {".to_string()), "\n".to_string()), "            Ok(stream) => stream,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: accept error: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &bound_host, bound_port) {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "            Exchange::Handle(call) => {".to_string()), "\n".to_string()), "                let stuck_now = *lock_state(&stuck) as i64;".to_string()), "\n".to_string()), "                match &*native_serve_admission(contract.clone(), stuck_now) {".to_string()), "\n".to_string()), "                    NativeServeAdmission::NativeServeRefuseStuck { response, exit_code } => {".to_string()), "\n".to_string()), "                        write_response(&mut stream, &native_serve_outgoing(response.clone()));".to_string()), "\n".to_string()), "                        std::process::exit(*exit_code as i32);".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                    NativeServeAdmission::NativeServeAdmitWorker => {".to_string()), "\n".to_string()), "                        let (reply, answer) = std::sync::mpsc::channel::<WireParts>();".to_string()), "\n".to_string()), "                        let replace = if generation.calls.send((call, reply)).is_err() {".to_string()), "\n".to_string()), "                            write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                            true".to_string()), "\n".to_string()), "                        } else {".to_string()), "\n".to_string()), "                            match answer.recv_timeout(deadline) {".to_string()), "\n".to_string()), "                                Ok(parts) => {".to_string()), "\n".to_string()), "                                    write_parts(&mut stream, &parts);".to_string()), "\n".to_string()), "                                    false".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {".to_string()), "\n".to_string()), "                                    write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                                    true".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {".to_string()), "\n".to_string()), "                                    {".to_string()), "\n".to_string()), "                                        let mut s = lock_state(&generation.state);".to_string()), "\n".to_string()), "                                        if *s != WORKER_DONE {".to_string()), "\n".to_string()), "                                            *s = WORKER_ABANDONED;".to_string()), "\n".to_string()), "                                            *lock_state(&stuck) += 1;".to_string()), "\n".to_string()), "                                        }".to_string()), "\n".to_string()), "                                    }".to_string()), "\n".to_string()), "                                    write_response(&mut stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));".to_string()), "\n".to_string()), "                                    true".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                            }".to_string()), "\n".to_string()), "                        };".to_string()), "\n".to_string()), "                        if replace {".to_string()), "\n".to_string()), "                            generation = match realize_generation(&stuck, ".to_string()), ready_name.clone()), ") {".to_string()), "\n".to_string()), "                                Ok(generation) => generation,".to_string()), "\n".to_string()), "                                Err(cause) => {".to_string()), "\n".to_string()), "                                    eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "                                    std::process::exit(native_serve_worker_replacement_exit_code() as i32);".to_string()), "\n".to_string()), "                                }".to_string()), "\n".to_string()), "                            };".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
 })
     }
 }
@@ -45881,7 +46169,7 @@ pub fn emit_main_diagnostic_fns(crate_name: String) -> String {
     {
         let core_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename("v1.std.core".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nfn render_diagnostics(result: &PipelineResult) {\n".to_string(), "    if result.diagnostics.is_empty() {\n".to_string()), "        return;\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let index_map: HashMap<String, Rc<NewlineIndex>> = result\n".to_string()), "        .newline_indices\n".to_string()), "        .iter()\n".to_string()), "        .map(|idx| (idx.file.clone(), idx.clone()))\n".to_string()), "        .collect();\n".to_string()), "\n".to_string()), "    for d in result.diagnostics.iter() {\n".to_string()), "        render_one_diagnostic(d, &index_map, \"\");\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    eprintln!(\"\\n{} error(s)\", result.diagnostics.len());\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn render_one_diagnostic(\n".to_string()), "    d: &".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::ErrorNode,\n".to_string()), "    index_map: &HashMap<String, Rc<NewlineIndex>>,\n".to_string()), "    indent: &str,\n".to_string()), ") {\n".to_string()), "    let severity = \"error\";\n".to_string()), "    let message = diagnostic_to_message(d.diagnostic.clone());\n".to_string()), "    let span = diagnostic_to_span(d.diagnostic.clone());\n".to_string()), "\n".to_string()), "    let location = if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n".to_string()), "        } else {\n".to_string()), "            span.file.clone()\n".to_string()), "        }\n".to_string()), "    } else if !d.module_name.is_empty() {\n".to_string()), "        d.module_name.clone()\n".to_string()), "    } else {\n".to_string()), "        String::new()\n".to_string()), "    };\n".to_string()), "\n".to_string()), "    if location.is_empty() {\n".to_string()), "        eprintln!(\"{}{}: {}\", indent, severity, message);\n".to_string()), "    } else {\n".to_string()), "        eprintln!(\"{}{}[{}]: {}\", indent, severity, location, message);\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            let line_text = source_line_at(idx.clone(), lc.line);\n".to_string()), "            let line_num = format!(\"{}\", lc.line);\n".to_string()), "            let gutter_width = line_num.len();\n".to_string()), "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n".to_string()), "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n".to_string()), "\n".to_string()), "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n".to_string()), "            let col_offset = (lc.col - 1) as usize;\n".to_string()), "            eprintln!(\n".to_string()), "                \"{} {} | {}{}\",\n".to_string()), "                indent,\n".to_string()), "                \" \".repeat(gutter_width),\n".to_string()), "                \" \".repeat(col_offset),\n".to_string()), "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n".to_string()), "            );\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nfn render_diagnostics(result: &PipelineResult) {\n".to_string(), "    if result.diagnostics.is_empty() {\n".to_string()), "        return;\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let index_map: HashMap<String, Rc<NewlineIndex>> = result\n".to_string()), "        .newline_indices\n".to_string()), "        .iter()\n".to_string()), "        .map(|idx| (idx.file.clone(), idx.clone()))\n".to_string()), "        .collect();\n".to_string()), "\n".to_string()), "    for d in result.diagnostics.iter() {\n".to_string()), "        render_one_diagnostic(d, &index_map, \"\");\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    eprintln!(\"\\n{} error(s)\", result.diagnostics.len());\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn render_one_diagnostic(\n".to_string()), "    d: &".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::ErrorNode,\n".to_string()), "    index_map: &HashMap<String, Rc<NewlineIndex>>,\n".to_string()), "    indent: &str,\n".to_string()), ") {\n".to_string()), "    let severity = \"error\";\n".to_string()), "    let message = diagnostic_to_message(d.diagnostic.clone());\n".to_string()), "    let span = diagnostic_to_span(d.diagnostic.clone());\n".to_string()), "\n".to_string()), "    // THE LOCATION IS THE AUTHORITY'S, not this function's. One renderer in the seed owns\n".to_string()), "    // `file:line:col` AND the words for \"there is no position\", which is what keeps this CLI\n".to_string()), "    // line and the compile lane's line for the SAME diagnostic in the same units -- they were\n".to_string()), "    // measured disagreeing (`(m.dag:133-134)` here, `error[m.dag:9:5]` there) while both were\n".to_string()), "    // arithmetically right. A diagnostic with no file at all falls back to its module name,\n".to_string()), "    // which is attribution rather than a location.\n".to_string()), "    let location = if span.file.is_empty() {\n".to_string()), "        if d.module_name.is_empty() {\n".to_string()), "            String::new()\n".to_string()), "        } else {\n".to_string()), "            d.module_name.clone()\n".to_string()), "        }\n".to_string()), "    } else {\n".to_string()), "        ".to_string()), core_mod.clone()), "::render_span_location(span.clone(), Rc::new(index_map.clone()))\n".to_string()), "    };\n".to_string()), "\n".to_string()), "    if location.is_empty() {\n".to_string()), "        eprintln!(\"{}{}: {}\", indent, severity, message);\n".to_string()), "    } else {\n".to_string()), "        eprintln!(\"{}{}[{}]: {}\", indent, severity, location, message);\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            // The excerpt below is THIS printer's layout, but its LINE AND COLUMN come from\n".to_string()), "            // the authority, so the caret cannot drift away from the location printed above\n".to_string()), "            // it. No located span, no excerpt: a caret at a column we do not know is the\n".to_string()), "            // fabricated position this whole block exists to stop.\n".to_string()), "            let located = ".to_string()), core_mod.clone()), "::located_span_of(span.clone(), Rc::new(index_map.clone()));\n".to_string()), "            if let Some(at) = located.as_ref() {\n".to_string()), "            let line_text = source_line_at(idx.clone(), at.start_line);\n".to_string()), "            let line_num = format!(\"{}\", at.start_line);\n".to_string()), "            let gutter_width = line_num.len();\n".to_string()), "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n".to_string()), "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n".to_string()), "\n".to_string()), "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n".to_string()), "            let col_offset = (at.start_col - 1) as usize;\n".to_string()), "            eprintln!(\n".to_string()), "                \"{} {} | {}{}\",\n".to_string()), "                indent,\n".to_string()), "                \" \".repeat(gutter_width),\n".to_string()), "                \" \".repeat(col_offset),\n".to_string()), "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n".to_string()), "            );\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
     }
 }
 

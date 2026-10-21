@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data absent_reads_identically_to_never_looked: RecurringFailureMode = RecurringFailureMode {
   identity: "absent_reads_identically_to_never_looked" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**a search that never reached its subject returns exactly what a real absence returns** (an instrument that answers `zero occurrences` over a region it never actually read is not reporting a measurement, it is reporting its own miss in the vocabulary of a finding. The two states are indistinguishable in the output -- both are the empty result -- so the reader supplies the interpretation, and the interpretation that fits the question being asked is `absent`.",

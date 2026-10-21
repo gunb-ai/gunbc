@@ -336,15 +336,14 @@ pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<V
     }
 }
 
-pub fn graph_reverse_reachable_members(
-    names: Rc<Vec<String>>,
-    graph: Rc<CallGraph>,
+pub fn graph_reverse_reachable_members_from_views(
+    views: Rc<CallGraphAdjacencyViews>,
     start: String,
 ) -> Rc<Vec<String>> {
     {
         let reached = dfs_collect_component(
             start.clone(),
-            reverse_adjacency(names.clone(), graph.clone()),
+            views.reverse.clone(),
             Rc::new(SccComponentAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
                 members: Rc::new(vec![]),
@@ -360,6 +359,17 @@ pub fn graph_reverse_reachable_members(
             __result
         })
     }
+}
+
+pub fn graph_reverse_reachable_members(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+    start: String,
+) -> Rc<Vec<String>> {
+    graph_reverse_reachable_members_from_views(
+        build_adjacency_views(names.clone(), graph.clone()),
+        start.clone(),
+    )
 }
 
 pub fn is_lexicographic_descent(mut __tco_loop_evidence: Rc<Vec<DescentEvidence>>) -> bool {
