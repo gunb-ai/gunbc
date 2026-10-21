@@ -1476,10 +1476,8 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   }
   let alias_cycle_diags = match alias_item_rhs(item: item) {
     Present { value: _ } =>
-      match alias_cycle_members(start: decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item)), env: env) {
-        [] => []
-        members => [make_error_node(diagnostic: TypeAliasCycle { members: members, span: item.span }, module_name: module_name)]
-      }
+      let members = alias_cycle_members(start: decl_ref(module_path: module_name, decl_name: authored_name(env: env, node: item)), env: env)
+      if count(members) == 0 { [] } else { [make_error_node(diagnostic: TypeAliasCycle { members: members, span: item.span }, module_name: module_name)] }
     Absent => []
   }
   let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
