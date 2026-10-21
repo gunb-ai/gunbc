@@ -1108,6 +1108,17 @@ The "decide the brand arm before building `structural`" skip does not reduce dem
 
 Do not retry this skip. A future D.5 lane must first attribute which arms consume `structural`, by call chain under `expand_nominal_alias_rhs_by_name`, and target demand there.
 
+### 5c addendum. Measured negative: P1.4 one closure worklist (Lane O, no PR, closed 2026-10-21)
+
+Measured by still-fox-649 on main `7a9928584d8` (`srv1:~/o-meas-out`), both required entries, perf by symbol.
+- `extend_sources_to_both_closure_fixpoint` is about 5.8% of the run (about 27 s), and essentially all of it is first-visit production under `build_both_closure_edge_index` and `closure_name_census`.
+- `extend_sources_via_demanded_edges` excluding those callees is 0.00% on both entries; `sort_by` is 0.08%; `dedup_by` is 0.
+- A merged worklist removes under 0.1%, far below the 1 s bar. It cannot touch first-visit production, which runs once per index.
+
+The fixpoint already runs both passes on the shared worklist machinery over cached rows, so there is no second worklist to merge away. A merge also carries a refusal-order risk: today the bare pass runs to completion before the reference pass, so a bare-pass refusal is selected before any reference-pass refusal anywhere in the closure; interleaving one worklist could select a different first refusal. It would add surface with no time gain, so it fails §5b.3.
+
+Do not retry. The cost is the roughly 100 s of whole-tree acquisition before compile (`pool_source_tokenize` 59 s, `pool_heads_parse` 15 s, `closure_name_census_build` 15 s, newline index 5.6 s, `pool_census_parse` 5.8 s), which is the P1.2 / P2.1 target.
+
 ## 10. Remaining single-occurrence names, with owners (lane F close-out, 2026-10-21)
 
 Lane F (P2.10–P2.12) landed batches b1–b6: 89 of §3's 116 single-occurrence functions deleted on
