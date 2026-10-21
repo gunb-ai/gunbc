@@ -148,26 +148,6 @@ type TcoReassignInput {
   depth: Int
 }
 
-fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let has_async = items |> any(item => item.uses |> count > 0)
-  let type_names = collect_type_names_from_items(items: items, source_indices: source_indices)
-
-  import_rules |> filter(rule =>
-    match rule.trigger {
-      TypeUsageTrigger { type_name: t } => type_names |> any(n => n == t)
-      TraitImplTrigger { trait_name: _ } => false
-      DeriveMacroTrigger { macro_name: _ } => false
-      ContainerUsageTrigger { container: c } => type_names |> any(n => n == c)
-      AsyncUsageTrigger => has_async
-    }
-  ) |> map(rule => rule.import_path)
-  |> filter(path => path != "")
-}
-
-fn collect_type_names_from_items(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  items |> flat_map(item => collect_type_names_from_node(n: item, source_indices: source_indices))
-}
-
 fn collect_type_names_from_node(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let self_name = if n.ident_span != none { [authored_name_at(source_indices: source_indices, node: n)] } else { [] }
   let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child, source_indices: source_indices))
@@ -653,20 +633,6 @@ fn test_file_path(module_name: String, target: RenderTarget) -> String {
   }
   let filename = module_to_filename(name: module_name)
   concat(file_dir, conventions.file_prefix, filename, conventions.file_suffix, language_spec(target: target).scaffold.source_file_extension)
-}
-
-fn reserved_prefix(target: RenderTarget) -> String {
-  match language_spec(target: target).reserved_words.strategy {
-    PrefixEscape { prefix: prefix } => prefix
-    _ => ""
-  }
-}
-
-fn reserved_suffix(target: RenderTarget) -> String {
-  match language_spec(target: target).reserved_words.strategy {
-    SuffixEscape { suffix: suffix } => suffix
-    _ => ""
-  }
 }
 
 fn escape_rust_interp_text(s: String) -> String {
@@ -1949,20 +1915,6 @@ type FuncBodyShape
   | FuncBodyBlock { stmts: List<Node> }
   | FuncBodyExpr { expr: Node }
 
-fn classify_func_body(body: Node, source_indices: Map<String, NewlineIndex>) -> FuncBodyShape {
-  match body.expr_data {
-    ExprLet =>
-      let n = let_binding_name_at(texpr: body, source_indices: source_indices)
-      let v = let_value(texpr: body)
-      let rest = let_body(texpr: body)
-      FuncBodyLet { name: n, value: v, rest: rest }
-    ExprBlock =>
-      FuncBodyBlock { stmts: body.children }
-    _ =>
-      FuncBodyExpr { expr: body }
-  }
-}
-
 type TcoExprShape
   = TcoCall { func: String, args: List<Node> }
   | TcoIf { condition: Node, then_branch: Node, else_branch: Node? }
@@ -1971,41 +1923,6 @@ type TcoExprShape
   | TcoBlock { stmts: List<Node> }
   | TcoOther { expr: Node }
 
-fn classify_tco_expr(texpr: Node, source_indices: Map<String, NewlineIndex>) -> TcoExprShape {
-  match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      TcoCall { func: expr_call_func_at(texpr: texpr, source_indices: source_indices), args: texpr.children }
-    ExprIf =>
-      let c = if_condition(texpr: texpr)
-      let t = if_then_branch(texpr: texpr)
-      let e = if_else_branch(texpr: texpr)
-      TcoIf { condition: c, then_branch: t, else_branch: e }
-    ExprMatch =>
-      let scrut = match_scrutinee(texpr: texpr)
-      let arm_list = match_arm_nodes(texpr: texpr)
-      TcoMatch { scrutinee: scrut, arms: arm_list }
-    ExprLet =>
-      let n = let_binding_name_at(texpr: texpr, source_indices: source_indices)
-      let v = let_value(texpr: texpr)
-      let bd = let_body(texpr: texpr)
-      TcoLet { name: n, value: v, body: bd }
-    ExprBlock =>
-      TcoBlock { stmts: texpr.children }
-    _ =>
-      TcoOther { expr: texpr }
-  }
-}
-
-fn block_stmts_init(stmts: List<Node>) -> List<Node> {
-  if stmts |> count <= 1 { [] }
-  else { stmts |> take(n: (stmts |> count) - 1) }
-}
-
-// THE DECLARATION BEING EMITTED IS ASKED FOR BY ITS IDENTITY, NOT ITS LEAF.
-// The registry read used to key on the bare leaf, so emitting `run` in one module could be told
-// about `run` in another — and the Absent arm, which rescans this body, silently covered for it.
-// Taking the identity means the Present arm answers about THIS declaration and the Absent arm means
-// the declaration genuinely has no registry row, which is the case the rescan is actually for.
 fn is_tco_eligible(id: DeclaredCallableIdentity, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
   match lookup_item_by_identity(registry: registry, id: id) {
     Present { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
@@ -2755,20 +2672,6 @@ fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String
   }
 }
 
-fn unwrap_single_field_product(n: Node) -> Node {
-  let is_product = is_product_type(n: n)
-  if is_product && n.ident_span == none && n.children |> count == 1 {
-    match n.children |> first {
-      Present { value: field_node } => resolved_type(n: field_node)
-      Absent => n
-    }
-  } else { n }
-}
-
-// The closed vocabulary of reasons a declared `transport file` operation cannot be emitted. It is
-// a coproduct rather than a free String because the set is DECIDABLE from the declaration: every
-// arm below is a fact the emitter reads off the operation, so a cause outside this list is a
-// modelling gap that must be added here, not a message someone writes at a call site.
 type FileEmissionRefusal
   = FileTargetNotModeled { target_name: String }
   | FileVerbNotModeled { verb: String }

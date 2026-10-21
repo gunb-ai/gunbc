@@ -36,9 +36,12 @@ type PowerState
   = Unpowered
   | Energized
 
+// Whether the module sat on the carrier while it was read; a session that did not say is unrecorded,
+// never assumed removed.
 type ModuleState
   = ModuleRemoved
-  | ModuleInstalled
+  | ModuleInstalled { asset: PhysicalAssetIdentity }
+  | ModuleUnrecorded
 
 type BenchConditions {
   power: PowerState
@@ -50,6 +53,15 @@ type EvidenceRef
   = OperatorStatement { stated_on: NonEmptyStr, verbatim: NonEmptyStr }
   | OperatorPhotograph { taken_on: NonEmptyStr, locator: NonEmptyStr }
   | SellerListingPhotograph { listing: NonEmptyStr, read_on: NonEmptyStr }
+
+// An evidence reference as a report quotes it.
+fn evidence_ref_text(e: EvidenceRef) -> String {
+  match e {
+    OperatorStatement { stated_on, verbatim } => join(["'", verbatim as String, "' (", stated_on as String, ")"], "")
+    OperatorPhotograph { taken_on, locator } => join(["photograph ", locator as String, " (", taken_on as String, ")"], "")
+    SellerListingPhotograph { listing, read_on } => join(["listing photograph ", listing as String, " (read ", read_on as String, ")"], "")
+  }
+}
 
 type ContinuityResult
   = BuzzerAsserted
