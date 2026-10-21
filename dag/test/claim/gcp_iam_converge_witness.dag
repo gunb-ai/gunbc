@@ -7,7 +7,7 @@ import std.content_hash { Sha256Digest }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, PoolReading, PoolForbidden, AccountForbidden, PoolUnreadable, PoolObservedAbsent, AccountObservedAbsent, ProvidersObserved, classify_dedicated_federation, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, FederationPermissionDenied, PoolReading, PoolForbidden, AccountForbidden, PoolUnreadable, PoolObservedAbsent, AccountObservedAbsent, ProvidersObserved, classify_dedicated_federation, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
 import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_secret_resource_by_number }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
@@ -22,18 +22,19 @@ import gunbc.auth.gcp_iam_converge {
   iam_converge_bindings, iam_converge_bootstrap_readback, ReachProbe, ExpectAdmitted, ExpectDenied,
   ConvergeCreateRole, ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole, pool_resource,
   iam_converge_provider_role_permissions, iam_converge_account_policy_role_permissions, iam_converge_secret_policy_role_permissions,
-  gcp_iam_observe_dedicated_federation,
+  gcp_iam_observe_dedicated_federation, not_bootstrapped_refusal,
   plan_dedicated_federation, plan_estate, gcp_iam_converge_request_over, gcp_iam_estate_diff_preimage, federation_input_refused_plan,
   gcp_iam_converge_escalation_prefix, gcp_iam_converge_targets,
   iam_converge_denied_permissions, iam_converge_create_role_permissions,
   service_account_resource,
   GrantSet, SecretPolicyReading, gcp_iam_converge_grant_sets, grant_set_secrets, gcp_iam_converge_grant_set_secrets,
   plan_grant_set, gcp_iam_estate_labels_unique, grant_set_payload_permissions,
-  custody_accessor_cell_converge_owned, custody_accessor_roster_rows,
-  custody_accessor_cell_owner, AccessorCellOwnedByAnotherSet,
 }
 import gunbc.fleet.host_credential_custody_converge { HostCredentialCustodyRow, HostCustodyCredential, CursorWorkerTurnApiKey, FlexVastApiKey, host_credential_custody_row, host_custody_credential_roster, host_custody_credential_wire }
 import std.list { distinct_by_key }
+import gunbc.auth.gcp_iam_trust_roots { ceremony_trust_root_secret, ceremony_trust_root_secrets }
+import gunbc.assimilate.bmc_token_federation { bmc_assimilator_sa_email }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_version_adder_grant_roster, fleet_version_adder_grant }
 import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
 import gunbc.auth.fleet_secret_accessor_roster { cursor_api_key_harness_accessor_row, flex_vast_api_key_accessor_row, fleet_accessor_grant, fleet_accessor_grant_roster }
 import gunbc.auth.gcp_secret_access { GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
@@ -105,19 +106,17 @@ fn is_add_cells_on(e: GcpIamEffect, resource: String, etag: String) -> Bool {
 
 // ── The plan ─────────────────────────────────────────────────────────────────────────────────
 
-// A POOL OR ACCOUNT THAT IS NOT THERE REFUSES, NAMING THE BOOTSTRAP: this converge creates neither
-// (iam-observe cannot even tell absent from unbound), so the plan carries no create-pool or
-// create-service-account effect and the refusal names the ceremony entry and the stages. The
-// provider, reachable after the bootstrap, is the only create it plans.
-test fn an_absent_pool_or_account_refuses_naming_the_bootstrap() -> Bool {
+// A POOL OR ACCOUNT THAT IS NOT THERE REFUSES, POINTING AT THE DELTA: this converge creates neither,
+// and classifying the subject (absent or unbound, which cells) is gunbc.auth.gcp_iam_bootstrap_delta's,
+// so the refusal is the one typed pointer there and names no manual ceremony.
+test fn an_absent_pool_or_account_refuses_pointing_at_the_delta() -> Bool {
   match plan_dedicated_federation(
     f: heal,
     classification: FederationClassified { create_pool: true, create_provider: true, create_account: true },
     account_policy: PolicyResourceAbsent,
     secret_policies: heal_secret_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") }),
   ) {
-    GcpIamRefused { target: _, reasons: rs } =>
-      rs.length() == 2 && all(rs, r => string_contains(s: r, pattern: "iam_bootstrap_apply") && string_contains(s: r, pattern: "not yet bootstrapped"))
+    GcpIamRefused { target: _, reasons: rs } => rs == [not_bootstrapped_refusal] && !string_contains(s: join(rs, ""), pattern: "iam_bootstrap_apply")
     _ => false
   }
 }
@@ -228,22 +227,23 @@ test fn the_preimage_names_the_refused_target() -> Bool {
     && p != without
 }
 
-// A 403 ON THE POOL CANNOT DISTINGUISH ABSENT FROM UNBOUND, so the arm says both and names the
-// repair; a 404 stays absent and creatable, and an unreadable cause keeps its own text.
+// A 403 ON THE POOL IS ITS OWN TYPED ARM, never a reason string; a 404 stays absent and creatable, and
+// an unreadable cause keeps its own text.
 fn federation_reasons(pool: PoolReading) -> List<String> {
   match classify_dedicated_federation(f: heal, pool: pool, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent) {
     FederationUnclassified { reasons: rs } => rs
+    FederationPermissionDenied { pool: _, account: _, causes: _ } => []
     FederationClassified { create_pool: _, create_provider: _, create_account: _ } => []
   }
 }
 
-test fn a_403_pool_reading_names_the_bootstrap_repair() -> Bool {
-  let rs = federation_reasons(pool: PoolForbidden { cause: "status 403: denied" })
-  rs.length() == 1
-    && string_contains(s: join(rs, ""), pattern: "absent or not yet bootstrapped")
-    && string_contains(s: join(rs, ""), pattern: "iam_bootstrap_apply")
-    && string_contains(s: join(rs, ""), pattern: "identities stage")
-    && string_contains(s: join(rs, ""), pattern: "capabilities stage")
+test fn a_403_pool_reading_is_typed_permission_denied_and_the_plan_points_at_the_delta() -> Bool {
+  let c = classify_dedicated_federation(f: heal, pool: PoolForbidden { cause: "status 403: denied" }, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent)
+  (match c { FederationPermissionDenied { pool: p, account: a, causes: cs } => p && !a && count(cs) == 1  _ => false })
+    && match plan_dedicated_federation(f: heal, classification: c, account_policy: PolicyResourceAbsent, secret_policies: heal_secret_readings(reading: PolicyResourceAbsent)) {
+      GcpIamRefused { target: _, reasons: rs } => rs == [not_bootstrapped_refusal]
+      _ => false
+    }
 }
 
 test fn an_unreadable_pool_keeps_its_own_text_and_a_404_stays_absent() -> Bool {
@@ -538,7 +538,7 @@ data grant_set_member: GrantMemberResolution = GrantMemberResolved { member: "se
 fn custody_set() -> GrantSet {
   match gcp_iam_converge_grant_sets.first() {
     Present { value: g } => g
-    Absent => GrantSet { label: "absent", grants: [] }
+    Absent => GrantSet { label: "absent", grants: [], member: grant_member_resolution() }
   }
 }
 
@@ -631,93 +631,46 @@ test fn custody_cells_name_the_resolved_convergence_principal_never_iam_converge
     }
 }
 
-// THE HAND-APPLIED CELLS, DECLARED SO THE NEXT CONVERGE READS THEM AS NOOP: every cell of the
-// "fleet accessor cells applied by hand" grant set is exactly the one the operator's
-// `gcloud secrets add-iam-policy-binding --role roles/secretmanager.secretAccessor` writes -- that
-// role, the fleet convergence member, no condition. A mismatch would plan a second cell.
-test fn the_hand_applied_accessor_cells_read_back_as_noop() -> Bool {
-  match grant_member_resolution() {
-    GrantMemberUnresolved { cause: _ } => false
-    GrantMemberResolved { member: m } => {
-      let g = match filter(gcp_iam_converge_grant_sets, x => x.label == "fleet accessor cells applied by hand").first() {
-        Present { value: x } => x
-        Absent => GrantSet { label: "absent", grants: [] }
-      }
-      let held = map(grant_set_secrets(g: g), sec => SecretPolicyReading {
-        secret: sec,
-        reading: PolicyObserved { policy: policy_of(cells: [GcpIamBindingCell { role: "roles/secretmanager.secretAccessor", member: m, condition: Absent }], etag: "h1") },
-      })
-      g.grants.length() == 2
-        && map(grant_set_secrets(g: g), x => x as String) == ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key"]
-        && match plan_grant_set(g: g, member: grant_member_resolution(), secret_policies: held) { GcpIamNoop { target: _ } => true  _ => false }
-    }
-  }
+fn grant_set_named(label: String) -> GrantSet? {
+  filter(gcp_iam_converge_grant_sets, x => x.label == label).first()
 }
 
-// THE CONVERGE OWNS EXACTLY THE CURSOR AND FLEX CUSTODY CELLS: an explicit policy row (DESIGN 5 admits a
-// policy literal), compared at identity grain over the closed selection, so flipping any arm of
-// gunbc.auth.gcp_iam_converge custody_accessor_cell_owner turns this red.
-test fn the_converge_owns_exactly_the_cursor_and_flex_custody_cells() -> Bool {
-  map(filter(host_custody_credential_roster, c => custody_accessor_cell_converge_owned(c: c)), c => host_custody_credential_wire(c: c))
-    == [host_custody_credential_wire(c: CursorWorkerTurnApiKey), host_custody_credential_wire(c: FlexVastApiKey)]
+fn grant_keys(gs: List<SecretAccessGrant>) -> List<String> {
+  map(gs, g => join([g.target.secret as String, g.role], " "))
 }
 
-fn custody_secret_of(c: HostCustodyCredential) -> String {
-  host_credential_custody_row(c: c).secret.secret as String
-}
-
-fn selected_custody_credentials() -> List<HostCustodyCredential> {
-  filter(host_custody_credential_roster, c => custody_accessor_cell_converge_owned(c: c))
-}
-
-// THE CUSTODY SET IS THE ROSTER'S CELLS FOR EXACTLY THE SELECTED CREDENTIALS, an identity join and not a
-// count: every selected credential has exactly one roster row naming its custody secret, the set's secrets
-// are those custody secrets in roster order, and its grants are fleet_accessor_grant over those rows, so a
-// missing or duplicated roster row, or a custody row repointed without its roster row, is red.
-test fn the_custody_cells_are_the_rosters_for_exactly_the_selected_credentials() -> Bool {
-  match filter(gcp_iam_converge_grant_sets, x => x.label == "custody accessor cells").first() {
-    Present { value: g } =>
-      all(selected_custody_credentials(), c => filter(fleet_accessor_grant_roster, r => (r.target.secret as String) == custody_secret_of(c: c)).length() == 1)
-        && map(grant_set_secrets(g: g), x => x as String) == map(selected_custody_credentials(), c => custody_secret_of(c: c))
-        && g.grants == map(custody_accessor_roster_rows(), r => fleet_accessor_grant(row: r))
-        && g.grants == [fleet_accessor_grant(row: cursor_api_key_harness_accessor_row), fleet_accessor_grant(row: flex_vast_api_key_accessor_row)]
+// ALL KEYS: THE FLEET ROSTER SET IS EVERY ROSTER ROW THAT IS NOT A TRUST ROOT, an identity join over both
+// rosters in both directions -- a non-root row left out, or a root row let in, is red.
+test fn the_fleet_roster_set_is_every_non_root_roster_row() -> Bool {
+  match grant_set_named(label: "fleet roster cells") {
     Absent => false
+    Present { value: g } => {
+      let keys = grant_keys(gs: g.grants)
+      let rows = map(fleet_accessor_grant_roster, r => fleet_accessor_grant(row: r)) + map(fleet_version_adder_grant_roster, r => fleet_version_adder_grant(row: r))
+      all(rows, x => any(keys, k => k == join([x.target.secret as String, x.role], " ")) != ceremony_trust_root_secret(secret: x.target.secret))
+        && all(g.grants, x => !ceremony_trust_root_secret(secret: x.target.secret))
+        && count(keys) == count(filter(rows, x => !ceremony_trust_root_secret(secret: x.target.secret)))
+    }
   }
 }
 
-// A CREDENTIAL LEFT OUT BECAUSE ANOTHER SET OWNS ITS CELL NAMES A SET THAT DOES: every
-// AccessorCellOwnedByAnotherSet arm names a grant set of this converge whose secrets include the
-// credential's custody secret, so the reason is checked against the sets and cannot go stale silently.
-// At least one such arm exists (OCI), so the claim is not vacuous.
-test fn a_cell_owned_by_another_set_is_in_that_set() -> Bool {
-  let owned_elsewhere = filter(host_custody_credential_roster, c => match custody_accessor_cell_owner(c: c) {
-    AccessorCellOwnedByAnotherSet { label: _ } => true
-    _ => false
-  })
-  owned_elsewhere.length() > 0
-    && all(owned_elsewhere, c => match custody_accessor_cell_owner(c: c) {
-      AccessorCellOwnedByAnotherSet { label: l } => match filter(gcp_iam_converge_grant_sets, g => g.label == l).first() {
-        Present { value: g } => any(grant_set_secrets(g: g), x => (x as String) == custody_secret_of(c: c))
-        Absent => false
-      }
-      _ => false
-    })
+// NO GRANT SET NAMES A TRUST ROOT, so no approval of the converge or the delta reaches one; the RED
+// control is a set that does.
+test fn no_grant_set_names_a_trust_root() -> Bool {
+  !any(gcp_iam_converge_grant_set_secrets(), s => ceremony_trust_root_secret(secret: s))
+    && any(ceremony_trust_root_secrets(), t => ceremony_trust_root_secret(secret: t.secret))
 }
 
-// THE ESTATE'S BOOTSTRAP POPULATION GROWS BY EXACTLY THE CUSTODY SECRETS: the two sets that existed keep
-// the secrets they had (the r2 custody set's own, and the hand-applied set's OpenRouter and OCI), and
-// the population is those followed by the Cursor and flex Vast secrets and nothing else.
-test fn the_custody_secrets_join_the_grant_set_secrets_and_the_others_are_unchanged() -> Bool {
-  let r2 = map(distinct_by_key(xs: r2_mint_custody_grants(), key: x => x.target.secret as String), x => x.target.secret as String)
-  let expected = distinct_by_key(
-    xs: concat(r2, ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key", "cursor-api-key-harness", "flex-vast-api-key"]),
-    key: x => x,
-  )
-  map(gcp_iam_converge_grant_set_secrets(), x => x as String) == expected
-    && match filter(gcp_iam_converge_grant_sets, x => x.label == "fleet accessor cells applied by hand").first() {
-      Present { value: g } => map(grant_set_secrets(g: g), x => x as String) == ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key"]
-      Absent => false
+// THE BMC ASSIMILATOR'S CELLS ARE ITS SIGNED GRANTS' (today the canary alone; the srv3 admin grant and
+// the legacy binding are Unsigned), resolved to the grants' own principal, never the fleet principal.
+test fn the_bmc_assimilator_set_is_its_signed_grants_under_its_own_account() -> Bool {
+  match grant_set_named(label: "bmc assimilator cells") {
+    Absent => false
+    Present { value: g } => count(g.grants) == 1 && all(g.grants, x => (x.target.secret as String) == "wif-canary") && match g.member {
+      GrantMemberResolved { member: m } => m == federated_service_account_member(email: bmc_assimilator_sa_email)
+      GrantMemberUnresolved { cause: _ } => false
     }
+  }
 }
 
 // ON THE CURSOR SECRET iam-converge GRANTS AND NEVER READS: every iam-converge binding on the secret

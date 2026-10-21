@@ -530,6 +530,18 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-serve-startup-slow"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-startup-overrun"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
+            },
+        ),
+        (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
         ),
@@ -1158,9 +1170,13 @@ fn run_cli_wire_census(
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    // `source_indices` came back from the resolve alongside the graph and was never used; the
+    // reader-facing refusal lines now go through the located renderer with it.
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,
@@ -1247,9 +1263,13 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    // `source_indices` came back from the resolve alongside the graph and was never used; the
+    // reader-facing refusal lines now go through the located renderer with it.
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,

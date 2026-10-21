@@ -9940,7 +9940,7 @@ fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
     })
 }
 
-/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// The BoundOperationInvocation (`std.operation_argv`) of one dispatched operation: its resolved
 /// identity -- declaring file, service, operation -- and each declared input by name.
 fn bound_operation_invocation_value(
     service_name: &str,
@@ -10880,10 +10880,6 @@ fn match_pattern(
                         }
                         _ => None,
                     },
-                    // GroupCompletion{pos,neg} destructuring against a native Value::Int is
-                    // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
-                    // unmatched pattern name falls through to `_ => None` below, refusing rather
-                    // than fabricating a (pos, neg) pair.
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -13336,14 +13332,9 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
-        if type_name == "GroupCompletion" {
-            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
-                fields_get(&fields, ctx.sym("pos")),
-                fields_get(&fields, ctx.sym("neg")),
-            ) {
-                return Ok(Value::Int(pos - neg));
-            }
-        }
+        // No record is collapsed into an integer by its spelling. A GroupCompletion<Nat> is a pair --
+        // std.integer int_of_group_completion is the declared mapping onto the integers -- and the
+        // emitted Rust keeps it a record, so the interpreter must too.
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -15434,7 +15425,7 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
-/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
+/// `dag/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
 /// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
 /// (DESIGN §5).
 #[derive(Debug, Clone)]
