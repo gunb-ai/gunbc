@@ -949,3 +949,19 @@ test fn checked_arithmetic_at_width64_refuses_as_unrealizable() -> Bool {
     WordReady { word: _ } => false
   }
 }
+
+// THE TWO WIDTH-32 WRAPPING VECTORS RETIRED WITH std.bounded_nat (review of gunbc#11645). Both products have
+// 64 significant bits, which the host Int cannot hold, so the answer is reachable only by the half-radix
+// split in word_wrapping_multiply, never by forming x * y and reducing. The paired half is that the CHECKED
+// product of the same operands reports WordOverflow, not an unrealizable-width refusal.
+test fn the_width32_wrapping_product_is_computed_where_forming_the_product_cannot() -> Bool {
+  checked_value(result: word_wrapping_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 4294967295))) == 1
+    && checked_value(result: word_wrapping_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 3735928559))) == 559038737
+    && refused_overflow(result: word_checked_multiply(a: word_at(width: Width32, value: 4294967295), b: word_at(width: Width32, value: 4294967295)))
+}
+
+// DISPOSITION OF THE RETIRED WIDTH-0/40/42/43 CONTROLS. WordWidth is the closed coproduct 8/16/32/64, so a
+// Word at 0, 40, 42 or 43 bits has no constructor: those controls are not portable, and the wrapping
+// product's 42/43 ceiling dissolves because the split is fixed per realizable width (Width64 refuses as
+// unrealizable, asserted above). The range half of width 0 and the host-bound edge live in
+// machine_width_range_witness, which reads machine_width_admits directly.
