@@ -2800,18 +2800,39 @@ pub fn variant_literal_expected_application(
                 {
                     std::option::Option::None
                 } else {
-                    match crate::v1_compiler_infer_env::lookup_type_for(
-                        scope.type_env.clone(),
-                        exp.clone(),
-                    ) {
-                        Some(head) => {
-                            if v1_rt::rc_ptr_eq(head.clone(), owner.clone()) {
-                                Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
-                            } else {
-                                std::option::Option::None
+                    if {
+                        let mut __found = false;
+                        for c in exp.children.clone().iter().cloned() {
+                            if match crate::v1_compiler_infer_types::child_type_node(c.clone())
+                                .inferred
+                                .clone()
+                                .as_deref()
+                                .cloned()
+                            {
+                                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                                _ => false,
+                            } {
+                                __found = true;
+                                break;
                             }
                         }
-                        std::option::Option::None => std::option::Option::None,
+                        __found
+                    } {
+                        std::option::Option::None
+                    } else {
+                        match crate::v1_compiler_infer_env::lookup_type_for(
+                            scope.type_env.clone(),
+                            exp.clone(),
+                        ) {
+                            Some(head) => {
+                                if v1_rt::rc_ptr_eq(head.clone(), owner.clone()) {
+                                    Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
+                                } else {
+                                    std::option::Option::None
+                                }
+                            }
+                            std::option::Option::None => std::option::Option::None,
+                        }
                     }
                 }
             }
@@ -12277,27 +12298,45 @@ pub fn infer_call_arguments_generic_pass(
                     ExprData::ExprLiteral { value: _, .. } => true,
                     _ => false,
                 };
-            let contextual_expected =
-                if (formal_is_code_point_sequence.clone() && argument_is_literal.clone()) {
-                    code_point_formal.clone()
-                } else {
-                    match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone() {
-                        ExprData::ExprVar {
-                            binding_kind: _, ..
-                        } => {
-                            if expression_is_uppercase_constructor_reference(
-                                crate::v1_std_core::arg_value(a.clone()),
-                                scope.type_env.source_indices.clone(),
-                            ) {
-                                formal_conformance_type.clone()
-                            } else {
-                                formal_param_type.clone()
-                            }
-                        }
-                        ExprData::ExprRecordLit { parent_enum: _, .. } => formal_param_type.clone(),
-                        _ => formal_param_type.clone(),
+            let unsolved_generic_variables = generic_names.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                |m: Rc<HashMap<String, Rc<Node>>>, g: String| match v1_rt::map_get(
+                    &st.subst.clone(),
+                    g.clone(),
+                ) {
+                    Some(_) => m.clone(),
+                    std::option::Option::None => {
+                        v1_rt::rc_map_insert(m.clone(), g.clone(), type_variable_node(g.clone()))
                     }
-                };
+                },
+            );
+            let formal_param_expected = substitute_generics(
+                formal_param_type.clone(),
+                unsolved_generic_variables.clone(),
+                scope.type_env.source_indices.clone(),
+            );
+            let contextual_expected = if (formal_is_code_point_sequence.clone()
+                && argument_is_literal.clone())
+            {
+                code_point_formal.clone()
+            } else {
+                match (*crate::v1_std_core::arg_value(a.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
+                        if expression_is_uppercase_constructor_reference(
+                            crate::v1_std_core::arg_value(a.clone()),
+                            scope.type_env.source_indices.clone(),
+                        ) {
+                            formal_conformance_type.clone()
+                        } else {
+                            formal_param_expected.clone()
+                        }
+                    }
+                    ExprData::ExprRecordLit { parent_enum: _, .. } => formal_param_expected.clone(),
+                    _ => formal_param_expected.clone(),
+                }
+            };
             let expected = if has_formal.clone() {
                 Some(contextual_expected.clone())
             } else {
