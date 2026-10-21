@@ -938,3 +938,16 @@ DIAGNOSIS: trace.dag is NOT on main and NOT in C1.2c — it is PR-2-side (97e47f
 - H4: regen trio rest rc=0; G4-style changed set must EXCLUDE cli_run.rs/module_path_index.rs.
 - H5: rebuild rc=0. H6: whole-tree self-host gate rc=0 on the rehearsed head (final proof the rebase lands green).
 Escape-hatch env on. If H3 refuses, STOP (no H4-H6), report.
+
+### PRED-H RESULTS (dispatch jc0fb0525, main@6256b52 x PR-2@97e47f8; H2 build failed -> chain aborted at H2)
+- H1 TRUE conflict set (much smaller than fbp merge predicted, because C1.2c is NOT yet on main — verified: main has NO unify_generic_child_pairs, unify_generics still 5-arg/Map; alias_names_settled_agree IS on main via another PR, imported at 04_types:8 + used at 1239):
+  UU one_type_variable..coproducts.dag | DU constructor_tag_route_probe_red.dag (main keeps, last touched dd83b0065 #14436; PR-2 deletes per 5d750054b347) | UU 04_infer ONE hunk | UU 04_types import union | UU stage0 {v1_compiler_infer.rs, v1_compiler_infer_types.rs}. NO 04_infer_env conflict.
+- H1b trace.dag/probe_emit_interp/v1_compiler_trace.rs AUTO-DELETE 3->0. G3A's Product(SpanMapping) refusal is fully EXPLAINED: an artifact of the fbp TWO-parent merge (both PR-2 and C1.2c carry trace.dag from pre-#14497 bases; no main parent to delete it). In the true rebase the module dies with main's deletion (#14497, lane F, 00:57).
+- H1 hunk resolutions (inspected locally @/tmp/rebase-test):
+  1. 04_infer ONE hunk @7232-7242: HEAD side = the v1.compiler.trace FRONTIER ROW (module_name v1.compiler.trace/method map/Product(SpanMapping...) receiver_shape) + closing '},' + the '{' opening the NEXT record; main side EMPTY (main retired the frontier row with the module, review 82934). RESOLUTION: delete the entry (7233-7239 = fields + '},'), KEEP line 7240 '{' (opens the auto-merged next record), delete the 3 markers. Net: take main's retirement.
+  2. 04_types import: UNION (keep both lookup_binding_by_name [PR-2] and alias_names_settled_agree [main]; verify used-or-not by compile — main's line already has alias_names so conflict is purely PR-2's addition).
+  3. Coproduct row: receipts-union, delete 3 marker lines (our block ends '," so concatenation valid).
+  4. constructor_tag_route_probe_red: KEEP DELETION (git rm; PR-2's 5d750054b347 discharged it; warm-wolf agreed in fbp).
+  5. stage0: bootstrap = take MAIN'S WHOLE src/v1/stage0/src (NOT per-file: H2 PROVED partial-take mixes generations — kept-PR-2 mirrors call 7-arg unify_generics while main's define 5-arg -> E0061 5-vs-7 + no-field-subst. NEVER mix). Then regen trio regenerates from merged .dag.
+- H2 lesson (script bug, recorded): force-taking only CONFLICTED mirrors keeps auto-merged other mirrors at PR-2 generation -> guaranteed mismatch. Fix: whole-dir main-side take.
+- H2/H5 build rc=101 as above; H3-H6 never ran (rc=127 no binary). CHAIN UNVERIFIED past H2 — do NOT claim regen works on true rebase yet. PRED-H2 = corrected rehearsal with these exact resolutions, full chain to claim-run PASS.
