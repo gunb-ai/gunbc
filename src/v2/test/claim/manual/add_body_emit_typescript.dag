@@ -36,7 +36,7 @@ import v2.extdeps.languages.typescript {
 }
 import std.algebra { Cons, Empty, list_append, empty_map }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   InfixToken,
   TargetModel,
@@ -167,6 +167,7 @@ fn add_body_ts_lex_with_minus() -> LexRules {
 
 fn add_body_ts_target_model_minus_catalog() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_minus()),
     lex: add_body_ts_lex_with_minus(),
@@ -179,6 +180,7 @@ fn add_body_ts_target_model_minus_catalog() -> TargetModel {
 
 fn add_body_ts_target_model_missing_operator_catalog() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_empty()),
     lex: ts_fn_add_lex(),
