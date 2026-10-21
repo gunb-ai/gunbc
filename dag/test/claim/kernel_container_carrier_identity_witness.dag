@@ -3,7 +3,7 @@ module test.claim.kernel_container_carrier_identity_witness
 import std.types { String, Bool, Int, List }
 import std.algebra { string_contains, carrier_container_alias_rows, carrier_container_arity_rows }
 import std.dissolution {
-  DissolutionCondition, DissolutionFired, DissolutionPending, dissolution_status, retires_dissolution,
+  DissolutionCondition, DissolutionFired, DissolutionPending, bound_dissolution, dissolution_status,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -265,34 +265,35 @@ test fn the_alias_predicate_is_satisfiable_on_the_real_file() -> Bool {
 //   * [the exact debt ref] -> present -> PENDING (the second authority is still hand-written; the
 //     guard is still needed).
 //   * [a same-MODULE lookalike, std.types.Set] -> the EXACT ref (std.types,List) is still absent ->
-//     FIRED. Presence is keyed on the full (module_path, decl_name) pair (declaration_ref_in_list is
-//     structural equality), so a sibling in the same module does NOT make the named declaration
+//     PENDING. Presence is keyed on the full (module_path, decl_name) pair (declaration_ref_in_list
+//     is structural equality), so a sibling in the same module does NOT make the named declaration
 //     present. This is the arm that separates a real keying from an "any decl in std.types" collapse:
 //     rebind the trigger's decl_name to Set and the SECOND arm goes red. It also cannot be satisfied
-//     by the guard's own deletion, which was the first version's defect.
-test fn the_dissolution_fires_only_when_the_named_debt_retires() -> Bool {
+//     by the guard's own deletion or by deleting the hand-written aliases (both leave the producer
+//     absent -> Pending -> guard still owed), which were the first two versions' defects.
+test fn the_dissolution_fires_only_when_the_capability_arrives() -> Bool {
   dissolution_status(condition: single_authority_alias_dissolve_on, present_decls: [])
-    == DissolutionFired
-    && dissolution_status(
-      condition: single_authority_alias_dissolve_on,
-      present_decls: [
-        decl_ref(
-          module_path: "std.types",
-          decl_name: "List",
-        ),
-      ],
-    )
     == DissolutionPending
     && dissolution_status(
       condition: single_authority_alias_dissolve_on,
       present_decls: [
         decl_ref(
           module_path: "std.types",
-          decl_name: "Set",
+          decl_name: "container_alias_declaration_rows",
         ),
       ],
     )
     == DissolutionFired
+    && dissolution_status(
+      condition: single_authority_alias_dissolve_on,
+      present_decls: [
+        decl_ref(
+          module_path: "std.types",
+          decl_name: "container_template_alias_rows",
+        ),
+      ],
+    )
+    == DissolutionPending
 }
 
 test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Bool {
@@ -307,20 +308,28 @@ test fn a_text_pairing_the_name_and_carrier_across_two_lines_is_refused() -> Boo
 // measured, not assumed: the only generated declarations are emitter output into src/v1/stage0 Rust,
 // which are artifacts, not .dag module items). When that facility lands and the three std/types
 // container aliases are DERIVED from the roster -- the §5 ideal of making the drifted state
-// unwritable -- there is one declaration to agree with and this claim's subject disappears.
+// unwritable -- there is one authority to agree with and this claim's subject disappears.
 //
-// THE TRIGGER NAMES THE DEBT, NOT THE GUARD. The first version bound a DeclarationRetires trigger to
-// this file's own `std_types_declares_alias_of` predicate -- but dissolution_trigger_fired discharges a
-// DeclarationRetires trigger on ABSENCE, so that version FIRED when someone deleted the guard, and
-// deleting the guard is not the dissolution of the debt. The debt is the SECOND AUTHORITY, the
-// hand-written `type List<element> = FreeMonoid<element>` in std/types (DESIGN §3). It is retired the
-// moment std.types stops hand-writing it and starts deriving it from the roster. So the trigger names
-// std.types.List -- a declaration that EXISTS TODAY (verified: `type List<element> = ...` in the file
-// this guard reads), which is the checkable-now property the std.dissolution header demands, rather
-// than a promise about a generated-form facility nobody has named yet.
-data single_authority_alias_dissolve_on: DissolutionCondition = retires_dissolution(
+// THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT (DESIGN §4b meta-obligation 3, review 83706).
+// Two earlier shapes were each wrong in a way the mechanism could not see:
+//   * retires_dissolution over the guard's OWN predicate: a Retires trigger discharges on ABSENCE,
+//     so deleting the guard fired its own dissolution (review 83674).
+//   * retires_dissolution over std.types.List: a derived alias is STILL a declaration named List,
+//     so the trigger stayed Pending after the actual cure; and deleting the alias with no facility
+//     fired it (review 83706). It also named one alias of a plural debt.
+// The capability the §3b block itself names is a PARSE-DATA DECLARATION-GENERATION FORM. Its first
+// materialization is the data item std.types::container_alias_declaration_rows -- the parse-data
+// rows the three aliases are generated from (the name is patterned on std.types' existing
+// container_template_alias_rows, verified present at line 83; the new name is verified ABSENT
+// today, so an Appears trigger is Pending on the real corpus). One capability-producer retires the
+// whole class -- plural loss, singular CAPABILITY, which is what meta-obligation 3 requires; the
+// forbidden tell is a plural loss retired by a singular ARTIFACT. A bound_dissolution (Declaration-
+// Appears) fires on the ARRIVAL of the cure and cannot fire on any regression. The capability is
+// owned by the ledger row gunbc.recurring_failure_mode.
+// container_alias_spellings_are_hand_written_from_a_runtime_roster, which this trigger points at.
+data single_authority_alias_dissolve_on: DissolutionCondition = bound_dissolution(
   decl_ref(
     module_path: "std.types",
-    decl_name: "List",
+    decl_name: "container_alias_declaration_rows",
   ),
 )
