@@ -45,6 +45,7 @@ data generated_provider_acquire_seed_growth_justification: SeedGrowthJustificati
     DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "acquire_layout_closure_seeded", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "layout_provider_answer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "layout_provider_answer_keeps_unreadable_distinct_from_absent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "seeded_rebuild_under_a_custom_root_uses_the_snapshot_and_reads_nothing_again", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "ProviderLayoutAnswer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "CoreResolve", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolved_graph_from_sources_with_index_typed", field: WholeDeclaration },
