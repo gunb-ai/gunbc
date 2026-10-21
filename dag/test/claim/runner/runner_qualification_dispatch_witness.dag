@@ -480,7 +480,7 @@ test fn the_dispatch_has_three_standings_and_an_interlock() -> Bool {
     && ambiguous(s: mutation_standing(refusal: RestTransportRefused { cause: "fixture: connection reset after send" }))
     && ambiguous(s: mutation_standing(refusal: RestStatusRefused { status: 503, body: "fixture" }))
     && ambiguous(s: mutation_standing(refusal: RestBodyUndecodable { status: 200, cause: "fixture: truncated body" }))
-    && (match qualification_dispatch_standing(dispatch: RestAnswered { answer: dispatch_receipt }) { DispatchStandingSucceeded { receipt: r } => r.workflow_run_id == 77 _ => false })
+    && (match qualification_dispatch_standing(dispatch: RestAnswered { answer: dispatch_receipt }) { DispatchStandingSucceeded { receipt: r } => r.workflow_run_id.value == 77 _ => false })
     && hold_covers_slot_host(held: "mtcollins1" as HostIdentity, slot_host: "mtcollins1" as HostIdentity)
     && !hold_covers_slot_host(held: "srv1" as HostIdentity, slot_host: "mtcollins1" as HostIdentity)
 }
