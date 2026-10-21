@@ -25495,8 +25495,34 @@ pub fn unify_record_lit_generics(
     } else {
         {
             let type_name = type_node_label(formal.clone(), scope.type_env.source_indices.clone());
+            let variant_fields = match crate::v1_std_core::record_lit_expr_optional(record.clone())
+            {
+                Some(record_lit) => {
+                    let record_name = type_node_label(
+                        record_lit.clone(),
+                        scope.type_env.source_indices.clone(),
+                    );
+                    if ((record_name.clone() != "".to_string())
+                        && (record_name.clone() != type_name.clone()))
+                    {
+                        record_lit_instantiated_fields(
+                            Some(record_name.clone()),
+                            Some(formal.clone()),
+                            scope.clone(),
+                        )
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            };
             unify_record_lit_field_walk(
-                record_lit_expected_fields(Some(type_name.clone()), scope.clone()),
+                match variant_fields.clone() {
+                    Some(instantiated) => instantiated.clone(),
+                    std::option::Option::None => {
+                        record_lit_expected_fields(Some(type_name.clone()), scope.clone())
+                    }
+                },
                 record.clone(),
                 generic_names.clone(),
                 scope.clone(),
