@@ -10,6 +10,7 @@ import gunbc.declined_live_tree_defect_classification {
   ReMeasurement,
   AttributedToChange,
   RestsOnExecutedCheck,
+  doc_graph_roots_rehoming_closure,
   PullRequest,
 }
 import std.types { CommitSha, NonEmptyStr }
@@ -1544,29 +1545,13 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       standing_before: ExpectedRed,
       enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 28 } },
       trigger: Absent,
-      closure: AttributedToChange {
-        // THE CHANGE IS ATTRIBUTABLE, AND THE CLASSIFICATION FILE SAYS SO. Review 84231 caught that this
-        // row's prose said the closing change was unreachable and named rather than hashed, while
-        // gunbc.declined_live_tree_defect_classification names the closure outright: #9181 (0df5b4170c51)
-        // rehomed the three g1 controls as cited_symbol_planted_controls and only then deleted the orphan
-        // binds. Two records of one closure with two meanings is DESIGN 3's fork; the record that NAMED
-        // the change wins, so the closure is an attribution and the unattributed arm is no longer used
-        // here.
-        change: PullRequest { number: 9181 },
-        durable_account: [
-          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
-          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_declaration_refs"),
-          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_outside_index_declaration_refs"),
-          decl_ref(module_path: "v2.lens.cited_symbol_resolution", decl_name: "cited_symbol_planted_controls"),
-        ],
-        re_measured: ReMeasurement {
-          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
-          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-          routes: [Wet],
-          outcome: Passed,
-          instrument: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
-        },
-      },
+      // ONE AUTHORITY, REFERENCED. This is the SAME typed value the classification module's
+      // ClosedByPriorChange consumes (doc_graph_roots_rehoming_closure, in
+      // gunbc.declined_live_tree_defect_classification). Review 84262 found the two rows recording one
+      // closure with two arms that disagreed; restating it here is what let them drift, so this row now
+      // imports the fact instead of copying it. See that value's comment for why the citation is the PR
+      // number (merged, verifiable) and not the mega-squashed-away commit hash.
+      closure: doc_graph_roots_rehoming_closure,
     },
     // ITS OWN HEADER NAMED THE DISCHARGE CONDITION -- "the code-point encoding carries a string
     // identity, or content_hash gains a non-symbol atom arm" -- and the first half landed: character

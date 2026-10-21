@@ -2,7 +2,7 @@ module gunbc.declined_live_tree_defect_classification
 
 import std.types { String, List, CommitSha, NonEmptyStr }
 import v2.std.integer { Int }
-import std.execution_mode { ExecutionMode }
+import std.execution_mode { ExecutionMode, Wet }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Optional, Present, Absent }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
@@ -198,6 +198,27 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // no ruling.
 // ---------------------------------------------------------------------------
 
+// THE ONE CLOSURE FOR doc_graph_registered_plan_roots_all_admitted. Its two consumers -- this file's
+// ClassifiedRow and v2.workflow.floor_expected_red's RetiredExpectedRedRow -- REFERENCE this value, so
+// the arm, the citation, the durable account and the re-measurement exist exactly once. The durable
+// account includes the rehomed controls themselves (cited_symbol_planted_controls), which the floor row
+// previously carried and this file previously omitted: both records now carry the complete account.
+data doc_graph_roots_rehoming_closure: Closure = AttributedToChange {
+  change: PullRequest { number: 9181 },
+  durable_account: [
+    decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+    decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_declaration_refs"),
+    decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_outside_index_declaration_refs"),
+  ],
+  re_measured: ReMeasurement {
+    head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+    on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+    routes: [Wet],
+    outcome: Passed,
+    instrument: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
+  },
+}
+
 data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
@@ -213,30 +234,20 @@ data doc_reachability_rows: List<ClassifiedRow> = [
     // last emitted plan root were deleted. The historical figure ("228 declared / 209 admitted") named a
     // population that no longer exists; it survives only as a dated statement of the superseded census.
     measured_evidence: "Supersedes the 2026-08-24 census (228 declared / 209 admitted), which counted a population that no longer exists: the 19 unadmitted binds were deleted on 2026-08-25 after the g1 controls were rehomed (durable account in the closure below). The current counts are NOT restated here; read them from the typed re-measurement.",
-    disposition: ClosedByPriorChange {
-      // The commits of 2026-08-25 that rehomed the g1 controls and deleted the dead binds are NOT
-      // CITED BY HASH, because the 2026-10 mega-squash rewrote history and those objects are no
-      // longer reachable from this head -- a hash here would send a reader to a commit they cannot
-      // check out. What closes the row instead is the NAMED change with main's own durable account of
-      // the same events: declaration refs the witness resolves against the live declaration index, so
-      // "the account says so" stops being take-my-word-for-it prose the moment the account is deleted
-      // or renamed.
-      closure: RestsOnExecutedCheck {
-        why_no_change: "the 2026-10 history rewrite (mega-squash) removed the 2026-08-25 commits from this head's ancestry, so no hash is reachable; the change is named and its durable account is cited instead",
-        durable_account: [
-          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
-          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_declaration_refs"),
-          decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_outside_index_declaration_refs"),
-        ],
-        re_measured: ReMeasurement {
-          head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
-          on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-          routes: [Wet],
-          outcome: Passed,
-          instrument: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
-        },
-      },
-    },
+    // ONE CLOSURE, ONE HOME. Review 84262 caught this row recording the closure as
+    // RestsOnExecutedCheck("no change can be attributed") while v2.workflow.floor_expected_red's retired
+    // row for the SAME identity recorded AttributedToChange{PullRequest 9181} -- one fact, two typed
+    // records, already disagreeing on arm, reason and account (§3: "each fact lives in exactly one
+    // place"). The reviewer's premise that 0df5b4170c51 is reachable was itself wrong (`git rev-list
+    // origin/main | grep -c 0df5b4170c51...` is 0; the 2026-10 mega-squash did drop it), but the defect
+    // was real and this is the fix that follows from the facts: PR #9181 is MERGED (state verified via
+    // GitHub), so the change IS attributable by its PR number -- the citation that survives a history
+    // rewrite, which is why `ChangeCitation` offers `PullRequest` beside a name -- and the durable
+    // account is the four declarations the witness resolves. The closure is now a single shared value,
+    // doc_graph_roots_rehoming_closure below, and the floor's retired row references THAT value rather
+    // than restating it: the two records cannot disagree, because there is only one. No check was added
+    // for agreement -- agreement by construction is what §5 asks for where construction is available.
+    disposition: ClosedByPriorChange { closure: doc_graph_roots_rehoming_closure },
   },
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),
