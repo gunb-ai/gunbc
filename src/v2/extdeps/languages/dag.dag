@@ -1033,13 +1033,13 @@ fn dag_grammar_keyword_terminal() -> GrammarExpr {
 // readers take as pair.left -- and no choice row is added beside the name (the overlap roster those
 // productions were cleared to stays at zero).
 //
-// THE BARE `NAME =` SUGAR CARRIES NO GUARD, AND THE REASON IS MEASURED. A statement's alternatives are
+// THE BARE `NAME =` SUGAR GUARDS ONLY THE WORD THE FIRST SET REACHES. A statement's alternatives are
 // dispatched by FIRST set, and a not-predicate is transparent to that set, so the let_sugar alternative's
-// first set is the value-name tokens and a statement that begins with a keyword never reaches it: a guard
-// there could not fire (a bare `loop = 1` refuses as parse_g0_tokens_remain at the keyword, measured).
-// It still refuses -- the binder reads the reference production, which admits no other keyword -- but
-// unnamed. NEXT TRIGGER, the capability: FIRST-set computation that sees through a refusal guard, at which
-// point this form takes dag_grammar_value_name_before(follow: `=`) like the others.
+// first set is the value-name tokens: `none` is an identifier token and reaches the guard, but a keyword
+// token never does (a bare `loop = 1` refuses as parse_g0_tokens_remain at the keyword, measured), so for
+// a keyword the form still refuses unnamed -- the binder reads the reference production. NEXT TRIGGER, the
+// capability: FIRST-set computation that sees through a refusal guard, at which point every keyword
+// takes this guard by name.
 //
 // IT FIRES ONLY WHERE THE KEYWORD CAN ONLY BE A BINDER. RefuseOnMatch stops the whole parse, and a pattern
 // is probed ahead of every match-arm statement and a `node NAME` sugar ahead of an expression statement,
@@ -1063,7 +1063,7 @@ fn dag_grammar_value_name_keyword_terminal(admit_bool_literals: Bool) -> Grammar
 // (dag_absence_is_one_meaning) rather than through a second local check. A field LABEL is not read here.
 // The field-pattern VALUE position (admit_bool_literals: true) admits `none` as it admits `true` / `false`:
 // the corpus writes the absence pattern there, and a native pattern-position `none` is the declared
-// follow-up (PR body), so that position is left as it was rather than refused.
+// follow-up (ruling gunbc.design_ruling dag_absence_is_one_meaning), so that position is left as it was rather than refused.
 fn dag_grammar_value_name_keyword_tokens(admit_bool_literals: Bool) -> GrammarExpr {
   fold_list(
     xs: dag_binding_name_keyword_tokens(),
@@ -1097,11 +1097,24 @@ fn dag_grammar_value_name_guard(binder: GrammarExpr) -> GrammarExpr {
 
 // A value name whose binder role is fixed by the token after it.
 fn dag_grammar_value_name_before(follow: GrammarExpr) -> GrammarExpr {
+  dag_grammar_value_name_binder_before(name: dag_grammar_primary_name_expr(), follow: follow)
+}
+
+// The same guard over a binder that reads the identifier-only name production (an untyped fn parameter, an
+// arrow-lambda parameter), so every binder position shares ONE guard rather than a local check.
+fn dag_grammar_value_name_binder_before(name: GrammarExpr, follow: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_value_name_guard(
       binder: dag_grammar_sequence(left: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false), right: follow)
     ),
-    right: dag_grammar_primary_name_expr()
+    right: name
+  )
+}
+
+fn dag_grammar_value_name_ends_param() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_comma),
+    right: dag_grammar_terminal(token_class: ^dag_token_rparen)
   )
 }
 
@@ -1619,7 +1632,7 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
       )
     ),
     right: dag_grammar_sequence(
-      left: dag_grammar_primary_name_expr(),
+      left: dag_grammar_value_name_before(follow: dag_grammar_terminal(token_class: ^dag_token_eq)),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_eq),
         right: dag_grammar_nonterminal(production: ^dag_production_expr)
@@ -1864,7 +1877,12 @@ fn dag_grammar_expr_list_helper() -> GrammarExpr {
 }
 
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
-  dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name())
+  dag_grammar_comma_list_expr(
+    item: dag_grammar_value_name_binder_before(
+      name: dag_grammar_ident_or_type_decl_modifier_name(),
+      follow: dag_grammar_value_name_ends_param()
+    )
+  )
 }
 
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
@@ -2454,7 +2472,10 @@ fn dag_grammar_fn_literal_expr() -> GrammarExpr {
 fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_ident_or_type_decl_modifier_name(),
+      left: dag_grammar_value_name_binder_before(
+        name: dag_grammar_ident_or_type_decl_modifier_name(),
+        follow: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
+      ),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
         right: dag_grammar_arrow_lambda_body_expr()
@@ -2463,16 +2484,25 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
-        left: dag_grammar_ident_or_type_decl_modifier_name(),
+        left: dag_grammar_value_name_binder_before(
+          name: dag_grammar_ident_or_type_decl_modifier_name(),
+          follow: dag_grammar_terminal(token_class: ^dag_token_comma)
+        ),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_comma),
           right: dag_grammar_sequence(
-            left: dag_grammar_ident_or_type_decl_modifier_name(),
+            left: dag_grammar_value_name_binder_before(
+              name: dag_grammar_ident_or_type_decl_modifier_name(),
+              follow: dag_grammar_value_name_ends_param()
+            ),
             right: dag_grammar_sequence(
               left: dag_grammar_repeat(
                 element: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_comma),
-                  right: dag_grammar_ident_or_type_decl_modifier_name()
+                  right: dag_grammar_value_name_binder_before(
+                    name: dag_grammar_ident_or_type_decl_modifier_name(),
+                    follow: dag_grammar_value_name_ends_param()
+                  )
                 )
               ),
               right: dag_grammar_sequence(

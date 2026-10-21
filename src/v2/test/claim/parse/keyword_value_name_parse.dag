@@ -274,6 +274,98 @@ test fn kvn_none_value_name_control_holds() -> Bool {
   }
 }
 
+data kvn_refuse_bare_assign_source: String = "module m.t\nfn f() -> Int {\n  none = 1\n  0\n}\n"
+
+// A none bare_assign binder refuses at the word through the shared value-name guard: bytes 29..33 of kvn_refuse_bare_assign_source.
+test fn kvn_none_bare_assign_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_bare_assign_source, file: ^probe_kvn_refuse_bare_assign),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_bare_assign,
+    start: 29,
+    end: 33
+  )
+}
+
+data kvn_accept_bare_assign_source: String = "module m.t\nfn f() -> Int {\n  none_value = 1\n  0\n}\n"
+
+// Control: none_value is a different word and stays a legal bare_assign binder.
+test fn kvn_none_value_bare_assign_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_bare_assign_source, file: ^probe_kvn_accept_bare_assign) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_refuse_fn_literal_param_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none) { 0 })\n}\n"
+
+// A none fn_literal_param binder refuses at the word through the shared value-name guard: bytes 34..38 of kvn_refuse_fn_literal_param_source.
+test fn kvn_none_fn_literal_param_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_fn_literal_param_source, file: ^probe_kvn_refuse_fn_literal_param),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_fn_literal_param,
+    start: 34,
+    end: 38
+  )
+}
+
+data kvn_accept_fn_literal_param_source: String = "module m.t\nfn f() -> Int {\n  g(fn(none_value) { 0 })\n}\n"
+
+// Control: none_value is a different word and stays a legal fn_literal_param binder.
+test fn kvn_none_value_fn_literal_param_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_fn_literal_param_source, file: ^probe_kvn_accept_fn_literal_param) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_refuse_single_lambda_source: String = "module m.t\nfn f() -> Int {\n  g(none => 1)\n}\n"
+
+// A none single_lambda binder refuses at the word through the shared value-name guard: bytes 31..35 of kvn_refuse_single_lambda_source.
+test fn kvn_none_single_lambda_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_single_lambda_source, file: ^probe_kvn_refuse_single_lambda),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_single_lambda,
+    start: 31,
+    end: 35
+  )
+}
+
+data kvn_accept_single_lambda_source: String = "module m.t\nfn f() -> Int {\n  g(none_value => 1)\n}\n"
+
+// Control: none_value is a different word and stays a legal single_lambda binder.
+test fn kvn_none_value_single_lambda_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_single_lambda_source, file: ^probe_kvn_accept_single_lambda) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_refuse_paren_lambda_source: String = "module m.t\nfn f() -> Int {\n  g((none, b) => 1)\n}\n"
+
+// A none paren_lambda binder refuses at the word through the shared value-name guard: bytes 32..36 of kvn_refuse_paren_lambda_source.
+test fn kvn_none_paren_lambda_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_refuse_paren_lambda_source, file: ^probe_kvn_refuse_paren_lambda),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_refuse_paren_lambda,
+    start: 32,
+    end: 36
+  )
+}
+
+data kvn_accept_paren_lambda_source: String = "module m.t\nfn f() -> Int {\n  g((none_value, b) => 1)\n}\n"
+
+// Control: none_value is a different word and stays a legal paren_lambda binder.
+test fn kvn_none_value_paren_lambda_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_accept_paren_lambda_source, file: ^probe_kvn_accept_paren_lambda) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data kvn_none_arm_ident_source: String = "module m.t\nfn f(x: Int?) -> Int {\n  match x {\n    none => 1\n    Present { value } => value\n  }\n}\n"
 
 data kvn_none_arm_member_source: String = "module m.t\nfn f(x: R) -> Bool {\n  match x.y {\n    none => false\n    Present { value } => true\n  }\n}\n"
