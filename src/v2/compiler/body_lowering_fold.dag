@@ -86,7 +86,8 @@ import v2.extdeps.languages.dag {
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
   dag_surface_kw_then_ident_from_captured,
-  dag_surface_kw_then_ident_occurrence_from_captured,
+  dag_surface_kw_then_ident_declared_name_from_captured,
+  DeclaredName,
   parse_qualified_name_segment_atoms_from_capture,
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
@@ -4362,11 +4363,11 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
 // THE WRAP IS A CARRIER, NOT THE IMAGE ROOT. It names the member for the namespace graft, which
 // dissolves it and re-hangs the Arrow under the module; the Arrow is what stands for the authored
 // declaration in the admitted tree, so the Arrow's builder closes the image and names it root.
-fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, name_occurrence: NodeOccurrenceIdentity, source: Node) -> Node {
+fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: DeclaredName, source: Node) -> Node {
   node_lowered_from(
     kind: TypeNode { connective: Conj },
     children: [
-      edge_declared(name: fn_name, target: arrow, occurrence: name_occurrence)
+      edge_declared(name: fn_name.name, target: arrow, occurrence: fn_name.occurrence)
     ],
     source: source
   )
@@ -4501,8 +4502,7 @@ type BodyLowerFnSignature {
   domain: Node,
   order: List<Symbol>,
   return_type: Node,
-  fn_name: Symbol,
-  fn_name_occurrence: NodeOccurrenceIdentity,
+  fn_name: DeclaredName,
   type_params: DeclTypeParams,
 }
 
@@ -4525,23 +4525,18 @@ fn body_lower_fn_signature_after_domain(captured: Node, declared: BodyLowerDecla
   match body_lower_return_type_from_fn_captured(captured: captured) {
     Absent => Absent
     Present { value: return_type } =>
-      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+      match dag_surface_kw_then_ident_declared_name_from_captured(captured: captured) {
         Absent => Absent
         Present { value: fn_name } =>
-         match dag_surface_kw_then_ident_occurrence_from_captured(captured: captured) {
-          Absent => Absent
-          Present { value: fn_name_occurrence } =>
           Present {
             value: BodyLowerFnSignature {
               domain: declared.domain,
               order: declared.order,
               return_type: return_type,
               fn_name: fn_name,
-              fn_name_occurrence: fn_name_occurrence,
               type_params: body_lower_decl_type_params(captured: captured)
             }
           }
-         }
       }
   }
 }
@@ -4663,18 +4658,12 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                           match body_lower_reify_arrow_body(body: body) {
                             Rejected { diagnostics: r } => Rejected { diagnostics: r }
                             Accepted { value: reified_body, diagnostics: bd } =>
-                              match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                              match dag_surface_kw_then_ident_declared_name_from_captured(captured: captured) {
                                 Absent => body_lowering_after_pending(
                                   pending: diagnostics_merge(outer: bd0, inner: bd),
                                   o: body_lower_wrapper_retained_shell(shell: shell)
                                 )
                                 Present { value: data_name } =>
-                                 match dag_surface_kw_then_ident_occurrence_from_captured(captured: captured) {
-                                  Absent => body_lowering_after_pending(
-                                    pending: diagnostics_merge(outer: bd0, inner: bd),
-                                    o: body_lower_wrapper_retained_shell(shell: shell)
-                                  )
-                                  Present { value: data_name_occurrence } =>
                                   let signature = declared_signature(params: [], source: shell)
                                   let arrow = body_lower_constant_member_arrow(arrow: body_lower_callable_arrow(
                                     source: shell,
@@ -4691,13 +4680,11 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                       value: body_lower_fn_decl_named_member_wrap(
                                         arrow: arrow,
                                         fn_name: data_name,
-                                        name_occurrence: data_name_occurrence,
                                         source: shell
                                       ),
                                       diagnostics: diagnostics_merge(outer: bd0, inner: bd)
                                     )
                                   )
-                                 }
                               }
                           }
                       }
@@ -4799,7 +4786,6 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
       }
     ),
     fn_name: sig.fn_name,
-    name_occurrence: sig.fn_name_occurrence,
     source: shell
   )
 }
@@ -10542,7 +10528,7 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // classifier reads it (Pkg16).
 // The record-versus-where-alias control is v2.test.claim.match_arm_binder_frame
 // mab_where_alias_is_not_a_record.
-fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node, type_params: DeclTypeParams) -> Outcome<Node> {
+fn body_lower_record_type_decl(shell: Node, type_name: DeclaredName, block_shell: Node, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_field_decl_block_payload(block_shell: block_shell) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: payload, diagnostics: d } =>
@@ -10570,15 +10556,15 @@ fn body_lower_type_decl_member_body(body: Node, type_params: DeclTypeParams) -> 
   }
 }
 
-fn body_lower_type_decl_member(shell: Node, type_name: Symbol, body: Node, type_params: DeclTypeParams) -> Node {
+fn body_lower_type_decl_member(shell: Node, type_name: DeclaredName, body: Node, type_params: DeclTypeParams) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Authored { name: type_name },
+      edge_declared(
+        name: type_name.name,
         target: body_lower_type_decl_member_body(body: body, type_params: type_params),
-        declaration: NotADeclaration
-      }
+        occurrence: type_name.occurrence
+      )
     ],
     occurrence_id: shell.occurrence_id
   )
@@ -10631,7 +10617,7 @@ fn body_lower_type_decl_eq_rhs_optional(captured: Node) -> Optional<Node> {
 // one of the three. A single variant written after a leading `|` is a one-variant coproduct, not an
 // alias: v2.std.compilers.sugar sugar_separated_rhs_as_coproduct has already made it a Disj by the
 // time this lowering runs, so it takes the member arm.
-fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
+fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: DeclaredName, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_type_decl_eq_rhs_optional(captured: captured) {
     Present { value: rhs_term } =>
       match body_term_wrapper_optional(n: rhs_term) {
@@ -10660,7 +10646,7 @@ fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_
 // as a field; body_lower_eq_type_decl unwraps a wrapper and passes everything else through unchanged.
 // It does NOT ask body_term_of: a type expression is outside the term vocabulary, and asking refused
 // every coproduct declaration (`type RcT = RcA | RcB | RcC`, a Disj; srv1 probe on #12942).
-fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
+fn body_lower_eq_type_decl_rhs(shell: Node, type_name: DeclaredName, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
   match rhs.kind {
     TypeNode { connective: Disj } =>
       outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
@@ -10678,7 +10664,7 @@ fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_p
   }
 }
 
-fn body_lower_alias_type_decl(shell: Node, type_name: Symbol, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
+fn body_lower_alias_type_decl(shell: Node, type_name: DeclaredName, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_decl_binders(shell: shell, type_params: type_params) {
     Absent => body_lower_type_decl_uncarried(shell: shell)
     Present { value: binders } =>
@@ -10719,14 +10705,14 @@ fn body_lower_alias_rhs_optional(rhs: Node) -> Optional<Node> {
 // A declaration edge `Conj { Name: target }` whose target is already a v2.std.type_binder wrapper.
 // Closes the image body_lower_type_decl_declared_image builds: its returned node is the named root (v2.std.node
 // close_lowered_image).
-fn body_lower_type_decl_declared(shell: Node, type_name: Symbol, target: Node) -> Node {
+fn body_lower_type_decl_declared(shell: Node, type_name: DeclaredName, target: Node) -> Node {
   close_lowered_image(root: body_lower_type_decl_declared_image(shell: shell, type_name: type_name, target: target))
 }
 
-fn body_lower_type_decl_declared_image(shell: Node, type_name: Symbol, target: Node) -> Node {
+fn body_lower_type_decl_declared_image(shell: Node, type_name: DeclaredName, target: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: type_name }, target: target, declaration: NotADeclaration }],
+    children: [edge_declared(name: type_name.name, target: target, occurrence: type_name.occurrence)],
     occurrence_id: shell.occurrence_id
   )
 }
@@ -11062,7 +11048,7 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => body_lower_type_decl_unreadable(shell: shell)
     Present { value: captured } =>
-      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+      match dag_surface_kw_then_ident_declared_name_from_captured(captured: captured) {
         Absent => body_lower_type_decl_unreadable(shell: shell)
         Present { value: type_name } =>
           body_lower_type_decl_named(shell: shell, captured: captured, type_name: type_name, type_params: body_lower_decl_type_params(captured: captured))
@@ -11070,7 +11056,7 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_type_decl_named(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
+fn body_lower_type_decl_named(shell: Node, captured: Node, type_name: DeclaredName, type_params: DeclTypeParams) -> Outcome<Node> {
   match type_params {
     TypeParamsUnreadable =>
       Rejected { diagnostics: diagnostics_singleton(d: body_lower_type_params_unreadable_diagnostic(shell: shell)) }
@@ -11079,7 +11065,7 @@ fn body_lower_type_decl_named(shell: Node, captured: Node, type_name: Symbol, ty
   }
 }
 
-fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
+fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: DeclaredName, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_type_decl_record_block_optional(captured: captured) {
     Present { value: block_shell } =>
       body_lower_record_type_decl(shell: shell, type_name: type_name, block_shell: block_shell, type_params: type_params)

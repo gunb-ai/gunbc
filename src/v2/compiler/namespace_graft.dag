@@ -64,8 +64,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_subtree_locate_production,
   dag_resolve_preserve_module_metadata_subtree,
-  dag_surface_kw_then_ident_from_captured,
-  dag_surface_kw_then_ident_occurrence_from_captured,
+  dag_surface_kw_then_ident_declared_name_from_captured,
   dag_surface_kw_then_ident_rest_from_captured,
   qualified_name_from_module_node
 }
@@ -329,17 +328,13 @@ fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
   match namespace_graft_unit_captured(unit: unit) {
     Absent => optional_absent()
     Present { value: captured } =>
-      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+      match dag_surface_kw_then_ident_declared_name_from_captured(captured: captured) {
         Absent => optional_absent()
-        Present { value: name } =>
+        Present { value: declared } =>
           match dag_surface_kw_then_ident_rest_from_captured(captured: captured) {
             Absent => optional_absent()
             Present { value: rest } =>
-              match dag_surface_kw_then_ident_occurrence_from_captured(captured: captured) {
-                Absent => optional_absent()
-                Present { value: occurrence } =>
-                  optional_present(value: edge_declared(name: name, target: rest, occurrence: occurrence))
-              }
+              optional_present(value: edge_declared(name: declared.name, target: rest, occurrence: declared.occurrence))
           }
       }
   }
