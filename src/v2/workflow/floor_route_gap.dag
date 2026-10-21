@@ -1487,11 +1487,13 @@ fn floor_route_gap_expectation_chunk_18() -> List<FloorRouteGapExpectation> {
 // Spark pair rank-participation DigestStdin identities lived here. They were deleted with
 // pair serving realization (#13779). The chunk stays empty so the chunks roster still names chunk_19.
 //
-// THE OUTSIDE-DISCOVERY-ROOTS CENSUS's two pairing identities live here. Both call
-// gunbc.command_runner.run_shell_command_capture -- one for `git -C . ls-files '*.dag'`, one for
-// `git -C . grep -E -l <claim declaration shape> -- '*.dag'` -- and their first effect is
-// shell.Exec.RunArgv, which the hermetic envelope has no arm for, so each is refused per identity by the
-// interpreter's own typed refusal rather than silently skipped. Enrolled as chunk_06's header requires: the
+// THE OUTSIDE-DISCOVERY-ROOTS CENSUS's whole-file roster of wet identities lives here: every `test fn` in
+// src/v2/test/claim/outside_discovery_roots_census_real_execution.dag, whatever its count on any given day
+// (the number is deliberately not stated -- §6: a count copied from the tree is a change detector). All of
+// them call gunbc.command_runner.run_shell_command_capture -- for `git -C . ls-files '*.dag'` and
+// `git -C . grep -E -l <claim declaration shape> -- '*.dag'`, plus the citation-resolver reads -- and their
+// first effect is shell.Exec.RunArgv or Read, which the hermetic envelope has no arm for, so each is refused
+// per identity by the interpreter's own typed refusal rather than silently skipped. Enrolled as chunk_06's header requires: the
 // WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, the
 // gunbc.ci.ci_layer_roots witness_exclusion_frontier row classifying the file LocalRepoWetLane, and these
 // expectations. THE ROSTER IS THE WHOLE FILE: a claim omitted here runs on no lane at all, which is the

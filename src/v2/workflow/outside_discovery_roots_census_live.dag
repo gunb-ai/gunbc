@@ -22,13 +22,13 @@ module v2.workflow.outside_discovery_roots_census_live
 // census has it -- which is also the move that would let a native runner supply the listing as an input.
 
 import std.types { String, Bool, List }
-import std.algebra { trim }
+import std.algebra { trim, is_empty }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.exec.command { LocalExec }
 import extdeps.git { git_grep_files_with_matches_command, git_ls_files_command }
 import gunbc.command_runner { run_shell_command_capture }
 import v2.workflow.claim_coverage_census_s1_live {
-  census_head_reading, HeadReading, RevisionRead, RevisionAbsent,
+  census_head_reading, HeadReading, RevisionRead, RevisionAbsent
 }
 import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
@@ -178,8 +178,7 @@ fn outside_roots_channel(findings: List<String>, unread: Bool) -> OutsideRootsCh
 // THE CAUSE SAID WHEN THE READING FAILED OUTSIDE THE CAPTURE: the fold itself declares it unread. The two
 // capture refusals carry their own causes; this arm exists so an empty answer that the fold judged unread
 // still arrives typed rather than silent.
-data listing_unread_channel_cause: String =
-  "outside-discovery-roots-census: the listing arrived but the fold judged it unread"
+data listing_unread_channel_cause: String = "outside-discovery-roots-census: the listing arrived but the fold judged it unread"
 
 // The census, composed: rows, findings, refusal, receipt. Pure over the listing the capture handed back.
 type OutsideRootsCensusOutput {

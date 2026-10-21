@@ -9,10 +9,14 @@ module v2.workflow.outside_discovery_roots_census
 // of its own, deliberately: it answers the same question as the existing
 // `gunbc test //gunbc/instruments:claim-coverage-census` -- which claims sit outside what is watched -- so
 // under the one-instrument ruling it enters that instrument as a SOURCE rather than becoming a second
-// label. The composition lands with that instrument's own PR (#14469); until it does, the consumers of
-// these builders are the claim files under src/v2/test/claim and the three enrollment rows that schedule
-// them. The receipt and header lines are therefore the shape the composed report will print, and they are
-// pinned by claims today and read by the label once the composition lands.
+// label. THE CONSUMER IS `gunbc.claim_coverage_census_live` `claim_coverage_census_exit`: it calls
+// `outside_roots_census` (live module) over the two tracked-claim captures, folds the census's
+// `OutsideRootsChannel` beside the wet schedule's standing and the S1 discovered universe's standing in
+// `claim_coverage_composed_standing`, and prints this module's receipt and header lines beside the other
+// two sources' lines. The executing route is the label itself -- `gunbc test
+// //gunbc/instruments:claim-coverage-census` -- and the fold is pinned per-channel by the composition
+// claims in `v2.test.claim.claim_coverage_census_s1_witness`; the per-source behaviour is pinned by the
+// claim files under src/v2/test/claim and scheduled by the three enrollment rows.
 //
 // WHY A STANDING AND NOT AN ENUMERATION OF ABSENT ANSWERS (warm-wolf-570's ruling). The repo already
 // declares this population: `v1_claim_scoped_witness_batch_deleted_note` in gunbc.ci.ci_layer_roots states
@@ -120,8 +124,8 @@ data note_declared_prefix: String = concat(note_declared_subject_directory, "/")
 // `git grep -l`, the same rule the interpreter applies to a claim file's text.
 //
 // And a `.dag` under a fixtures directory is a parser INPUT even when its text carries the marker: the
-// fixture corpora deliberately contain claim-shaped text for parse tests. Without this test the listing's
-// 223 fixture files would be reported as uncovered claims. `fixtures` is a declared input medium
+// fixture corpora deliberately contain claim-shaped text for parse tests. Without this test the whole
+// fixture corpus would be reported as uncovered claims. `fixtures` is a declared input medium
 // (gunbc.floor.incremental_floor_authority FloorInputMedium::Fixtures), not a governed tree, so no layout
 // authority answers for it and the prefix is stated here, once, beside the predicate that uses it.
 data fixture_path_prefix: String = "fixtures/"

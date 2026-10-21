@@ -19,7 +19,7 @@ import gunbc.claim_coverage_census {
 import v2.workflow.claim_coverage_census_s1_live { s1_compose, s1_head_receipt_line }
 import v2.workflow.outside_discovery_roots_census_live {
   tracked_claim_listing, tracked_claim_bearers, outside_roots_census, outside_roots_head_receipt_line,
-  OutsideRootsChannel, OutsideChannelHeld, OutsideChannelFinding, OutsideChannelUnread,
+  OutsideRootsChannel, OutsideChannelHeld, OutsideChannelFinding, OutsideChannelUnread
 }
 import v2.workflow.claim_coverage_census_s1 { s1_block }
 import v2.workflow.claim_coverage_census_s1 {

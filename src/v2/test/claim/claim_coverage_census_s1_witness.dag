@@ -59,7 +59,7 @@ import gunbc.cli_wire { CliWirePrintable }
 // an existing precedence claim.
 import v2.workflow.outside_discovery_roots_census_live {
   OutsideRootsChannel, OutsideChannelHeld, OutsideChannelFinding, OutsideChannelUnread,
-  outside_roots_channel,
+  outside_roots_channel
 }
 import std.process { ExitSuccess, ExitFailure }
 import v2.workflow.claim_coverage_census_s1 { s1_exit_code_did_not_hold, s1_exit_code_unread }
@@ -1108,17 +1108,18 @@ test fn two_unread_inputs_report_the_s1_cause_first() -> Bool {
 // fold is the typed no-observation; only a clean read with nothing found holds. Each arm of the if/else-if
 // is exercised, so a mutation that reordered them (unread before findings) is caught by the first conjunct.
 test fn the_channel_is_derived_from_what_was_observed() -> Bool {
-  (match outside_roots_channel(findings: ["a claim outside the roots"], unread: true) {
-     OutsideChannelFinding { reasons: reasons } =>
-       !is_empty(reasons) && any(reasons, r => string_contains(s: r, pattern: "outside-discovery-roots-census"))
-     _ => false
-   })
-    && (match outside_roots_channel(findings: [], unread: true) {
-         OutsideChannelUnread { cause: cause } => cause != ""
-         _ => false
-       })
-    && (match outside_roots_channel(findings: [], unread: false) {
-         OutsideChannelHeld => true
-         _ => false
-       })
+  let finding_arm = match outside_roots_channel(findings: ["a claim outside the roots"], unread: true) {
+    OutsideChannelFinding { reasons: reasons } =>
+      !is_empty(reasons) && any(reasons, r => string_contains(s: r, pattern: "outside-discovery-roots-census"))
+    _ => false
+  }
+  let unread_arm = match outside_roots_channel(findings: [], unread: true) {
+    OutsideChannelUnread { cause: cause } => cause != ""
+    _ => false
+  }
+  let held_arm = match outside_roots_channel(findings: [], unread: false) {
+    OutsideChannelHeld => true
+    _ => false
+  }
+  finding_arm && unread_arm && held_arm
 }
