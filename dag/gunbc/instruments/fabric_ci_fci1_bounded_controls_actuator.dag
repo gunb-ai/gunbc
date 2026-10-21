@@ -469,12 +469,12 @@ fn fci1_refused(reason: String) -> ProcessExit {
 // file refuses) to FCI1_VERDICT_PATH only after every row passed and the store, runtime population and
 // Work-process scan are unchanged. A failed row leaves no verdict file, so absence is the red.
 type Fci1BoundedControlsVerdict
-  = Fci1BoundedControlsAccepted { systemd: String, memory_max: Int, memory_high: Int }
+  = Fci1BoundedControlsAccepted { systemd: String, memory_max: FiniteByteSize, memory_high: FiniteByteSize }
 
 fn fci1_verdict_line(verdict: Fci1BoundedControlsVerdict) -> String {
   match verdict {
     Fci1BoundedControlsAccepted { systemd, memory_max, memory_high } =>
-      join(["FCI1BoundedExecutionControlsAccepted|systemd=", systemd, "|memory_max=", to_string(memory_max), "|memory_high=", to_string(memory_high)], "")
+      join(["FCI1BoundedExecutionControlsAccepted|systemd=", systemd, "|memory_max=", to_string(finite_byte_size_count(size: memory_max)), "|memory_high=", to_string(finite_byte_size_count(size: memory_high))], "")
   }
 }
 
@@ -489,8 +489,8 @@ fn fci1_verdict_emit(verdict_path: String, context: Fci1BoundedExecutionContext)
     }
     let line = fci1_verdict_line(verdict: Fci1BoundedControlsAccepted {
       systemd: match first(split(s: trim(s: version.stdout), delimiter: "\n")) { Present { value: v } => v, Absent => "" },
-      memory_max: finite_byte_size_count(size: context.memory_max),
-      memory_high: finite_byte_size_count(size: high),
+      memory_max: context.memory_max,
+      memory_high: high,
     })
     let created = Filesystem.WriteCreateNew(path: verdict_path, content: concat(line, "\n"))
     if created.success { ExitSuccess } else {

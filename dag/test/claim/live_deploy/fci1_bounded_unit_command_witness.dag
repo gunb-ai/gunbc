@@ -60,8 +60,17 @@ test fn the_unbounded_unit_argv_is_memory_max_infinity_with_no_slice() -> Bool {
 }
 
 test fn the_accepted_verdict_line_names_systemd_and_both_memory_bounds() -> Bool {
-  fci1_verdict_line(verdict: Fci1BoundedControlsAccepted { systemd: "systemd 255", memory_max: 7, memory_high: 5 })
-    == "FCI1BoundedExecutionControlsAccepted|systemd=systemd 255|memory_max=7|memory_high=5"
+  match fci1_bounded_execution_context(checkout_root: ".") {
+    Fci1BoundedExecutionContextBuilt { context: c } => {
+      let high = match c.memory_high {
+        Present { value: h } => h
+        Absent => c.memory_max
+      }
+      fci1_verdict_line(verdict: Fci1BoundedControlsAccepted { systemd: "systemd 255", memory_max: c.memory_max, memory_high: high })
+        == join(["FCI1BoundedExecutionControlsAccepted|systemd=systemd 255|memory_max=", to_string(finite_byte_size_count(size: c.memory_max)), "|memory_high=", to_string(finite_byte_size_count(size: high))], "")
+    }
+    _ => false
+  }
 }
 
 // THE STORE IS ABSENT ONLY WHEN THE PARENT LISTING ESTABLISHES IT. A recursive find names a vanished
