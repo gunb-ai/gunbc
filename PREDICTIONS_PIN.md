@@ -871,3 +871,15 @@ Also: ctrl-build mirrors LOCAL worktree state (git apply patch) — a fresh clon
 - m_b3_refused (Box<Int> vs Box<Bool> >=1): MAIN FAIL (measured 0). FIXED: PASS if the PR head's still-present applied half (04_types.dag:1436+ retains Applied handling) refuses it; FAIL => applied refusal is PR-2-only. Recorded, drives which half #14056 keeps.
 - m_b2/m_b4 ==0 on both arms (measured PASS on both so far; re-measured identically).
 - Text-diagnostic route: real-file probes (probe_src/probe/binder1.dag, binder3.dag) through `gunbc run --entry` on EACH arm: main binder1 prints a refusal naming T (class recorded VERBATIM — this is what distinguishes unbound/unknown-T from unify-mismatch); fixed binder1 expected clean (no diagnostic) if the flip is real. Any panic/rc!=0 on the runs: record, do not interpret.
+
+### PRED-B FINAL (dispatch 8, both arms executed, GITHUB_ACTIONS+budget env; 15m)
+Table (claim-run members; both arms BUILD_RC=0, CLAIM_RC=1 from the intentional FAIL pair):
+  member            FIXED@3a698d4   MAIN@b4d1564
+  m_b1_refused      PASS            PASS        (unmarked T pair refused on BOTH arms)
+  m_b1_accepts      FAIL            FAIL        (count>=1 both; NO FLIP)
+  m_b2_accepts      PASS            PASS        (Box<Int>==Box<Int> both)
+  m_b4_accepts      PASS            PASS        (same declared binder binds both)
+  m_b3_refused      FAIL            FAIL        (Box<Int> vs Box<Bool> ACCEPTED on both -> applied-container refusal exists on NEITHER arm; it is PR-2 arm-2 territory)
+  raw run binder1/reg1: RUN_RC=1 NoSuchFunction{main} both arms = parse-pass signature, no refusal text captured.
+CONCLUSION: main and fixed are BEHAVIOURALLY IDENTICAL on every authorable census specimen swept. Why, from the call-site map: the census comparison path is unify_generics (04_infer:6513), which has its own leaf logic (already distinct-unmarked on both arms, e05dc01's resolve-side change); node_type_equals is reached only from 04_access (string/int shape checks, can't carry user type vars), 04_emit_info (variant field summary), 04_types callable-agreement/Applied-children arms. The PR's changed arms (binder-vs-binder, declared-binder-beats-unmarked) fire only on pairs authorable programs never hand them — the Rust tests construct those pairs synthetically (leaf(TypeParameter{declared_inference_variable})).
+=> CONDITION (a) AS SCOPED IS UNSATISFIABLE on the pre-PR-2 head: no dag/test/claim RED exists that is red-without-the-fix for the leaf/binder half. One route remains open and untested: the fn-VALUE comparison route (callable_signatures_agree at 04_types:1164/1277/1349 — let-bound fn-typed values with user type vars at signature positions) — probeable at the rebase step, when PR-2's Applied-children arm (04_types:1465, child_type_node pairs) actually changes what node_type_equals consumes; the binder comparison becomes census-reachable THERE (Box<T_f> vs Box<T_g> under a fn-type equality) if that route fires.
