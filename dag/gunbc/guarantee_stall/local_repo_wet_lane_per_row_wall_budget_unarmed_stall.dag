@@ -16,12 +16,14 @@ import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopul
 // (a_parseable_imported_module_reaches_a_real_pass_verdict). A verdict needs `gunbc.output_policy`,
 // which resolves only from the `dag` root, so the child walks the whole tree. Its wall is re-derived
 // by running that function through `claim_batch --wet` and reading the child's `[pre-entry] phase=`
-// lines; no figure is copied here.
+// lines; no figure is copied here. The second member is the closure-error fn of
+// `test.claim.claim_batch_unobserved_exit_witness` (an_entry_with_a_closure_error_exits_1_with_a_fail_line),
+// which also passes `--source-root dag` and so also walks the whole tree.
 data local_repo_wet_lane_per_row_wall_budget_unarmed_stall: GuaranteeStall = GuaranteeStall {
   subject: "a local_repo_wet_schedule member whose wall exceeds bin_witness_wet_per_row_wall_budget_seconds is not refused: no path that runs the lane arms a wall budget, so the row runs to its verdict",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: ["claim_batch_parse_gate_witness.dag"] },
+  population: BoundedPopulation { members: ["claim_batch_parse_gate_witness.dag", "claim_batch_unobserved_exit_witness.dag"] },
   next_rung_trigger: climbs_when(capability: "the wet terminal arms set_witness_wall_budget from the declared bin_witness_wet_per_row_wall_budget_seconds datum and refuses an over-budget row as BudgetRefusedBeforeVerdict -- SUFFICIENT FOR deleting this row and the over-budget admission in excl_claim_batch_parse_gate_reason together"),
 }
