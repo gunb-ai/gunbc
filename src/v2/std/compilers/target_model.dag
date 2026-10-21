@@ -196,9 +196,12 @@ type TargetRealizationCatalog {
 
 // Whether the target language accepts a declared type parameter that no field or variant payload uses.
 // A target-language fact (rust rejects it, E0392), read by the emitter instead of encoded in it.
+// NotApplicable: the target's grammar has no generic declaration production, so the question is moot and
+// a generic member refuses for that reason.
 type UnusedTypeParamRealization
   = UnusedTypeParamAdmitted
   | UnusedTypeParamRefused
+  | UnusedTypeParamNotApplicable
 
 type ProducedDeclSupport
   = ProducedDeclUnwired

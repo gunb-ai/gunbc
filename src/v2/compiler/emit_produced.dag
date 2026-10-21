@@ -395,15 +395,19 @@ fn all_type_params_used(params: List<Symbol>, member: Node) -> Bool {
   fold(params, init: true, f: fn(acc, p) { acc && type_node_mentions_param(node: member, param: p) })
 }
 
-// The target's own row says whether an unused declared parameter is spelled; the emitter only reads it.
-fn unused_type_param_refused_by(target: TargetModel) -> Bool {
+// The target's own row decides what a generic member owes before it is emitted: a target with no generic
+// declaration production refuses it, one that rejects an unused parameter refuses a member that has one.
+// The emitter only reads the row.
+fn generic_member_target_refusal(target: TargetModel, params: List<Symbol>, member: Node) -> Symbol? {
   match target.produced_decl_support {
     ProducedDeclWired { render_rows: _, scaffold_relation_rule_name: _, scaffold_base_row: _, unused_type_param: u } =>
       match u {
-        UnusedTypeParamRefused => true
-        UnusedTypeParamAdmitted => false
+        UnusedTypeParamNotApplicable => Present { value: ^emit_module_member_generic_unsupported_by_target }
+        UnusedTypeParamRefused =>
+          if all_type_params_used(params: params, member: member) { Absent } else { Present { value: ^emit_module_member_generic_param_unused } }
+        UnusedTypeParamAdmitted => Absent
       }
-    ProducedDeclUnwired => false
+    ProducedDeclUnwired => Absent
   }
 }
 
@@ -422,10 +426,10 @@ fn emit_generic_module_member(edge: Edge, target: TargetModel, realization_host:
         GenericTypeDecl { binders: _, member: m } =>
           if !is_empty(xs: kinded_type_param_names(n: edge.target)) {
             refused
-          } else if unused_type_param_refused_by(target: realization_host) && !all_type_params_used(params: type_param_names(n: edge.target), member: m) {
-            emit_module_member_refused(reason: ^emit_module_member_generic_param_unused, at: edge.target)
           } else {
-            match m.kind {
+            match generic_member_target_refusal(target: realization_host, params: type_param_names(n: edge.target), member: m) {
+              Present { value: reason } => emit_module_member_refused(reason: reason, at: edge.target)
+              Absent => match m.kind {
               TypeNode { connective: Disj } =>
                 emit_semantic_type_decl(header: [], imports: [], members: [], name: n, params: type_param_names(n: edge.target), node: m, target: target, realization_host: realization_host)
               TypeNode { connective: Conj } =>
@@ -435,6 +439,7 @@ fn emit_generic_module_member(edge: Edge, target: TargetModel, realization_host:
                   _ => refused
                 }
               _ => refused
+              }
             }
           }
         _ => refused
