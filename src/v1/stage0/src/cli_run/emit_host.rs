@@ -194,10 +194,20 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
 pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
-            let module_index = build_module_path_index_from_witness_roots();
+            // THE MODULE-PATH INDEX IS LENT, NOT COPIED (CENSUS COST). This asked for the
+            // whole corpus index as an owned map, which clones all 9003 entries out of the
+            // thread-local memo on EVERY census call; the resolve below only ever asks it
+            // keyed questions (`module_index.get(&module_path)`), one entry at a time.
+            // `with_module_path_index` is the same memo, borrowed for the duration. A
+            // re-entrant demand on the same memo would double-borrow and panic -- that is
+            // caught here and surfaces as `NotRunnable`, so the digest equality the census
+            // control asserts is what keeps this borrow honest, not an argument.
+            let roots = default_source_roots();
             let sources =
-                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
-                    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+                crate::cli_run::entry_resolve::with_module_path_index(&roots, |module_index| {
+                    resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, module_index)
+                        .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })
+                })?;
             record_fixture_closure(&sources);
             compile_fixture_rendering_only_what_is_read(sources, None)
         })

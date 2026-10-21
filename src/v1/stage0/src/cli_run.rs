@@ -14164,19 +14164,32 @@ fn closure_name_census(
     if let Some(hit) = index.closure_name_censuses.borrow().get(&key) {
         return Ok(hit.clone());
     }
-    // GLOBAL CENSUS, READ THROUGH THE UNDERLAY — but ONLY the whole-pool (None) key. That key
-    // is built over `pool.nodes_by_file` + `pool.combined_si` and nothing per-index (see the
-    // `None =>` arm below: `pool.nodes_by_file.iter().map(…)`), and `pool_parse` now shares the
-    // underlay's warm copy, so the whole-pool census is a pool fact identical on scratch and
-    // shared — the same verbatim-clone condition as `pool_parse`. That is the ~6 s the census
-    // path pays per call, so it is built once per process. The PER-ROOT (Some) key is NOT
-    // delegated: it reads `index.module_graph_facts.adjacency` (see `tree_census_nodes`), a
-    // per-index field, so its answer is a property of THIS index and must stay on the scratch.
-    if key.is_none() {
-        if let Some(base) = index.scratch_underlay.borrow().clone() {
-            debug_assert_eq!(index.source_files.len(), base.source_files.len());
-            return closure_name_census(&base, None);
-        }
+    // THE CENSUS IS A POOL FACT, SO IT IS BUILT ONCE PER PROCESS AND READ THROUGH THE
+    // UNDERLAY — on BOTH keys. WHAT MAKES THIS SOUND, per key:
+    // * The whole-pool (None) key is built over `pool.nodes_by_file` + `pool.combined_si`
+    //   and nothing per-index (see the `None =>` arm below), and `pool_parse` already shares
+    //   the underlay's warm copy.
+    // * The PER-ROOT (Some) key reads `pool_parse` plus `index.module_graph_facts.adjacency`
+    //   (`tree_census_nodes`) — and reads NOTHING from `index.source_files`. A scratch's
+    //   `module_graph_facts` is not its own computation: `new_multi_entry_index_scratch_over`
+    //   passes `acquired_facts = None`, so the shell body takes
+    //   `build_module_graph_facts_live(source_roots)` — the SAME thread-local memo the shared
+    //   index hit, under the SAME root key the scratch was handed (`shared.source_roots`).
+    //   Same key, same memo, therefore the SAME facts value: the per-root answer on the
+    //   scratch is bit-identical to the base's. The fixture can no more enter it here than it
+    //   can enter `pool_parse`.
+    // NOT "per-index just because the field is a struct member": the field is a COPY OF A
+    // SHARED MEMO, and the debug_assert below keeps that identity a checked fact rather than
+    // an argument — a scratch whose pool drifted from its underlay's refuses to read through.
+    if let Some(base) = index.scratch_underlay.borrow().clone() {
+        debug_assert_eq!(index.source_files.len(), base.source_files.len());
+        // The identity the memo argument gives us, kept as a checked fact (debug-only cost):
+        // a scratch whose graph facts differ from its underlay's must NOT read through.
+        debug_assert_eq!(
+            index.module_graph_facts.adjacency,
+            base.module_graph_facts.adjacency
+        );
+        return closure_name_census(&base, root);
     }
     let pool = pool_parse(index)?;
     // Timed NET of `pool_parse`, which is forced above and carries its own row: this is the
