@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.an_undecided_name_outlives_the_scope_that_ma
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_undecided_name_outlives_the_scope_that_made_it_undecided: RecurringFailureMode = RecurringFailureMode {
   identity: "an_undecided_name_outlives_the_scope_that_made_it_undecided" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an undecided name outlives the scope that made it undecided** (INVALID STATE: the reference walk that decides which dotted spellings may probe storage (`v2.compiler.reference_site_collector` `site_head_binding`) holds a name as `HeadBindingUndecided` after the scope that made it undecided has ended in the resolver. A name is undecided while a match-arm pattern atom may be a constructor or a binder, and while an import has not been consulted; an undecided name is never a module candidate, because treating it as one would read a file for a projection.)",

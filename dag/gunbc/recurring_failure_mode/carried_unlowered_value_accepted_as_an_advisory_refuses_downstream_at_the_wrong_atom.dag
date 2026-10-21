@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.carried_unlowered_value_accepted_as_an_advis
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom: RecurringFailureMode = RecurringFailureMode {
   identity: "carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a value the body-lowering value reader cannot lower is handed on as its UNLOWERED SHELL under a non-fatal advisory, and the file Accepts. v2.compiler.body_lowering_fold body_lower_value_lowered_or_carried did this for record-literal field initializers under the head-grain advisory body_lowering_reason_value_carried_unlowered, registered in v2.workflow.compile_door_cause_ownership. Nothing downstream refused the shell before consuming it as lowered, so the refusal the value owed moved to a later stage and to a different atom.",

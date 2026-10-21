@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.an_enumeration_capped_by_its_reading_tool
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_enumeration_capped_by_its_reading_tool: RecurringFailureMode = RecurringFailureMode {
   identity: "an_enumeration_capped_by_its_reading_tool" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a census whose denominator was silently reduced by the READING TOOL, and then used as the justification for a deletion or a re-signature. The author enumerates the consumers -- correctly -- and pipes the enumeration through a display cap (`head -n`, a `take`, a paged view, a truncating summary). Every line that survives is true. Nothing in the output says a line did not survive. The edit is then made against the survivors and is complete with respect to a population that was never the population.",

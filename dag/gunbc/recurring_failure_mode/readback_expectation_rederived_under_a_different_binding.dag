@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.readback_expectation_rederived_under_a_different_binding
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data readback_expectation_rederived_under_a_different_binding: RecurringFailureMode = RecurringFailureMode {
   identity: "readback_expectation_rederived_under_a_different_binding" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a readback that is supposed to confirm a served route re-derives its expected body under a second binding of the same name, then compares the live bytes to that other derivation. HARM: readiness can agree (same live projection) while the readback fails, or both can agree on a body the admitted candidate never observed, because the expectation describes the tree as it is when compared rather than the surface that was admitted.",

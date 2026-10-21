@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.declaration_body_type_shell_preserved_unreso
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data declaration_body_type_shell_preserved_unresolved: RecurringFailureMode = RecurringFailureMode {
   identity: "declaration_body_type_shell_preserved_unresolved" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "INVALID STATE: a type reference inside a type DECLARATION's body reaches v2 resolve as an unlowered dag_surface_qualified_name parse shell, and resolve preserves that shell UNCHANGED as module metadata (`v2.extdeps.languages.dag` `dag_resolve_preserve_module_metadata_subtree`), so the declaration names its type in a vocabulary no stage resolved. HARM: a carrier nothing declares is accepted silently, and a consumer comparing the declaration's type with a resolved type sees two vocabularies for one type: the Widened refinement-to-carrier cast (gunbc#12407) refused `x as Int` from `x: Pos` once main lowered kernel spellings by declaration.",
     "DISTINGUISHING FACT, MEASURED: on the resolved tree, a where-refined head that body lowering hands resolve as a plain type atom IS resolved (`Int` becomes the kernel binding); the same head left as the parse shell is not. So the boundary is LOWERING, not resolve: every declaration-body type position must be lowered before resolve, and resolve then binds it through its one producer, `v2.compiler.resolve` `resolved_reference_node` (a `std.decl_ref` `DeclarationRef`-carrying declaration reference for a corpus type, the kernel atom for a kernel spelling).",
