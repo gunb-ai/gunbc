@@ -112,22 +112,26 @@ pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
 // Exposed exactly like compile_dag_diagnostic_census_memo_counts above: a pub fn read by an
 // in-process observer, so a receipt is process-differential (deltas around calls in one
 // process), never a claim about another process.
-pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64) {
+pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64) {
     (
         crate::cli_run::CENSUS_COST_INDEX_CLONES.load(std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_CLONES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.load(std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READS.load(std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READ_BYTES.load(std::sync::atomic::Ordering::Relaxed),
     )
 }
 
-/// Zero the four cost counters and return them (read-and-reset, so a caller brackets one
+/// Zero the six cost counters and return them (read-and-reset, so a caller brackets one
 /// census call or a run of them without subtracting an earlier snapshot).
-pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64) {
+pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64) {
     (
         crate::cli_run::CENSUS_COST_INDEX_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES
             .swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.swap(0, std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READS.swap(0, std::sync::atomic::Ordering::Relaxed),
         crate::cli_run::CENSUS_COST_DISK_READ_BYTES.swap(0, std::sync::atomic::Ordering::Relaxed),
     )

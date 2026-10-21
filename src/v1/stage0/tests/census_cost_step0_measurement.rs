@@ -78,19 +78,14 @@ fn sample(calls: usize) -> Vec<String> {
         let census = compile_dag_diagnostic_census(FIXTURE);
         let wall_us = t0.elapsed().as_micros() as u64;
         let cpu_us = cpu_micros().saturating_sub(cpu0);
-        let now = compile_dag_diagnostic_census_cost_counts();
-        let d = |k: usize| now.k - prev.k;
-        prev = now;
+        let (ic, ie, vc, vl, r, b) = compile_dag_diagnostic_census_cost_counts();
+        let (pic, pie, pvc, pvl, pr, pb) = prev;
+        prev = (ic, ie, vc, vl, r, b);
+        let (ic, ie, vc, vl, r, b) = (ic - pic, ie - pie, vc - pvc, vl - pvl, r - pr, b - pb);
         out.push(format!(
-            "CALL {i} WALL_US={wall_us} CPU_US={cpu_us} INDEX_CLONES={} INDEX_ENTRIES={} \
-             VEC_CLONES={} VEC_LEN={} READS={} DISK_BYTES={} PROC_RCHAR={} PROC_BLK_BYTES={} \
+            "CALL {i} WALL_US={wall_us} CPU_US={cpu_us} INDEX_CLONES={ic} INDEX_ENTRIES={ie} \
+             VEC_CLONES={vc} VEC_LEN={vl} READS={r} DISK_BYTES={b} PROC_RCHAR={} PROC_BLK_BYTES={} \
              CENSUS={}",
-            d(0),
-            d(1),
-            d(2),
-            d(3),
-            d(4),
-            d(5),
             proc_io("rchar:").saturating_sub(rchar0),
             proc_io("read_bytes:").saturating_sub(blk0),
             match &census {
