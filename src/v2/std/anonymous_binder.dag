@@ -64,6 +64,41 @@ fn fresh_type_variable(path: List<Int>, label: Symbol) -> Symbol {
   symbol_intern_lexeme(lexeme: fresh_type_variable_prefix() + p + ":" + symbol_lexeme(sym: label) + ">")
 }
 
+// A CONSTRUCTOR USE'S INSTANCE VARIABLE IS MINTED HERE, AND ITS ORIGIN IS READ BACK ONLY HERE. A use of a
+// generic constructor (`Absent`, `Present { .. }`) instantiates the declaring coproduct's type parameters
+// freshly: `^T` of std.optional Optional is spelled like a rigid fn type variable `T`, so the closer must
+// tell the use's own variable from the rigid one. `<constructor-use@N:L>`: N is the use node's occurrence id
+// and L the declaration's parameter name, so two uses in one fn are two variables. `<` is not an identifier
+// character, so no authored name can spell one, and this function is its only mint.
+//
+// THE ORIGIN IS A CLOSED VARIANT, READ BY ONE FUNCTION. Consumers match on TypeVariableOrigin and never
+// read a spelling; type_variable_origin is the only reader of these prefixes. It is the stopgap named by
+// gunbc.recurring_failure_mode type_variable_identified_by_spelling_in_v2: the origin belongs on the atom
+// identity carrier, and this reader dissolves with that follow-up.
+type TypeVariableOrigin =
+  | TypeVariableOfConstructorUse
+  | TypeVariableOfBinder
+  | TypeVariableRigid
+
+fn constructor_use_variable_prefix() -> String {
+  "<constructor-use@"
+}
+
+fn fresh_constructor_use_variable(use_id: Int, label: Symbol) -> Symbol {
+  symbol_intern_lexeme(lexeme: constructor_use_variable_prefix() + int_to_decimal_string(value: use_id) + ":" + symbol_lexeme(sym: label) + ">")
+}
+
+fn type_variable_origin(sym: Symbol) -> TypeVariableOrigin {
+  let lexeme = symbol_lexeme(sym: sym)
+  if starts_with(s: lexeme, prefix: constructor_use_variable_prefix()) {
+    TypeVariableOfConstructorUse
+  } else if starts_with(s: lexeme, prefix: fresh_type_variable_prefix()) {
+    TypeVariableOfBinder
+  } else {
+    TypeVariableRigid
+  }
+}
+
 // A FOLD'S PERSISTENT CARRIER IS A GENERATED VALUE BINDER, AND IT MAY NOT BORROW THE AUTHORED STEP
 // PARAMETER'S SPELLING. The fold encoding is
 // Bind { carrier := init, Loop { step, domain, carrier, bound, realized } }: the Bind's binder is a slot

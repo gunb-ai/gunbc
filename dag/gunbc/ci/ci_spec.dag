@@ -64,7 +64,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_subshell_from_stmts, bash_build_stmt_list_from_nodes, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix }
+import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
 import extdeps.github.actions_environment { github_output_variable_name }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
@@ -91,8 +91,9 @@ import gunbc.live_deploy.apply_receipt {
 }
 
 import gunbc.ci.ci_release_bins {
-  ci_floor_required_artifact_names
+  ci_floor_required_artifact_names, EmittedReleaseBin, ci_emitted_release_bins
 }
+import gunbc.repo.repo_self_emitted_build { repo_self_emitted_crate_build_command }
 
 import gunbc.ci.ci_gate {
   Gate,
@@ -576,6 +577,35 @@ fn ci_release_build_line() -> String {
   )
 }
 
+// THE BUILD OF ONE EMITTED RELEASE BIN (gunbc.ci.ci_release_bins EmittedReleaseBin), run after the
+// cargo bins exist because it needs the gunbc this job just built: emit the entry's Rust closure,
+// build the emitted crate under gunbc.repo.repo_self_emitted_build (the flag set the seed's probe
+// build also runs), and install the one executable at target/release/<name>. The executable's name
+// is read from the emitted crate's own manifest, never assumed to be the probe's package name.
+// The line is a shell-transport spelling, like ci_release_build_line beside it: it dissolves onto extdeps.rust.cargo_build
+// (and a typed read of cargo's own executable record in place of the sed over its JSON stream) when the ci emit seam can
+// bind a typed cargo operation instead of a hand-spelled argv line. Failure is loud on both uses: the job script runs each
+// bin as its own statement under the workflow's `set -e`, and an unreadable executable path leaves cp with an empty source.
+// ci_release_pack_build_line joins the lines with " ; " only as the TEXT the pack key names; it is never executed.
+fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
+  let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
+  let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
+  join([
+    "rm -rf ", dir, " && \"$ROOT/target/release/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
+    " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
+    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"$ROOT/target/release/", bin.name, "\"",
+  ], "")
+}
+
+// The whole build the fleet pack's key names: the cargo bins, then each emitted release bin.
+fn ci_release_pack_build_line() -> String {
+  fold(
+    ci_emitted_release_bins(),
+    init: ci_release_build_line(),
+    f: (acc, bin) => join([acc, " ; ", ci_emitted_release_build_line(bin: bin)], "")
+  )
+}
+
 data ci_fmt_gate_note: String = "cargo fmt --all --check, RE-ENROLLED in CI 2026-07-15 (operator ruling, this PR) as a standalone build-job step — NOT a RustMonolithGate re-enrollment, which gunbc.commit_workflow.commit_gate_rust_suite_removed_disposition rejects and this row does not touch. That ruling (2026-07-11) removed the fmt+nextest bundle for reasons that are all facts about NEXTEST — ~37 GiB, red on main, non-required, a permanent tolerated red (DESIGN 5) — and fmt was collateral damage of a DESIGN 3 fusion: gunbc.instruments.rust_gates_ci.run_gates welds two separable facts (fmt: 4.3s measured, parse-only, no build, green; nextest: 37 GiB compile+run, red) into one ProcessExit, so killing the bundle killed the cheap green half too. The ruling's declared replacement coverage — the pre-push hook (CommitCargoFmtCheck on GitPrePushHook) — is an escape hatch (DESIGN 5: opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, absent in container worktrees) and is PROVEN ineffective: #6658 landed an unformatted .rs on main 2026-07-15 and nothing caught it; the falsifier lane found it only by running fmt by hand. Placement: FIRST step of the build job, before the ~33min release build, so a 4-second violation fails in 4 seconds rather than after the build; build is not protection-required itself but ci needs:[build], so a red here blocks the required job by construction. Cost: 4.3s measured whole-workspace, on a toolchain that already installs the rustfmt component in ci_prelude_steps. 🟡 dissolve-on: the fmt spelling here is a shell-transport realization of extdeps.rust.cargo_build cargo.Build.Fmt (the same operation gunbc.instruments.rust_gates_ci calls through the effect model); it collapses onto that single authority when the ci.yml emit seam can bind a typed cargo operation instead of a hand-spelled argv line — the same de-fork ci_release_build_line awaits. Retires WITH the v1 seed at DESIGN 7 terminal collapse, when no .rs remains to format."
 
 fn ci_fmt_gate_line() -> String {
@@ -952,6 +982,11 @@ data gunbc_ci_host_memory_envelope_observe_target: GunbcRunStepTarget = GunbcRun
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_converge_ci_wet",
+}
+
+data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_cap_release_ci_wet",
 }
 
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
@@ -1400,6 +1435,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
+    gunbc_ci_runner_host_cap_release_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -1636,7 +1672,7 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 //
 // WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
 // prelude that interpolates a credential into a command string — these bodies are hand-authored
-// shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them.
+// shell text, not declared operation argv, so std.operation_argv's binding wall cannot see them.
 // The class stays mitigatable here; the trigger is the one extdeps.bmc.http names: credentials
 // modeled as declared inputs whose type the binder can refuse.
 //
@@ -2100,7 +2136,7 @@ fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarg
 }
 
 // THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
-// taken tag exactly (a prefix or any-line search would admit a refused receipt whose verbatim controller
+// taken tag or the host-off unestablished tag exactly (the latter boots only because the post-power-on chassis-fan read gates it) (a prefix or any-line search would admit a refused receipt whose verbatim controller
 // answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
 // output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
 // under always(), so the refused receipt is still kept.
@@ -2111,7 +2147,7 @@ fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
   bif_else(
     cond: bash_build_and_then(
       left: btest(words: [bl(text: "-f"), receipt]),
-      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix)]),
+      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix), bl(text: "-o"), bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_unestablished_host_off_line)]),
     ),
     then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [
@@ -3022,7 +3058,7 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     entry: gunbc_ci_runner_host_file_observe_target.entry,
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
 
@@ -3046,13 +3082,28 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
   )
 }
 
+// EACH FINALIZER WRITES ITS OWN RECEIPT: the always() release runs right after the converge step, so a shared
+// path would replace the converge receipt, the record of a failed or withheld bracket.
+data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
+data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
+
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
+  )
+}
+
+fn gunbc_ci_runner_host_cap_release_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_cap_release_target.entry,
+    function: gunbc_ci_runner_host_cap_release_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
   )
 }
 

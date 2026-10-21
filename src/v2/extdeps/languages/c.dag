@@ -57,7 +57,7 @@ import v2.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
   IntLiteralUnwired,
   InfixToken,
@@ -1315,6 +1315,7 @@ fn c_type_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn c_type_decl_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: c_target_model_node(),
     lex: c_lex(),
@@ -1364,6 +1365,7 @@ fn c_produced_decl_support() -> ProducedDeclSupport {
 
 fn c_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: c_produced_decl_support(),
     bundle: c_target_model_node(),
     lex: c_lex(),

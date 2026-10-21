@@ -65,7 +65,7 @@ import gunbc.live_deploy.desired {
   instance_id_text, desired_deployment_for_instance_id_over, DesiredDeploymentLookup, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
   DesiredRosterRefusal, desired_roster_refusal_detail,
 }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
   operation_argv_bind_text,
@@ -514,7 +514,7 @@ fn presence_cause(p: EntryPresence) -> String? {
 // distinct sighting the adjudication refuses, and a field that cannot be read makes the host
 // unobservable rather than reading as either.
 // WHICH STAT FIELD A LEG READS, as a closed choice over shell.Stat operations. Local dispatch
-// invokes the operation; the remote arm materializes THAT SAME row's argv (v2.std.operation_argv)
+// invokes the operation; the remote arm materializes THAT SAME row's argv (std.operation_argv)
 // and carries it over the transport. The format string is declared once, on the operation.
 type MarkerStatField = MarkerStatMode | MarkerStatOwner | MarkerStatGroup
 

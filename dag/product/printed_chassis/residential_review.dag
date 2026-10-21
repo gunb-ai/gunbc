@@ -7,7 +7,7 @@ import product.printed_chassis.rack_assembly {hardware}
 import product.printed_chassis.cooler_configuration {noctua_envelope,residential_cooler}
 import product.printed_chassis.stack_geometry {stack_pitch_for_cooler}
 import product.printed_chassis.rear_cooling {RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit,rear_opening,select_rear_fans,rear_fan_candidates,rear_cooling_json}
-import product.printed_chassis.cassette_review {part_json,interface_json}
+import product.printed_chassis.printable_assembly {part_json,interface_json}
 import product.printed_chassis.stack_joinery {stack_joinery,StackJoineryGeometry,StackJoineryHeightUnsupported}
 import product.printed_chassis.rear_fan_assembly {rear_assembly,RearAssemblyGeometry,RearAssemblyUnsupportedBank,RearAssemblyMountRefused}
 import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}

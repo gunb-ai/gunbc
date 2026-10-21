@@ -450,6 +450,10 @@ data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.servi
 
 data gunbc_approval_broker_slice_unit_name: NonEmptyStr = approval_broker_slice_unit_name
 
+// The device-crypto verifier sidecar's unit: a HOST singleton like the broker's, owned by the same deployment
+// (deployment_owns_the_host_approval_broker), installed from the same release locus.
+data gunbc_device_crypto_sidecar_unit_name: NonEmptyStr = "gunbc-device-crypto-sidecar.service"
+
 // THE REPOSITORY CONVERGENCE ONESHOT'S SLICE, ONE PER HOST. Its bounds and the reason it is one per
 // host rather than per instance live with the rows in gunbc.live_deploy.slice_bounds; the admission
 // that refuses to place the oneshot inside a serving slice lives in
@@ -501,6 +505,10 @@ fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
 
 fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_approval_broker_unit_name as String], "") as NonEmptyStr
+}
+
+fn gunbc_device_crypto_sidecar_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr
 }
 
 fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
