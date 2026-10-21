@@ -310,7 +310,7 @@ test fn a_forwarded_parameter_whose_kind_comes_by_import_is_admitted() -> Bool {
 // an unimported one has no declaration in scope -- the kernel admits nothing ambiently, and there is
 // no composed-name path left beside it for this name to leak through.
 fn forward_unimported_kind_source() -> String {
-  "module kindprobe.neg_forward_unimported\n\nimport std.types { Int, String }\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Box<T: Nowhere> {\n  value: Width<T>\n}\n\n"
+  "module kindprobe.neg_forward_unimported\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Box<T: Nowhere> {\n  value: Width<T>\n}\n\n"
 }
 
 test fn a_forwarded_parameter_naming_an_unimported_kind_must_refuse() -> Bool {
