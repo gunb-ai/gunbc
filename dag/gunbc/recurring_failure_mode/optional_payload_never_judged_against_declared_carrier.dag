@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.optional_payload_never_judged_against_declared_carrier
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data optional_payload_never_judged_against_declared_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_payload_never_judged_against_declared_carrier" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "v2 infer reads a produced Optional<X> and a declared Occupancy(Y) as one occupant pair and judges X against Y, after which the String payload refuses and the Int payload accepts as discriminating controls on the native route" } },
 
   receipts: [
     "NEIGHBOUR: optional_admitted_where_a_required_value_is_declared is a different invalid state (a bare Optional at a required T position); both shared the former undecidable-carrier mechanism, and this row is a Present payload never judged against the declared T.",

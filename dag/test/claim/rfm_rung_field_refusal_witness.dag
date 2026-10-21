@@ -1,0 +1,187 @@
+module test.claim.rfm_rung_field_refusal_witness
+
+// CHARTER 4 (Charter 4: evidence that actually runs). #14383 (`d577b1856cd1`, "RFM: typed rung fields")
+// made `rung: RungReading` a REQUIRED field of `gunbc.recurring_failure_mode.RecurringFailureMode`: an
+// optional rung let every legacy row omit the field and read as absent-by-default rather than refused.
+// Ten row files already on main never carried it, so the corpus validator refuses the whole tree and no
+// PR can show a green heal run. That refusal is loud and correct -- a row with no rung is a row whose
+// guarantee standing was never read -- and this file is the wall that keeps it loud, in the shape the
+// repo already uses for a refusal wall: a RED that refuses when the field is removed from a row literal,
+// an accepted control differing from it by exactly that field, and claims that read the refusal's own
+// subject so a refusal for some unrelated reason cannot satisfy the red. The model is
+// `test.claim.duplicate_record_field_refusal_witness`, whose header records the measurement in which both
+// arms failed identically for an unrelated reason; that trap is why the control exists.
+//
+// WHY THE SOURCE IS A STRING AND NOT AN INLINE LITERAL, which is the only shape that works here. Writing
+// a `RecurringFailureMode` literal with no `rung` field directly in this file would make THIS FILE part of
+// the corpus the validator refuses: the probe would not flip red, it would take the lane down, exactly as
+// `dag/test/claim/fleet/fleet_converge_launch_scope_non_interference.dag` did at 4b7371d1f64. DESIGN
+// section 4b: a state unrepresentable in the ACCEPTED corpus is still representable as SOURCE HANDED TO
+// THE COMPILER BY A FIXTURE -- a compiler is precisely a thing whose regression probes are invalid programs.
+//
+// THE PAIR DISCRIMINATES. Both sources come from ONE producer function and differ in one contiguous
+// region -- whether the `rung:` line is present. Asserting `MissingField >= 1` alone would be satisfied by
+// any malformed source, so the red carries no information without the control: the control is what says the
+// refusal is ABOUT THE OMITTED RUNG FIELD. The third claim makes that structural by requiring the two arms
+// to differ at all, with the control at exactly zero; a census that stopped running reports -1 in both
+// directions, so neither arm can pass by silence.
+//
+// WHAT THE CLAIMS DO NOT DO. No claim counts RungRead versus RungUnread rows or pins the cause mix: those
+// follow from each row's own receipts prose, and a count copied from the current tree collapses the test to
+// `measure() == measure()` (DESIGN section 5).
+
+import std.types { String, Int, Bool }
+import std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
+import gunbc.recurring_failure_mode {
+  RungReading,
+  RungRead,
+  RungUnread,
+  StandingAdmitted,
+  standing_admission,
+}
+import gunbc.recurring_failure_mode.a_probe_whose_unit_never_ran_is_scored_as_the_forbidden_effect_refused {
+  a_probe_whose_unit_never_ran_is_scored_as_the_forbidden_effect_refused,
+}
+import gunbc.recurring_failure_mode.optional_payload_never_judged_against_declared_carrier {
+  optional_payload_never_judged_against_declared_carrier,
+}
+import gunbc.recurring_failure_mode.record_versus_block_at_a_brace_is_decided_by_lookahead {
+  record_versus_block_at_a_brace_is_decided_by_lookahead,
+}
+import gunbc.recurring_failure_mode.runner_host_cap_release_lost_to_cancellation {
+  runner_host_cap_release_lost_to_cancellation,
+}
+import gunbc.recurring_failure_mode.trigger_refires_on_a_nonempty_spool_whose_head_cannot_leave {
+  trigger_refires_on_a_nonempty_spool_whose_head_cannot_leave,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT UNDER TEST, spelled once. A refusal must name THIS field on THIS type; nothing else in this
+// file repeats either spelling.
+data rfm_missing_field_class: String = "MissingField"
+data rfm_rung_field_subject: String = "missing required field 'rung' in literal of type 'RecurringFailureMode'"
+
+// ONE PRODUCER, so the two fixtures cannot drift apart in any respect other than the field. `rung_line`
+// is the only thing that differs: present in the control, deleted in the red.
+//
+// WHY THE FIXTURE DECLARES ITS OWN `RecurringFailureMode` INSTEAD OF IMPORTING THE LEDGER'S. The refusal
+// this wall watches is the field-set check on a record literal, which is the same check in either case; a
+// self-contained fixture needs no import resolution inside the census runner, so nothing but the field
+// assignment can make the two arms agree or disagree. The declared type carries the required field name and
+// the required type name verbatim, which is what the refusal's subject is built from.
+fn rfm_fixture_source(module_name: String, rung_line: String) -> String {
+  concat(
+    "module ",
+    module_name,
+    "\n\ntype RecurringFailureMode {\n  identity: String\n  rung: Int\n}\n\n",
+    "data rfm_row: RecurringFailureMode = RecurringFailureMode {\n",
+    "  identity: \"rfm-rung-field-probe\",\n",
+    rung_line,
+    "}\n",
+  )
+}
+
+data rfm_rung_line: String = "  rung: 3,\n"
+
+data rfm_row_literal_with_rung: String = rfm_fixture_source(
+  module_name: "probe_rfm_rung_present",
+  rung_line: rfm_rung_line,
+)
+
+data rfm_row_literal_without_rung: String = rfm_fixture_source(
+  module_name: "probe_rfm_rung_absent",
+  rung_line: "",
+)
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// NOT-RUNNABLE IS NOT ZERO (the model witness's rule, kept for the same reason). A census that could not
+// run has observed nothing; answering 0 would let a broken harness satisfy the control while making the
+// red unsatisfiable. 0 - 1 is neither verdict, so a harness that stops working fails in BOTH directions
+// instead of passing by silence.
+fn missing_field_count(source: String) -> Int {
+  match census_blocking_count_for_class(census: census_of(source: source), wanted: rfm_missing_field_class) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+fn missing_rung_subject_count(source: String) -> Int {
+  match census_blocking_count_for_subject(
+    census: census_of(source: source),
+    wanted_class: rfm_missing_field_class,
+    wanted_subject: rfm_rung_field_subject,
+  ) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+// THE RED: removing `rung` from a row literal refuses, and the same literal with the field does not.
+test fn a_row_literal_omitting_the_rung_field_refuses() -> Bool {
+  let without = missing_field_count(source: rfm_row_literal_without_rung)
+  let with_field = missing_field_count(source: rfm_row_literal_with_rung)
+  without >= 1 && with_field == 0
+}
+
+// THE REFUSAL IS ABOUT THE RUNG FIELD AND NAMES ITS TYPE. A class count alone is satisfied by any
+// malformed source; this reads the refusal's own subject -- the exact message the compiler produces when a
+// required field is not assigned -- so a refusal caused by an unrelated defect in the fixture cannot
+// satisfy the red, and a refusal that stopped naming the field or the row type cannot either.
+test fn the_refusal_names_the_rung_field_and_the_row_type() -> Bool {
+  missing_rung_subject_count(source: rfm_row_literal_without_rung) >= 1
+}
+
+// THE ARMS DIFFER BY THE ONE REMOVED FIELD. If the fixture stopped parsing for an unrelated reason both
+// arms would report the same non-zero count and the first claim would look like a pass while meaning
+// nothing. Requiring the counts to differ, with the control at exactly zero and neither arm at the
+// not-runnable sentinel, is what ties the verdict to the omitted field alone.
+test fn the_pair_differs_by_the_one_removed_field() -> Bool {
+  let without = missing_field_count(source: rfm_row_literal_without_rung)
+  let with_field = missing_field_count(source: rfm_row_literal_with_rung)
+  without != with_field && with_field == 0 && without != 0 - 1 && with_field != 0 - 1
+}
+
+// THE FILLED READINGS ARE COHERENT, NOT MERELY WELL-TYPED. The corpus validator requires the field to be
+// present and well-typed; it does NOT apply the module's own `standing_admission` wall, which demands a
+// BelowCeiling reading sit strictly below its stated ceiling and name a non-empty trigger capability.
+// Without this claim, a fill that is type-correct but incoherent -- a current rung at or above its own
+// ceiling, or no trigger named -- would pass heal and become ledger history. One claim per filled row, so a
+// refusal names which row, rather than a conjunction that refuses without saying.
+
+fn filled_reading_is_admitted(r: RungReading) -> Bool {
+  match r {
+    RungRead { found_at: _, standing: s } =>
+      match standing_admission(subject: "rfm-rung-fill", s: s) {
+        StandingAdmitted => true
+        _ => false
+      }
+    RungUnread { cause: _ } => false
+  }
+}
+
+test fn the_a_probe_rung_fill_is_a_climbed_and_coherent_reading() -> Bool {
+  filled_reading_is_admitted(r: a_probe_whose_unit_never_ran_is_scored_as_the_forbidden_effect_refused.rung)
+}
+
+test fn the_optional_payload_rung_fill_is_a_climbed_and_coherent_reading() -> Bool {
+  filled_reading_is_admitted(r: optional_payload_never_judged_against_declared_carrier.rung)
+}
+
+test fn the_record_versus_block_rung_fill_is_a_climbed_and_coherent_reading() -> Bool {
+  filled_reading_is_admitted(r: record_versus_block_at_a_brace_is_decided_by_lookahead.rung)
+}
+
+test fn the_runner_host_cap_rung_fill_is_a_climbed_and_coherent_reading() -> Bool {
+  filled_reading_is_admitted(r: runner_host_cap_release_lost_to_cancellation.rung)
+}
+
+test fn the_trigger_refires_rung_fill_is_a_climbed_and_coherent_reading() -> Bool {
+  filled_reading_is_admitted(r: trigger_refires_on_a_nonempty_spool_whose_head_cannot_leave.rung)
+}
