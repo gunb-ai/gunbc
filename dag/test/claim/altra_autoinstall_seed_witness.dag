@@ -76,6 +76,13 @@ import extdeps.external_authority {
 }
 import std.measure { CharacterCount, character_count }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -903,6 +910,43 @@ test fn dropping_the_password_handle_changes_the_seed() -> Bool {
         Absent => false
       }
     Absent => false
+  }
+}
+
+// A MALFORMED KEY BUILDS NO SEED — THE VALIDATION IS ON THE PRODUCTION ADMISSION ROUTE, NOT AN AUXILIARY MINT
+// (review: merry-fox-82, HOLD section 3, item A). AdminAccessAuthorisation is sole_constructor and its ONLY mint
+// is admit_admin_access_authorisation, which build_seed_fixture calls before build_altra_autoinstall_seed; so a
+// key the ssh parser rejects cannot reach the seed at all — there is no path that hands build_altra_autoinstall_seed
+// an entry it did not vet. The positive arm (one_key builds) lives INSIDE this test so that a mutation which made
+// the builder always refuse could not turn these five refusals into a green. Each malformed fixture isolates a
+// different clause of ssh_ed25519_key_identity (canonical-base64 length / exact-51-octet length / the nineteen
+// header octets / an algorithm with no parser), so weakening one clause reddens exactly its row.
+test fn no_malformed_key_reaches_the_seed_through_the_builder() -> Bool {
+  // POSITIVE CONTROL FIRST: the real provisioning key, same route, DOES build.
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Absent => false
+    Present { value: _ } =>
+      list_length(items: [key_not_base64_length, key_trailing_octets, key_declared_wrong_length, keys_rsa, keys_ecdsa]) == 5
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_not_base64_length, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+            Absent => true
+            Present { value: _ } => false
+          })
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_trailing_octets, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+            Absent => true
+            Present { value: _ } => false
+          })
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_declared_wrong_length, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+            Absent => true
+            Present { value: _ } => false
+          })
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: keys_rsa, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+            Absent => true
+            Present { value: _ } => false
+          })
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: keys_ecdsa, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+            Absent => true
+            Present { value: _ } => false
+          })
   }
 }
 
@@ -2459,6 +2503,63 @@ test fn a_volatile_disk_is_never_selected_even_though_it_matches() -> Bool {
     DiskSelected { provenance: _ } => false
     SelectionRefused { cause: _ } => true
   }
+}
+
+// THE SEAL IS A WALL, NOT A SIGN, AND THE CENSUS PROVES IT. disk_selection_provenance is the only fn that turns a
+// selector plus a probe reading into "install here", so it is the place a caller could author BOTH the selector and
+// the chosen device and hand the binding a provenance whose chosen disk never passed selector_matches_rule or the
+// persistence gate (merry's item 2). admit_callers restricts the mint to select_target_disk; sole_constructor on
+// the record already refused a hand-written literal, but a public mint fn was still an open door. These three rows
+// are the evidence that the door is shut for a foreign module: the census compiles an inline foreign source that
+// calls the sealed fn and asks whether the host reported a ConstructorCallAdmissionRefused. The CONTROL proves the
+// harness is not simply always-refuse: the same census over a lawful select_target_disk source reports zero. A
+// census that could not run reads as 0 - 1 and the row goes RED, so an unresolvable probe source cannot masquerade
+// as a refusal. (Idiom and class name copied from test.claim.fabric.flex_seal_witness; live_tree_disposition is
+// already ReadsLiveTree for this reason.)
+data forged_disk_provenance_source: String = "module probe_altra_disk_provenance\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.altra_autoinstall_seed { disk_selection_provenance, DiskSelectionProvenance, TargetDiskSelector }\nfn forged(selector: TargetDiskSelector, admitted: StorageDevice, observed: List<StorageDevice>) -> DiskSelectionProvenance {\n  disk_selection_provenance(selector: selector, admitted: admitted, observed: observed)\n}\n"
+
+// THE INDIRECT WRAPPER: a foreign module that buries the sealed mint one hop down and hands the caller a fully
+// built DiskSelected. The admission check runs at the call site wherever it is nested, so wrapping does not launder
+// it — the census still reports the refusal. Without this row, a reader could believe the seal only covered the
+// direct call and that a helper module could re-export a ready-made DiskSelected.
+data forged_disk_selection_wrapper_source: String = "module probe_altra_disk_selection_wrapper\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.altra_autoinstall_seed { disk_selection_provenance, DiskSelected, TargetDiskSelection, TargetDiskSelector }\nfn forged(selector: TargetDiskSelector, admitted: StorageDevice, observed: List<StorageDevice>) -> TargetDiskSelection {\n  DiskSelected { provenance: disk_selection_provenance(selector: selector, admitted: admitted, observed: observed) }\n}\n"
+
+// THE CONTROL, NOT A TRUISM: the very same census machinery over a source that reaches for the disk only through
+// select_target_disk. If the harness flagged every source, the two refusal rows above would prove nothing; this row
+// pins that a lawful selection produces zero admission refusals.
+data lawful_disk_selection_source: String = "module probe_altra_disk_selection_lawful\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.altra_autoinstall_seed { select_target_disk, TargetDiskSelection, TargetDiskSelector }\nfn lawful(selector: TargetDiskSelector, observed: List<StorageDevice>) -> TargetDiskSelection {\n  select_target_disk(selector: selector, observed: observed)\n}\n"
+
+// THE SECOND SEAL, PROBED THE SAME WAY: serve_seed_bundle is the only fn that renders the served bundle (user-data
+// plus the debconf answer file plus their combined digest) and is admit_callers-restricted to
+// bind_altra_autoinstall_seed, so the digest that goes into the binding address cannot be authored by hand. A
+// foreign caller that tried to build its own served bundle — the carrier merry's item 1 and item 5 depend on — is
+// refused, which is what makes "the machine booted seed X" answerable from evidence rather than a caller's memory.
+data forged_served_bundle_source: String = "module probe_altra_served_bundle\nimport std.optional { Optional }\nimport gunbc.provisioning.altra_autoinstall_seed { serve_seed_bundle, AltraAutoinstallSeed, ServedSeedBundle }\nfn forged(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> {\n  serve_seed_bundle(seed: seed)\n}\n"
+
+fn blocking_of_class(source: String, class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_foreign_direct_mint_of_disk_provenance_is_refused() -> Bool {
+  blocking_of_class(source: forged_disk_provenance_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn a_foreign_indirect_wrapper_around_the_disk_provenance_mint_is_refused() -> Bool {
+  blocking_of_class(source: forged_disk_selection_wrapper_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn a_foreign_mint_of_the_served_bundle_is_refused() -> Bool {
+  blocking_of_class(source: forged_served_bundle_source, class: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// THE CONTROL, AND IT IS THE LOAD-BEARING ONE. Same harness, same class, a source that only calls the public
+// selector: zero refusals. If someone made the census flag every source, the three rows above would still "pass" and
+// this one would go RED — which is the whole reason the control is a test and not a comment.
+test fn a_lawful_select_target_disk_source_raises_no_admission_refusal() -> Bool {
+  blocking_of_class(source: lawful_disk_selection_source, class: "ConstructorCallAdmissionRefused") == 0
 }
 
 // THE RULE STILL PICKED OUT TWO DISKS AND THE RECORD SAYS SO. Admissibility and matching are separate
@@ -4216,6 +4317,62 @@ test fn the_measurement_states_the_cause_it_could_not_observe() -> Bool {
   }
 }
 
+// THE VAULT-READ DISCRIMINATOR — THE WITNESS THAT THE ADDRESS COVERS THE SERVED BYTES, NOT JUST THE CONFIGURATION
+// (review: merry-fox-82, HOLD sections 1 and 5; the module's binding_digest comment names THIS row as the one that
+// goes RED if the "bundle" term is deleted, so the comment is only honest if the row exists). TWO SEEDS THAT ARE
+// THE SAME CONFIGURATION IN EVERY AXIS THE SEED DIGEST FOLDS — same handle, same packages, same disk, same
+// delivery — differing only in WHICH VALID SECRET THE VAULT HANDED BACK: two format-admitted sha512-crypt digests
+// under the one handle. credential_diagnostic covers the handle's locator and version only, and the render takes
+// the posture, not the read, so seed_digest and seed_rendering are PROVABLY equal across the pair; the served
+// document carries the digest (password_field_from returns issued.crypt_digest), so the bundle digest and the
+// binding address differ. Delete the bundle term from binding_digest and the last claim goes RED — that is the
+// severance this row exists to make observable. If the alternate digest stopped passing the format door the row
+// fails at its own control rather than passing vacuously.
+// One character differs from rig_credential_digest (the 'd' at body index 40 is 'Z'); every character is in the
+// libxcrypt base-64 alphabet "./A-Za-z0-9", so it passes the same format door the rig digest passes and the row
+// below is a real comparison, not one that fails at its own control.
+data alternate_rig_credential_digest: String = "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6Zy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
+
+fn binding_of_a_read(read: Optional<AdminPasswordHashReceipt>) -> Optional<AltraAutoinstallSeedBinding> {
+  match build_seed_fixture_with_read(read: read, credential: seeded_handle) {
+    Absent => Absent
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+        ) {
+        Bound { binding: binding } => Present { value: binding }
+        BindRefused { blocker: _ } => Absent
+      }
+  }
+}
+
+test fn a_second_valid_vault_read_moves_the_address_without_moving_the_configuration() -> Bool {
+  match admin_password_hash_receipt(credential: seeded_handle, crypt_digest: alternate_rig_credential_digest as NonEmptyStr) {
+    // THE CONTROL FIRST: if the alternate digest were not admissible the comparison below would compare a real
+    // binding against nothing, and a vacuous pass is exactly what this programme refuses.
+    ReceiptRefused { cause: _ } => false
+    ReceiptAccepted { receipt: alternate } =>
+      match binding_of_a_read(read: password_read_for(credential: seeded_handle)) {
+        Absent => false
+        Present { value: rig } =>
+          match binding_of_a_read(read: Present { value: alternate }) {
+            Absent => false
+            Present { value: other } =>
+              // SAME CONFIGURATION: the axes the seed digest folds cannot see the read.
+              content_hash_eq_structural( left: rig.seed_digest, right: other.seed_digest )
+                // SAME RENDERING: the document identity the address carries internally is equal too, so the
+                // ONLY differentiator left is the served bundle's own digest.
+                && (rig.seed_rendering as String) == (other.seed_rendering as String)
+                // THE SERVED BYTES DIFFER — both halves, because the password field is one of them.
+                && !content_hash_eq_structural( left: rig.served.bundle_digest, right: other.served.bundle_digest )
+                && !content_hash_eq_structural( left: rig.document_digest, right: other.document_digest )
+                // AND THE ADDRESS MOVED WITH THEM. This is the claim the bundle term in binding_digest carries;
+                // delete that term and this is the row that reddens.
+                && !content_hash_eq_structural( left: binding_digest(binding: rig), right: binding_digest(binding: other) )
+          }
+      }
+  }
+}
+
 // THE RENDERER IS THE ONE THE PROGRAMME SHIPS. The seed renders through
 // gunbc.os_install_emit::autoinstall_user_data — the same writer that lays out cloud-init's lateconfig — and this
 // calls THAT function again from the other side, on the payload read OUT OF the built document rather than passed
@@ -5079,6 +5236,70 @@ test fn the_file_is_the_records_joined_by_one_newline_and_no_more() -> Bool {
         file =>
           file == "tzdata tzdata/Areas select America\ntzdata tzdata/Zones/America select New_York"
             && count_character(text: file, character: "\n", seen: 0) == 1
+      }
+  }
+}
+
+// A TRAILING CONTINUATION NEVER SWALLOWS THE RECORD BELOW IT (review: merry-fox-82, HOLD section 6). Upstream
+// debconf joins a line ending in `\` to the line BELOW before matching, so a two-record file whose first value ends
+// in the continuation character is read as ONE malformed record: the answer smuggles the second record's owner and
+// label into its own content, and the second question goes unanswered on a board with no operator to answer it.
+// The joiner cannot be handed that pair, because the mint refuses the swallowing record outright. Both halves are
+// asserted: the swallowing record is refused with the TYPED continuation cause (not ValueEndsTheLine — that arm is
+// a newline in the value — and not ValueSelectsNothing), and the file built from the surviving records is the clean
+// answer ALONE, so the swallowing record contributed nothing that could reach the line below it.
+test fn a_trailing_continuation_never_swallows_the_record_below_it() -> Bool {
+  // THE POSITIVE REFUSAL, NAMED. A value that is otherwise a legal answer (one character that is not a separator,
+  // no embedded newline) but ends in `\` is refused specifically for the continuation, which is the arm that must
+  // be distinguishable from its two neighbours. If the continuation check were collapsed into either neighbour,
+  // this arm would not match and the row would go RED.
+  match debconf_answer_record(
+    owner: "tzdata" as NonEmptyStr,
+    label: "tzdata/Areas" as NonEmptyStr,
+    kind: AnswerSelect,
+    value: "America\\" as NonEmptyStr,
+  ) {
+    MintedSelection { record: _ } => false
+    RefusedAtTheMint { cause: cause } =>
+      match cause {
+        ValueCarriesTheContinuationCharacter { value: _ } =>
+          // THE TWO-RECORD BATCH: the swallowing record and a clean one below it. The swallowing record mints to
+          // no records at all, so the joined file is the clean answer alone — the swallowing record has no line
+          // with which to reach the record below it, and there is no trailing `\` anywhere in what is served.
+          match list_length(items: debconf_answer_for(
+            package: TzdataPackage,
+            kind: AnswerSelect,
+            label: "tzdata/Areas" as NonEmptyStr,
+            value: "America\\" as NonEmptyStr,
+          )) {
+            0 =>
+              match list_append(
+                left: debconf_answer_for(
+                  package: TzdataPackage,
+                  kind: AnswerSelect,
+                  label: "tzdata/Areas" as NonEmptyStr,
+                  value: "America\\" as NonEmptyStr,
+                ),
+                right: debconf_answer_for(
+                  package: TzdataPackage,
+                  kind: AnswerSelect,
+                  label: "tzdata/Zones/America" as NonEmptyStr,
+                  value: "New_York" as NonEmptyStr,
+                ),
+              ) {
+                joined =>
+                  match (debconf_selection_file(records: joined) as String) {
+                    file =>
+                      // THE CLEAN ANSWER ALONE, one line, no continuation character, and — decisively — the second
+                      // question still present on its own line rather than consumed by the first.
+                      file == "tzdata tzdata/Zones/America select New_York"
+                        && !file.contains("\\")
+                        && count_character(text: file, character: "\n", seen: 0) == 0
+                  }
+              }
+            _ => false
+          }
+        _ => false
       }
   }
 }

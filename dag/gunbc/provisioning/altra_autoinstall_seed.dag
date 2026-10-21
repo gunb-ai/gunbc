@@ -3161,8 +3161,7 @@ fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> a
       match seed_preseed_file(intents: all_package_intents(seed: seed)) == "" {
         True =>
           Present {
-            value:
-              ServedSeedBundle {
+            value: ServedSeedBundle {
                 user_data: content,
                 preseed: NoDebconfQuestionsToAnswer,
                 bundle_digest:
@@ -3182,8 +3181,7 @@ fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> a
             Absent => Absent
             Present { value: lines } =>
               Present {
-                value:
-                  ServedSeedBundle {
+                value: ServedSeedBundle {
                     user_data: content,
                     preseed: DebconfAnswersCarried { lines: lines },
                     bundle_digest:
