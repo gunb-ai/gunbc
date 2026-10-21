@@ -1095,29 +1095,13 @@ data enabled_rule_readback_items_field: NonEmptyStr = "custom_deployment_protect
 // THE SHAPE follows the established id carriers exactly: a sealed record over Int, whose field is the
 // digits GitHub sends. It is NOT sealed sole_constructor, for the same reason the three carriers are not:
 // GitHub sends the digits, so a module that has read the wire must be able to construct it, and sole
-// constructor confinement buys nothing that the minting functions do not already provide.
-//
-// WHAT IT BUYS, CLAIMED IN EXACTLY ITS MEASURED DIRECTION (Q1, manager msg_098c24a1 after the
-// side chat). The carrier REFUSES a foreign value where a rule id belongs: the confusion the review
-// found, where the mint's RuleIsNotTheOneRequested compared a run's digits against a rule's digits,
-// no longer TYPE-CHECKS -- verified by witnesses, one per refusal, this module states the shape and
-// never the refusal itself (extdeps owns interface shape, §3b):
-//   test.claim.deployment_gate_authorization_witness::the_mint_refuses_a_rule_that_is_not_the_one_read_back,
-//   test.claim.deployment_gate_evidence_forged_probe_witness::an_installation_id_where_a_rule_id_belongs_is_refused_at_the_field,
-//   test.claim.deployment_gate_evidence_forged_probe_witness::an_installation_id_where_a_rule_id_belongs_is_refused_at_the_annotation.
-// THE REVERSE DIRECTION IS NOT CLAIMED, because the host does not hold it: a carrier handed BY
-// REFERENCE to a field declared Int compiles today. That is a seed floor defect with its own owner
-// -- gunbc.recurring_failure_mode.product_value_at_a_scalar_formal_is_accepted (correction filed by
-// silent-ferret-505, gunbc PR 14684) -- not a fact this carrier can promise. For the run axis the
-// gap closes with the run-id migration, because carrier-at-carrier IS checked; until then the Int
-// positions are guarded by the mint and act refusals, each witnessed:
-//   test.claim.deployment_gate_authorization_witness::the_mint_refuses_a_rule_that_is_not_the_one_read_back,
-//   test.claim.deployment_gate_operator_steps_witness::the_act_refuses_a_standing_sealed_for_another_account_or_another_repository,
-//   test.claim.deployment_gate_operator_steps_witness::the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on,
-//   test.claim.deployment_gate_operator_steps_witness::a_standing_from_another_attempt_or_an_aged_one_is_not_spendable.
-// Run ids deliberately STAY Int here: their carrier is a separate replacement migration over
-// std.types.WorkflowRunId and the four extdeps.github Int run ids already on main (§3, §2 -- this
-// module must not mint a third representation of one upstream concept).
+// constructor confinement buys nothing that the minting functions do not already provide. What it DOES
+// buy is axis distinctness -- the fact §5 asks for. With rule_id: GitHubDeploymentProtectionRuleId, the
+// expression `rule_id: run_id` (an Int) no longer TYPE-CHECKS; the confusion the review found, where the
+// mint's RuleIsNotTheOneRequested compared a run's digits against a rule's digits, becomes unwritable
+// rather than validated. Run ids deliberately STAY Int here: their carrier is a separate replacement
+// migration over std.types.WorkflowRunId and the four extdeps.github Int run ids already on main (§3,
+// §2 -- this module must not mint a third representation of one upstream concept).
 type GitHubDeploymentProtectionRuleId {
   value: Int,
 }
