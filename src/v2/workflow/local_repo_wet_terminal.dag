@@ -3424,7 +3424,7 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // executing lane folds is data nobody reads). `retired_rows_are_accounted_for` joins the live
     // populations — the roster's own chunks, this schedule, the carrier's rows — and refuses when a
     // retired identity is still enrolled, when a retired control is missing from this list or carries
-    // the wrong expectation, or when a retirement has no receipt. Its three controls run the same
+    // the wrong expectation, or when a retirement has no receipt. Its controls run the same
     // join on synthetic populations, so each refusal arm is itself discriminated.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "retired_rows_are_accounted_for" },
@@ -3439,15 +3439,69 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_schedule_arm_refuses_a_missing_or_mis_expectationed_row" },
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_control_row_refuses_nothing" },
       entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
-      function: "the_schedule_arm_refuses_a_missing_or_mis_expectationed_row",
+      function: "the_control_row_refuses_nothing",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_receipt_arm_refuses_an_unreceipted_row" },
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_schedule_arms_distinguish_missing_from_mis_expectationed" },
       entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
-      function: "the_receipt_arm_refuses_an_unreceipted_row",
+      function: "the_schedule_arms_distinguish_missing_from_mis_expectationed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_standing_arm_refuses_a_row_that_never_stood_red" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_standing_arm_refuses_a_row_that_never_stood_red",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_enrolment_date_arms_separate_absence_from_fabrication" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_enrolment_date_arms_separate_absence_from_fabrication",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_durable_account_arms_refuse_empty_and_phantom" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_durable_account_arms_refuse_empty_and_phantom",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_instrument_arm_refuses_a_credit_to_another_claim" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_instrument_arm_refuses_a_credit_to_another_claim",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_trigger_arm_refuses_a_named_discharge_that_does_not_exist" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_trigger_arm_refuses_a_named_discharge_that_does_not_exist",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_reason_arm_refuses_a_blank_explanation" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_reason_arm_refuses_a_blank_explanation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_emptiness_arm_refuses_a_carrier_with_nothing_in_it" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_emptiness_arm_refuses_a_carrier_with_nothing_in_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_carrier_is_not_silently_empty" },
+      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
+      function: "the_carrier_is_not_silently_empty",
       expectation: ExpectedToHold {}
     }
   ]
