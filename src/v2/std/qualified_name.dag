@@ -601,6 +601,14 @@ fn optional_declaration_identity() -> QualifiedName {
   ]
 }
 
+// THE ABSENT VARIANT OF THAT DECLARATION: what the authored `none` lowers to, as the marked reference
+// declaration_reference_node writes (ruling gunbc.design_ruling dag_absence_is_one_meaning). Derived from
+// optional_declaration_identity by the variant's declared path (v2.compiler.symbol_index_fill), never spelled
+// beside it.
+fn absent_declaration_identity() -> QualifiedName {
+  qualified_name_snoc(qn: optional_declaration_identity(), segment: symbol_intern_lexeme(lexeme: "Absent"))
+}
+
 // WHAT DECLARATION A TYPE NODE DENOTES, with the arguments applied to it: the ONE reading every
 // declaration-keyed consumer of a TYPE node uses (ruling gunbc.design_ruling
 // optional_sugar_is_declaration_bound). A consumer asks WHAT a type is; it does not hand-read the node's
