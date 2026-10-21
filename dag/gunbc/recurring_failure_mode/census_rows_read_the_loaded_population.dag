@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.census_rows_read_the_loaded_population
 
 import std.types { String, NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 // REGISTERED BY THE SHARD-CONTEXT DEFECT (Manager 1, 2026-10-21, msg_dfb4289f; strengthened by
 // clever-carp-254's fleet rows at run 39622052948 and sunny-bee-153's artifact read on branch
@@ -13,6 +13,11 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data census_rows_read_the_loaded_population: RecurringFailureMode = RecurringFailureMode {
   identity: "census_rows_read_the_loaded_population" as NonEmptyStr,
+
+  // The row states no rung for itself: the hermeticity half is fixed and executed; the open half
+  // (the per-round substrate re-read) names its next-rung trigger inside its receipts rather than
+  // as a position on the ladder. No rung number was read for this class, so none is claimed.
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "THE FAILURE MODE: the resolver's ambient primitive-authority tier (v2.compiler.resolve resolve_atom_primitive_authority) binds an unimported spelling -- first, contains, map_get, starts_with, join, split, replace, string_length, fold, keys, values -- by looking up a contract row (std.primitives.<name>_contract) in the symbol index of the modules the run LOADED. While the scoped census loaded exactly the named subjects' closures, whether such a name bound was a fact about the invocation's subject list, not about the module: the same module, same binary, emitted binding_partial ... ambient:primitive_authority std.primitives.first_contract in one run and binding_unbound in another, because std.primitives rode the first run's closures and not the second's. A census consumer comparing base against shards then reads the difference as a behavior change of the module and refuses a merge that changed nothing -- which is exactly how this blocked //gunbc/instruments:namespace-wave-binding-diff's positive merge for #14324.",
