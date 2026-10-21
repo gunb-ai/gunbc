@@ -4292,7 +4292,7 @@ fn recovery_test_subject() -> MachineIntakeSubject {
 // publishes.
 fn recovery_test_controller_with(
   endpoint_host: NonEmptyStr,
-  release: BmcFirmwareReleaseIdentity,
+  firmware_release: BmcFirmwareReleaseIdentity,
 ) -> BmcAccessObservation {
   BmcAccessObservation {
     // THE ADDRESS THAT WAS KNOCKED, as a parameter -- 04_post_reset_readback.txt's request line is
@@ -4303,7 +4303,7 @@ fn recovery_test_controller_with(
     identity: BmcObservedIdentity {
       board: BoardFruNotRead { cause: BoardAreaFieldsUnreadable },
       chassis_part_number: none,
-      firmware: release,
+      firmware: firmware_release,
     },
     discovered_surfaces: [],
     boot_control_routes: [],
@@ -4316,7 +4316,7 @@ fn recovery_test_controller_with(
 }
 
 fn recovery_test_controller_observation() -> BmcAccessObservation {
-  recovery_test_controller_with(endpoint_host: "192.168.1.250", release: recovery_test_release())
+  recovery_test_controller_with(endpoint_host: "192.168.1.250", firmware_release: recovery_test_release())
 }
 
 // THE CHANNEL OBSERVATION AS A LITERAL WITH ITS JOIN-RELEVANT PARTS AS PARAMETERS, same reason: the
@@ -4499,7 +4499,7 @@ test fn the_bind_refuses_a_channel_observation_of_another_unit() -> Bool {
 test fn the_bind_refuses_an_endpoint_the_bmc_never_reported() -> Bool {
   let crossed = recovery_fold_with(
     channel: recovery_test_channel(),
-    controller: recovery_test_controller_with(endpoint_host: "192.168.1.249", release: recovery_test_release()),
+    controller: recovery_test_controller_with(endpoint_host: "192.168.1.249", firmware_release: recovery_test_release()),
   )
   (match crossed.outcome {
     RecoveryReadbackNotBoundToThisController {
@@ -4525,7 +4525,7 @@ test fn the_bind_refuses_an_endpoint_that_is_not_an_address() -> Bool {
     channel: recovery_test_channel(),
     controller: recovery_test_controller_with(
       endpoint_host: "bmc-recovery-fixture-controller",
-      release: recovery_test_release(),
+      firmware_release: recovery_test_release(),
     ),
   )
   (match crossed.outcome {
@@ -4579,7 +4579,7 @@ test fn the_bind_refuses_release_answers_that_disagree() -> Bool {
     channel: recovery_test_channel(),
     controller: recovery_test_controller_with(
       endpoint_host: "192.168.1.250",
-      release: BmcFirmwareReleaseIdentity { family: OpenBmc, raw_version: "9.99", semantic_version: none },
+      firmware_release: BmcFirmwareReleaseIdentity { family: OpenBmc, raw_version: "9.99", semantic_version: none },
     ),
   )
   (match crossed.outcome {
