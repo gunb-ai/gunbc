@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_verification_reads_its_own_label_not_its_o
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_verification_reads_its_own_label_not_its_output: RecurringFailureMode = RecurringFailureMode {
   identity: "a_verification_reads_its_own_label_not_its_output" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a verification reads its own label, not its output** (a check runs, reports the defect correctly, and the author's OWN adjacent narration asserts the opposite -- and the narration is what gets read. The instrument is innocent at every coordinate: right command, right output, honest exit status. What fails is the sentence the author wrote next to it.",

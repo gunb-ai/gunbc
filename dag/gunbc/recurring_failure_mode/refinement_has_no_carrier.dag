@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.refinement_has_no_carrier
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data refinement_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "refinement_has_no_carrier" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE (historical): a where clause refining a fn parameter, record field or io field, which v1 reads, while v2 dropped the clause on the lowered binder because body_lower_kept_where_clause served only a type variant.",

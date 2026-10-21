@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.window_rendered_subject_misattribution
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data window_rendered_subject_misattribution: RecurringFailureMode = RecurringFailureMode {
   identity: "window_rendered_subject_misattribution" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a rendered window reports its contents as the change's subject** (an instrument that renders a WINDOW AROUND a change -- a diff hunk, a context excerpt, a snippet, a log tail -- is read for WHICH SUBJECT CHANGED, and whenever the subject is WIDER THAN THE WINDOW the reader meets neighbours first and takes an identity from one of them.",
