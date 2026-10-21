@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.unidentified_clients_exhaust_a_hosts_sshd_st
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 
 data unidentified_clients_exhaust_a_hosts_sshd_startups: RecurringFailureMode = RecurringFailureMode {
   identity: "unidentified_clients_exhaust_a_hosts_sshd_startups" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "INVALID STATE: a fleet host's sshd admits MaxStartups 10:30:100 (the default), and clients nobody has identified hold its unauthenticated startup slots, so a converge leg's key exchange is reset (kex_exchange_identification: Connection reset by peer) and the leg refuses. On srv1 the journal at 16:30Z on 2026-10-15 shows drop connection #11 past MaxStartups, with connections from an IPv6 client on srv1 itself and from 192.168.1.188 beside the converge's own.",
