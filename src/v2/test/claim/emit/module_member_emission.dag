@@ -4,6 +4,8 @@ import v2.extdeps.languages.dag { dag_surface_edge_label }
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_produced { emit_module_member }
+import v2.compiler.target_serialize { serialize_facts_absent_tree }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.body_lowering_fold { DeclaredRefinement }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
@@ -182,7 +184,9 @@ fn member_emission_supplied_refinement() -> String {
     edge: member,
     target: rust_target_model(),
     realization_host: rust_target_model(),
-    kinds: [DeclaredRefinement { name: ^Pos }]
+    kinds: [DeclaredRefinement { name: ^Pos }],
+    tree: serialize_facts_absent_tree(root: member.target),
+    declarations: empty_symbol_index()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried
     Rejected { diagnostics: d } => concat("REFUSED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
