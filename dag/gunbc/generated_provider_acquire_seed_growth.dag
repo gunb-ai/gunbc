@@ -36,6 +36,7 @@ data generated_provider_acquire_seed_growth_justification: SeedGrowthJustificati
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "a_present_provider_acquires_nothing_and_a_chained_demand_acquires_only_its_own_module", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "emissions_are_built_and_projected_only_at_their_named_sites", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "cost_receipt_exact_demand_versus_carrier_presence", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.provider_acquire.tests", decl_name: "the_real_crossing_refuses_hermetically_and_acquires_through_the_pool", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_answer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "fixture_pool_closure_of", field: WholeDeclaration }
   ],

@@ -648,4 +648,64 @@ mod tests {
             "cost receipt: entries={entries} demanding_route={demanding} carrier_present={carrier_present} carrier_present_without_demand={carrier_without_demand} modules_the_carrier_rule_would_add={added_by_carrier_rule}"
         );
     }
+
+    /// THE REAL CROSSING THROUGH TWO REAL ADAPTERS (PR 2). The probe is the emit-check u_ row's shape:
+    /// a host-text value at a v2.std.text.String formal, importing only v2.std.text, so its authored
+    /// closure lacks std.coercion. Through the hermetic adapter (pool empty) the crossing's demand
+    /// cannot be met and the compile refuses GeneratedProviderUnavailable -- a class only a generated
+    /// demand produces, so the red proves the crossing was entered. Through the emit-check adapter
+    /// (the witness-root pool) the same closure acquires std.coercion and compiles with no blocking
+    /// diagnostic. Removing either the producer's demand or the adapter's acquisition reds one arm.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn the_real_crossing_refuses_hermetically_and_acquires_through_the_pool() {
+        let pool = super::super::build_module_path_index_from_witness_roots();
+        let sources = emit_check_sources("module test.claim.text_unfold_qualified_probe\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n", &pool);
+        assert!(
+            !sources
+                .iter()
+                .any(|s| s.path.ends_with("dag/std/coercion.dag")),
+            "the probe's authored closure already holds the route"
+        );
+        let classes = |r: &ResolvedPipelineResult| -> Vec<String> {
+            r.diagnostics
+                .iter()
+                .filter(|d| {
+                    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+                })
+                .map(|d| match d.diagnostic.as_ref() {
+                    CompilerDiagnostic::GeneratedProviderUnavailable {
+                        cause, declaration, ..
+                    } => {
+                        format!(
+                            "GeneratedProviderUnavailable/{cause:?}/{}.{}",
+                            declaration.module_path, declaration.decl_name
+                        )
+                    }
+                    other => format!("{other:?}"),
+                })
+                .collect()
+        };
+        let hermetic = compile_to_provider_fixed_point(
+            sources.clone(),
+            &|_: &str| PoolAnswer::Lacks,
+            &|m: &str| Err(format!("hermetic: no pool holds '{m}'")),
+        )
+        .expect("hermetic compile runs");
+        assert_eq!(
+            classes(&hermetic),
+            vec!["GeneratedProviderUnavailable/UnavailableModuleAbsent/std.coercion.unicode_scalar_unfold".to_string()]
+        );
+        let acquired = compile_to_provider_fixed_point(
+            sources,
+            &|m: &str| super::super::emit_host::fixture_pool_answer(m, &pool),
+            &|m: &str| super::super::emit_host::fixture_pool_closure_of(m, &pool),
+        )
+        .expect("acquiring compile runs");
+        assert!(
+            classes(&acquired).is_empty(),
+            "the acquired closure still refuses: {:?}",
+            classes(&acquired)
+        );
+    }
 }
