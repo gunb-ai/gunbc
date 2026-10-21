@@ -558,12 +558,17 @@ fn p4_field_is_declared_optional_watt(fact: DeclFact, decl: String, field: Strin
 }
 
 // The declaring type's own text: everything after its header up to the brace that closes it.
+// The two intermediates carry explicit `List<String>`/`String` annotations on purpose: a value
+// bound out of a `Cons` pattern keeps a bare element type `T` otherwise, and `T` establishes no
+// method surface, so the next `.split` fails to resolve at emit.
 fn p4_type_block(content: String, decl: String) -> String {
-  let after_header = match content.split(delimiter: concat("type ", concat(decl, " {"))) {
+  let headers: List<String> = content.split(delimiter: concat("type ", concat(decl, " {")))
+  let after_header: String = match headers {
     Cons { head: _, tail: Cons { head: rest, tail: _ } } => rest
     _ => ""
   }
-  match after_header.split(delimiter: "\n}") {
+  let blocks: List<String> = after_header.split(delimiter: "\n}")
+  match blocks {
     Cons { head: block, tail: _ } => block
     _ => ""
   }
