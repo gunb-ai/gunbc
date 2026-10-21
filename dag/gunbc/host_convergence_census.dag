@@ -642,6 +642,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
+    identity: cite(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_cap_release_ci_wet"),
+    subject: RunnerHostFiles,
+    phases: protocol_phases(false, true, true, true, false, true, false),
+    current_authority: cite(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_cap_release_ci_wet"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_runner_host_cap_release_step"),
+  ),
+  census_row(
     identity: cite(module_path: "gunbc.runner.runner_password_session_tool_converge", decl_name: "converge_password_session_tools"),
     subject: RunnerPasswordSessionTools,
     phases: protocol_phases(false, true, false, false, false, true, false),
