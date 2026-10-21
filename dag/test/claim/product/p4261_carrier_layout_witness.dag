@@ -131,6 +131,8 @@ import product.p4261_carrier_layout {
   e1_j24_positions, e1_j24_resistances, e1_j24_pitch, e1_j24_pin, j24_text, e1_ds1_2, e1_u104, e1_ds1_2_resistances,
   e1_j68_resistances, j68_shape_text, j68_shape_from, j68_jtag_standing, e1_j68_volts_under_labels, e1_j68_chain_scans, JtagChainScan, e1_j68_disputed_volt, e1_j68_labelled_photo,
   k1_measured, k1_phases, k1_j68, k1_return, k1_j68_volts_at_40ma, k1_j30, k1_j30_volts_at_40ma,
+  k1_transitions, k1_inductor_volts_at_40ma, k1_l_2r2, k1_l_4r7_near, k1_l_4r7_far, inductor_pad_unrecorded, inductor_pad_near_u4, inductor_pad_far_u4,
+  e1_inductor_volts, e1_l_2r2, e1_l_4r7_near,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -350,7 +352,7 @@ import product.electrical.carrier_phase {
   PhaseGap, DrawAmbiguous, SettlingUnread, PhaseNotEnergized, DrawUnread, IndicatorsUnread, IndicatorPattern, IndicatorsDescribed, AllDark, PresenceUnread, ProtectedBusInconsistent,
   SwitchPoleClosure, PoleClosureStanding, ClosesTowardOnLegend, ClosesAwayFromOnLegend, PoleClosureUnread, pole_closure_standing, SwitchPoleState, TowardOnLegend, AwayFromOnLegend, PolePositionUnrecorded,
   ProtectedBusStanding, ProtectedInputBusActive, ProtectedInputBusHeldOff, ProtectedBusUnread, ProtectedBusGap, NoReadingAtDownstream, SourceVoltageUnrecorded, ReadingIsABound,
-  PhaseNodeVoltage, SupplyReading, CurrentRead, SourceModeUnrecorded, SettingUnrecorded, SettingOneOf, SettledSteady, SettlingUnrecorded, PhaseSettling, SourceSettingStanding,
+  PhaseNodeVoltage, SupplyReading, CurrentRead, CurrentAmbiguous, CurrentUnrecorded, CarrierTransitionObservation, SourceModeUnrecorded, SettingUnrecorded, SettingOneOf, SettledSteady, SettlingUnrecorded, PhaseSettling, SourceSettingStanding,
   transition_text, phase_standing_text,
 }
 
@@ -1933,7 +1935,7 @@ test fn the_carrier_phases_classify_from_their_records() -> Bool {
     && phase_arm(layout: live, key: "j30-release") == 5 && phase_arm(layout: live, key: "j68-release") == 5
     && phase_arm(layout: live, key: "first-lit-state") == 6 && phase_gap_is(layout: live, key: "first-lit-state", which: 1)
     && phase_arm(layout: live, key: "p9-not-recorded") == 9
-    && count(e1_phases) == 16 && count(e1_transitions) == 13
+    && count(e1_phases) == 17 && count(e1_transitions) == 13
     && phase_arm(layout: live, key: "p3-all-poles-on") == 6 && phase_gap_is(layout: live, key: "p3-all-poles-on", which: 4)
     && phase_arm(layout: live, key: "p3-after-j30-tap") == 3
     && phase_arm(layout: live, key: "p0-bias-module-installed") == 0 && phase_arm(layout: live, key: "p1-s2-domain-module-installed") == 1
@@ -2458,11 +2460,49 @@ fn node_mv(v: PhaseNodeVoltage) -> Nat {
 test fn the_k1_reaches_the_auxiliary_domain_with_no_jtag_reference() -> Bool {
   let k1_r2 = filter(k1_j68_volts_at_40ma, v => terminal_ref_equal(a: v.at, b: terminal_ref(component: k1_j68, terminal: "R2" as TerminalIdentity)))
   let e1_r2 = filter(e1_j68_volts_under_labels, v => terminal_ref_equal(a: v.at, b: j68_point(name: "R2")))
-  count(k1_phases) == 2 && count(k1_measured.transitions) == 1
+  count(k1_phases) == 5 && count(k1_measured.transitions) == 5
     && phase_arm(layout: p4261_k1_layout, key: "k1-all-poles-on") == phase_arm(layout: p4261_e1_layout, key: "p1-s2-domain")
     && phase_text_in(layout: p4261_k1_layout, key: "k1-all-poles-on").contains("AUXILIARY DOMAIN ACTIVE")
     && count(k1_j68_volts_at_40ma) == 6 && all(k1_j68_volts_at_40ma, v => node_mv(v: v) == 0)
     && count(k1_r2) == 1 && count(e1_r2) == 1 && all(e1_r2, v => node_mv(v: v) == 1800)
     && count(k1_j30_volts_at_40ma) == 3 && count(filter(k1_j30_volts_at_40ma, v => node_mv(v: v) == 260)) == 2
     && carrier_input_reading(layout: p4261_k1_layout).contains("k1-all-poles-on")
+}
+
+// The pads of the three inductors beside U4 separate the carriers at the converter level: on the K1 at
+// 40 mA one converter reads a few volts and two read 0 V, and on the E1 settled those two read 3.2 V and
+// 0.94 V; the two stimuli that move the E1 (a J30 tap, S1's pole 2) are recorded on the K1 as transitions
+// that change nothing. Red when the K1's 2R2 is given the E1's 0.94 V, or when a recorded no-change
+// transition loses its unchanged draw.
+fn pad_mv(volts: List<PhaseNodeVoltage>, c: ComponentInstanceIdentity, pad: NonEmptyStr) -> List<Nat> {
+  map(filter(volts, v => terminal_ref_equal(a: v.at, b: terminal_ref(component: c, terminal: pad as TerminalIdentity))), v => node_mv(v: v))
+}
+fn trace_ma(t: CarrierTransitionObservation) -> List<Nat> {
+  map(t.supply_trace, r => match r.current { CurrentRead { value } => milliampere_count(i: value), CurrentAmbiguous { verbatim: _, candidates: _ } => 0, CurrentUnrecorded => 0 })
+}
+fn k1_transition_named(key: NonEmptyStr) -> List<CarrierTransitionObservation> {
+  filter(k1_transitions, t => t.key == key)
+}
+test fn the_k1_powers_one_converter_beside_u4_where_the_e1_powers_them_all() -> Bool {
+  let k1_on = filter(k1_phases, p => p.key == "k1-all-poles-on")
+  let e1_read = filter(e1_phases, p => p.key == "inductors-settled-read")
+  let tap = k1_transition_named(key: "k1-j30-tapped")
+  let away = k1_transition_named(key: "k1-s1-pole2-away")
+  let back = k1_transition_named(key: "k1-s1-pole2-back")
+  count(k1_on) == 1 && count(e1_read) == 1
+    && all(k1_on, p => count(p.node_voltages) == 13
+      && pad_mv(volts: p.node_voltages, c: k1_l_2r2, pad: inductor_pad_unrecorded) == [0]
+      && pad_mv(volts: p.node_voltages, c: k1_l_4r7_near, pad: inductor_pad_unrecorded) == [0]
+      && pad_mv(volts: p.node_voltages, c: k1_l_4r7_far, pad: inductor_pad_near_u4) == [3200]
+      && pad_mv(volts: p.node_voltages, c: k1_l_4r7_far, pad: inductor_pad_far_u4) == [3000])
+    && all(e1_read, p => count(p.node_voltages) == 2
+      && pad_mv(volts: p.node_voltages, c: e1_l_4r7_near, pad: inductor_pad_unrecorded) == [3200]
+      && pad_mv(volts: p.node_voltages, c: e1_l_2r2, pad: inductor_pad_unrecorded) == [940])
+    && count(k1_inductor_volts_at_40ma) == 4 && count(e1_inductor_volts) == 2
+    && count(tap) == 1 && all(tap, t => trace_ma(t: t) == [40, 40] && t.from_phase == "k1-all-poles-on" && t.to_phase == "k1-after-j30-tap")
+    && count(away) == 1 && count(back) == 1
+    && all(away, t => t.from_phase == "k1-s2-as-p1" && t.to_phase == "k1-s2-as-p1-s1-2-away")
+    && all(back, t => t.from_phase == "k1-s2-as-p1-s1-2-away" && t.to_phase == "k1-s2-as-p1")
+    && phase_arm(layout: p4261_k1_layout, key: "k1-after-j30-tap") == phase_arm(layout: p4261_k1_layout, key: "k1-all-poles-on")
+    && carrier_input_reading(layout: p4261_k1_layout).contains("'k1-all-poles-on' -> 'k1-after-j30-tap' on")
 }
