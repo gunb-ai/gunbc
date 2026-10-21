@@ -319,6 +319,16 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // with the attempt's CaptureWork and without a git commit; a clean checkout of a different commit
 // refuses as CaptureAbsent; valid bytes claiming this HEAD stored under another basename also
 // refuse as CaptureAbsent. Hermetic claims supply porcelain, standing, and SubmissionCaptureObservation.
+// TWO CLAIM-BATCH PARSE-GATE MEMBERS (test.claim.claim_batch_parse_gate_witness, Charter 4). They
+// plant a module pair under a mktemp directory in target/, run the already-built seed claim_batch
+// over it with gunbc.WitnessBin.Run, and remove the directory: the admitted effect is a temp
+// directory plus ONE CHILD PROCESS OF THE SEED BINARY the floor already built, and that child is a
+// read-only walk. That child is the one thing this lane's membership property does not already
+// state, so it is stated here as a distinct effect rather than folded into the sentences above: a
+// member whose verdict depends on target/release/claim_batch existing reaches no verdict where the
+// binary is absent, which is the reachability risk every member carries. The refusal row passes only
+// the planted root (7ms); the control must also walk the dag root so gunbc.output_policy resolves
+// (about 62s on a remote runner), and that cost is irreducible while a verdict needs that module.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -3340,6 +3350,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_activation_ensure_wet_witness", function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does" },
       entry: "dag/test/claim/roadmap/session_activation_ensure_wet_witness.dag",
       function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line" },
+      entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
+      function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "a_parseable_imported_module_reaches_a_real_pass_verdict" },
+      entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
+      function: "a_parseable_imported_module_reaches_a_real_pass_verdict",
       expectation: ExpectedToHold {}
     }
   ]
