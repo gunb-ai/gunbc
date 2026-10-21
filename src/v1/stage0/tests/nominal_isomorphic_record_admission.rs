@@ -355,6 +355,51 @@ fn generic_slot_at_coproduct_and_its_arm_is_accepted() {
     );
 }
 
+/// SHARED-T COPRODUCT CONTROL (side-chat review 83758 REQUEST_CHANGES item,
+/// tidy-ant-251 2026-10-21): a Shape-typed argument CONSTRAINS T, and a Circle
+/// LITERAL fills ANOTHER SLOT SHARING THAT SAME T. The previous coproduct
+/// control used two independent identity<T> calls, so it never judged an arm
+/// against a T already grounded to the coproduct parent. This is the shape that
+/// must ACCEPT: the arm inhabits the parent T the call itself solved -- the
+/// same relation refusal_cover_add relies on (a ByteRange arm snoc'd into a
+/// FreeMonoid slot the call grounds to Extent).
+#[test]
+fn arm_at_second_slot_sharing_a_coproduct_constrained_type_variable_is_accepted() {
+    let root = fixture_root("shared-t-coproduct");
+    let entry = root.join("nominal_shared_t_coproduct.dag");
+    std::fs::write(
+        &entry,
+        format!(
+            "{LOCAL_PREAMBLE}\n\
+             type Shape\n\
+             \x20 = Circle {{ r: Int }}\n\
+             \x20 | Square {{ side: Int }}\n\
+             \n\
+             fn keep_and_check<T>(keeper: T, candidate: T) -> T {{\n\
+             \x20 candidate\n\
+             }}\n\
+             \n\
+             fn probe() -> ProcessExit {{\n\
+             \x20 let s: Shape = Square {{ side: 4 }}\n\
+             \x20 let kept = keep_and_check(keeper: s, candidate: Circle {{ r: 3 }})\n\
+             \x20 match kept {{\n\
+             \x20\x20 Circle {{ r: r }} => if r == 3 {{ ExitSuccess }} else {{ ExitFailure {{ code: 1, reason: \"control shape broken\" }} }}\n\
+             \x20\x20 Square {{ side: _ }} => ExitFailure {{ code: 1, reason: \"control shape broken\" }}\n\
+             \x20 }}\n\
+             }}\n"
+        ),
+    )
+    .expect("write shared-t coproduct fixture");
+    let output = run_fixture(&root, &entry, "probe");
+    let _ = std::fs::remove_dir_all(&root);
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        output.status.success(),
+        "a Circle arm at a second slot whose T the call already solved to Shape must be accepted, got exit {}:\n{stderr}",
+        output.status,
+    );
+}
+
 fn run_fixture(root: &Path, entry: &Path, function: &str) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_gunbc"))
         .current_dir(repo_root())
