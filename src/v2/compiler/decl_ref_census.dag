@@ -24,7 +24,7 @@ import v2.std.type_binder { edge_is_type_alias, type_alias_wrapper_is, type_decl
 import v2.std.node { Authored, Node, NodeFold, Positional, StructuralLabel, fold_node, symbol_lexeme }
 import v2.std.node_query { construct_field_edges, construct_tag_path_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
-import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, ComputedDeclName, DeclRefDisposition, decl_ref_disposition_roster }
+import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, ComputedDeclName, DeclRefDisposition, DeclRefSubject, decl_ref_disposition_roster }
 import gunbc.source_layout { layout_module_storage_path }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
@@ -279,7 +279,7 @@ fn literal_scan_add(scan: LiteralScan, file: Symbol, n: Node, lc: LiteralCtx) ->
       }
     Present { value: m } =>
       match string_value(n: field_target(n: n, name: "decl_name")) {
-        Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), " computed-decl ", m)) }
+        Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: subject_key(s: ComputedDeclName { file: symbol_lexeme(sym: file), module_path: m })) }
         Present { value: d } =>
           match declared_field_of(v: field_target(n: n, name: "field"), lc: lc) {
             Absent =>
@@ -644,40 +644,29 @@ fn join_segments_with(segs: List<String>, sep: String) -> String {
   }
 }
 
-fn subject_is_citation(d: DeclRefDisposition, r: DeclarationRef) -> Bool {
-  match d.subject {
-    CitedDeclaration { reference: x } => declaration_ref_eq(a: x, b: r)
-    CitedSpan { text: _ } => false
-    ComputedDeclName { site: _ } => false
+// One identity per subject, compared once: a fourth DeclRefSubject variant adds one arm here, not a predicate.
+fn subject_key(s: DeclRefSubject) -> String {
+  match s {
+    CitedDeclaration { reference: x } => concat("decl|", declaration_ref_display_key(ref: x))
+    CitedSpan { text: t } => concat("span|", t)
+    ComputedDeclName { file: f, module_path: m } => concat("site|", concat(f, "|", m))
   }
 }
 
-fn subject_is_span(d: DeclRefDisposition, span: String) -> Bool {
-  match d.subject {
-    CitedDeclaration { reference: _ } => false
-    CitedSpan { text: t } => t == span
-    ComputedDeclName { site: _ } => false
-  }
+fn subject_is(d: DeclRefDisposition, s: DeclRefSubject) -> Bool {
+  subject_key(s: d.subject) == subject_key(s: s)
 }
 
 fn roster_subject_text(d: DeclRefDisposition) -> String {
   match d.subject {
     CitedDeclaration { reference: x } => declaration_ref_display_key(ref: x)
     CitedSpan { text: t } => t
-    ComputedDeclName { site: t } => t
-  }
-}
-
-fn subject_is_site(d: DeclRefDisposition, site: String) -> Bool {
-  match d.subject {
-    CitedDeclaration { reference: _ } => false
-    CitedSpan { text: _ } => false
-    ComputedDeclName { site: t } => t == site
+    ComputedDeclName { file: f, module_path: m } => concat(f, " computed-decl ", m)
   }
 }
 
 fn unreadable_is_rostered(site: String) -> Bool {
-  any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is_site(d: d, site: site) })
+  any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_key(s: d.subject) == site })
 }
 
 fn unrostered_unreadable(c: DeclRefCensus) -> List<String> {
@@ -685,7 +674,7 @@ fn unrostered_unreadable(c: DeclRefCensus) -> List<String> {
 }
 
 fn roster_has_span(span: String) -> Bool {
-  any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is_span(d: d, span: span) })
+  any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is(d: d, s: CitedSpan { text: span }) })
 }
 
 fn resolution_reference(r: DeclarationRefResolution) -> Optional<DeclarationRef> {
@@ -701,14 +690,14 @@ fn resolution_reference(r: DeclarationRefResolution) -> Optional<DeclarationRef>
 fn roster_has_resolution(r: DeclarationRefResolution) -> Bool {
   match resolution_reference(r: r) {
     Absent => false
-    Present { value: x } => any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is_citation(d: d, r: x) })
+    Present { value: x } => any(xs: decl_ref_disposition_roster, predicate: fn(d) { subject_is(d: d, s: CitedDeclaration { reference: x }) })
   }
 }
 
 fn roster_row_matches_resolution(d: DeclRefDisposition, r: DeclarationRefResolution) -> Bool {
   match resolution_reference(r: r) {
     Absent => false
-    Present { value: x } => subject_is_citation(d: d, r: x)
+    Present { value: x } => subject_is(d: d, s: CitedDeclaration { reference: x })
   }
 }
 
@@ -744,16 +733,16 @@ fn roster_row_matched(d: DeclRefDisposition, c: DeclRefCensus) -> Bool {
       xs: c.prose,
       predicate: fn(s) {
         match span_arm(s: s, refused: c.refused_files) {
-          SpanArmStaleUnjudged => subject_is_span(d: d, span: s.span)
-          SpanArmStaleRostered => subject_is_span(d: d, span: s.span)
-          SpanArmStaleRefused => subject_is_span(d: d, span: s.span)
+          SpanArmStaleUnjudged => subject_is(d: d, s: CitedSpan { text: s.span })
+          SpanArmStaleRostered => subject_is(d: d, s: CitedSpan { text: s.span })
+          SpanArmStaleRefused => subject_is(d: d, s: CitedSpan { text: s.span })
           SpanArmResolves => false
           SpanArmNotASymbol => false
           SpanArmUnclassified => false
         }
       }
     )
-    || any(xs: c.unreadable, predicate: fn(u) { subject_is_site(d: d, site: u) })
+    || any(xs: c.unreadable, predicate: fn(u) { subject_key(s: d.subject) == u })
 }
 
 fn unmatched_roster_rows(c: DeclRefCensus) -> List<DeclRefDisposition> {

@@ -28,7 +28,7 @@ module v2.compiler.decl_ref_disposition_roster
 //   HistoricalReceipt { commit } -- prose in a receipt naming a symbol that existed at that commit and
 //                                   has since been renamed or deleted; the receipt is a record, not a live citation.
 //   DeclNameIsAParameter         -- a construction whose module_path is a literal and whose decl_name is a parameter: the
-//                                   module is named, the declaration is chosen at run time. The subject is the site (file and module).
+//                                   module is named, the declaration is chosen at run time. The subject is the site: the file holding the construction and the module its literal names.
 //                                   dissolve-on: substrate construction refuses unresolvable DeclarationRef literals (computed names then
 //                                   resolve at the call that supplies them).
 import std.types { List, NonEmptyStr }
@@ -51,7 +51,7 @@ type DeclRefDispositionReason
 type DeclRefSubject
   = CitedDeclaration { reference: DeclarationRef }
   | CitedSpan { text: String }
-  | ComputedDeclName { site: String }
+  | ComputedDeclName { file: String, module_path: String }
 
 type DeclRefDisposition {
   subject: DeclRefSubject
@@ -59,11 +59,11 @@ type DeclRefDisposition {
 }
 
 data decl_ref_disposition_roster: List<DeclRefDisposition> = [
-  DeclRefDisposition { subject: ComputedDeclName { site: "src/v2/compiler/fold_lowering.dag computed-decl std.algebra" }, reason: DeclNameIsAParameter },
-  DeclRefDisposition { subject: ComputedDeclName { site: "dag/gunbc/observation_emit_census.dag computed-decl v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
-  DeclRefDisposition { subject: ComputedDeclName { site: "dag/test/claim/observation_emit_census_producer_witness.dag computed-decl v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
-  DeclRefDisposition { subject: ComputedDeclName { site: "dag/test/claim/capability_binding_witness.dag computed-decl gunbc.capability_binding" }, reason: DeclNameIsAParameter },
-  DeclRefDisposition { subject: ComputedDeclName { site: "dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag computed-decl gunbc.machine_intake.mtcollins1_memory_census_observation" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "src/v2/compiler/fold_lowering.dag", module_path: "std.algebra" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/gunbc/observation_emit_census.dag", module_path: "v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/test/claim/observation_emit_census_producer_witness.dag", module_path: "v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/test/claim/capability_binding_witness.dag", module_path: "gunbc.capability_binding" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag", module_path: "gunbc.machine_intake.mtcollins1_memory_census_observation" }, reason: DeclNameIsAParameter },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.test.workflow.claim_witness_corpus_ci_runner" as NonEmptyStr, decl_name: "ClaimWitnessCorpusClaimRunRow" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.http" as NonEmptyStr, decl_name: "redfish.Http" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.ipmi" as NonEmptyStr, decl_name: "diagnostic.ipmi.Tool" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
