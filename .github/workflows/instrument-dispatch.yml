@@ -14,7 +14,7 @@ permissions:
   contents: read
 concurrency:
   queue: max
-  group: instrument-dispatch-queued
+  group: instrument-dispatch-${{ github.ref }}-${{ inputs.label }}
   cancel-in-progress: false
 jobs:
   instrument:

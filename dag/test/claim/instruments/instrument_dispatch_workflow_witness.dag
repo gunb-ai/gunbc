@@ -1,6 +1,6 @@
 module test.claim.instruments.instrument_dispatch_workflow_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
 import std.algebra { length }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.optional { Absent, Present }
@@ -12,6 +12,13 @@ import gunbc.instruments.instrument_dispatch_workflow {
   instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
   instrument_dispatch_whole_tree_memory_demand, instrument_dispatch_stage0_regen_memory_demand,
   instrument_dispatch_compute_run_unit_cold_memory_demand,
+  instrument_dispatch_group_prefix, instrument_dispatch_concurrency_group,
+}
+import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
+import gunbc.ci.ci_runner_target { selected_ci_runner_target, ci_runner_target_ram_speed_budget }
+import gunbc.host.host_memory_observation {
+  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
+  gunbc_ci_srv2_memtotal_measured,
 }
 import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_dependency_wrong_capture_label }
 import gunbc.instruments.compute_run_unit_cold {
@@ -54,7 +61,7 @@ test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -
     && !contains(t, "push:")
     && contains(t, "type: choice")
     && contains(t, "timeout-minutes: 240")
-    && contains(t, "concurrency:\n  queue: max\n  group: instrument-dispatch-queued\n  cancel-in-progress: false\n")
+    && contains(t, concat(concat("concurrency:\n  queue: max\n  group: ", instrument_dispatch_concurrency_group), "\n  cancel-in-progress: false\n"))
     && !contains(t, "concurrency: instrument-dispatch")
     && !contains(t, "group: instrument-dispatch\n")
     && contains(t, "contents: read")
@@ -181,4 +188,94 @@ test fn the_compute_run_unit_cold_dispatch_carries_its_own_memory_demand_holds()
     && (byte_size_count(b: instrument_dispatch_compute_run_unit_cold_memory_demand)
       > byte_size_count(b: compute_run_unit_cold_unit_grant_bytes))
     && contains(generated_text(), to_string(byte_size_count(b: instrument_dispatch_compute_run_unit_cold_memory_demand)))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE GROUP IS KEYED PER DISPATCH, AND THE MEMORY WALL IS THE SLOT, NOT THE HOST.
+//
+// WHY A GROUP AT ALL. The instrument fleet and the required v2-bootstrap witnesses request the same
+// runner labels (gunbc.ci.ci_runner_placement puts both on self-hosted linux arm64), so an unbounded
+// instrument fan-out sits on the same pool as the required lane. Concurrency is the throttle, so it
+// must be neither so tight that unrelated measurements queue behind each other, nor so loose that the
+// pool is starved. These rows hold both edges.
+
+// (A) THE GROUP NAME CARRIES BOTH KEY PARTS, AND THE KEY IS INJECTIVE IN THE LABEL. Two dispatches of
+// DIFFERENT labels on the SAME ref must land in different groups, or the parallelism the operator
+// approved does not exist; two dispatches of the SAME label on the SAME ref must land in the SAME
+// group, or one measurement can run twice against itself. The fixed probe ref stands in for a ref,
+// because the group is authored as a GitHub expression and the model's job is the shape, not GitHub's
+// evaluation of it.
+fn group_for(probe_ref: String, label: String) -> String {
+  concat(concat(concat(instrument_dispatch_group_prefix, "-"), probe_ref), concat("-", label))
+}
+
+test fn the_concurrency_group_is_keyed_per_ref_and_label_holds() -> Bool {
+  let a = group_for(probe_ref: "refs/heads/x", label: render_label(l: dependency_demand_census_label()))
+  let b = group_for(probe_ref: "refs/heads/x", label: render_label(l: regen_round_cost_label()))
+  let same_label_other_ref = group_for(probe_ref: "refs/heads/y", label: render_label(l: dependency_demand_census_label()))
+  (a != b)
+    && (a != same_label_other_ref)
+    && (a == group_for(probe_ref: "refs/heads/x", label: render_label(l: dependency_demand_census_label())))
+}
+
+// THE RENDERED GROUP IS THE JOIN OF THE DECLARED PARTS, AND CARRIES BOTH EXPRESSIONS. The witness
+// pins the parts rather than one opaque literal, so a consumer can ask which half changed.
+test fn the_emitted_group_carries_the_ref_and_label_expressions_holds() -> Bool {
+  let t = generated_text()
+  contains(instrument_dispatch_concurrency_group, instrument_dispatch_group_prefix)
+    && contains(instrument_dispatch_concurrency_group, "${{ github.ref }}")
+    && contains(instrument_dispatch_concurrency_group, "${{ inputs.label }}")
+    && contains(t, concat(concat("group: ", instrument_dispatch_concurrency_group), "\n"))
+}
+
+// THE RED FOR THE OLD SHAPE. One global group name for every label is what the fleet ran with, and it
+// is what makes two unrelated measurements queue behind one another. The emitted text must not carry
+// it in ANY position, and must not carry the bare prefix as a whole-line group either (a pre-fix ref
+// dispatching that name could cancel this queue: see the scalar-form note in the model).
+test fn no_global_group_name_survives_in_the_emitted_workflow_holds() -> Bool {
+  let t = generated_text()
+  !contains(t, "group: instrument-dispatch-queued")
+    && !contains(t, "group: instrument-dispatch\n")
+    && !contains(t, "concurrency: instrument-dispatch")
+    && !contains(t, "concurrency: instrument-dispatch-queued")
+}
+
+// (a) EVERY ROSTERED DEMAND FITS THE SLOT CEILING IT RUNS INSIDE, not merely "the selected target's
+// budget" at large. This is the row that survives a routing flip: the ceiling it names is the slot's
+// own speed line, which is the cgroup that actually enforces the bound (gunbc.runner.runner_slot_desired
+// memory_high / memory_max), so a demand that fits here fits what will kill or throttle it.
+test fn every_rostered_demand_fits_the_slot_speed_ceiling_directly_holds() -> Bool {
+  instrument_dispatch_memory_demands_fit(
+    demands: instrument_dispatch_memory_demands(),
+    budget: gunbc_ci_runner_slot_ram_speed_ceiling(),
+  )
+    && (length(xs: instrument_dispatch_memory_demands()) > 0)
+}
+
+// (c) THE CURRENT ROUTING ADDS NOTHING TO THE WALL. Under the committed routing the selected target's
+// budget IS the slot ceiling -- it is not a second, larger number that would let a demand through the
+// model and into a cgroup kill. This is a RELATION, not a literal: flipping selected_ci_runner_target
+// to WholeMachine makes it false and forces a deliberate edit here, which is the point.
+test fn the_selected_target_budget_equals_the_slot_ceiling_under_the_current_routing_holds() -> Bool {
+  byte_size_count(b: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
+    == byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling())
+}
+
+// (b) A DEMAND THAT FITS THE HOST AND DOES NOT FIT THE SLOT. THE DISCRIMINATOR FOR WHY (a) NAMES THE
+// SLOT. Measured srv2 usable RAM is 134314512384 bytes (gunbc.host.host_memory_observation's own read,
+// cited not restated); a 30 GiB demand is well inside it and well outside the slot, so a model that
+// compared against host RAM would wave this through and the slot would OOM it. Both arms are asserted:
+// the vacuous comparison passes, the load-bearing one refuses.
+fn srv2_usable_ram_bytes() -> Int {
+  match gunbc_ci_srv2_memtotal_measured {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b)
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b)
+    HostUsableRamUnmeasured { reason: _ } => 0
+  }
+}
+
+test fn a_demand_inside_the_measured_host_and_outside_the_slot_is_refused_by_the_slot_holds() -> Bool {
+  let row = InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: byte_size(32212254720) }
+  (32212254720 < srv2_usable_ram_bytes())
+    && !instrument_dispatch_memory_demands_fit(demands: [row], budget: gunbc_ci_runner_slot_ram_speed_ceiling())
 }
