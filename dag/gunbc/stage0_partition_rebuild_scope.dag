@@ -1,6 +1,16 @@
 module gunbc.stage0_partition_rebuild_scope
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, Int }
+import gunbc.source_layout { layout_module_storage_path }
+import gunbc.regen_affected_set {
+  AffectedSetBound,
+  AffectedMirrors,
+  WholePopulation,
+  EditedSetUnlocatable,
+  DependencyEdge,
+  MirrorRow,
+  regen_affected_set
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
@@ -310,6 +320,8 @@ fn rebuild_scope_owners_of_mirror(
     |> filter(row => stage0_partition_row_is_module_bearing_package(row: row))
     |> filter(row => row.modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror))
     |> map(row => row.package_name)
+  // The host shell crate's own root file is among host_shell_modules: the host reads it from the
+  // lib.rs it already reads for the declared modules, so no spelling is recognised here.
   if host_shell_modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror) {
     concat(partition_owners, [stage0_host_shell_package_name()])
   } else {
@@ -585,6 +597,25 @@ fn stage0_partition_rebuild_release_scope_empty_today(
   }
 }
 
+// THE FIFTH HOST QUESTION: is this round's refusal the positively modeled partition-generation
+// class? The host decides whether the move is EXPLAINED (derived from the change's own diff and
+// the candidate tree's authority, never asserted) only when this answers true; every other
+// WholeCompilerRebuildRequired cause and every refusal keeps refusing. The class is read by
+// variant here, never recovered from the decision line's spelling.
+fn stage0_partition_rebuild_is_partition_generation_move_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
+) -> Bool {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable, host_shell_modules: host_shell_modules) {
+    WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: _ } } => true
+    WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: _ } } => false
+    ReleaseScopeEmpty { changed_mirrors: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
 // THE PACKAGES THAT MUST NOT BE COMPILED. Reported to the host as identities so a build that
 // touches one of them is a located refusal rather than an unnoticed widening: an exclusion no
 // consumer can read is not evidence of anything, and this is the exclusion the whole
@@ -620,4 +651,85 @@ fn stage0_partition_rebuild_decision_line_today(
       host_shell_modules: host_shell_modules
     )
   )
+}
+
+// THE EXPLANATION OF A PARTITION MOVE, a decision over the TYPED changed-path set of the floor diff
+// observation (floor_observe_git_diff_name_status_for_ci, NameStatusDiffOk.changed_paths), never
+// over diff text. A partition-generation mirror may move without WholeCompilerRebuildRequired
+// only when the authority its rows are decoded from is itself among the change's paths: the
+// mirror moved because its authority moved and not because something drifted. The authority's
+// identity is the module it is declared as; its storage path is derived from that name by
+// gunbc.source_layout layout_module_storage_path, not written a second time. An empty or unobserved path set explains nothing: the host refuses typed.
+data stage0_partition_authority_module: String = "gunbc.stage0.stage0_crate_partition_generated"
+
+fn stage0_partition_authority_storage_path() -> Optional<String> {
+  layout_module_storage_path(module: stage0_partition_authority_module)
+}
+
+fn stage0_partition_move_explained_by_changed_paths(changed_paths: List<String>) -> Bool {
+  match stage0_partition_authority_storage_path() {
+    Absent => false
+    Present { value: path } => rebuild_scope_list_has(items: changed_paths, item: path)
+  }
+}
+
+// THE EXPLANATION OF A PARTITION MOVE FROM THE CHANGE'S INPUTS. The authority path above is ONE input
+// of the two partition-generation mirrors: v1_compiler_stage0_crates.rs is rendered by
+// v1.compiler.stage0_crates, whose import closure (emit_rust, runtime_rust, extdeps.rust.*, ...) moves its
+// bytes while the rows stay put. Which mirrors an edit can move is already declared once, by
+// gunbc.regen_affected_set, over the same regen dependency graph the mirrors are emitted from. The host
+// supplies that function's own arguments and this asks it, then eliminates its AffectedSetBound
+// exhaustively, so a new arm there is a compile refusal here rather than a silent false.
+//   WholePopulation      the edit is under a declared generation-input prefix (v1.compiler.*): every
+//                        mirror's producer moved, so the move is explained. This is the bound's own
+//                        width, not narrowed here.
+//   AffectedMirrors      explained iff a partition-generation mirror is a member, or the authority
+//                        path is among the changed paths. A move with neither is drift.
+//   EditedSetUnlocatable REFUSES and does not fall through to the authority path: an edit that could
+//                        not be read explains nothing.
+fn stage0_partition_move_explained_by_affected_inputs(
+  changed_paths: List<String>,
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> Bool {
+  stage0_partition_move_explained_by_bound(
+    changed_paths: changed_paths,
+    bound: regen_affected_set(edited: edited, unlocatable: unlocatable, edges: edges, compared: compared, modules: modules)
+  )
+}
+
+fn stage0_partition_move_explained_by_bound(changed_paths: List<String>, bound: AffectedSetBound) -> Bool {
+  match bound {
+    WholePopulation { edited: _, generation_inputs: _ } => true
+    AffectedMirrors { edited: _, mirrors: m, bootstrap_products: _ } =>
+      count(rebuild_scope_changed_in_roster(changed_mirrors: m, roster: rebuild_scope_partition_generation_mirrors)) > 0
+        || stage0_partition_move_explained_by_changed_paths(changed_paths: changed_paths)
+    EditedSetUnlocatable { unlocatable: _, reason: _ } => false
+  }
+}
+
+// A STAGE THAT CARRIES BOUNDARY FILES MOVES THE PARTITION CRATES. The boundary files the built
+// producer emitted install in the same install as the pending mirrors (one rebuild covers both),
+// so the stage is partition-moving by what it installs, whatever its mirrors say: the partitioned
+// route's excluded-package refusal would otherwise fire on a correct build. This is the existing
+// whole-compiler arm selected by a second cause, not a widened catch-all; an unexplained
+// partition move still refuses at the host (PartitionMoveUnexplained).
+fn stage0_stage_rebuild_is_whole_compiler(boundary_files: List<String>) -> Bool {
+  list_length(items: boundary_files) > 0
+}
+
+// THE ROUND BOUND of the regen convergence loop, a declared policy row. Exceeding it is a typed
+// refusal carrying per-round records (required_regen_host RegenConvergenceBoundExceeded), never a
+// widened or unbounded loop.
+data regen_convergence_max_generations: Int = 6
+
+fn regen_convergence_generation_bound() -> Int {
+  regen_convergence_max_generations
+}
+
+fn regen_convergence_bound_exceeded(generation_ordinal: Int) -> Bool {
+  generation_ordinal >= regen_convergence_generation_bound()
 }

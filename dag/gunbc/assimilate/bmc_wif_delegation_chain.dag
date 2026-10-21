@@ -79,7 +79,7 @@ data bmc_srv3_admin_legacy_binding: SecretAccessGrant = SecretAccessGrant {
   signoff: Unsigned,
   provenance: AppliedOutOfBand {
     applied_at: "2026-06-24",
-    note: "gunbc.assimilate.bmc_bootstrap_provision.bmc_bootstrap_provision_srv3, bmc_secret_iam_bindings()"
+    note: "by the secret-policy leg of gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_provision_srv3, cut 2026-10-19 (gunbc#14360 writer census); no route in this codebase writes it now"
   }
 }
 

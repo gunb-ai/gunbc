@@ -23,7 +23,7 @@ import gunbc.compute.work_provider_local {
   compute_open_attempt_minted, ComputeLayout, ComputeRecoverRoots, RecoverRootsFound, RecoverRootsUnreadable, compute_recover_roots, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+  AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir,
 }
 import gunbc.compute.compute_seat_ensure {

@@ -4,7 +4,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
-import std.optional { Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceId,
@@ -80,7 +80,6 @@ type Connective
   | Conj
   | Disj
   | Arrow
-  | Occupancy
   | Instantiation
 
 type Behavior
@@ -112,7 +111,6 @@ type ConnectiveCoproductVariant
   | ConnectiveConjArm
   | ConnectiveDisjArm
   | ConnectiveArrowArm
-  | ConnectiveOccupancyArm
   | ConnectiveInstantiationArm
 
 fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
@@ -121,7 +119,6 @@ fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
     ConnectiveConjArm,
     ConnectiveDisjArm,
     ConnectiveArrowArm,
-    ConnectiveOccupancyArm,
     ConnectiveInstantiationArm,
   ]
 }
@@ -135,7 +132,6 @@ fn connective_from_coproduct_variant(
     ConnectiveConjArm => Conj
     ConnectiveDisjArm => Disj
     ConnectiveArrowArm => Arrow
-    ConnectiveOccupancyArm => Occupancy
     ConnectiveInstantiationArm => Instantiation
   }
 }
@@ -659,28 +655,200 @@ fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
 // infer_child_context_cannot_depend_on_a_sibling_result). This algebra does: child_context also receives
 // the parent's accumulator AFTER the children already folded, and `first` schedules the dependency
 // children ahead of the rest.
-// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which edges are
+// THE SCHEDULE IS A PARTITION, SO IT IS A PERMUTATION BY CONSTRUCTION. `first` selects which children are
 // folded before the others, each part keeping its authored order; no schedule can drop, duplicate or
-// invent an edge, so there is nothing to validate. With `first` false everywhere and a child_context that
+// invent a child, so there is nothing to validate. With `first` false everywhere and a child_context that
 // ignores the accumulator, this is fold_node_topdown exactly.
+// `first` and child_context RECEIVE THE CHILD'S SLOT, NOT ONLY ITS EDGE. The normalized tree may share one
+// node at several positions, so two children can carry structurally equal edges -- a Bind whose value and
+// body are one node, a Match whose scrutinee is also an arm -- and an edge alone cannot say which role a
+// child plays (side-chat review on #14501). The slot carries the child's ordinal among its parent's
+// positional children, which is what a positional role is.
 type NodeFoldDependent<A,R> {
   init: fn(Node, A) -> R
-  first: fn(Node, Edge) -> Bool
-  child_context: fn(Node, A, R, Edge) -> A
+  first: fn(Node, ChildSlot) -> Bool
+  child_context: fn(Node, A, R, ChildSlot) -> A
   step: fn(R, Edge, R) -> R
 }
 
-fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<Edge> {
+// A CHILD AS ITS PARENT HOLDS IT: the edge, and where it sits -- its ordinal among the parent's positional
+// children, or labeled. Equal edges at two positions are two slots.
+type ChildSlot {
+  edge: Edge
+  ordinal: ChildOrdinal
+}
+
+type ChildOrdinal
+  = PositionalOrdinal { index: Int }
+  | LabeledChild
+
+type ChildSlotsAcc {
+  slots: List<ChildSlot>
+  next_positional: Int
+}
+
+fn node_child_slots(n: Node) -> List<ChildSlot> {
+  let walked = fold(n.children, init: ChildSlotsAcc { slots: [], next_positional: 0 }, f: fn(acc, e) { node_child_slots_step(acc: acc, e: e) })
+  walked.slots
+}
+
+fn node_child_slots_step(acc: ChildSlotsAcc, e: Edge) -> ChildSlotsAcc {
+  if is_positional(e: e) {
+    ChildSlotsAcc {
+      slots: list_snoc_item(xs: acc.slots, item: ChildSlot { edge: e, ordinal: PositionalOrdinal { index: acc.next_positional } }),
+      next_positional: acc.next_positional + 1
+    }
+  } else {
+    ChildSlotsAcc {
+      slots: list_snoc_item(xs: acc.slots, item: ChildSlot { edge: e, ordinal: LabeledChild }),
+      next_positional: acc.next_positional
+    }
+  }
+}
+
+fn node_fold_dependent_schedule<A,R>(n: Node, algebra: NodeFoldDependent<A,R>) -> List<ChildSlot> {
+  let slots = node_child_slots(n: n)
   concat(
-    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { list_snoc_item(xs: acc, item: e) } else { acc } }),
-    fold(n.children, init: [], f: fn(acc, e) { if algebra.first(n, e) { acc } else { list_snoc_item(xs: acc, item: e) } })
+    fold(slots, init: [], f: fn(acc, s) { if algebra.first(n, s) { list_snoc_item(xs: acc, item: s) } else { acc } }),
+    fold(slots, init: [], f: fn(acc, s) { if algebra.first(n, s) { acc } else { list_snoc_item(xs: acc, item: s) } })
   )
 }
 
 fn fold_node_dependent<A,R>(n: Node, ctx: A, algebra: NodeFoldDependent<A,R>) -> R {
-  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, e) {
-    algebra.step(acc, e, fold_node_dependent(n: e.target, ctx: algebra.child_context(n, ctx, acc, e), algebra: algebra))
+  fold(node_fold_dependent_schedule(n: n, algebra: algebra), init: algebra.init(n, ctx), f: fn(acc, s) {
+    algebra.step(acc, s.edge, fold_node_dependent(n: s.edge.target, ctx: algebra.child_context(n, ctx, acc, s), algebra: algebra))
   })
+}
+
+// WHAT EACH POSITIONAL CHILD OF A Bind AND OF A Match IS -- the one table every stage reads (resolve's walk,
+// lexical scope, inference's dependent fold). A Bind's slot is keyed by its ordinal among the POSITIONAL
+// children only: the <type-annotation> edge may stand anywhere among the children, so counting it would
+// shift the value into the binder's inner scope. Ordinal 0 is the binder, 1 the value, 2 and beyond the body
+// (v2.std.compilers.body_lowering lower_bind / lower_bind_annotated). A Match's first positional child is its
+// scrutinee and every later positional child an arm (lower_match); a labeled child of a Match is neither,
+// as match_arm_children_conform_skip_first already reads it. A labeled child of either is not in the table:
+// a consumer holding a ChildSlot reads its ordinal first. Reading the role off the slot rather than off the
+// edge is what keeps two equal edges in different roles apart.
+type BindSlot
+  = BindBinderSlot
+  | BindValueSlot
+  | BindBodySlot
+
+fn bind_positional_slot(ordinal: Int) -> BindSlot {
+  if ordinal == 0 {
+    BindBinderSlot
+  } else if ordinal == 1 {
+    BindValueSlot
+  } else {
+    BindBodySlot
+  }
+}
+
+// THE NODE A Bind OR A Match HOLDS IN A SLOT: its first positional child whose ordinal the table maps to
+// `slot` -- a Bind's binder, value or (first) body, a Match's scrutinee or first arm. Readers of a node's
+// parts read them here, so the tables are the only place those slots are numbered. One walk serves both:
+// it counts positional ordinals and stops at the first child the table selects.
+fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { bind_positional_slot(ordinal: i) == slot })
+}
+
+fn match_slot_target(n: Node, slot: MatchSlot) -> Optional<Node> {
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { match_positional_slot(ordinal: i) == slot })
+}
+
+// EVERY SLOT OF A Match IN ONE ROLE, in stored order, read through match_positional_slot. Arms are one role
+// repeated, so a reader of the arm sequence (an arm count, every arm) takes `match_role_slots(n, MatchArmSlot)`
+// rather than counting positions; a single arm's place among its siblings stays the ChildSlot ordinal.
+fn match_role_slots(n: Node, role: MatchSlot) -> List<ChildSlot> {
+  fold(node_child_slots(n: n), init: [], f: fn(acc, s) { match_role_slots_step(acc: acc, s: s, role: role) })
+}
+
+fn match_role_slots_step(acc: List<ChildSlot>, s: ChildSlot, role: MatchSlot) -> List<ChildSlot> {
+  match s.ordinal {
+    PositionalOrdinal { index: i } =>
+      if match_positional_slot(ordinal: i) == role {
+        list_snoc_item(xs: acc, item: s)
+      } else {
+        acc
+      }
+    LabeledChild => acc
+  }
+}
+
+// THE NODE A Branch HOLDS IN A SLOT, or Absent when `n` is not a three-positional Branch: a Branch of any
+// other positional arity is malformed and has no roles to read, so the accessor that owns the table refuses
+// rather than returning a plausible child (a fourth positional is not a second else).
+fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
+  if count(positional_child_target_nodes(node: n)) == 3 {
+    branch_slot_target_in_arity(n: n, slot: slot)
+  } else {
+    optional_absent()
+  }
+}
+
+fn branch_slot_target_in_arity(n: Node, slot: BranchSlot) -> Optional<Node> {
+  positional_target_where(edges: n.children, ordinal: 0, wanted: fn(i) { branch_positional_slot(ordinal: i) == optional_present(value: slot) })
+}
+
+fn positional_target_where(edges: List<Edge>, ordinal: Int, wanted: fn(Int) -> Bool) -> Optional<Node> {
+  match edges {
+    Empty => optional_absent()
+    Cons { head: e, tail: rest } => positional_target_where_at(e: e, rest: rest, ordinal: ordinal, wanted: wanted)
+  }
+}
+
+fn positional_target_where_at(e: Edge, rest: List<Edge>, ordinal: Int, wanted: fn(Int) -> Bool) -> Optional<Node> {
+  if is_positional(e: e) {
+    if wanted(ordinal) {
+      optional_present(value: e.target)
+    } else {
+      positional_target_where(edges: rest, ordinal: ordinal + 1, wanted: wanted)
+    }
+  } else {
+    positional_target_where(edges: rest, ordinal: ordinal, wanted: wanted)
+  }
+}
+
+type MatchSlot
+  = MatchScrutineeSlot
+  | MatchArmSlot
+
+fn match_positional_slot(ordinal: Int) -> MatchSlot {
+  if ordinal == 0 {
+    MatchScrutineeSlot
+  } else {
+    MatchArmSlot
+  }
+}
+
+fn child_slot_edge(slot: ChildSlot) -> Edge { slot.edge }
+
+fn child_slot_target(slot: ChildSlot) -> Node {
+  slot.edge.target
+}
+
+// WHAT EACH POSITIONAL CHILD OF A Branch IS: ordinal 0 the condition, 1 the then arm, 2 the else arm
+// (lower_branch; v2.std.compilers.body_lowering branch_view reads exactly three whole positionals). Unlike
+// Match, whose arms are unbounded so its table is total over Int, a Branch has EXACTLY these three roles, so
+// an ordinal of 3 or more has no role: the table answers Absent, and branch_slot_target answers Absent for
+// any Branch that is not three-positional, so the malformed Branch is refused where the table lives. Match and Branch keep separate tables
+// because the arity differs (total vs. three roles); both are read by the one positional walker
+// positional_target_where, which is where the shared "find the positional child by role" lives.
+type BranchSlot
+  = BranchConditionSlot
+  | BranchThenSlot
+  | BranchElseSlot
+
+fn branch_positional_slot(ordinal: Int) -> Optional<BranchSlot> {
+  if ordinal == 0 {
+    optional_present(value: BranchConditionSlot)
+  } else if ordinal == 1 {
+    optional_present(value: BranchThenSlot)
+  } else if ordinal == 2 {
+    optional_present(value: BranchElseSlot)
+  } else {
+    optional_absent()
+  }
 }
 
 type EdgeDiscipline
@@ -718,7 +886,6 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Conj => LabeledEdges
     Disj => LabeledEdges
     Arrow => ArrowBodyEdges
-    Occupancy => PositionalEdges
     Instantiation => PositionalEdges
   }
 }
@@ -734,7 +901,6 @@ fn connective_edge_discipline_for_child_count(c: Connective, child_count: Int) -
     Conj => connective_edge_discipline(c: c)
     Disj => connective_edge_discipline(c: c)
     Instantiation => connective_edge_discipline(c: c)
-    Occupancy => connective_edge_discipline(c: c)
   }
 }
 
@@ -1056,7 +1222,6 @@ fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> A
         TypeNode { connective: Conj } => OrderUnreadable
         TypeNode { connective: Disj } => OrderUnreadable
         TypeNode { connective: Arrow } => OrderUnreadable
-        TypeNode { connective: Occupancy } => OrderUnreadable
         TypeNode { connective: Instantiation } => OrderUnreadable
         ComputationNode { behavior: _ } => OrderUnreadable
       }
@@ -1168,7 +1333,6 @@ fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
         TypeNode { connective: Atom { identity: _ } } => DomainBinderLabelsUnreadable
         TypeNode { connective: Disj } => DomainBinderLabelsUnreadable
         TypeNode { connective: Arrow } => DomainBinderLabelsUnreadable
-        TypeNode { connective: Occupancy } => DomainBinderLabelsUnreadable
         TypeNode { connective: Instantiation } => DomainBinderLabelsUnreadable
         ComputationNode { behavior: _ } => DomainBinderLabelsUnreadable
       }
@@ -1218,7 +1382,6 @@ fn type_binder_conforms(e: Edge) -> Bool {
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
         TypeNode { connective: Arrow } => false
-        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
@@ -1249,7 +1412,6 @@ fn type_binder_conj_conforms(t: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1482,7 +1644,6 @@ fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
     TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
     TypeNode { connective: Disj } => NotMarkedReference
     TypeNode { connective: Arrow } => NotMarkedReference
-    TypeNode { connective: Occupancy } => NotMarkedReference
     TypeNode { connective: Instantiation } => NotMarkedReference
     ComputationNode { behavior: _ } => NotMarkedReference
   }
@@ -1501,7 +1662,6 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     TypeNode { connective: Disj } => UnsupportedArrowBody
-    TypeNode { connective: Occupancy } => UnsupportedArrowBody
     TypeNode { connective: Instantiation } => UnsupportedArrowBody
   }
 }
@@ -1570,7 +1730,6 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1713,7 +1872,6 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
     TypeNode { connective: Atom { identity: _ } } => CostEdgeComposed
     TypeNode { connective: Conj } => CostEdgeComposed
     TypeNode { connective: Disj } => CostEdgeComposed
-    TypeNode { connective: Occupancy } => CostEdgeComposed
     TypeNode { connective: Instantiation } => CostEdgeComposed
     ComputationNode { behavior: Value } => CostEdgeComposed
     ComputationNode { behavior: Transform } => CostEdgeComposed
@@ -1787,8 +1945,6 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
     Arrow => arrow_body_edges_conform(children: children)
-    Occupancy =>
-      edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Instantiation =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
   }
@@ -1915,7 +2071,6 @@ fn is_empty_conj_root(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -2146,7 +2301,6 @@ fn canonical_hash_of_connective(c: Connective) -> Fnv1a64Structural {
     Conj => content_hash_atom(value: ^canonical_tag_conj)
     Disj => content_hash_atom(value: ^canonical_tag_disj)
     Arrow => content_hash_atom(value: ^canonical_tag_arrow)
-    Occupancy => content_hash_atom(value: ^canonical_tag_cardinality)
     Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
   }
 }

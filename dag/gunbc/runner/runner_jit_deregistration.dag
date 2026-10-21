@@ -16,7 +16,7 @@ import gunbc.auth.github_credential {
 }
 import gunbc.runner.jit_registration_subject { JitRegistrationSubject }
 import gunbc.runner.runner_host_unit_slot {
-  CurrentServicePopulation, current_population_has_unit, service_slot_name_parse, service_slot_unit_spelled,
+  CurrentServicePopulation, ServiceBootId, current_population_has_unit, service_slot_name_parse, service_slot_unit_spelled,
 }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused, authority_installation,
@@ -48,6 +48,7 @@ type JitSlotExit
   = SlotListenerExitedClean
   | SlotListenerExitedNonzero { cause: NonEmptyStr }
   | SlotNeverLaunched { cause: NonEmptyStr }
+  | SlotLostBoot { superseded_by: ServiceBootId }
 
 // THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its
 // only constructor, so the runner this fold may delete is one an authorized mint named -- a caller
@@ -231,12 +232,13 @@ type LostBootSweepRefusal
   = SweepListingUnreadable { reason: JitListingUnreadableReason, cause: NonEmptyStr }
   | SweepRegistrationRefused { listed: String, refusal: ListedRegistrationRefusal }
 
-// CONSUMER FRONTIER (DESIGN 3c): no production route calls this yet. Its consumer is the
-// fleet-converge mode that lands the stateless runner registration, which feeds each selected
-// subject to ensure_jit_runner_deregistered (success = absent from the listing) before it
-// registers the current incarnation's slots. That mode waits on operator answer Q3 of the
-// mtcollins1 stateless-registration design, so until then the executing route is the witness
-// test.claim.runner.runner_jit_listed_registration_witness. The population is the sealed
+// DECLARED CONSUMER FRONTIER, not yet a production route: fleet-converge mode
+// service_runner_lost_boot_sweep (gunbc.runner.runner_lost_boot_sweep_run lost_boot_sweep_wet) is the
+// named consumer, and it feeds each selected subject to ensure_jit_runner_deregistered with
+// SlotLostBoot (success = absent from the listing). TRIGGER: the capability to observe a managed
+// host's CURRENT kernel boot id (a host transport, arriving with the mtcollins1 enrolment). Until it
+// lands lost_boot_observe_current_boot answers unobserved and the mode refuses before this fold; only
+// the run witness reaches it, over supplied observations. The population is the sealed
 // current_service_population over the admitted boot: it carries the host (so there is no separate
 // host argument to disagree with it) and is refused at construction when it cannot be derived or is
 // empty, so a sweep cannot be called over "no population".

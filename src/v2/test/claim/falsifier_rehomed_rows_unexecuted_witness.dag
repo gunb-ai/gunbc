@@ -1,0 +1,41 @@
+module v2.test.claim.falsifier_rehomed_rows_unexecuted_witness
+
+import std.types { List, String }
+import std.logic { Bool }
+import gunbc.ci.ci_layer_roots { falsifier_rehomed_bin_wet_entries }
+import gunbc.rung_drop.falsifier_rehomed_rows_unexecuted {
+  falsifier_rehomed_rows_unexecuted_population
+}
+
+// The bin_wet half is joined against an INDEPENDENT derivation: falsifier_rehomed_bin_wet_entries
+// builds ScheduleWitnessEntry values through bin_wet, a different constructor path than the drop's
+// own identity fold. The roster half is pinned to its five literal identities (a controlled fixture:
+// the commit rows removed from the roster in this change).
+fn falsifier_roster_literal_identities() -> List<String> {
+  [
+    "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_executes_holds",
+    "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_wrong_value_red_holds",
+    "src/v2/test/claim/execution/long/loop_eval_by_execution.dag::loop_census_ingested_executes_holds",
+    "src/v2/test/claim/execution/long/loop_eval_by_execution.dag::loop_census_ingested_wrong_value_red_holds",
+    "src/v2/test/claim/long/parse_binding_fidelity_witness.dag::witness_parse_binding_fidelity_distinct_identifiers_holds"
+  ]
+}
+
+test fn falsifier_rehomed_drop_population_is_the_identity_join_of_both_frontiers() -> Bool {
+  let population = falsifier_rehomed_rows_unexecuted_population()
+  let expected = concat(
+    fold(falsifier_rehomed_bin_wet_entries(), init: [], f: fn(acc, e) { concat(acc, [concat(e.entry, concat("::", e.function))]) }),
+    falsifier_roster_literal_identities()
+  )
+  all(expected, id => any(population, p => p == id))
+    && all(population, p => any(expected, id => id == p))
+}
+
+test fn falsifier_rehomed_drop_population_names_entry_and_function() -> Bool {
+  any(falsifier_rehomed_rows_unexecuted_population(), id => id == "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_executes_holds")
+}
+
+// RED control: an identity outside both frontiers is not in the population.
+test fn falsifier_rehomed_drop_population_excludes_unlisted_RED_control_holds() -> Bool {
+  !any(falsifier_rehomed_rows_unexecuted_population(), id => id == "src/v2/test/claim/none.dag::none_holds")
+}

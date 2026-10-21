@@ -72,12 +72,18 @@ type WorkloadIdentityStanding
 // REACH OF WHAT THE EFFECT MINTS. A read mints nothing; a per-bucket R2 token or a per-BMC password
 // is scoped to one resource; a control-plane token or an account-owner token is wider than any one
 // effect. Minting a wide credential is what makes an effect worth a human witness even when the
-// call itself is reversible.
+// call itself is reversible. MintsHostRootReach is the effect whose authority is root on a fleet
+// host: it mints no bearer credential, it IS the ability to write any file or run any unit as root
+// there, so it is wider than any one resource and owes the same witness as a wide mint. Without the
+// arm such an effect had to be filed under a cloud reach it does not have, or under MintsNoCredential,
+// and the selection then either refused it silently or named a pattern whose reach is not its own
+// (gunbc.plans.srv1_deploy_principal_split).
 type MintedCredentialReach
   = MintsNoCredential
   | MintsResourceScopedCredential
   | MintsProjectWideCredential
   | MintsAccountWideCredential
+  | MintsHostRootReach
 
 // REVERSIBILITY IS NOT IDEMPOTENCY. std.effects IdempotencyEvidence says whether a retry is safe,
 // which is the retry protocol's concern and not the consent question asked here; whether the world
@@ -168,6 +174,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
   let wide = match e.minted_reach {
     MintsProjectWideCredential => true
     MintsAccountWideCredential => true
+    MintsHostRootReach => true
     MintsResourceScopedCredential => false
     MintsNoCredential => false
   }
@@ -218,16 +225,25 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
 //     unlike (b). Its exclusion is by dominance the fold computes, so a site still on it is
 //     classified diverges rather than unclassifiable. Operator ruling 2026-10-08: how the operator
 //     hands over their own token is not a separate pattern, so no relay refusal exists.
+//
+// (e) AdministratorEdge -- the fleet's administrator principal over its SSH edge
+//     (gunbc.fleet.fleet_bootstrap_principal executor_bootstrap_principal), whose key is itself
+//     released only to a run pinned at reviewed main (gunbc.auth.oidc_claim_pins). It is a candidate
+//     ONLY for an effect of MintsHostRootReach: the merge to main is the consent that witnesses the
+//     effect's class, the run is unattended, and the receipt is the run. The job user of a run that
+//     executes pull-request code holds neither the key nor this pattern.
 type AuthorizationPattern
   = FederatedScopedGrant
   | OperatorApprovedCapability
   | HumanOnlyStep { step: HumanIntervention }
   | OperatorOwnSession
+  | AdministratorEdge
 
 data pattern_federated_scoped_grant: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_federated_scoped_grant")
 data pattern_operator_approved_capability: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_approved_capability")
 data pattern_human_only_step: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_human_only_step")
 data pattern_operator_own_session: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_own_session")
+data pattern_administrator_edge: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_administrator_edge")
 
 fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
   match p {
@@ -235,6 +251,7 @@ fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
     OperatorApprovedCapability => pattern_operator_approved_capability
     HumanOnlyStep { step: _ } => pattern_human_only_step
     OperatorOwnSession => pattern_operator_own_session
+    AdministratorEdge => pattern_administrator_edge
   }
 }
 
@@ -244,6 +261,7 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
     OperatorApprovedCapability => "per-effect operator approval via the ntfy loop" as NonEmptyStr
     HumanOnlyStep { step: s } => join(["human-only step: ", s.identity as String], "") as NonEmptyStr
     OperatorOwnSession => "the operator's own interactive session or token file" as NonEmptyStr
+    AdministratorEdge => "the fleet administrator principal over its SSH edge, key released to a run pinned at reviewed main" as NonEmptyStr
   }
 }
 
@@ -252,9 +270,16 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
 // selected with nothing to name, and "do it by hand" is not a step.
 fn candidate_patterns(e: PrivilegedEffect) -> List<AuthorizationPattern> {
   let api_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession]
+  let with_edge = match e.minted_reach {
+    MintsHostRootReach => concat(api_patterns, [AdministratorEdge])
+    MintsNoCredential => api_patterns
+    MintsResourceScopedCredential => api_patterns
+    MintsProjectWideCredential => api_patterns
+    MintsAccountWideCredential => api_patterns
+  }
   match e.surface {
-    ApiSurface => api_patterns
-    HumanSurfaceOnly { step: s } => concat(api_patterns, [HumanOnlyStep { step: s }])
+    ApiSurface => with_edge
+    HumanSurfaceOnly { step: s } => concat(with_edge, [HumanOnlyStep { step: s }])
   }
 }
 
@@ -292,6 +317,7 @@ fn pattern_is_api_pattern(p: AuthorizationPattern) -> Bool {
     FederatedScopedGrant => true
     OperatorApprovedCapability => true
     OperatorOwnSession => true
+    AdministratorEdge => true
   }
 }
 
@@ -314,6 +340,7 @@ fn identity_bound(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
+    AdministratorEdge => 1
   }
 }
 
@@ -326,6 +353,7 @@ fn credential_custody(p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
+    AdministratorEdge => 1
   }
 }
 
@@ -337,6 +365,7 @@ fn witnessed(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 1
     FederatedScopedGrant => 0
     OperatorOwnSession => 0
+    AdministratorEdge => 1
   }
 }
 
@@ -348,6 +377,7 @@ fn unattended(p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 0
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
+    AdministratorEdge => 1
   }
 }
 
@@ -370,6 +400,7 @@ fn human_actions_per_effect(p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
+    AdministratorEdge => 0
   }
 }
 
@@ -381,6 +412,7 @@ fn credential_scoped_to_resource(p: AuthorizationPattern) -> Int {
     OperatorApprovedCapability => 1
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
+    AdministratorEdge => 0
   }
 }
 
@@ -396,6 +428,7 @@ fn receipt_in_substrate(p: AuthorizationPattern) -> Int {
         NoDischargeSiteModeled => 0
       }
     OperatorOwnSession => 0
+    AdministratorEdge => 1
   }
 }
 
@@ -548,6 +581,7 @@ fn minted_reach_text(m: MintedCredentialReach) -> String {
     MintsResourceScopedCredential => "MintsResourceScopedCredential"
     MintsProjectWideCredential => "MintsProjectWideCredential"
     MintsAccountWideCredential => "MintsAccountWideCredential"
+    MintsHostRootReach => "MintsHostRootReach"
   }
 }
 
@@ -680,6 +714,7 @@ fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSele
             FederatedScopedGrant => PatternSelected { pattern: p, receipt: r }
             OperatorApprovedCapability => PatternSelected { pattern: p, receipt: r }
             OperatorOwnSession => PatternSelected { pattern: p, receipt: r }
+            AdministratorEdge => PatternSelected { pattern: p, receipt: r }
           }
       }
     CandidateFieldUnestablished { causes: cs2 } => PatternSelectionRefused { defects: cs2 }

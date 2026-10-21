@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.kernel_type_float_has_no_v2_value_type_node
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data kernel_type_float_has_no_v2_value_type_node: RecurringFailureMode = RecurringFailureMode {
   identity: "kernel_type_float_has_no_v2_value_type_node" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: a value is judged at a position declared Float on the v2 resolve-to-infer route and the judgment cannot be decided, because nothing says what Float denotes. Float is a kernel type (std.types kernel_type_set) with no value-type node in any v2 std authority, so it has no row in v2.extdeps.languages.dag dag_kernel_value_type_roster: no canonical binding, no spelling row, and no denotation.",
@@ -15,6 +17,7 @@ data kernel_type_float_has_no_v2_value_type_node: RecurringFailureMode = Recurri
     "RUNG FOUND AT: below the floor, counted. CEILING: structurally guaranteed, the rung Int and Bool hold through the roster: a decidable class waiting on its single authority (DESIGN section 5, a wall after grounding).",
     "NEXT-RUNG TRIGGER, naming the capability: v2.std.float owns a value-type NODE for Float, the way v2.std.integer owns integer_int_type_node and v2.std.logic owns bool_node, and dag_kernel_value_type_roster carries a row pointing at it. Sufficient for: a Float-declared return and record field holding a value of another kernel type refusing on the resolve-to-infer route. NOT satisfied by a spelling row alone, nor by a node minted in the language model: the roster points at authorities and mints nothing. Whether Float's authored spelling binds to the kernel atom is a second decision the row's author makes with the declaration's owner, as it was left open for Symbol and Char.",
     "FILED BY the change that introduced the roster, which enumerated every kernel type and found value-type nodes for Int, Bool, Symbol and Char only. One row per missing node, so each can be retired by its own trigger."
+    "DISCHARGED BY THE DECLARATION, NOT BY A NODE (operator ruling H5 and the kernel-type layer rule, 2026-10-18). The STATE OF THE SOURCES receipt above was already stale when this was written: the Float de-fork (gunbc#12547) had deleted both std.float and v2.std.float, so NO declaration of Float existed and the spelling reached only the ambient kernel name. std.float now declares the one language-facing Float, opaque, and its meaning stays std.kernel_type_denotation's binary64. On the v2 resolve-to-infer route a Float-declared position compares the declaration by identity, so another kernel type there refuses: v2.test.claim.float_kernel_value_type an_int_returned_where_float_is_declared_refuses_holds (arrow_body_does_not_inhabit_declared_return) and an_int_in_a_float_declared_record_field_refuses_holds (record_field_value_does_not_inhabit), with the positive a_float_value_inhabits_a_float_declared_position_holds; both reds go green when Float is made an alias of Int. That is the trigger's SUFFICIENCY clause. Its named means -- a value-type node and a roster row -- are superseded by the layer rule: compiler recognition refers to the declaration by identity, a roster spelling would make the bare name ambient, and a node is added only when a consumer needs one (a ruled float-literal home, or Float operators). RUNG NOW: structurally guaranteed on that route, for declared Float positions.",
   ],
 
   evidence: [

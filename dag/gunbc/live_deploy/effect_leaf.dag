@@ -3,7 +3,7 @@ module gunbc.live_deploy.effect_leaf
 import std.types { String, NonEmptyStr }
 import v2.std.effect_plan { EffectPlan, Do }
 import v2.std.orchestration { FailFast }
-import v2.std.operation_argv { OperationRef, operation_argv_bind_text }
+import std.operation_argv { OperationRef, operation_argv_bind_text }
 import v2.workflow.effect_plan_bash_materialize {
   BashBoundOperationInvocation,
   EffectPlanBashMaterialized,
@@ -20,7 +20,7 @@ data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT
 // BashBoundOperationInvocation -- an extdeps operation row plus that row's OWN declared inputs bound
 // by name -- and its argv is derived from the declaration by shell_materialize_operation_argv. The
 // carrier is the one that landed in Wave A/B (v2.std.effect_plan Do{effect} over
-// v2.std.operation_argv BoundOperationInvocation, materialized by
+// std.operation_argv BoundOperationInvocation, materialized by
 // v2.workflow.effect_plan_bash_materialize); no second vocabulary for "a mutating host operation"
 // is minted here, and the host-effect lane's HostEffect surface is untouched.
 //
