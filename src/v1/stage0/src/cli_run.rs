@@ -13894,6 +13894,23 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     if let Some(cached) = index.pool_parse.borrow().clone() {
         return Ok(cached);
     }
+    // POOL FACT, READ THROUGH THE UNDERLAY. A fixture scratch's `source_files` is the
+    // process-shared slot's map cloned verbatim (its only constructor,
+    // `scratch_index_for_fixture_closure_extension`, does exactly `shared.source_files.clone()`
+    // and the fixture is never inserted here — it is appended to the returned source Vec after
+    // the fixpoint), so `scratch_underlay: Some(base)` can only mean "my pool IS base's pool".
+    // That field is the verbatim-clone witness, so this is a structural condition, not a
+    // length heuristic; it mirrors the trust the three existing readers (`parsed_references`
+    // 7811, `bare_reference_admission` 8076, `both_closure_edges` 8608) already place in it.
+    // Falling through makes the ~4 s pool parse build once per process on the shared slot
+    // instead of once per census call. Isolation is unaffected: this READS base's warm copy and
+    // writes nothing to it — the fixture's writes stay on the scratch's own parse/typed caches
+    // (RFM `fixture_compile_retained_on_the_process_shared_index`). The digest-equality,
+    // collision-stability and RFM arbiters in tests/census_cost_step0_measurement.rs judge it.
+    if let Some(base) = index.scratch_underlay.borrow().clone() {
+        debug_assert_eq!(index.source_files.len(), base.source_files.len());
+        return pool_parse(&base);
+    }
     // Deterministic pool order (sorted module paths keeps every derived census
     // build reproducible — determinism gate).
     let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
@@ -14146,6 +14163,20 @@ fn closure_name_census(
     let key = root.map(str::to_string);
     if let Some(hit) = index.closure_name_censuses.borrow().get(&key) {
         return Ok(hit.clone());
+    }
+    // GLOBAL CENSUS, READ THROUGH THE UNDERLAY — but ONLY the whole-pool (None) key. That key
+    // is built over `pool.nodes_by_file` + `pool.combined_si` and nothing per-index (see the
+    // `None =>` arm below: `pool.nodes_by_file.iter().map(…)`), and `pool_parse` now shares the
+    // underlay's warm copy, so the whole-pool census is a pool fact identical on scratch and
+    // shared — the same verbatim-clone condition as `pool_parse`. That is the ~6 s the census
+    // path pays per call, so it is built once per process. The PER-ROOT (Some) key is NOT
+    // delegated: it reads `index.module_graph_facts.adjacency` (see `tree_census_nodes`), a
+    // per-index field, so its answer is a property of THIS index and must stay on the scratch.
+    if key.is_none() {
+        if let Some(base) = index.scratch_underlay.borrow().clone() {
+            debug_assert_eq!(index.source_files.len(), base.source_files.len());
+            return closure_name_census(&base, None);
+        }
     }
     let pool = pool_parse(index)?;
     // Timed NET of `pool_parse`, which is forced above and carries its own row: this is the
