@@ -2,7 +2,7 @@ module gunbc.rung_drop.instrument_dispatch_upper_edge_unmeasured
 
 import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
-import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
+import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
 
 // DECLARED 2026-10-21 (review 83744 on gunbc#14613). THE INSTRUMENT DISPATCH QUEUE HAD AN UPPER EDGE
 // BEFORE THIS CHANGE, AND KEYING THE GROUP PER DISPATCH REMOVED IT: one group name for every label let
