@@ -317,7 +317,11 @@ mod tests {
         assert_eq!(modules, vec!["std.coercion".to_string()]);
         let extended = extend_with_acquired(sources, &modules, &|m: &str| {
             let provider = index.source_files.get(m).cloned().expect("pool answered");
-            super::super::entry_resolve::load_sources_for_entry_with_pool(&index, &provider.path)
+            let on_disk = super::super::process_workspace_root().join(&provider.path);
+            super::super::entry_resolve::load_sources_for_entry_with_pool(
+                &index,
+                &on_disk.to_string_lossy(),
+            )
         })
         .expect("acquisition extends the closure");
         assert!(extended

@@ -2133,7 +2133,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                              and then had no source for it"
                         )
                     })?;
-                    load_sources_for_entry_with_pool(index, &provider.path)
+                    // The pool stores workspace-relative paths; name the provider absolutely so
+                    // its closure does not depend on the process's current directory.
+                    let on_disk = super::process_workspace_root().join(&provider.path);
+                    load_sources_for_entry_with_pool(index, &on_disk.to_string_lossy())
                 },
             )?;
             let acquired =
