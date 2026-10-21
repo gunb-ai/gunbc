@@ -211,8 +211,10 @@ fn forge_an_observed_installation() -> InstallationObservation {
 // (NOT sole_constructor -- GitHub's readback response carries the digits, so a reader of the wire must
 // be able to build it, exactly like GitHubAppInstallationId), so there is no seal in front of this
 // refusal and the census can see the type wall directly. The witness claim
-// a_run_id_where_a_rule_id_belongs_is_refused_at_the_row reads the row out of the census, class-scoped
-// and control-discriminated; delete the carrier and the row disappears and the claim goes red.
+// a_run_id_where_a_rule_id_belongs_is_refused_at_the_row reads the row out of the census KEYED --
+// TypeMismatch at subject "Primitive(Int)", the measured rendering of a named Int reference at a
+// record-literal field -- against the same key at the control, which builds this row correctly; delete
+// the carrier and the row disappears and the claim goes red.
 data forged_rule_row_from_run_digits: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule {
   id: forged_run_id,
   node_id: "DPPR_forged",
