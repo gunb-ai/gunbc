@@ -2184,6 +2184,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                         typed.diagnostics.clone(),
                         source_indices.clone(),
                         &failed,
+                        &pool,
                     )
                 }
             };
