@@ -8,7 +8,7 @@ import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_q
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
   ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed,
-  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
 }
 import v2.workflow.wet_evidence {
   WetEvidenceRequirement, LocalRepoCoResidentRequirement,
@@ -3377,6 +3377,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/design_ruling_standing_witness.dag",
       function: "an_unclassified_ruling_row_is_refused_and_a_classified_one_is_not",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line" },
+      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
+      function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "a_nonexistent_entry_exits_2_with_a_located_refusal" },
+      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
+      function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
+      expectation: ExpectedToHold {}
     }
   ]
 }
@@ -3561,6 +3573,7 @@ fn local_repo_wet_identity_passed_on_candidate(
               PanickedBeforeVerdict => false
               NotAttemptedAfterAbort => false
               ObservationUnreadableBeforeVerdict => false
+              SubjectUnresolvedBeforeVerdict => false
             }
         }
     }

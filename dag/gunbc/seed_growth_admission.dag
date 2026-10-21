@@ -35,6 +35,7 @@ import gunbc.serve_declared_binding_seed_growth { serve_declared_binding_seed_gr
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
+import gunbc.claim_batch_exit_composition_seed_growth { claim_batch_exit_composition_seed_growth_justification }
 import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.declaration_lookup_index_seed_growth { declaration_lookup_index_seed_growth_justification }
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
@@ -146,6 +147,7 @@ import gunbc.floor.floor_cost_debt_edit_seed_growth { floor_cost_debt_edit_seed_
 import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth_justification }
 import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_justification }
 import gunbc.run_demand_acquire_seed_growth { run_demand_acquire_seed_growth_justification }
+import gunbc.generated_provider_acquire_seed_growth { generated_provider_acquire_seed_growth_justification }
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor.floor_cost_debt_verdict_seed_growth { floor_cost_debt_verdict_seed_growth_justification }
@@ -295,6 +297,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     listing_completeness_seed_growth_justification,
     derived_row_roster_seed_growth_justification,
     run_demand_acquire_seed_growth_justification,
+    generated_provider_acquire_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
     floor_call_site_demand_seed_growth_justification,
@@ -317,6 +320,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_unwind_seed_growth_justification,
     claim_batch_function_preflight_seed_growth_justification,
     claim_batch_entry_closure_preflight_seed_growth_justification,
+    claim_batch_exit_composition_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
     pool_reading_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
