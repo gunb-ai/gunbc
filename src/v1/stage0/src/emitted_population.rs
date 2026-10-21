@@ -66,6 +66,7 @@
 // src/std_emit_model.rs
 // src/std_error_primitives.rs
 // src/std_graph.rs
+// src/std_host_text.rs
 // src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs
@@ -141,7 +142,6 @@
 // src/v1_compiler_runtime_rust.rs
 // src/v1_compiler_stage0_crates.rs
 // src/v1_compiler_tokenize.rs
-// src/v1_compiler_trace.rs
 // src/v1_compiler_trait_bound_witness.rs
 // src/v1_compiler_trait_derive_emit.rs
 // src/v1_compiler_type_head_exposure.rs
@@ -149,7 +149,6 @@
 // src/v1_gunbc_namespace_reference_derived_closure_production_observations.rs
 // src/v1_gunbc_occurrence_binding_parser_walk.rs
 // src/v1_gunbc_parsed_import_statements.rs
-// src/v1_probe_emit_interp.rs
 // src/v1_rt.rs
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs

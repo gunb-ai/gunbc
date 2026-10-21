@@ -1,6 +1,6 @@
 module gunbc.fleet.organization_runner_roster_read
 
-import std.types { String, NonEmptyStr, Bool, Int, List, Map }
+import std.types { String, NonEmptyStr, Bool, Int, List, Map, Secret }
 import std.algebra { Cons, Empty, trim }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
@@ -8,12 +8,15 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.page_fold {
   PageSize, PageSizeAdmission, PageSizeAdmitted, PageSizeAboveAuthorityMaximum, admit_page_size,
   PageBound, PageCursor, OffsetPage, OpaqueToken, LinkNext,
-  PageContinuation, PageObservation,
+  PageContinuation, ContinuationClosed, ContinuationNext, PageObservation,
   PageFoldState, PageFoldDemand, DemandPage, DemandNone,
   PageFoldOutcome, PagesClosed, PagesRefused,
   page_fold_begin, page_fold_demand, page_fold_observe, page_fold_finish, page_fold_refusal_key
 }
+import std.integer { PositiveInt }
 import extdeps.uri { uri_wire }
+import extdeps.transports.rest { RestRefusal, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerRosterEntryWire, OrganizationRunnerRosterPageWire }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   parse_json_document,
@@ -128,45 +131,50 @@ fn decode_runner_labels(v: JsonValue) -> List<NonEmptyStr>? {
 
 // REQUIRED FIELDS REFUSE WHEN ABSENT; OPTIONAL ONES STAY ABSENT. The split is the upstream schema's
 // (extdeps.github.ci_runner GitHubSelfHostedRunnerRegistration), not a choice made here.
-fn decode_runner_registration(v: JsonValue) -> RunnerRegistrationDecode {
-  match json_member_int(v: v, key: "id") {
-    Absent => RunnerRegistrationDecodeRefused { reason: "a runner object has no integer id" }
-    Present { value: id } =>
-      if id < 0 {
-        RunnerRegistrationDecodeRefused { reason: "a runner object has a negative id" }
-      } else {
-        match json_member_string(v: v, key: "name") {
-          Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no name: id ", to_string(id)) as NonEmptyStr }
-          Present { value: name } => match json_member_string(v: v, key: "status") {
-            Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no status: id ", to_string(id)) as NonEmptyStr }
-            Present { value: raw_status } => match decode_runner_status(raw: raw_status) {
-              Absent => RunnerRegistrationDecodeRefused { reason: concat("runner status is neither online nor offline: ", raw_status as String) as NonEmptyStr }
-              Present { value: status } => match json_member_bool(v: v, key: "busy") {
-                Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no busy flag: id ", to_string(id)) as NonEmptyStr }
-                Present { value: busy } => match json_member_string(v: v, key: "os") {
-                  Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no os: id ", to_string(id)) as NonEmptyStr }
-                  Present { value: os } => match decode_runner_labels(v: v) {
-                    Absent => RunnerRegistrationDecodeRefused { reason: concat("runner labels are absent or unnamed: id ", to_string(id)) as NonEmptyStr }
-                    Present { value: labels } => match checked_int_magnitude(a: id) {
-                      CheckedNatOverflow { cause: _ } => RunnerRegistrationDecodeRefused { reason: concat("runner id is not representable as a natural number: ", to_string(id)) as NonEmptyStr }
-                      CheckedNatReady { value: nat_id } => RunnerRegistrationDecoded { registration: GitHubSelfHostedRunnerRegistration {
-                        id: nat_id,
-                        name: name,
-                        status: status,
-                        busy: busy,
-                        ephemeral: json_member_bool(v: v, key: "ephemeral"),
-                        version: json_member_string(v: v, key: "version"),
-                        os: os,
-                        labels: labels
-                      } }
-                    }
-                  }
+fn registration_from_fields(id: Int, name: NonEmptyStr?, status: NonEmptyStr?, busy: Bool?, os: NonEmptyStr?, labels: List<NonEmptyStr>?, ephemeral: Bool?, version: NonEmptyStr?) -> RunnerRegistrationDecode {
+  if id < 0 {
+    RunnerRegistrationDecodeRefused { reason: "a runner object has a negative id" }
+  } else {
+    match name {
+      Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no name: id ", to_string(id)) as NonEmptyStr }
+      Present { value: n } => match status {
+        Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no status: id ", to_string(id)) as NonEmptyStr }
+        Present { value: raw_status } => match decode_runner_status(raw: raw_status) {
+          Absent => RunnerRegistrationDecodeRefused { reason: concat("runner status is neither online nor offline: ", raw_status as String) as NonEmptyStr }
+          Present { value: st } => match busy {
+            Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no busy flag: id ", to_string(id)) as NonEmptyStr }
+            Present { value: bz } => match os {
+              Absent => RunnerRegistrationDecodeRefused { reason: concat("runner has no os: id ", to_string(id)) as NonEmptyStr }
+              Present { value: o } => match labels {
+                Absent => RunnerRegistrationDecodeRefused { reason: concat("runner labels are absent or unnamed: id ", to_string(id)) as NonEmptyStr }
+                Present { value: ls } => match checked_int_magnitude(a: id) {
+                  CheckedNatOverflow { cause: _ } => RunnerRegistrationDecodeRefused { reason: concat("runner id is not representable as a natural number: ", to_string(id)) as NonEmptyStr }
+                  CheckedNatReady { value: nat_id } => RunnerRegistrationDecoded { registration: GitHubSelfHostedRunnerRegistration {
+                    id: nat_id, name: n, status: st, busy: bz, ephemeral: ephemeral, version: version, os: o, labels: ls
+                  } }
                 }
               }
             }
           }
         }
       }
+    }
+  }
+}
+
+fn decode_runner_registration(v: JsonValue) -> RunnerRegistrationDecode {
+  match json_member_int(v: v, key: "id") {
+    Absent => RunnerRegistrationDecodeRefused { reason: "a runner object has no integer id" }
+    Present { value: id } => registration_from_fields(
+      id: id,
+      name: json_member_string(v: v, key: "name"),
+      status: json_member_string(v: v, key: "status"),
+      busy: json_member_bool(v: v, key: "busy"),
+      os: json_member_string(v: v, key: "os"),
+      labels: decode_runner_labels(v: v),
+      ephemeral: json_member_bool(v: v, key: "ephemeral"),
+      version: json_member_string(v: v, key: "version")
+    )
   }
 }
 
@@ -425,19 +433,31 @@ fn roster_walk_pump(
   walk: OrganizationRunnerRosterWalk,
   respond: fn(NonEmptyStr) -> RosterTransportResponse,
 ) -> OrganizationRunnerRosterWalk {
+  roster_walk_pump_by(walk: walk, fetch: fn(c) { fetch_roster_page_via(listing: listing, cursor: c, respond: respond) })
+}
+
+// THE ONE WALK, PARAMETERIZED BY HOW A CURSOR BECOMES A PAGE. The gh realization follows the
+// authority's Link targets (fetch_roster_page_via); the typed REST realization pages by the
+// documented page/per_page offset (rest_roster_page). Both fold through the same
+// page_fold_demand/page_fold_observe and are classified by the same classify_roster_walk, so the
+// total_count agreement, distinct-id and closure refusals are one authority.
+fn roster_walk_pump_by(
+  walk: OrganizationRunnerRosterWalk,
+  fetch: fn(PageCursor) -> OrganizationRunnerRosterPageRead,
+) -> OrganizationRunnerRosterWalk {
   match walk.failure {
     Present { value: _ } => walk
     Absent => match page_fold_demand(state: walk.state) {
       DemandNone => walk
-      DemandPage { cursor: c } => match fetch_roster_page_via(listing: listing, cursor: c, respond: respond) {
+      DemandPage { cursor: c } => match fetch(c) {
         RosterPageFailed { cause } =>
           OrganizationRunnerRosterWalk { state: walk.state, pages: walk.pages, failure: Present { value: cause } }
         RosterPageDelivered { page, continuation } =>
-          roster_walk_pump(listing: listing, walk: OrganizationRunnerRosterWalk {
+          roster_walk_pump_by(walk: OrganizationRunnerRosterWalk {
             state: page_fold_observe(state: walk.state, page: PageObservation { items: page.registrations, continuation: continuation }),
             pages: list_push(walk.pages, page),
             failure: none
-          }, respond: respond)
+          }, fetch: fetch)
       }
     }
   }
@@ -748,6 +768,106 @@ fn organization_runner_roster_report(org: NonEmptyStr, page_size: PageSize) -> O
       }
     }
   }
+}
+
+// THE TYPED REST REALIZATION OF THE SAME READ, for a caller that holds an installation token as a
+// Secret and no gh credential in its environment (the lost-boot sweep, gunbc.runner.runner_lost_boot_sweep_run).
+// The token rides the rest transport's Bearer auth input, never an argv or an environment variable.
+// A typed rest answer carries the decoded body and no headers, so this realization cannot follow a
+// Link target: it pages by upstream's documented page/per_page offset
+// (docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api) and ends when
+// page * per_page reaches total_count. An offset walk over a population that changes between
+// requests can skip or repeat a row, and the classifier does NOT always detect it: it establishes a
+// CLOSED, CARDINALITY-CONSISTENT page walk (pages agree on total_count, no id was read with disagreeing
+// payloads, distinct ids equal total_count), nothing stronger. Counter-example, page size 1:
+// page 1 reads [A] of [A, B], then A is removed and C added, page 2 reads [C] of [B, C]; the walk
+// closes with two distinct ids and agreeing totals, Observed [A, C], and B was never read. The
+// concurrent-mutation limitation is therefore UNRESOLVED here and in the Link walk alike (both are
+// snapshots of nothing). What a caller may conclude is scoped by what it acts on: a registration it
+// selected and then confirmed absent by readback is absent; an UNREAD registration is not shown to be
+// absent or present by this read.
+fn nonempty_of(s: String) -> NonEmptyStr? {
+  if s == "" { none } else { Present { value: s as NonEmptyStr } }
+}
+
+fn wire_label_names(w: OrganizationRunnerRosterEntryWire) -> List<NonEmptyStr>? {
+  let names = map(w.labels, l => nonempty_of(s: l.name))
+  if any(names, n => match n { Absent => true, Present { value: _ } => false }) {
+    none
+  } else {
+    Present { value: flat_map(names, n => match n { Present { value } => [value], Absent => [] }) }
+  }
+}
+
+fn registration_from_wire(w: OrganizationRunnerRosterEntryWire) -> RunnerRegistrationDecode {
+  registration_from_fields(
+    id: w.id,
+    name: nonempty_of(s: w.name),
+    status: nonempty_of(s: w.status),
+    busy: Present { value: w.busy },
+    os: nonempty_of(s: w.os),
+    labels: wire_label_names(w: w),
+    ephemeral: w.ephemeral,
+    version: match w.version { Absent => none, Present { value: v } => nonempty_of(s: v) }
+  )
+}
+
+fn roster_page_read_from_wire(org: NonEmptyStr, page: PositiveInt, per_page: Int, wire: OrganizationRunnerRosterPageWire) -> OrganizationRunnerRosterPageRead {
+  let decoded = map(wire.runners, e => registration_from_wire(w: e))
+  match first_registration_refusal(ds: decoded) {
+    Present { value: reason } => RosterPageFailed { cause: reason }
+    Absent => {
+      let regs = flat_map(decoded, d => match d {
+        RunnerRegistrationDecoded { registration } => [registration]
+        RunnerRegistrationDecodeRefused { reason: _ } => []
+      })
+      let owed = page * per_page < wire.total_count
+      if owed && length(xs: regs) == 0 {
+        RosterPageFailed { cause: join(["org runners page ", to_string(page), " was empty before total_count ", to_string(wire.total_count), " was reached"], "") as NonEmptyStr }
+      } else {
+        RosterPageDelivered {
+          page: OrganizationRunnerRosterPage {
+            target: join(["orgs/", org as String, "/actions/runners?per_page=", to_string(per_page), "&page=", to_string(page)], ""),
+            link_field: "",
+            registrations: regs,
+            total_count: wire.total_count
+          },
+          continuation: if owed { ContinuationNext { cursor: OffsetPage { page: page + 1 } } } else { ContinuationClosed }
+        }
+      }
+    }
+  }
+}
+
+fn rest_page_refusal_cause(page: Int, refusal: RestRefusal) -> NonEmptyStr {
+  match refusal {
+    RestStatusRefused { status, body: _ } => join(["org runners page ", to_string(page), " answered HTTP ", to_string(status)], "") as NonEmptyStr
+    RestTransportRefused { cause } => join(["org runners page ", to_string(page), " was not exchanged: ", cause as String], "") as NonEmptyStr
+    RestBodyUndecodable { status, cause } => join(["org runners page ", to_string(page), " answered HTTP ", to_string(status), " with an undecodable body: ", cause as String], "") as NonEmptyStr
+  }
+}
+
+fn rest_roster_page(token: Secret, org: NonEmptyStr, per_page: Int, cursor: PageCursor) -> OrganizationRunnerRosterPageRead
+  uses net: Network
+{
+  match cursor {
+    OffsetPage { page: n } => match github.ActionsSelfHostedRunners.ListOrganizationRunnersPage(installation_token: token, org: org, per_page: per_page, page: n as Int) {
+      RestAnswered { answer } => roster_page_read_from_wire(org: org, page: n, per_page: per_page, wire: answer.result)
+      RestRefused { refusal } => RosterPageFailed { cause: rest_page_refusal_cause(page: n as Int, refusal: refusal) }
+    }
+    OpaqueToken { token: _ } => RosterPageFailed { cause: "an opaque-token cursor reached the typed REST org runners read, which pages by offset" }
+    LinkNext { target: _ } => RosterPageFailed { cause: "a Link cursor reached the typed REST org runners read, which pages by offset" }
+  }
+}
+
+fn organization_runner_roster_report_via_rest(org: NonEmptyStr, page_size: PageSize, token: Secret) -> OrganizationRunnerRosterReport
+  uses net: Network
+{
+  let walk = roster_walk_pump_by(
+    walk: roster_walk_begin(),
+    fetch: fn(c) { rest_roster_page(token: token, org: org, per_page: page_size.count, cursor: c) }
+  )
+  classify_roster_walk(walk: walk, observed_on: clock_now_probed_at_or_unknown())
 }
 
 // THE PRODUCTION ROSTER. gunbc.apply and gunbc.runner.runner_capacity_realize plan from this.

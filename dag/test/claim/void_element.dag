@@ -1,4 +1,5 @@
 module test.claim.void_element
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr }
@@ -25,28 +26,28 @@ fn div_node() -> Fragment {
 }
 
 test fn witness_html_br_omits_close() -> Bool {
-  serialize_html_source(node: br_node()) == "<br>"
+  render_html(serialize_html_source(node: br_node())) == "<br>"
 }
 
 test fn witness_html_meta_omits_close() -> Bool {
-  serialize_html_source(node: meta_node()) == "<meta charset=\"utf-8\">"
+  render_html(serialize_html_source(node: meta_node())) == "<meta charset=\"utf-8\">"
 }
 
 test fn witness_html_div_still_closes() -> Bool {
-  serialize_html_source(node: div_node()) == "<div>content</div>"
+  render_html(serialize_html_source(node: div_node())) == "<div>content</div>"
 }
 
 test fn witness_jsx_br_self_closes() -> Bool {
-  serialize_jsx_component(fn_name: "F", node: br_node()) ==
+  render_jsx(serialize_jsx_component(fn_name: "F", node: br_node())) ==
     "export function F(): JSX.Element { return <br />; }"
 }
 
 test fn witness_jsx_div_still_closes() -> Bool {
-  serialize_jsx_component(fn_name: "F", node: div_node()) ==
+  render_jsx(serialize_jsx_component(fn_name: "F", node: div_node())) ==
     "export function F(): JSX.Element { return <div>content</div>; }"
 }
 
 test fn witness_html_br_differs_from_jsx_br() -> Bool {
-  !(serialize_html_source(node: br_node()) == serialize_jsx_component(fn_name: "F", node: br_node()))
+  !(render_html(serialize_html_source(node: br_node())) == render_jsx(serialize_jsx_component(fn_name: "F", node: br_node())))
 }
 
