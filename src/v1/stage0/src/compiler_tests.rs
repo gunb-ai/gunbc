@@ -1282,6 +1282,70 @@ mod compiler_tests {
     /// the merge path.
     #[test]
     #[ignore]
+    fn scratch_subtraction() {
+        let dir = std::env::var("SUB_DIR").unwrap();
+        let mut paths: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        paths.sort();
+        let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
+        for path in paths {
+            let source = std::fs::read_to_string(&path).unwrap();
+            let name = source
+                .lines()
+                .find(|l| l.starts_with("module "))
+                .unwrap()
+                .trim_start_matches("module ")
+                .trim()
+                .replace('.', "_");
+            let sources = match crate::cli_run::resolve_virtual_source_with_imports(
+                "fixture.dag",
+                &source,
+                &module_index,
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("SUB {} RESOLVE-ERR {}", path.display(), e);
+                    continue;
+                }
+            };
+            let result = crate::v1_compiler_compile::compile_sources(
+                std::rc::Rc::new(sources.into()),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            let hard: Vec<String> = result
+                .diagnostics
+                .iter()
+                .filter(|d| crate::cli_run::compile_clean_diagnostic_is_hard(d))
+                .map(|d| format!("{d:?}"))
+                .collect();
+            let mut refused = vec![];
+            for f in result.files.iter() {
+                if f.content.contains("shared layer refused")
+                    && format!("{:?}", f.path).contains(&name)
+                {
+                    for l in f
+                        .content
+                        .lines()
+                        .filter(|l| l.contains("shared layer refused"))
+                    {
+                        refused.push(l.chars().take(200).collect::<String>());
+                    }
+                }
+            }
+            eprintln!(
+                "SUB {} hard={} refused={} {:?}",
+                path.display(),
+                hard.len(),
+                refused.len(),
+                refused.first()
+            );
+        }
+    }
+
+    #[test]
+    #[ignore]
     fn fixture_closure_rustc_discrimination() {
         let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);
@@ -1717,77 +1781,6 @@ mod compiler_tests {
 
     /// Statement-position match lowering, subject `v1.compiler.emit_rust` `emit_rust_block_stmts`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
     /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn statement_position_match_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_statement_position_match_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("statement-position-match {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the statement-position-match control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// A record field typed by its declaring type's parameter, subject `v1.compiler.emit_rust` `record_field_declaring_generic_names`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn record_declaring_param_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_record_declaring_param_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("record-declaring-param {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the record-declaring-param control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// A record field typed Nat, realized by an opaque kernel alias row, subject `v1.compiler.emit_rust` `shared_layer_of_resolution`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn nat_kernel_alias_field_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_nat_kernel_alias_field_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("nat-kernel-alias-field {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the nat-kernel-alias-field control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// `SharedLayerRefuse` FIRES: two declarations of one leaf (`Word64`, owners `a` and `b`) that
-    /// DISAGREE on the layer are never answered from the collapsed spelling. The positive control is
-    /// the same leaf with both declarations at one layer, which answers without refusing; the pair
-    /// differs only in whether the second identity is in the shared set.
     #[test]
     fn an_ambiguous_leaf_whose_declarations_disagree_on_layer_refuses() {
         let ident = |owner: &str| {
