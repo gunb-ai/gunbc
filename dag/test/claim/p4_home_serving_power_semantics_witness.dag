@@ -531,31 +531,59 @@ fn p4_declared_field_names(fact: DeclFact) -> List<String> {
   concat(top, nested)
 }
 
-// THE CARDINALITY IS READ WHERE IT IS WRITTEN. Whether the reading may be missing is the whole
-// question this plan turns on, and the census node cannot answer it: `marshal_type_expr_ref`
-// marshals a field's type to a bare `Atom` holding the authored type name, so no optional marker
-// survives into the node the census hands back and no conjunct over it could ever have been
-// falsified. The declaring file is the one place the cardinality is actually recorded, so the
-// spelling is read from the file the census row itself names (`fact.rel_path` — the same seam
+// THE CARDINALITY IS READ WHERE IT IS WRITTEN, INSIDE THE TYPE THAT OWNS THE FIELD. Whether the
+// reading may be missing is the whole question this plan turns on, and the census node cannot answer
+// it: `marshal_type_expr_ref` marshals a field's type to a bare `Atom` holding the authored type
+// name, so no optional marker survives into the node the census hands back and no conjunct over it
+// could ever have been falsified. The declaring file is the one place the cardinality is recorded, so
+// the spelling is read from the file the census row itself names (`fact.rel_path` — the same seam
 // `p4_declares_field` uses, and the file is the census's, not one this claim guessed).
+//
+// THE READ IS SCOPED TO THE TYPE BLOCK, NOT THE FILE, and that is not fussiness. This very file holds
+// `applied_power_limit: Watt?` TWICE — once on the realization this plan is about and once on
+// `VllmRequestAxisReadings`, an unrelated vLLM axis record. A whole-file search would therefore stay
+// green after the realization's own `?` was dropped, because the neighbour still spells it: the claim
+// would be reading a fact about some other type and reporting it as this one's (§3, each fact lives
+// in exactly one place). Slicing out the declaring type's own block makes the answer depend only on
+// that type. An absent header yields the empty block, so a renamed or deleted type reddens here too
+// rather than falling through to a vacuous match.
 // REDDENS: the `?` being dropped (a missing reading would stop being expressible), the type being
-// renamed away from `Watt`, or the field line being rewritten into a form that is no longer a
-// declared field of that type.
-fn p4_field_is_declared_optional_watt(fact: DeclFact, field: String) -> Bool {
+// renamed away from `Watt`, or the field ceasing to be a declared field of THAT type.
+fn p4_field_is_declared_optional_watt(fact: DeclFact, decl: String, field: String) -> Bool {
   let source = filesystem_read(path: fact.rel_path)
-  string_contains(s: source.content, pattern: concat("  ", concat(field, ": Watt?")))
+  string_contains(
+    s: p4_type_block(content: source.content, decl: decl),
+    pattern: concat("  ", concat(field, ": Watt?"))
+  )
+}
+
+// The declaring type's own text: everything after its header up to the brace that closes it.
+fn p4_type_block(content: String, decl: String) -> String {
+  let after_header = match content.split(delimiter: concat("type ", concat(decl, " {"))) {
+    Cons { head: _, tail: Cons { head: rest, tail: _ } } => rest
+    _ => ""
+  }
+  match after_header.split(delimiter: "\n}") {
+    Cons { head: block, tail: _ } => block
+    _ => ""
+  }
 }
 
 // BOTH HALVES OF THE CLAIM, EACH READ FROM ITS OWN AUTHORITY. The name is read off the census row
-// (so a rename or a drop reddens it), and the `Watt?` spelling off the file that row points at (so
-// a retype or a lost `?` reddens it). One conjunct alone would let the other drift: a file that
-// still spells the field while the census no longer carries it, or a census row whose declaring
-// file has been rewritten underneath it.
+// (so a rename or a drop reddens it), and the `Watt?` spelling off that row's own declaring file,
+// inside the type it names (so a retype or a lost `?` reddens it). One conjunct alone would let the
+// other drift: a file that still spells the field while the census no longer carries it, or a census
+// row whose declaring file has been rewritten underneath it.
 fn p4_optional_watt_field(cite: String, field: String) -> Bool {
-  let rows = p4_census_rows(cite: cite)
+  let c = p4_parse(w: cite)
+  let rows = p4_census_rows_parsed(c: c)
   count(rows) > 0
     && p4_declares_field_by_name(cite: cite, field: field)
-    && all(rows, fact => p4_field_is_declared_optional_watt(fact: fact, field: field))
+    && all(rows, fact => p4_field_is_declared_optional_watt(
+      fact: fact,
+      decl: c.decl_name,
+      field: field
+    ))
 }
 
 // THE TWO WATT CARRIERS, READ FROM WHERE THEY ARE DECLARED. The plan's whole
