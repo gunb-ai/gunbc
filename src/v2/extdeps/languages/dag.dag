@@ -144,7 +144,7 @@ import v2.std.node {
   ConstructTagEdge,
 }
 import v2.std.node_query { binder_edge, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup, find_labeled_child }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   lex_rules_literal_for_class,
   char_kernel_type_node,
   symbol_kernel_type_node,
@@ -4432,6 +4432,7 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
 
 fn dag_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: dag_target_model_bundle_with_fidelity_quotient(quotient: quotient),
     lex: dag_lex(),
@@ -6916,6 +6917,7 @@ fn dag_bodied_fn_target_model(
   match runtime_row {
     Present { value: row } =>
       TargetModel {
+        primitive_realizations: PrimitiveRealizationsUnwired,
         produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
@@ -6926,6 +6928,7 @@ fn dag_bodied_fn_target_model(
       }
     Absent =>
       TargetModel {
+        primitive_realizations: PrimitiveRealizationsUnwired,
         produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
@@ -7257,6 +7260,7 @@ fn dag_field_access_target_model() -> TargetModel {
 
 fn dag_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: dag_target_model_node(),
     lex: dag_lex(),

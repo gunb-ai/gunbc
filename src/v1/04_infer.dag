@@ -231,7 +231,7 @@ import v1.compiler.infer_patterns {
   node_is_never_declaration,
   constructor_roster_for,
   ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
-  expand_scrut_type_for_variant_lookup,
+  expand_scrut_type_for_variant_lookup, instantiate_scrutinee_expansion,
   pattern_matches_constructor,
   constructor_fields
 }
@@ -7219,14 +7219,6 @@ type UnresolvedMethodFrontierRow {
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   [
     {
-      module_name: "v1.compiler.trace",
-      method: "map",
-      occurrences: 1,
-      receiver_shape: "Product(SpanMapping)",
-      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
-      dissolution: unbound_dissolution(description: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup")
-    },
-    {
       module_name: "test.claim.sccache_local_content_verified_on_read",
       method: "contains",
       occurrences: 1,
@@ -7432,7 +7424,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
+      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: instantiate_scrutinee_expansion(use_site: scrutinee_type, expanded: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type), env: scope.type_env)))
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>

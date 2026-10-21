@@ -6,7 +6,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
   OperationInputBinding,
