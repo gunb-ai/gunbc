@@ -1,0 +1,56 @@
+module test.claim.fleet.fleet_converge_host_cap_linkage_witness
+
+import std.types { Bool, String, List }
+import std.optional { Present, Absent }
+import std.measure { second_count }
+import extdeps.github.actions { Job, Step, RunStep, UsesStep }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_job,
+  fleet_converge_job_timeout_minutes,
+  fleet_converge_host_cap_job_floor_minutes,
+  fleet_converge_runner_host_file_converge_step,
+  fleet_converge_runner_host_cap_release_step,
+}
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
+import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
+
+// THE LINKAGE CONTROLS OF THE CAP BRACKET'S WORKFLOW: the emitted job carries the release step and the budget
+// delivery, and its timeout covers converge + release (a job-level timeout is a cancellation).
+
+fn step_id_of(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: Present { value: i }, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+    UsesStep { name: _, id: Present { value: i }, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+    _ => ""
+  }
+}
+
+fn job_step_ids(j: Job) -> List<String> { map(j.steps, s => step_id_of(st: s)) }
+
+test fn the_job_timeout_covers_the_converge_step_plus_its_release() -> Bool {
+  match fleet_converge_job().timeout_minutes {
+    Present { value: m } => m >= fleet_converge_host_cap_job_floor_minutes() && m == fleet_converge_job_timeout_minutes()
+    Absent => false
+  }
+}
+
+test fn the_emitted_job_carries_the_converge_and_the_always_release_steps() -> Bool {
+  any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_file_converge")
+    && any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release")
+}
+
+test fn the_converge_step_is_delivered_the_declared_budget() -> Bool {
+  match fleet_converge_runner_host_file_converge_step() {
+    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      any(kvs, e => e.key == runner_host_cap_step_budget_env_name)
+    _ => false
+  }
+}
+
+test fn the_release_does_not_write_the_converge_receipt() -> Bool {
+  gunbc_ci_runner_host_cap_release_receipt_path != gunbc_ci_runner_host_file_converge_receipt_path
+}
+
+test fn the_job_carries_the_release_receipt_upload() -> Bool {
+  any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release_receipt_upload")
+}

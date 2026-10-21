@@ -1,0 +1,648 @@
+module gunbc.runner.runner_host_cap_bracket
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { Second, second, second_count }
+import extdeps.github.actions { cancelled_job_always_step_timeout }
+import std.types { EpochMs }
+import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationOutcome,
+  SlotActuationNoop,
+  SlotActivated,
+  SlotNotInstalled,
+  SlotDrainedAndMasked,
+  SlotDrainPending,
+  SlotActuationRefused,
+  SlotRead,
+  SlotReadRefused,
+  SlotReadOutcome,
+  read_slot_over,
+  read_slot_worker_over,
+  run_slot_steps_over,
+  activate_runner_slot_over,
+  slot_activation_read_back_holds,
+  slot_actuation_settled,
+  slot_actuation_outcome_wire,
+  slot_state_active,
+  slot_state_stopped,
+  slot_state_stopping,
+}
+import gunbc.runner.runner_slot_actuation { slot_is_masked }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonBool, JsonArray, serialize_json, json_object, json_kv, json_string, json_bool, json_array }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
+import extdeps.systemd.systemctl { systemctl_mask_argv }
+import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+
+// THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
+//
+// WHY IT EXISTS (chain re-derivation, DESIGN 6b). The cap drop-ins are template-level, so write +
+// daemon-reload re-applies the caps to every running slot and can OOM-kill a busy slot's live job. The
+// route used to read idleness FIRST, with admission still open, and refuse on any busy slot. "Idle" read
+// with admission open is a point-in-time fact that decays, and about half of a loaded host's slots are
+// busy at any instant, so that refusal never cleared. The earliest unjustified boundary is the gate:
+// idleness is only a stable predicate over an interval in which no new job is admitted. This module makes
+// that interval an explicit, declared state: admission is closed FIRST, the live jobs are waited out
+// inside a DECLARED bound, idleness is judged UNDER the closure, the write is made, and admission is
+// re-opened on every exit path.
+//
+// ORDER: close admission (mask) -> wait, bounded, for every slot to be drained -> (the caller writes,
+// reloads, activates, reads back from the cgroup files) -> re-admit (activate + read back).
+//
+// COULD-NOT-TELL IS NOT IDLE (DESIGN 5). An unreadable process listing or unit reading, and a slot that is
+// not masked, are UNPROVEN: they hold the wait and, at the bound, refuse the host. They never authorize
+// the write.
+//
+// THE ADMISSION CLOSURE IS A DECLARED FACT, NOT A HOPE. Masking stops successors only. An idle listener
+// that is already running keeps polling for work, and stopping it races a job assignment whose loss
+// cancels a real CI job on another PR's author. So under AdmissionMaskOnly a running idle listener is not
+// stopped and nothing is written: the bracket refuses AdmissionNotClosed naming the units. Closing the
+// admission of an already-running idle listener needs the runner deregistered through the GitHub REST
+// API (a different credential site, a separate change); its arm joins AdmissionClosure when its consumer
+// does, because an arm with no producer is a declaration nothing reads.
+//
+// DIVERGES FROM std.temporal_effect HeldLease AND std.durable_exclusive_hold, WITH REASON. "This host is
+// drained by this run" is a lease whose release is the re-admit readback (HostLeftState), but both
+// carriers rest on a LeaseEpoch and a compare-and-set over a durable store; the host path has no durable
+// store and its single writer is the dispatching workflow's concurrency group. A durable store for the
+// hold is the trigger to inhabit them; no vocabulary is borrowed meanwhile, since a borrowed name with no
+// epoch behind it would be a meaning fork.
+
+type AdmissionClosure = | AdmissionMaskOnly
+
+data runner_host_cap_admission_closure: AdmissionClosure = AdmissionMaskOnly
+
+// THE WAIT BOUND IS A POLICY ROW (ratified by the operator: 2700s wait, 15s poll). It must exceed the
+// longest expected job on a runner slot, so a drain does not refuse on normal work; the cost is up to
+// 45 minutes of a host's slots out of admission per cap change, a rare event. The figure is a policy
+// choice, not a measurement: the generated workflows' step timeouts reach 30 minutes, which it exceeds,
+// but no source declares the longest job. The number changes here and nowhere else.
+type HostCapDrainPolicy {
+  wait_bound: Second
+  poll_interval: Second
+  operations_allowance: Second
+  release_allowance: Second
+  cancellation_envelope: Second
+  release_startup_allowance: Second
+}
+
+// THE OPERATIONS AND RELEASE ALLOWANCES ARE POLICY CHOICES TOO, each bounding what the wait bound does
+// not: the write, daemon-reload, activation and cgroup readback after a drain (operations), and the
+// re-admission with its readback (release). They are generous against a handful of ssh round trips per
+// slot over 19 slots. The enclosing workflow step's timeout is a fold over exactly these three figures
+// (host_cap_bracket_budget), so no second literal can disagree with the bracket.
+data runner_host_cap_drain_policy: HostCapDrainPolicy = HostCapDrainPolicy {
+  wait_bound: second(count: 2700),
+  poll_interval: second(count: 15),
+  operations_allowance: second(count: 600),
+  release_allowance: second(count: 240),
+  cancellation_envelope: cancelled_job_always_step_timeout,
+  release_startup_allowance: second(count: gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60),
+}
+
+// THE ENVIRONMENT VARIABLE THROUGH WHICH THE ENCLOSING STEP TELLS THE BRACKET ITS OWN DECLARED BUDGET, in
+// seconds. The workflow derives the step timeout and this value from the same policy row.
+data runner_host_cap_step_budget_env_name: String = "RUNNER_HOST_CAP_STEP_BUDGET_SECONDS"
+
+// WHAT A STEP MUST HOLD FOR THE WHOLE BRACKET: drain, operations and release, in seconds.
+fn host_cap_bracket_budget(policy: HostCapDrainPolicy) -> Second {
+  second(count: second_count(s: policy.wait_bound) + second_count(s: policy.operations_allowance) + second_count(s: policy.release_allowance))
+}
+
+// REFUSE BEFORE MASKING when the budget the bracket was given cannot cover it: a step killed mid-wait
+// leaves its masks, so a bracket that cannot finish must not begin.
+type BracketBudgetVerdict
+  = BudgetCovers
+  | BudgetCannotCover { needed: Second, given: Second }
+
+// THE RELEASE IS NOT GUARANTEED TO FIT THE CANCELLATION ENVELOPE, AND SAYS SO. GitHub gives a cancelled job's
+// always() steps a 5-minute cancellation timeout and then force-cancels (docs.github.com/en/actions/reference/
+// workflows-and-actions/expressions, status check functions; the figure is extdeps.github.actions cancelled_job_always_step_timeout). The release
+// step is a gunbc run step: its startup is the workflow's declared resolve budget (one authority,
+// gunbc_ci_gunbc_run_resolve_step_timeout_minutes), and the measured resolve of this closure is minutes, so
+// the declared release does not fit. The standing is a typed residual, not a refusal and not a claim:
+// refusing every bracket would make the cap unconvergeable, and claiming coverage would be false. The harm
+// and the climb are the recurring_failure_mode row runner_host_cap_release_lost_to_cancellation.
+type ReleaseEnvelopeStanding
+  = ReleaseFitsEnvelope
+  | ReleaseMayOutliveCancellation { needed: Second, envelope: Second }
+
+fn release_envelope_standing(policy: HostCapDrainPolicy) -> ReleaseEnvelopeStanding {
+  let needed = second_count(s: policy.release_allowance) + second_count(s: policy.release_startup_allowance)
+  if needed <= second_count(s: policy.cancellation_envelope) { ReleaseFitsEnvelope } else { ReleaseMayOutliveCancellation { needed: second(count: needed), envelope: policy.cancellation_envelope } }
+}
+
+fn release_envelope_wire(policy: HostCapDrainPolicy) -> String {
+  match release_envelope_standing(policy: policy) {
+    ReleaseFitsEnvelope => "release fits the cancellation envelope"
+    ReleaseMayOutliveCancellation { needed: n, envelope: e } => join(["residual: a cancelled job force-cancels the release after ", to_string(second_count(s: e)), "s and the release needs ", to_string(second_count(s: n)), "s, so a cancellation can leave the host masked until a human acts"], "")
+  }
+}
+
+fn bracket_budget_verdict(policy: HostCapDrainPolicy, given: Second) -> BracketBudgetVerdict {
+  let needed = host_cap_bracket_budget(policy: policy)
+  if second_count(s: given) >= second_count(s: needed) { BudgetCovers } else { BudgetCannotCover { needed: needed, given: given } }
+}
+
+fn host_cap_drain_ticks(policy: HostCapDrainPolicy) -> Int {
+  second_count(s: policy.wait_bound) / second_count(s: policy.poll_interval)
+}
+
+// ONE SLOT, AS READ AFTER ADMISSION WAS CLOSED: two independent facts, each a declared sum, so no
+// combination the unit cannot be in is writable (a unit is not both stopping and a running listener).
+// `admission` comes from the unit reading, `run` from the unit's state and its own process listing.
+type SlotAdmissionState
+  = AdmissionClosedByMask
+  | AdmissionOpen
+
+type SlotRunState
+  = RunStopped
+  | RunStopping
+  | RunListenerIdle
+  | RunWorkerLive
+  | RunUnobserved { cause: NonEmptyStr }
+
+type SlotDrainReading {
+  unit: NonEmptyStr
+  admission: SlotAdmissionState
+  run: SlotRunState
+}
+
+// THE ONE FOLD of a reading into what the bracket decides on. A running idle listener is the one the mask
+// did not close; a stopping unit is unproven until it is stopped (its cgroup may still hold a listener);
+// an unobserved run is never idle.
+type SlotDrainClass
+  = ClassDrained
+  | ClassBusy
+  | ClassIdleListenerOpen
+  | ClassAdmissionOpen
+  | ClassUnproven { cause: String }
+
+fn slot_drain_class(r: SlotDrainReading) -> SlotDrainClass {
+  match r.run {
+    RunUnobserved { cause: c } => ClassUnproven { cause: c as String }
+    RunListenerIdle => ClassIdleListenerOpen
+    RunWorkerLive => match r.admission { AdmissionClosedByMask => ClassBusy AdmissionOpen => ClassAdmissionOpen }
+    RunStopping => match r.admission { AdmissionClosedByMask => ClassUnproven { cause: "the unit is stopping" } AdmissionOpen => ClassAdmissionOpen }
+    RunStopped => match r.admission { AdmissionClosedByMask => ClassDrained AdmissionOpen => ClassAdmissionOpen }
+  }
+}
+
+fn drain_class_is_idle_listener(c: SlotDrainClass) -> Bool { match c { ClassIdleListenerOpen => true _ => false } }
+fn drain_class_is_drained(c: SlotDrainClass) -> Bool { match c { ClassDrained => true _ => false } }
+fn drain_class_is_busy(c: SlotDrainClass) -> Bool { match c { ClassBusy => true _ => false } }
+fn drain_class_is_unproven(c: SlotDrainClass) -> Bool { match c { ClassAdmissionOpen => true ClassUnproven { cause: _ } => true _ => false } }
+
+type BracketWaitStep
+  = BracketDrained
+  | BracketWaiting { ticks_left: Int }
+  | BracketAdmissionNotClosed { listeners: List<NonEmptyStr> }
+  | BracketBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr> }
+
+fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>, ticks_left: Int, time_up: Bool) -> BracketWaitStep {
+  let idle_listeners = map(filter(readings, r => drain_class_is_idle_listener(c: slot_drain_class(r: r))), r => r.unit)
+  if length(idle_listeners) > 0 {
+    match closure { AdmissionMaskOnly => BracketAdmissionNotClosed { listeners: idle_listeners } }
+  } else if all(readings, r => drain_class_is_drained(c: slot_drain_class(r: r))) {
+    BracketDrained
+  } else if ticks_left <= 0 || time_up {
+    BracketBoundExceeded {
+      busy: map(filter(readings, r => drain_class_is_busy(c: slot_drain_class(r: r))), r => r.unit),
+      unproven: map(filter(readings, r => drain_class_is_unproven(c: slot_drain_class(r: r))), r => r.unit),
+    }
+  } else {
+    BracketWaiting { ticks_left: ticks_left - 1 }
+  }
+}
+
+// WHAT THE HOST IS LEFT IN, stated on every result.
+type HostLeftState
+  = HostAdmitting
+  | HostLeftDrained { units: List<NonEmptyStr> }
+
+type HostCapBracketRefusal
+  = BracketRefusedAdmissionNotClosed { listeners: List<NonEmptyStr> }
+  | BracketRefusedBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr>, waited: Second }
+  | BracketRefusedBudgetCannotCover { needed: Second, given: Second }
+  | BracketRefusedClockUnreadable { detail: String }
+  | BracketRefusedObligationNotRecorded { cause: String }
+
+fn bracket_refusal_wire(r: HostCapBracketRefusal) -> String {
+  match r {
+    BracketRefusedAdmissionNotClosed { listeners: ls } => join(["admission is not closed: a running idle listener is not stopped under a mask-only closure, so no cap was written; listeners=", join(map(ls, u => u as String), " ")], "")
+    BracketRefusedBoundExceeded { busy: b, unproven: u, waited: w } => join(["the drain bound of ", to_string(second_count(s: w)), "s was exceeded, so no cap was written; busy=", join(map(b, x => x as String), " "), " unproven=", join(map(u, x => x as String), " ")], "")
+    BracketRefusedBudgetCannotCover { needed: n, given: g } => join(["the step budget of ", to_string(second_count(s: g)), "s cannot cover the bracket's ", to_string(second_count(s: n)), "s (drain + operations + release), so nothing was masked and no cap was written; the host is untouched"], "")
+    BracketRefusedObligationNotRecorded { cause: c } => join(["the release obligation could not be recorded (", c, "), so nothing was masked and no cap was written; the host is untouched"], "")
+    BracketRefusedClockUnreadable { detail: d } => join(["the wall clock could not be read (", d, "), so the total elapsed time cannot be bounded: nothing was masked and no cap was written; the host is untouched"], "")
+  }
+}
+
+fn host_left_wire(l: HostLeftState) -> String {
+  match l {
+    HostAdmitting => "host left admitting (every slot unmasked, active and read back)"
+    HostLeftDrained { units: us } => join(["host left DRAINED: still masked or not read back: ", join(map(us, u => u as String), " ")], "")
+  }
+}
+
+fn readmit_unsettled(outcomes: List<SlotActuationOutcome>) -> List<NonEmptyStr> {
+  map(filter(outcomes, o => !slot_actuation_settled(o: o)), o => match o {
+    SlotActuationRefused { unit: u, step: _, reason: _ } => u
+    SlotActuationNoop { unit: u, state: _ } => u
+    SlotActivated { unit: u } => u
+    SlotNotInstalled { unit: u } => u
+    SlotDrainedAndMasked { unit: u } => u
+    SlotDrainPending { unit: u, cause: _ } => u
+  })
+}
+
+// WHAT THE HOST IS LEFT IN, from the re-admission readback alone: every unit needs exactly one settled
+// outcome, so a refused, pending or missing one leaves the host DRAINED and names the units.
+fn host_left_of_readmit(units: List<NonEmptyStr>, outcomes: List<SlotActuationOutcome>) -> HostLeftState {
+  let stuck = readmit_unsettled(outcomes: outcomes)
+  if length(stuck) == 0 && length(outcomes) == length(units) { HostAdmitting } else { HostLeftDrained { units: if length(stuck) == 0 { units } else { stuck } } }
+}
+
+// ── The effects ─────────────────────────────────────────────────────────────────────────────────
+
+// A SLOT IS IDLE ONLY WHEN ITS UNIT IS STOPPED OR ITS CGROUP HOLDS NO RUNNER.WORKER. "Not running" is not
+// "no worker": a deactivating unit is a stop in progress and its job process may still be alive, so every
+// state but a stopped one demands the cgroup reading. A refused or unparsed show reading is unobserved,
+// never idle.
+fn slot_drain_needs_worker(read: SlotReadOutcome) -> Bool {
+  match read {
+    SlotReadRefused { reason: _ } => false
+    SlotRead { reading: r } => !slot_state_stopped(active: r.active)
+  }
+}
+
+fn slot_drain_reading_of(unit: NonEmptyStr, read: SlotReadOutcome, worker: SlotActivityObservation) -> SlotDrainReading {
+  match read {
+    SlotReadRefused { reason: why } => SlotDrainReading { unit: unit, admission: AdmissionOpen, run: RunUnobserved { cause: why as NonEmptyStr } }
+    SlotRead { reading: r } =>
+      SlotDrainReading {
+        unit: unit,
+        admission: if slot_is_masked(r: r) { AdmissionClosedByMask } else { AdmissionOpen },
+        run: slot_run_state_of(stopped: slot_state_stopped(active: r.active), stopping: slot_state_stopping(active: r.active), worker: worker),
+      }
+  }
+}
+
+fn slot_run_state_of(stopped: Bool, stopping: Bool, worker: SlotActivityObservation) -> SlotRunState {
+  if stopped { RunStopped } else {
+    match worker {
+      SlotHasLiveWorker => RunWorkerLive
+      SlotActivityUnobserved { cause: c } => RunUnobserved { cause: c }
+      SlotIdle => if stopping { RunStopping } else { RunListenerIdle }
+    }
+  }
+}
+
+fn read_slot_drain_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotDrainReading
+{
+  let read = read_slot_over(target: target, context: context, unit: unit)
+  slot_drain_reading_of(
+    unit: unit,
+    read: read,
+    worker: if slot_drain_needs_worker(read: read) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle },
+  )
+}
+
+// MASK ONLY, NEVER STOP: the mask inhibits successors and is safe at any time. Stopping a running idle
+// listener races a job assignment, so this route never takes it (DrainSteps in the shared drain actuator
+// would, for a slot whose job finished mid-wait). A failed mask is not reported here: the next reading
+// shows the slot unmasked, and an unmasked slot is never drained.
+fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String?
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => Present { value: why }
+    SlotRead { reading: r } => if slot_is_masked(r: r) { none } else { run_slot_steps_over(target: target, context: context, steps: [systemctl_mask_argv(unit: unit)]) }
+  }
+}
+
+// TWO POPULATIONS, NEVER ONE: `observed` is every desired unit, because a cap written under a unit that
+// still runs a Runner.Worker (or a running idle listener) is the hazard whoever masked it, so every one
+// is read and judged; `owned` is the units THIS attempt masks, and only those are ever masked or released,
+// so a mask someone else holds is neither taken over nor lifted.
+// CLOSE ADMISSION, THEN WAIT. The first pass only READS: under a mask-only closure a running idle
+// listener refuses the host before anything is changed, because stopping it races a job assignment.
+// Later passes only MASK every slot; nothing is ever stopped, so a slot leaves service only when its own
+// job ends and the mask blocks its restart. Each pass is judged by bracket_wait_step.
+fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionContext, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
+{
+  let closure = runner_host_cap_admission_closure
+  let before = map(observed, u => read_slot_drain_over(target: target, context: context, unit: u))
+  match bracket_wait_step(closure: closure, readings: before, ticks_left: ticks_left + 1, time_up: false) {
+    BracketAdmissionNotClosed { listeners: ls } => BracketAdmissionNotClosed { listeners: ls }
+    BracketDrained => BracketDrained
+    BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
+    BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
+  }
+}
+
+// THE TOTAL ELAPSED TIME IS BOUNDED, NOT ONLY THE POLL COUNT: reads and masks take time of their own, so
+// a count of 15s sleeps undercounts. The deadline is the wait bound from the instant the bracket began; an
+// unreadable clock counts as past it (could-not-tell is not still-inside-the-bound).
+fn drain_time_up_over(policy: HostCapDrainPolicy, started: EpochMs) -> Bool
+{
+  match observer_clock_read() {
+    ObserverClockUnreadable { detail: _ } => true
+    ObserverClockObserved { instant: i } => ((observer_instant_millis(instant: i) as Int) - (started as Int)) >= second_count(s: policy.wait_bound) * 1000
+  }
+}
+
+fn drain_pass_over(target: SshTarget, context: FleetSshExecutionContext, observed: List<NonEmptyStr>, owned: List<NonEmptyStr>, policy: HostCapDrainPolicy, ticks_left: Int, started: EpochMs) -> BracketWaitStep
+{
+  let _masked = map(owned, u => mask_slot_only_over(target: target, context: context, unit: u))
+  let readings = map(observed, u => read_slot_drain_over(target: target, context: context, unit: u))
+  match bracket_wait_step(closure: runner_host_cap_admission_closure, readings: readings, ticks_left: ticks_left, time_up: drain_time_up_over(policy: policy, started: started)) {
+    BracketWaiting { ticks_left: n } => {
+      let _paced = sleep_delay_seconds_second_carrier_projection(duration: policy.poll_interval)
+      drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: n, started: started)
+    }
+    step => step
+  }
+}
+
+// THE START OF THE BRACKET, or the refusal that stops it before anything is masked.
+type BracketStart
+  = BracketStartAt { started: EpochMs }
+  | BracketStartRefused { refusal: HostCapBracketRefusal }
+
+fn bracket_start_over(policy: HostCapDrainPolicy, given: Second) -> BracketStart
+{
+  match bracket_budget_verdict(policy: policy, given: given) {
+    BudgetCannotCover { needed: n, given: g } => BracketStartRefused { refusal: BracketRefusedBudgetCannotCover { needed: n, given: g } }
+    BudgetCovers =>
+      match observer_clock_read() {
+        ObserverClockUnreadable { detail: d } => BracketStartRefused { refusal: BracketRefusedClockUnreadable { detail: d } }
+        ObserverClockObserved { instant: i } => BracketStartAt { started: observer_instant_millis(instant: i) }
+      }
+  }
+}
+
+// ── The release obligation ──────────────────────────────────────────────────────────────────────
+
+// WHAT THIS ATTEMPT OWES THE HOST, ESTABLISHED AFTER ADMISSION AND BEFORE THE FIRST MASK. The owned set is
+// the units read as unmasked at that instant, so a unit this attempt never masked, a unit someone else
+// masked, and a fabric member are all outside it by construction. The obligation is a file under the
+// runner's temp dir keyed to the run, the attempt and the host: a step output would be published only at
+// step end and so lost to a step killed mid-mask. A stale file (another run or attempt) is never trusted,
+// and a refusal before acquisition leaves no file, so the release then starts no activation and no reload.
+type BracketObligation {
+  key: String
+  units: List<NonEmptyStr>
+}
+
+data runner_host_cap_obligation_file_name: String = "runner-host-cap-release-obligation"
+data runner_host_cap_runner_temp_env_name: String = "RUNNER_TEMP"
+
+fn bracket_obligation_key(run_id: String, attempt: String, host: String) -> String {
+  join(["run=", run_id, " attempt=", attempt, " host=", host], "")
+}
+
+// ONE CODEC: the obligation file is a JSON object with exactly the members key, discharged and units. The
+// writer and the reader are the two directions of this one declaration (extdeps.languages.json), and the
+// reader refuses a document that is not exactly this shape.
+fn bracket_obligation_text(o: BracketObligation, discharged: Bool) -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "key", value: json_string(s: o.key)), json_kv(key: "discharged", value: json_bool(b: discharged)), json_kv(key: "units", value: json_array(elements: map(o.units, u => json_string(s: u as String))))]))
+}
+
+type ObligationReading
+  = ObligationAbsent
+  | ObligationHeld { units: List<NonEmptyStr> }
+  | ObligationDischarged
+  | ObligationStale { found: String }
+  | ObligationUnreadable { cause: String }
+
+fn obligation_reading_of_text(text: String, expected_key: String) -> ObligationReading {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => ObligationUnreadable { cause: concat("the obligation file is not a JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      match doc {
+        JsonObject { members: ms } =>
+          if length(ms) != 3 {
+            ObligationUnreadable { cause: "the obligation file does not carry exactly the members key, discharged and units" }
+          } else {
+            match json_object_unique_member(v: doc, key: "key") {
+              JsonMemberFound { value: JsonString { value: k } } =>
+                match json_object_unique_member(v: doc, key: "discharged") {
+                  JsonMemberFound { value: JsonBool { value: d } } =>
+                    match json_object_unique_member(v: doc, key: "units") {
+                      JsonMemberFound { value: JsonArray { elements: es } } => obligation_reading_of_members(key: k, discharged: d, elements: es, expected_key: expected_key)
+                      _ => ObligationUnreadable { cause: "the obligation file's units member is missing, duplicated or not an array" }
+                    }
+                  _ => ObligationUnreadable { cause: "the obligation file's discharged member is missing, duplicated or not a boolean" }
+                }
+              _ => ObligationUnreadable { cause: "the obligation file's key member is missing, duplicated or not a string" }
+            }
+          }
+        _ => ObligationUnreadable { cause: "the obligation file is not a JSON object" }
+      }
+  }
+}
+
+fn obligation_reading_of_members(key: String, discharged: Bool, elements: List<JsonValue>, expected_key: String) -> ObligationReading {
+  let names = map(elements, e => match e { JsonString { value: n } => n _ => "" })
+  if key != expected_key {
+    ObligationStale { found: key }
+  } else if length(filter(names, n => n == "")) > 0 {
+    ObligationUnreadable { cause: "the obligation file lists a unit that is not a non-empty string" }
+  } else if discharged {
+    ObligationDischarged
+  } else if length(names) == 0 {
+    ObligationUnreadable { cause: "the held obligation file lists no unit" }
+  } else {
+    ObligationHeld { units: map(names, n => n as NonEmptyStr) }
+  }
+}
+
+fn obligation_reading_of(observation: FilesystemFileObservation, expected_key: String) -> ObligationReading {
+  match observation {
+    FilesystemFileAbsent(_) => ObligationAbsent
+    FilesystemFileRead { path: _, content: c } => obligation_reading_of_text(text: c, expected_key: expected_key)
+    FilesystemFileIndeterminate { cause: c } => ObligationUnreadable { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => ObligationUnreadable { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => ObligationUnreadable { cause: c }
+  }
+}
+
+// THE RELEASE DECISION. Only a held obligation owes anything; absent owes nothing and starts nothing; a
+// stale or unreadable file is a failure that names itself (could-not-tell is not "nothing owed").
+type ReleaseDecision
+  = ReleaseNothingOwed
+  | ReleaseOwes { units: List<NonEmptyStr> }
+  | ReleaseAlreadyDischarged
+  | ReleaseObligationUntrusted { cause: String }
+
+fn release_decision_of(reading: ObligationReading) -> ReleaseDecision {
+  match reading {
+    ObligationAbsent => ReleaseNothingOwed
+    ObligationHeld { units: us } => ReleaseOwes { units: us }
+    ObligationDischarged => ReleaseAlreadyDischarged
+    ObligationStale { found: f } => ReleaseObligationUntrusted { cause: concat("the obligation file belongs to another run or attempt and is not trusted: ", f) }
+    ObligationUnreadable { cause: c } => ReleaseObligationUntrusted { cause: concat("the obligation file could not be read: ", c) }
+  }
+}
+
+// WHICH UNITS ARE OWNED: unmasked and read. A unit whose reading is refused is unproven and refuses the
+// acquisition (could-not-tell is not owned-by-nobody); a unit already masked belongs to someone else.
+type OwnedSetVerdict
+  = OwnedSet { units: List<NonEmptyStr> }
+  | OwnedSetUnproven { units: List<NonEmptyStr> }
+
+fn slot_admission_is_open(r: SlotDrainReading) -> Bool { match r.admission { AdmissionOpen => true AdmissionClosedByMask => false } }
+fn slot_run_is_unobserved(r: SlotDrainReading) -> Bool { match r.run { RunUnobserved { cause: _ } => true _ => false } }
+
+fn owned_set_of(readings: List<SlotDrainReading>) -> OwnedSetVerdict {
+  let unread = filter(readings, r => slot_admission_is_open(r: r) && slot_run_is_unobserved(r: r))
+  if length(unread) > 0 { OwnedSetUnproven { units: map(unread, r => r.unit) } } else {
+    OwnedSet { units: map(filter(readings, r => slot_admission_is_open(r: r)), r => r.unit) }
+  }
+}
+
+// THE ONE RELEASE POLICY, used by every exit path (the finalizer, a refusal, a failed write): a unit this
+// attempt masked is activated (unmask, enable, start) and read back; a unit that is NOT masked gets no argv,
+// but its admission is still JUDGED from the reading, because "not masked" is not "admitting": a unit that
+// was unmasked and then failed to start, or is disabled, or is not loaded, is a named refusal that leaves
+// the host drained. The judgment is the activation readback authority (slot_activation_read_back_holds),
+// not a second definition of admitting. An unreadable show is not "not masked": it falls to activation,
+// which reads again and refuses with the read cause.
+fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "release-read", reason: concat("the release read of the unit was refused, so no release was decided and no argv was issued: ", why) }
+    SlotRead { reading: r } =>
+      if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
+      else if slot_activation_read_back_holds(r: r) {
+        SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }
+      } else {
+        SlotActuationRefused { unit: unit, step: "readback", reason: "not masked, but not loaded, enabled and active: the unit is out of service and no argv was issued" }
+      }
+  }
+}
+
+fn release_owned_slots_over(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotActuationOutcome>
+{
+  map(units, u => release_slot_over(target: target, context: context, unit: u))
+}
+
+// THE RELEASE RESULT, PURE: what the finalizer exits with and what its receipt says, from the decision and
+// the per-unit outcomes alone. Only a held obligation issues anything; a stale or unreadable one fails.
+type ReleaseVerdict
+  = ReleaseVerdictSettled { summary: String }
+  | ReleaseVerdictFailed { summary: String }
+
+fn release_verdict_of(decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>) -> ReleaseVerdict {
+  match decision {
+    ReleaseNothingOwed => ReleaseVerdictSettled { summary: "nothing owed: no obligation file, no argv issued" }
+    ReleaseAlreadyDischarged => ReleaseVerdictSettled { summary: "obligation already discharged after an admitting readback, no argv issued" }
+    ReleaseObligationUntrusted { cause: c } => ReleaseVerdictFailed { summary: c }
+    ReleaseOwes { units: us } =>
+      match host_left_of_readmit(units: us, outcomes: outcomes) {
+        HostAdmitting => ReleaseVerdictSettled { summary: host_left_wire(l: HostAdmitting) }
+        left => ReleaseVerdictFailed { summary: host_left_wire(l: left) }
+      }
+  }
+}
+
+fn release_verdict_is_settled(v: ReleaseVerdict) -> Bool { match v { ReleaseVerdictSettled { summary: _ } => true ReleaseVerdictFailed { summary: _ } => false } }
+
+fn release_verdict_summary(v: ReleaseVerdict) -> String { match v { ReleaseVerdictSettled { summary: s } => s ReleaseVerdictFailed { summary: s } => s } }
+
+fn release_decision_wire(d: ReleaseDecision) -> String {
+  match d {
+    ReleaseNothingOwed => "nothing-owed"
+    ReleaseAlreadyDischarged => "already-discharged"
+    ReleaseObligationUntrusted { cause: _ } => "obligation-untrusted"
+    ReleaseOwes { units: us } => join(["owes ", join(map(us, u => u as String), " ")], "")
+  }
+}
+
+// THE RELEASE RECEIPT TEXT: the attempt it belongs to, the host, the decision, each unit's outcome, the
+// verdict, and the residual the bracket accepted (cancellation may outlive the release).
+fn release_receipt_text(attempt: String, host: String, decision: ReleaseDecision, outcomes: List<SlotActuationOutcome>, verdict: ReleaseVerdict) -> String {
+  join([
+    "runner_host_cap_release attempt=", attempt, " host=", host, "\n",
+    "decision=", release_decision_wire(d: decision), "\n",
+    join(map(outcomes, o => concat(slot_actuation_outcome_wire(o: o), "\n")), ""),
+    "verdict=", if release_verdict_is_settled(v: verdict) { "settled" } else { "FAILED" }, " ", release_verdict_summary(v: verdict), "\n",
+    release_envelope_wire(policy: runner_host_cap_drain_policy), "\n",
+  ], "")
+}
+
+// ── Wet: the obligation file ────────────────────────────────────────────────────────────────────
+
+fn runner_host_cap_obligation_identity(host: String) -> String?
+{
+  match actions_variable_read(name: "GITHUB_RUN_ID") {
+    ActionsVariableAbsent { variable: _, detail: _ } => none
+    ActionsVariablePresent { value: run } =>
+      match actions_variable_read(name: "GITHUB_RUN_ATTEMPT") {
+        ActionsVariableAbsent { variable: _, detail: _ } => none
+        ActionsVariablePresent { value: attempt } => Present { value: bracket_obligation_key(run_id: run, attempt: attempt, host: host) }
+      }
+  }
+}
+
+fn runner_host_cap_obligation_path() -> String?
+{
+  match actions_variable_read(name: runner_host_cap_runner_temp_env_name) {
+    ActionsVariableAbsent { variable: _, detail: _ } => none
+    ActionsVariablePresent { value: dir } => Present { value: join([dir, "/", runner_host_cap_obligation_file_name], "") }
+  }
+}
+
+// AN EMPTY OWNED SET OWES NOTHING AND WRITES NOTHING: the decoder rejects an empty held list, so a writer
+// that emitted one would refuse its own inverse. Absent then means nothing owed, which is true.
+fn write_bracket_obligation(host: String, units: List<NonEmptyStr>, discharged: Bool) -> String?
+{
+  if length(units) == 0 { none } else {
+  match runner_host_cap_obligation_identity(host: host) {
+    Absent => Present { value: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset" }
+    Present { value: key } =>
+      match runner_host_cap_obligation_path() {
+        Absent => Present { value: "RUNNER_TEMP is unset" }
+        Present { value: path } => {
+          let w = Filesystem.Write(path: path, content: bracket_obligation_text(o: BracketObligation { key: key, units: units }, discharged: discharged))
+          if w.success { none } else { Present { value: w.error } }
+        }
+      }
+  }
+  }
+}
+
+fn read_bracket_obligation(host: String) -> ObligationReading
+{
+  match runner_host_cap_obligation_identity(host: host) {
+    Absent => ObligationUnreadable { cause: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset" }
+    Present { value: key } =>
+      match runner_host_cap_obligation_path() {
+        Absent => ObligationUnreadable { cause: "RUNNER_TEMP is unset" }
+        Present { value: path } => obligation_reading_of(observation: filesystem_file_observation_of_path(path: path), expected_key: key)
+      }
+  }
+}
+
+// ACQUIRE: read every slot, judge the owned set, and record the obligation BEFORE the first mask. A
+// refusal here has masked nothing and written nothing.
+type BracketAcquisition
+  = BracketAcquired { owned: List<NonEmptyStr> }
+  | BracketNotAcquired { refusal: HostCapBracketRefusal }
+
+fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> BracketAcquisition
+{
+  match owned_set_of(readings: map(units, u => read_slot_drain_over(target: target, context: context, unit: u))) {
+    OwnedSetUnproven { units: us } => BracketNotAcquired { refusal: BracketRefusedObligationNotRecorded { cause: concat("a slot could not be read, so ownership is unproven: ", join(map(us, u => u as String), " ")) } }
+    OwnedSet { units: owned } =>
+      match write_bracket_obligation(host: host, units: owned, discharged: false) {
+        Present { value: why } => BracketNotAcquired { refusal: BracketRefusedObligationNotRecorded { cause: why } }
+        Absent => BracketAcquired { owned: owned }
+      }
+  }
+}
