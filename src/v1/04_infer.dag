@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentBeforeInference, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
@@ -9172,7 +9172,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           first_pass
         }
       }
-      let arg_infer_results = variant_tag_reference_argument_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
+      let arg_infer_results = payload_arm_tag_reference_waiver_results(func_name: func_name, callee_is_body_binding: call_target_is_locally_bound(outcome: call_target), results: arg_call.results, scope: scope)
 
       let call_subst = arg_call.subst
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
@@ -11061,14 +11061,53 @@ fn sole_constructor_construction_diags(
   } else { [] }
 }
 
-data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier."
+// THE ENUMERATED PAYLOAD-ARM WAIVER (gunbc.rung_drop payload_arm_tag_reference_hollow_value; replaces the
+// general tag-reference seam of operator Ruling 1a, which had no population: for the zero-field arms
+// it was already dead, and for payload arms it waived every site anywhere). A call
+// `discriminant(v: X {})` whose sole argument is a zero-field literal naming a PAYLOAD coproduct
+// variant X waives the MissingField rows of X on that literal ONLY when the arm's declaration (declaring module and name of its owner type, and the arm name as a named component of that owner) is a row of payload_arm_tag_reference_waiver_pairs. The key is the arm's OWNING declaration, never the
+// calling module: a listed arm named from any module is waived, and an arm whose owning declaration is
+// not listed is a hollow construction and refuses with one MissingField per owed field. The argument is inferred as
+// any other expression (typed node, type and every other diagnostic unchanged). A call through a
+// body binding named `discriminant` is a function value, not the builtin, and is not the idiom.
+// DISSOLVE-ON: an arm-name capability from a resolved arm (Charter 3 R1's resolved-arm surface, with
+// elaborate_arm_reference), at which point this function, the list and the row are deleted together.
+data payload_arm_tag_reference_waiver_pairs: List<DeclarationRef> = [
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "AlgebraPrimitive"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "AlgebraInverseCompose"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "OrderingComparison"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "EqualityComparison"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", field_name: "CoercionCrossing"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "InfixToken"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "PrefixToken"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "CallIdent"),
+  decl_field_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetOperatorShape", field_name: "MethodIdent")
+]
 
-// THE RULING'S SEAM. A call `discriminant(v: X {})` whose sole argument is a zero-field literal
-// naming a coproduct variant is a tag reference: the argument is inferred as any other
-// expression (so its typed node, type and every other diagnostic are unchanged), and only the
-// MissingField rows the wall raised for X on that literal are waived. A call through a body
-// binding named `discriminant` is a function value, not the builtin, and is not the idiom.
-fn variant_tag_reference_argument_results(func_name: String, callee_is_body_binding: Bool, results: List<ArgInferResult>, scope: InferScope) -> List<ArgInferResult> {
+// WHETHER THE LITERAL'S ARM IS ONE OF THE LISTED ARM DECLARATIONS, matched by identity: the module
+// that declares the arm's owning coproduct plus the arm's name, never a spelled "module.arm" string
+// and never the constructing module. A renamed or moved arm stops matching and its hollow literal
+// refuses at the listed row.
+fn payload_arm_tag_reference_row_names_arm(row: DeclarationRef, arm_name: String) -> Bool {
+  match row.field {
+    NamedField { field_name: f } => f == arm_name
+    _ => false
+  }
+}
+
+fn payload_arm_tag_reference_is_waived(arm_name: String, scope: InferScope) -> Bool {
+  match variant_owner_node(scope: scope, name: arm_name) {
+    Present { value: owner } =>
+      match declaration_ref_of_type_node(rt: owner, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+        Present { value: owner_decl } =>
+          payload_arm_tag_reference_waiver_pairs |> any(w => w.module_path == owner_decl.module_path && w.decl_name == owner_decl.decl_name && payload_arm_tag_reference_row_names_arm(row: w, arm_name: arm_name))
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn payload_arm_tag_reference_waiver_results(func_name: String, callee_is_body_binding: Bool, results: List<ArgInferResult>, scope: InferScope) -> List<ArgInferResult> {
   if func_name != "discriminant" || callee_is_body_binding || (results |> count) != 1 {
     results
   } else {
@@ -11081,7 +11120,7 @@ fn variant_tag_reference_argument_results(func_name: String, callee_is_body_bind
           } else {
             match record_lit_type_name_at(texpr: arg, source_indices: scope.type_env.source_indices) {
               Present { value: tn } =>
-                if variant_owner_node(scope: scope, name: tn) != none {
+                if payload_arm_tag_reference_is_waived(arm_name: tn, scope: scope) {
                   ArgInferResult {
                     typed_arg: air.typed_arg,
                     emissions: infer_emissions_filter_diagnostics(emissions: air.emissions, keep: d =>
