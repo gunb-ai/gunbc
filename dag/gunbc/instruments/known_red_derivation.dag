@@ -5,6 +5,7 @@ import std.process { ExitSuccess, ExitFailure }
 import std.optional { Absent, Optional, Present }
 import std.logic { Bool }
 import std.algebra { Cons, Empty, contains, list_snoc_item, length, trim }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 // `list_member` is the sanctioned custom-equality membership, not `std.algebra.contains`: the seed
 // intercepts `contains` and discards its `eq` argument (declared at `std.list`'s own header, tracked by
 // `gunbc.list_membership_operation_gap`), so `contains(xs:, item:, eq:)` silently falls back to whole-
@@ -22,6 +23,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.output_policy { ExpectSuccess }
@@ -178,12 +180,20 @@ data known_red_max_claims_per_child: Int = 64
 // as a `ByteSize`, so the carrier is what the transport consumes — the width is applied, not described.
 data known_red_stderr_tail: ByteSize = byte_size(count: 65536)
 
+// THE THREE VERDICT WORDS, IN ONE PLACE. The prefix functions below read these, the decoder's predicates
+// read the arm markers, and `known_red_print_authorities` ties both to the file that prints them -- so the
+// spelling of a verdict has exactly one author (DESIGN §3) and is checked against `claim_batch.rs` on every
+// run (review 83992).
+data known_red_word_pass: String = "PASS"
+data known_red_word_fail: String = "FAIL"
+data known_red_word_panicked: String = "PANICKED"
+
 fn known_red_pass_prefix() -> String {
-  "PASS "
+  concat(known_red_word_pass, " ")
 }
 
 fn known_red_fail_prefix() -> String {
-  "FAIL "
+  concat(known_red_word_fail, " ")
 }
 
 // `PANICKED ` is a verdict line the way PASS and FAIL are: `claim_batch` prints it from its own arm
@@ -305,6 +315,23 @@ data known_red_no_line_cause: String = "no verdict line from any child"
 // `NotAttempted`, because neither is a verdict, and `claim_disposition` therefore refuses to project a
 // Held/Failed/Passed from either.
 data known_red_undecodable_cause: String = "printed line decoded to no claim arm" 
+
+// THE TWO ABORTED ARMS, DISTINCT FROM EACH OTHER (review 83992). Both are `NotAttempted` — the ledger's
+// arm for 'the claim answered nothing' — and the seed groups them (`expected_red_arm` places
+// `Panicked | NotAttempted` in `Aborted`), so they share an arm legitimately. What they may NOT share is
+// the cause: 'the harness refused to attempt this behind a host it never mints' and 'the harness could
+// not resolve the entry the group was built from' name different things to fix, and both previously
+// received the WHOLE LINE as `halted_by`, which filed an unlocated blob where the seed's own doc says the
+// field holds the identity that stopped the line (`cli_run.rs`, `ClaimOutcome::NotAttempted`).
+data known_red_entry_resolve_cause: String = "entry resolve failed"
+
+// THE PREFIX THAT MAKES THE ENTRY CAUSE DISTINCT at every comparison site. A row whose `halted_by` starts
+// with this was aborted by the resolver; a row whose `halted_by` names an identity was aborted behind a
+// host. No other cause in this file begins with these words, which the witness asserts.
+fn known_red_entry_resolve_halted_by(entry: String) -> String {
+  concat(known_red_entry_resolve_cause, ": ", entry)
+}
+
 
 fn known_red_row_qualified(r: KnownRedDerivationRow) -> String {
   witness_identity_qualified_name(identity: r.identity)
@@ -877,6 +904,165 @@ fn known_red_verdict_lines(stdout: String) -> List<String> {
 //   FAIL <f> (<k> budget <B>ms EXCEEDED; cost=...)                        BudgetRefused { safety }
 //   FAIL <f> (entry resolve failed: E)                                    NotAttempted { halted_by }
 //
+// THE WORDING EACH ARM PRINTS, IN ONE PLACE, CHECKED AGAINST THE FILE THAT PRINTS IT (review 83992).
+//
+// This instrument used to hold private copies of `claim_batch`'s phrasing: the decoder keyed on strings
+// that only `src/v1/stage0/src/bin/claim_batch.rs` was authoritative for, and nothing linked the two. That
+// is DESIGN §6's "a second path beside a modeled route" — the harness's wording had a second, undeclared
+// description. Two things change, and they change together:
+//
+//   (1) each dispatch marker is a `data` constant below, read by the predicate that keys on it AND by the
+//       table the run checks, so the string has exactly one author (§3); and
+//   (2) the run reads the two Rust files through the modeled `Filesystem.Read` route (readonly, a
+//       committed checkout input, so it is a real read in hermetic mode too) and refuses with exit 2 if
+//       any marker has moved out of the file that is supposed to print it.
+//
+// So a reworded print arm stops the run with the marker attached rather than silently reclassifying claims
+// — the same fail-closed direction as `Absent`, now applied to the wording itself and not only to a whole
+// unrecognized line. The generalization (a typed outcome wire from `claim_batch` through `gunbc.cli_wire`,
+// which would delete this decoder) is declared, with its trigger, in
+// `known_red_transport_decoder_dissolution` at the foot of this section.
+data known_red_marker_exit_failure: String = "(returned ProcessExit::ExitFailure, code "
+data known_red_marker_not_bool: String = "(returned `"
+data known_red_marker_not_bool_tail: String = "not Bool; --claim-run entries must return Bool)"
+data known_red_marker_runtime_error: String = "(runtime error ["
+data known_red_marker_panicked: String = "(the host unwound during evaluation: "
+data known_red_marker_not_attempted: String = "(reported as not-attempted behind "
+data known_red_marker_not_attempted_tail: String = ", which this path never mints"
+data known_red_marker_host_tool: String = "(host tool unresolved: "
+data known_red_marker_probed: String = "(probed: "
+data known_red_marker_route_gap: String = "(hermetic route has no arm for "
+data known_red_marker_entry_resolve: String = "(entry resolve failed: "
+// Rendered by `ClaimOutcome::budget_figure_phrase` and the hermetic ground labels, both in `cli_run.rs` —
+// `claim_batch` prints them through that renderer rather than spelling them, which is why their source is
+// the renderer's file and not the transport's.
+data known_red_marker_budget_word: String = " budget "
+data known_red_marker_budget_exceeded: String = "ms EXCEEDED; cost="
+data known_red_marker_budget_unmeasured: String = "cost=UNMEASURED"
+data known_red_marker_ground_unpublished_mock: String = "no published mock case for a corpus-governed service"
+data known_red_marker_ground_filesystem_removal: String = "filesystem removal has no mock arm"
+// The third member of the closed ground set, from `hermetic_effect_ground_label`. It was absent from this
+// file entirely: a NoMockResponse gap fell through the two tests below into a default, so the ledger
+// recorded a ground the transport never printed.
+data known_red_marker_ground_no_mock_response: String = "operation declares no mock_response"
+
+data known_red_transport_source_claim_batch: String = "src/v1/stage0/src/bin/claim_batch.rs"
+data known_red_transport_source_cli_run: String = "src/v1/stage0/src/cli_run.rs"
+
+// THE TIE: which file prints which marker. Grouped by source so the fold reads each file once.
+type KnownRedPrintAuthority {
+  source: String
+  markers: List<String>
+}
+
+data known_red_print_authorities: List<KnownRedPrintAuthority> = [
+  KnownRedPrintAuthority {
+    source: known_red_transport_source_claim_batch,
+    markers: [
+      // The three verdict words, tied as the harness's own format literals and built from the same
+      // constants the prefix functions read, so 'PASS' has exactly one author.
+      concat(known_red_word_pass, " {}"),
+      concat(known_red_word_fail, " {}"),
+      concat(known_red_word_panicked, " {}"),
+      known_red_marker_exit_failure,
+      known_red_marker_not_bool,
+      known_red_marker_not_bool_tail,
+      known_red_marker_runtime_error,
+      known_red_marker_panicked,
+      known_red_marker_not_attempted,
+      known_red_marker_not_attempted_tail,
+      known_red_marker_host_tool,
+      known_red_marker_probed,
+      known_red_marker_route_gap,
+      known_red_marker_entry_resolve
+    ]
+  },
+  KnownRedPrintAuthority {
+    source: known_red_transport_source_cli_run,
+    markers: [
+      known_red_marker_budget_word,
+      known_red_marker_budget_exceeded,
+      known_red_marker_budget_unmeasured,
+      known_red_marker_ground_unpublished_mock,
+      known_red_marker_ground_filesystem_removal,
+      known_red_marker_ground_no_mock_response
+    ]
+  }
+]
+
+// THE SOURCE READ, THROUGH THE MODELED ROUTE. `Filesystem.Read` is the repo's own readonly read authority
+// (`extdeps.filesystem.filesystem_io`), and the interpreter treats a readonly read of a path proven under
+// the checkout root as INPUT ACCESS, not a host effect (`v1_interpreter.rs`, the hermetic carve-out) -- so
+// this is a real read of the real file in hermetic mode too, which is what makes the tie honest rather than
+// a fixture that replays yesterday's answer.
+fn known_red_transport_source_content(source: String) -> Optional<String> {
+  match Filesystem.Read(path: source) {
+    FilesystemReadSucceeded { content: content } => Present { value: content }
+    FilesystemReadRefused { error: _ } => Absent
+  }
+}
+
+// THE RED THIS EXISTS TO CATCH, AS A PURE FUNCTION OF THE SOURCE TEXT: which of these markers do not appear
+// in the text they are supposed to be found in. Reported as `source :: marker`, so the refusal names BOTH
+// authorities that were meant to agree. It takes the text as an argument rather than reading it, so a claim
+// can hand it a fixture and prove the RED (a moved marker is reported) without touching the checkout.
+fn known_red_untied_markers_in(
+  source: String,
+  markers: List<String>,
+  text: String
+) -> List<String> {
+  fold(
+    xs: markers,
+    init: [],
+    f: (acc, m) =>
+      if string_contains(s: text, pattern: m) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: concat(source, " :: ", m))
+      }
+  )
+}
+
+// THE TIE, AS A LIST OF WHAT IS NOT TIED. Empty means every marker this file matches on still appears in
+// the file that is supposed to print it. It is a property of the RUN, not of any fold's inputs, so the CLI
+// producer checks it once and the fold stays a pure function of the children it was handed.
+fn known_red_print_markers_untied() -> List<String> {
+  fold(
+    xs: known_red_print_authorities,
+    init: [],
+    f: (outer, a) =>
+      match known_red_transport_source_content(source: a.source) {
+        // An unreadable authority ties NOTHING: every marker it was supposed to carry is reported, so a
+        // missing file cannot be read as 'all markers present'.
+        Absent =>
+          fold(
+            xs: a.markers,
+            init: outer,
+            f: (acc, m) =>
+              list_snoc_item(xs: acc, item: concat(a.source, " :: ", m, " (source unreadable)"))
+          )
+        Present { value: text } =>
+          fold(
+            xs: known_red_untied_markers_in(source: a.source, markers: a.markers, text: text),
+            init: outer,
+            f: (acc, m) => list_snoc_item(xs: acc, item: m)
+          )
+      }
+  )
+}
+
+// THE DECLARED GENERALIZATION (DESIGN §6b). This module decodes a human-readable transport, and the root
+// generalization is `claim_batch` emitting a TYPED outcome wire — the shape `gunbc.cli_wire`'s
+// `CliWireResponse` already models for a printed answer — at which point every predicate, cause and field
+// extractor in this section is deleted rather than maintained. That change is in the harness lane
+// (`src/v1/stage0/src/bin/claim_batch.rs`), which this PR does not own, so the second path is DECLARED
+// here with its trigger instead of being silently carried. FOLLOW-UP LANE: the harness owner adds the
+// typed outcome to `claim_batch`'s `--claim-run` output and this instrument switches to parsing it;
+// `known_red_print_authorities` and `known_red_print_markers_untied` are what make the interim safe (a reworded
+// arm refuses, it does not misclassify), so the deferral is bounded by execution, not by good intentions.
+data known_red_transport_decoder_dissolution: DissolutionCondition =
+  unbound_dissolution(description: "🟡 dissolve-on: this module's per-arm decoder of claim_batch's printed verdict lines — the known_red_marker_* constants, the known_red_body_is_* predicates, known_red_terminal_of_line / known_red_line_body / known_red_terminal_of_body and their field extractors — plus known_red_print_authorities and known_red_print_markers_untied. DISSOLVES WHEN src/v1/stage0/src/bin/claim_batch.rs's --claim-run transport emits a typed outcome through the modeled CLI wire (gunbc.cli_wire CliWireResponse) instead of a human-readable line, and this instrument's fold parses THAT rather than matching prose. Owner: the claim_batch harness lane, not this instrument.")
+
 // `ProcessExit::ExitFailure` STAYS ON THE OBSERVED ARM with `holds: false`, following the seed's own arm
 // which places it beside `Fail` rather than beside `RuntimeError`: a claim that returns a failing
 // ProcessExit has decided, and decided against. The arms this function exists to SEPARATE are the ones
@@ -928,6 +1114,13 @@ fn known_red_line_body(line: String, function: String) -> Optional<String> {
 }
 
 // THE ONE DISPATCH ON THE BRACKETED TAIL: which transport arm printed this line.
+//
+// EVERY FIELD THE LEDGER ARM CARRIES IS LOCATED OR THE ROW REFUSES. Each arm below pulls its field out of
+// the position the harness prints it in (`src/v1/stage0/src/bin/claim_batch.rs`, one `println!` per arm)
+// through `known_red_field_of`, so a marker that moves makes the line `Absent` -- a refusal with the line
+// attached -- instead of filing the whole line as `RouteGap.operation`, `HostToolUnresolved.name` or
+// `Panicked.payload`. Those three fallbacks were review 83992's softer findings: they turned a decode
+// failure into data, which is the fabricated plausible output DESIGN §5 rejects.
 fn known_red_terminal_of_body(body: String) -> Optional<ClaimAttemptTerminal> {
   if known_red_body_is_not_bool(body: body) {
     Present {
@@ -938,43 +1131,53 @@ fn known_red_terminal_of_body(body: String) -> Optional<ClaimAttemptTerminal> {
       Present { value: Returned { observation: ObservedVerdict { holds: false } } }
     } else {
       if known_red_body_is_runtime_error(body: body) {
-        Present {
-          value: RuntimeErrored {
-            message: known_red_between(s: body, open: "runtime error [", close: "]:", fallback: body)
-          }
+        // `message` carries BOTH facts the seed keeps separate -- which class, and which name/type/arity --
+        // as "<cause>: <message>", in the harness's own order. The ledger arm has one String field, so
+        // dropping either half would be the flattening the seed's own doc warns about.
+        match known_red_runtime_error_parts(body: body) {
+          Absent => Absent
+          Present { value: message } => Present { value: RuntimeErrored { message: message } }
         }
       } else {
         if known_red_body_is_panicked(body: body) {
-          Present {
-            value: Panicked {
-              payload: known_red_payload(body: body)
-            }
+          match known_red_payload(body: body) {
+            Absent => Absent
+            Present { value: payload } => Present { value: Panicked { payload: payload } }
           }
         } else {
           if known_red_body_is_not_attempted(body: body) {
-            Present { value: NotAttempted { halted_by: body } }
+            match known_red_halted_behind(body: body) {
+              Absent => Absent
+              Present { value: identity } => Present { value: NotAttempted { halted_by: identity } }
+            }
           } else {
             if known_red_body_is_host_tool(body: body) {
-              Present {
-                value: HostToolUnresolved {
-                  name: known_red_between(s: body, open: "\"", close: "\"", fallback: body),
-                  probed: known_red_probed_list(body: body)
-                }
+              match known_red_host_tool_fields(body: body) {
+                Absent => Absent
+                Present { value: terminal } => Present { value: terminal }
               }
             } else {
               if known_red_body_is_route_gap(body: body) {
-                Present {
-                  value: RouteGap {
-                    operation: known_red_between(s: body, open: "arm for ", close: ":", fallback: body),
-                    ground: known_red_route_gap_ground_of(body: body)
-                  }
+                match known_red_route_gap_fields(body: body) {
+                  Absent => Absent
+                  Present { value: terminal } => Present { value: terminal }
                 }
               } else {
                 if known_red_body_is_budget(body: body) {
-                  Present { value: BudgetRefused { safety: known_red_safety_of(body: body) } }
+                  match known_red_safety_of(body: body) {
+                    Absent => Absent
+                    Present { value: safety } => Present { value: BudgetRefused { safety: safety } }
+                  }
                 } else {
                   if known_red_body_is_entry_resolve(body: body) {
-                    Present { value: NotAttempted { halted_by: body } }
+                    // NOT the same fact as 'not-attempted behind a host', and no longer the same value:
+                    // both were `halted_by: body`. The cause now names the resolver and carries the entry
+                    // the group was built from, so a reader of the ledger can tell them apart.
+                    match known_red_entry_of_resolve_failure(body: body) {
+                      Absent => Absent
+                      Present { value: entry } =>
+                        Present { value: NotAttempted { halted_by: known_red_entry_resolve_halted_by(entry: entry) } }
+                    }
                   } else {
                     Absent
                   }
@@ -991,62 +1194,149 @@ fn known_red_terminal_of_body(body: String) -> Optional<ClaimAttemptTerminal> {
 // THE ARM TESTS, one per transport arm, each keyed on the words that arm alone prints. Kept as named
 // predicates rather than an inline chain so a reader can check each against `claim_batch.rs` line by line.
 fn known_red_body_is_exit_failure(body: String) -> Bool {
-  starts_with(s: body, prefix: "(returned ProcessExit::ExitFailure, code ")
+  starts_with(s: body, prefix: known_red_marker_exit_failure)
 }
 
 fn known_red_body_is_not_bool(body: String) -> Bool {
-  starts_with(s: body, prefix: "(returned `")
-    && string_contains(s: body, pattern: "not Bool; --claim-run entries must return Bool)")
+  starts_with(s: body, prefix: known_red_marker_not_bool)
+    && string_contains(s: body, pattern: known_red_marker_not_bool_tail)
 }
 
 fn known_red_body_is_runtime_error(body: String) -> Bool {
-  starts_with(s: body, prefix: "(runtime error [")
+  starts_with(s: body, prefix: known_red_marker_runtime_error)
 }
 
 fn known_red_body_is_panicked(body: String) -> Bool {
-  starts_with(s: body, prefix: "(the host unwound during evaluation:")
+  starts_with(s: body, prefix: known_red_marker_panicked)
 }
 
-// THE PANIC PAYLOAD, verbatim. The transport wraps it in one parenthesised clause with no nested
-// parentheses, so the payload is everything between the marker and the closing paren.
-fn known_red_payload(body: String) -> String {
-  let marker = "(the host unwound during evaluation: "
-  known_red_between(s: body, open: marker, close: ")", fallback: body)
+// THE PANIC PAYLOAD, fail-closed (review 83992). `Panicked { payload }` carries 'the payload the host
+// unwound with' (`cli_run.rs`). The transport wraps it in one parenthesised clause with no nested
+// parentheses, so the payload is everything between the marker and the closing paren -- and if that marker
+// has moved, the field is `Absent` and the row refuses. It used to fall back to the whole line, which is
+// the line's text standing in for a field nobody located.
+fn known_red_payload(body: String) -> Optional<String> {
+  known_red_field_of_end(s: body, open: known_red_marker_panicked, close: ")")
+}
+
+// THE IDENTITY A CLAIM WAS ABORTED BEHIND, out of '(reported as not-attempted behind <identity>, which
+// this path never mints)'. That identity -- not the whole line -- is what the seed says `halted_by` holds
+// (`cli_run.rs`: 'the identity whose panic stopped the line'). Matching the tail as well as the head is
+// what makes this arm's shape a claim about the print, not a guess at it.
+fn known_red_halted_behind(body: String) -> Optional<String> {
+  known_red_field_of(
+    s: body,
+    open: known_red_marker_not_attempted,
+    close: known_red_marker_not_attempted_tail
+  )
 }
 
 fn known_red_body_is_not_attempted(body: String) -> Bool {
-  starts_with(s: body, prefix: "(reported as not-attempted behind ")
+  starts_with(s: body, prefix: known_red_marker_not_attempted)
+    && string_contains(s: body, pattern: known_red_marker_not_attempted_tail)
 }
 
 fn known_red_body_is_host_tool(body: String) -> Bool {
-  starts_with(s: body, prefix: "(host tool unresolved: ")
+  starts_with(s: body, prefix: known_red_marker_host_tool)
+}
+
+// THE HOST TOOL NAME, out of '(host tool unresolved: "<name>" (probed: ...))'. Fail-closed for the same
+// reason as every other arm-carried field: the fallback used to be the whole body.
+fn known_red_host_tool_name(body: String) -> Optional<String> {
+  known_red_field_of(
+    s: body,
+    open: concat(known_red_marker_host_tool, "\""),
+    close: "\""
+  )
 }
 
 fn known_red_body_is_route_gap(body: String) -> Bool {
-  starts_with(s: body, prefix: "(hermetic route has no arm for ")
+  starts_with(s: body, prefix: known_red_marker_route_gap)
+}
+
+// THE ROUTE-GAP OPERATION, out of '(hermetic route has no arm for <op>: <ground>...)'. This field was the
+// worst instance of the fallback: with the marker unmoved it held the ground prose too, and with the
+// marker moved it held the entire line -- and the row still read as data either way.
+fn known_red_route_gap_operation(body: String) -> Optional<String> {
+  known_red_field_of(s: body, open: known_red_marker_route_gap, close: ":")
 }
 
 fn known_red_body_is_budget(body: String) -> Bool {
   starts_with(s: body, prefix: "(")
-    && string_contains(s: body, pattern: " budget ")
-    && string_contains(s: body, pattern: "ms EXCEEDED; cost=")
+    && string_contains(s: body, pattern: known_red_marker_budget_word)
+    && string_contains(s: body, pattern: known_red_marker_budget_exceeded)
 }
 
 fn known_red_body_is_entry_resolve(body: String) -> Bool {
-  starts_with(s: body, prefix: "(entry resolve failed:")
+  starts_with(s: body, prefix: known_red_marker_entry_resolve)
 }
 
-// THE TEXT BETWEEN TWO MARKERS, VERBATIM OR NOT AT ALL. Verbatim matters: the cause a reader acts on has to
-// survive the read, and a decode that restates it invents a second author of the cause (DESIGN §3).
-fn known_red_between(s: String, open: String, close: String, fallback: String) -> String {
+// THE ENTRY THE GROUP WAS BUILT FROM, out of '(entry resolve failed: <entry>)'. Fail-closed: an
+// unlocatable entry refuses the row rather than inventing one.
+fn known_red_entry_of_resolve_failure(body: String) -> Optional<String> {
+  known_red_field_of_end(s: body, open: known_red_marker_entry_resolve, close: ")")
+}
+
+// `known_red_between` -- the marker extractor with a caller-supplied `fallback` -- was deleted here. Every
+// one of its callers now goes through `known_red_field_of`, which has no fallback: the fallback was the
+// mechanism by which an unmoved marker turned into a fabricated field value (review 83992), and a decode
+// helper that can lie is not a decode helper.
+
+// A FIELD, OR NOTHING. Every field a ledger arm carries goes through this, so when a marker moves the line
+// decodes to `Absent` and the run refuses, where the deleted fallback would have filed the whole line as
+// `RouteGap.operation` or `HostToolUnresolved.name` and called that data (review 83992). Verbatim matters
+// for the same reason: the cause a reader acts on has to survive the read, and a decode that restates it
+// invents a second author of the cause (DESIGN §3).
+fn known_red_field_of(s: String, open: String, close: String) -> Optional<String> {
   match known_red_index_of(s: s, needle: open, at: 0, limit: string_length(s: s)) {
-    Absent => fallback
+    Absent => Absent
     Present { value: from } =>
       let after = from + string_length(s: open)
       match known_red_index_of(s: s, needle: close, at: after, limit: string_length(s: s)) {
-        Absent => fallback
-        Present { value: to } => substring(s: s, start: after, end: to)
+        Absent => Absent
+        Present { value: to } =>
+          if to >= after {
+            Present { value: substring(s: s, start: after, end: to) }
+          } else {
+            Absent
+          }
       }
+  }
+}
+
+// A FIELD THAT ENDS THE PRINT. The transport closes the clause it is describing, so for the fields the
+// harness prints LAST in a line -- a panic payload, a runtime-error message, an unresolved entry path -- the
+// delimiter is the FINAL character, not the first character that happens to look like one. Taking the first
+// ')' would truncate a payload that contains one (`index out of bounds (at 3)`) and silently hand the ledger
+// half a cause. `close` must match at the very end or the field is `Absent`.
+fn known_red_field_of_end(s: String, open: String, close: String) -> Optional<String> {
+  match known_red_index_at_end(s: s, tail: close) {
+    Absent => Absent
+    Present { value: end } =>
+      match known_red_index_of(s: s, needle: open, at: 0, limit: end) {
+        Absent => Absent
+        Present { value: from } =>
+          let after = from + string_length(s: open)
+          if end >= after {
+            Present { value: substring(s: s, start: after, end: end) }
+          } else {
+            Absent
+          }
+      }
+  }
+}
+
+// WHERE A SUFFIX SITS, IF IT IS ONE. Returns the index at which `tail` occupies the end of `s`.
+fn known_red_index_at_end(s: String, tail: String) -> Optional<Int> {
+  let at = string_length(s: s) - string_length(s: tail)
+  if at < 0 {
+    Absent
+  } else {
+    if substring(s: s, start: at, end: at + string_length(s: tail)) == tail {
+      Present { value: at }
+    } else {
+      Absent
+    }
   }
 }
 
@@ -1068,23 +1358,84 @@ fn known_red_after(s: String, n: Int) -> String {
 
 // THE PROBED PATHS, AS THE LIST THE LEDGER ARM OWNS. The transport renders them comma-joined inside
 // `(probed: …)`, so the separator it chose is the separator this splits on.
-fn known_red_probed_list(body: String) -> List<String> {
-  let inner = known_red_between(s: body, open: "(probed: ", close: ")", fallback: "")
-  if inner == "" { [] } else { split(s: inner, delimiter: ", ") }
+// THE PROBED PATHS, AS THE LIST THE LEDGER ARM OWNS. The transport renders them comma-joined in
+// `(probed: …)`, so the separator it chose is the separator this splits on. An EMPTY list is a real
+// outcome (`probed.join(", ")` of nothing) and is spelled `Present { value: "" }` -> `[]`; a MOVED marker
+// is `Absent`, which refuses. The old code collapsed both into `[]` by way of a `fallback: ""`, so a
+// reworded arm reported 'the host probed nothing' -- a claim about the world, from a decode failure.
+fn known_red_probed_list(body: String) -> Optional<List<String>> {
+  match known_red_field_of(s: body, open: known_red_marker_probed, close: ")") {
+    Absent => Absent
+    Present { value: inner } =>
+      if inner == "" {
+        Present { value: [] }
+      } else {
+        Present { value: split(s: inner, delimiter: ", ") }
+      }
+  }
+}
+
+// THE RUNTIME-ERROR MESSAGE, in the seed's own order: '<cause>: <message>' (`cli_run.rs` keeps the cause
+// and the message as two facts -- the cause says WHICH class, the message says which name, type or arity).
+// The ledger arm has one String, so both halves are kept in it; either half alone would be the flattening
+// that arm's doc forbids. Fail-closed on both markers.
+fn known_red_runtime_error_parts(body: String) -> Optional<String> {
+  match known_red_field_of(s: body, open: known_red_marker_runtime_error, close: "]:") {
+    Absent => Absent
+    Present { value: cause } =>
+      match known_red_field_of_end(s: body, open: concat(cause, "]: "), close: ")") {
+        Absent => Absent
+        Present { value: message } => Present { value: concat(cause, ": ", message) }
+      }
+  }
+}
+
+// THE HOST-TOOL ARM, both fields or nothing. `name` sits in the harness's `{:?}` quotes and `probed` in
+// the `(probed: …)` clause that follows it; a row with only one of them located is a row whose shape this
+// file does not actually recognize.
+fn known_red_host_tool_fields(body: String) -> Optional<ClaimAttemptTerminal> {
+  match known_red_host_tool_name(body: body) {
+    Absent => Absent
+    Present { value: name } =>
+      match known_red_probed_list(body: body) {
+        Absent => Absent
+        Present { value: probed } =>
+          Present { value: HostToolUnresolved { name: name, probed: probed } }
+      }
+  }
+}
+
+// THE ROUTE-GAP ARM, both fields or nothing. `operation` is the printed service.operation between the
+// marker and the ':' that ends it; `ground` is one of the three closed labels.
+fn known_red_route_gap_fields(body: String) -> Optional<ClaimAttemptTerminal> {
+  match known_red_route_gap_operation(body: body) {
+    Absent => Absent
+    Present { value: operation } =>
+      match known_red_route_gap_ground_of(body: body) {
+        Absent => Absent
+        Present { value: ground } =>
+          Present { value: RouteGap { operation: operation, ground: ground } }
+      }
+  }
 }
 
 // THE ROUTE GAP'S GROUND, READ BACK OUT OF THE PRINT. The three sentences are the ones the transport
 // renders through `hermetic_effect_ground_label`; this inverts that render onto the union the ledger arm
-// requires. Anything unmapped falls to `NoMockResponse` — which cannot hide a finding, because the line was
-// already kept and the population it belongs to is reported regardless.
-fn known_red_route_gap_ground_of(body: String) -> FloorRouteGapGround {
-  if string_contains(s: body, pattern: "no published mock case for a corpus-governed service") {
-    UnpublishedMockCase
+// requires -- exhaustively. It used to end in `else { NoMockResponse }`, which meant the third label was
+// never actually tested for and an unrecognized ground was REPORTED AS THAT LABEL. Now an unmapped ground
+// is `Absent`, so the row refuses instead of being filed under a ground nobody printed.
+fn known_red_route_gap_ground_of(body: String) -> Optional<FloorRouteGapGround> {
+  if string_contains(s: body, pattern: known_red_marker_ground_unpublished_mock) {
+    Present { value: UnpublishedMockCase }
   } else {
-    if string_contains(s: body, pattern: "filesystem removal has no mock arm") {
-      FilesystemRemoval
+    if string_contains(s: body, pattern: known_red_marker_ground_filesystem_removal) {
+      Present { value: FilesystemRemoval }
     } else {
-      NoMockResponse
+      if string_contains(s: body, pattern: known_red_marker_ground_no_mock_response) {
+        Present { value: NoMockResponse }
+      } else {
+        Absent
+      }
     }
   }
 }
@@ -1097,24 +1448,43 @@ fn known_red_route_gap_ground_of(body: String) -> FloorRouteGapGround {
 // discriminator available at the print, so the safety carried here is the one the print supports: the
 // elapsed figures stay 0 because a line never reports them, and the preemption is named as unbounded rather
 // than guessed at.
-fn known_red_safety_of(body: String) -> ClaimSafetyOutcome {
-  if string_contains(s: body, pattern: "cost=UNMEASURED") {
-    SafetyInterrupted {
-      raised_by: known_red_between(s: body, open: "(", close: " budget", fallback: "claim_batch budget guard"),
-      elapsed_cpu_at_least: 0,
-      elapsed_wall_at_least: 0
+fn known_red_safety_of(body: String) -> Optional<ClaimSafetyOutcome> {
+  if string_contains(s: body, pattern: known_red_marker_budget_unmeasured) {
+    match known_red_budget_operation(body: body) {
+      Absent => Absent
+      Present { value: raised_by } =>
+        Present {
+          value: SafetyInterrupted {
+            raised_by: raised_by,
+            elapsed_cpu_at_least: 0,
+            elapsed_wall_at_least: 0
+          }
+        }
     }
   } else {
-    CompletedPastSafetyLimit {
-      observed_cpu: 0,
-      observed_wall: 0,
-      preemption: OpaqueHostCallUnbounded { operation: known_red_budget_operation(body: body) }
+    if string_contains(s: body, pattern: known_red_marker_budget_exceeded) {
+      match known_red_budget_operation(body: body) {
+        Absent => Absent
+        Present { value: operation } =>
+          Present {
+            value: CompletedPastSafetyLimit {
+              observed_cpu: 0,
+              observed_wall: 0,
+              preemption: OpaqueHostCallUnbounded { operation: operation }
+            }
+          }
+      }
+    } else {
+      Absent
     }
   }
 }
 
-fn known_red_budget_operation(body: String) -> String {
-  known_red_between(s: body, open: "(", close: " budget", fallback: "claim_batch budget guard")
+// WHICH BUDGET CEILING FIRED, out of `'<label> budget <n>ms EXCEEDED'`. `kind.label()` is the only thing
+// that distinguishes the two ceilings at the print, so a missing `' budget '` marker refuses; the fallback
+// used to hand the ledger an invented label, 'claim_batch budget guard', for a line that said no such thing.
+fn known_red_budget_operation(body: String) -> Optional<String> {
+  known_red_field_of(s: body, open: "(", close: known_red_marker_budget_word)
 }
 
 // A POPULATION WITH NO VERDICT ANYWHERE is the shape of a deleted spawn, or of a child killed before it
@@ -2206,6 +2576,14 @@ type KnownRedDerivationRefusal
   // identity, which is a roster/packer defect) because the two facts have different owners and different
   // legs; collapsing them would report a harness echo as a roster bug.
   | PrintedLineDuplicated { identities: List<WitnessIdentity> }
+  // THE WORDING THIS FILE DECODES IS NO LONGER THE WORDING THE HARNESS PRINTS. Every marker the decoder
+  // matches on is declared against the file that prints it (`known_red_print_authorities`); a marker that
+  // has left that file means the decoder and the transport have drifted, and a line-by-line decode against
+  // stale wording can classify a claim by a clause that no longer exists. This refuses the whole run as
+  // NO OBSERVATION rather than let a partial match pass as a reading: `source :: marker` names both
+  // authorities that were supposed to agree. It is checked once per run, because it is a property of the
+  // checkout, not of any child's stdout (review 83992).
+  | PrintedWordingUntied { markers: List<String> }
 
 fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
   match r {
@@ -2222,6 +2600,7 @@ fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
     PrintedLineUndecodable { lines: _ } => "PrintedLineUndecodable"
     PrintedLinesContradict { identities: _ } => "PrintedLinesContradict"
     PrintedLineDuplicated { identities: _ } => "PrintedLineDuplicated"
+    PrintedWordingUntied { markers: _ } => "PrintedWordingUntied"
   }
 }
 
@@ -2606,6 +2985,8 @@ fn known_red_refusal_detail(r: KnownRedDerivationRefusal) -> String {
           " (printed more than once by the children, always with the same terminal)"
         )
       )
+    PrintedWordingUntied { markers: ms } =>
+      concat(": decoder markers absent from the source that prints them: ", join(ms, ", "))
     PrintedLinesContradict { identities: its } =>
       concat(
         ": ",
@@ -2684,6 +3065,10 @@ fn known_red_exit_code_of(r: KnownRedDerivationRefusal) -> Int {
     // No observation (2): the line said what it said, but the evidence for it is not a single trustworthy
     // transcript, and 'the same line twice' is not a second observation of the same fact.
     PrintedLineDuplicated { identities: _ } => 2
+    // No observation (2), and the earliest possible moment: the wording this file decodes is not the
+    // wording the transport prints, so no line from any child can be read. Not 1 -- nothing was observed
+    // about any claim, which is a different sentence from 'the list is wrong'.
+    PrintedWordingUntied { markers: _ } => 2
     SubjectDefectsCarried { defects: _ } => 2
     // ── observed defect (1): the claims ran, the verdicts were read, and the list is wrong ──
     StaleEnrolmentNowPassing { identities: _ } => 1
@@ -2722,6 +3107,31 @@ fn known_red_derivation_exit() -> CliWireResponse {
         exit: ExitFailure { code: 2, reason: "known-red-derivation: NO OBSERVATION — head unreadable, so no receipt names a commit" }
       }
     Present { value: head } => {
+      // THE WORDING CHECK FIRST, BEFORE ANY CHILD RUNS. If this file's decoder no longer matches what the
+      // transport prints, nothing a child says can be read correctly, so the run refuses with exit 2 and
+      // spends no child execution on a reading it cannot honour (review 83992). `PrintedWordingUntied` is
+      // the no-observation class, not a finding: the list was not checked, which is a different sentence
+      // from 'the list is wrong' (exit 1).
+      let untied = known_red_print_markers_untied()
+      let untied_refusal = PrintedWordingUntied { markers: untied }
+      if length(xs: untied) > 0 {
+        CliWirePrintable {
+          bytes: concat(
+            "known-red derivation: REFUSED — this file's decoder markers are not in the source that prints them:\n",
+            concat(join(untied, "\n"), "\n")
+          ),
+          // THE EXIT CODE AND THE NAME COME FROM THE SAME FUNCTIONS EVERY OTHER REFUSAL USES. Nothing here
+          // decides by itself that this class is exit 2; `known_red_exit_code_of` is the only authority for
+          // what an arm costs, and the report line is the arm's own detail.
+          exit: ExitFailure {
+            code: known_red_exit_code_of(r: untied_refusal),
+            reason: concat(
+              "known-red-derivation: NO OBSERVATION — ",
+              concat(known_red_refusal_name(r: untied_refusal), known_red_refusal_detail(r: untied_refusal))
+            )
+          }
+        }
+      } else {
       let subjects = known_red_subjects()
       let children = known_red_collect_at(
         root: git.Inspect.Toplevel().path,
@@ -2758,6 +3168,7 @@ fn known_red_derivation_exit() -> CliWireResponse {
             )
           }
         }
+      }
       }
     }
   }

@@ -1,7 +1,7 @@
 module test.claim.gunbc_instruments_known_red_derivation_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { string_contains }
+import std.algebra { list_snoc_item, string_contains }
 import std.execution_mode { Hermetic, Record, Wet }
 import std.optional { Absent, Present }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
@@ -31,8 +31,25 @@ import gunbc.instruments.known_red_derivation {
   known_red_refusal_name, known_red_stale_enrolments, known_red_unaccounted_reds,
   known_red_subjects, known_red_subject_qualified, known_red_report,
   known_red_dedup, known_red_same_identity, known_red_row_line,
-  known_red_subject_population_execution_mode
+  known_red_subject_population_execution_mode,
+  // THE DECODER'S OWN PARTS, ASSERTED AT THE SEAM. The wording constants, the field extractors and the
+  // source tie are what turn the harness's prose into a ledger arm; a claim that only asked the fold 'is it
+  // Held' could not tell a located field from a fallback that copied the line, which is the defect review
+  // 83992 found. So these are imported and probed directly, marker by marker.
+  known_red_entry_resolve_cause, known_red_entry_resolve_halted_by,
+  known_red_untied_markers_in, known_red_print_authorities,
+  known_red_transport_source_claim_batch, known_red_transport_source_cli_run,
+  known_red_print_markers_untied, known_red_transport_decoder_dissolution,
+  known_red_route_gap_ground_of, known_red_route_gap_operation, known_red_host_tool_name,
+  known_red_payload, known_red_budget_operation, known_red_runtime_error_parts,
+  known_red_marker_exit_failure, known_red_marker_runtime_error, known_red_marker_panicked,
+  known_red_marker_not_attempted, known_red_marker_not_attempted_tail,
+  known_red_marker_host_tool, known_red_marker_probed, known_red_marker_route_gap,
+  known_red_marker_entry_resolve, known_red_marker_budget_word, known_red_marker_budget_unmeasured,
+  known_red_marker_ground_unpublished_mock, known_red_marker_ground_filesystem_removal,
+  known_red_marker_ground_no_mock_response
 }
+import std.dissolution { dissolution_description }
 
 // THE ARMS THIS FILE GIVES THE INSTRUMENT. Each one supplies the two things a run supplies — the
 // subjects it owes and what the children printed — and asks the fold what it concluded. Nothing here
@@ -1009,14 +1026,182 @@ test fn every_refusal_is_classified_and_neither_class_is_the_default() -> Bool {
 // gap, not a verdict. This helper builds exactly that shape so an arm can tell it from a claim that ran and
 // genuinely returned false. The wording mirrors the harness (`claim_batch.rs`, hermetic-route-no-arm),
 // including the "route gap and not a verdict" tail the instrument keys on.
+// THE ROUTE-GAP LINE, IN THE TRANSPORT'S OWN SHAPE: `(hermetic route has no arm for <service.operation>:
+// <ground label> — the claim never reached its subject, ...)`. The ground label is NOT decoration --
+// `known_red_route_gap_ground_of` reads the ground back out of it, and now that that read is exhaustive (the
+// old one defaulted to `NoMockResponse`), a fixture without a real label decodes to nothing. It used to have
+// none, which is how the default went unnoticed: the fixture was as invented as the line it stood for
+// (src/v1/stage0/src/bin/claim_batch.rs:399-404, `hermetic_effect_ground_label`).
 fn route_gap_verdict(subject: KnownRedSubject) -> String {
+  route_gap_verdict_ground(subject: subject, ground: known_red_marker_ground_unpublished_mock)
+}
+
+fn route_gap_verdict_ground(subject: KnownRedSubject, ground: String) -> String {
   concat(
     "FAIL ",
     concat(
       subject.function,
-      " (hermetic route has no arm for IsFile — the claim never reached its subject, so this is a route gap and not a verdict)\n"
+      concat(
+        known_red_marker_route_gap,
+        concat(
+          "Filesystem.IsFile: ",
+          concat(
+            ground,
+            " — the claim never reached its subject, so this is a route gap and not a verdict)\n"
+          )
+        )
+      )
     )
   )
+}
+
+// THE ABORTED ARMS, IN THE TRANSPORT'S OWN SHAPE, each carrying the field the ledger arm is named for. Both
+// were previously built inline with the whole line as the cause; now each is one print, with the field in
+// the position the harness puts it (src/v1/stage0/src/bin/claim_batch.rs:368-372, :917).
+fn not_attempted_verdict(subject: KnownRedSubject, halted_behind: String) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      concat(
+        known_red_marker_not_attempted,
+        concat(halted_behind, concat(known_red_marker_not_attempted_tail, ")\n"))
+      )
+    )
+  )
+}
+
+fn entry_resolve_verdict(subject: KnownRedSubject, entry: String) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      concat(known_red_marker_entry_resolve, concat(entry, ")\n"))
+    )
+  )
+}
+
+fn host_tool_verdict(subject: KnownRedSubject, tool: String, probed: String) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      concat(
+        known_red_marker_host_tool,
+        concat("\"", concat(tool, concat("\"", concat(known_red_marker_probed, concat(probed, "))\n"))))
+      )
+    )
+  )
+}
+
+// THE TWO BUDGET ARMS. `budget_figure_phrase` renders both from one function and they differ in exactly one
+// thing: which ceiling label fired, and whether a cost was ever taken (`cost=UNMEASURED` for a preempted
+// witness, `cost=<n>ms CEILING` for one that completed over budget). The label is the ONLY discriminator
+// available at the print, so it is what these fixtures carry and what the decoder must read.
+fn budget_interrupted_verdict(subject: KnownRedSubject, label: String) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      concat(
+        "(",
+        concat(
+          label,
+          concat(
+            known_red_marker_budget_word,
+            concat("1000ms EXCEEDED; ", known_red_marker_budget_unmeasured, ")\n")
+          )
+        )
+      )
+    )
+  )
+}
+
+fn budget_completed_verdict(subject: KnownRedSubject, label: String) -> String {
+  concat(
+    "FAIL ",
+    concat(
+      subject.function,
+      concat(
+        "(",
+        concat(
+          label,
+          concat(
+            known_red_marker_budget_word,
+            concat("1000ms EXCEEDED; cost=1500ms CEILING)\n")
+          )
+        )
+      )
+    )
+  )
+}
+
+// ONE OF THE ARMS' OWN LABELS, taken from the transport's enum rather than invented: `BudgetKind::label()`
+// prints `cpu` or `wall` (src/v1/stage0/src/cli_run.rs:10641-10644).
+data known_red_budget_cpu_label: String = "cpu"
+data known_red_budget_wall_label: String = "wall"
+
+// THE BODY, THE WAY THE DECODER SEES IT. The decoder's field extractors are handed the bracketed tail of a
+// line (everything after `FAIL <function> `), not the line, so a claim that tests one of them has to hand it
+// a tail in the same shape. These build a tail from the same constants the transport and the extractors read
+// -- no fourth copy of the wording, and no local strip logic that could differ from the instrument's own.
+fn route_gap_body(subject: KnownRedSubject) -> String {
+  route_gap_body_ground(subject: subject, ground: known_red_marker_ground_unpublished_mock)
+}
+
+fn route_gap_body_ground(subject: KnownRedSubject, ground: String) -> String {
+  concat(
+    known_red_marker_route_gap,
+    concat(
+      "Filesystem.IsFile: ",
+      concat(
+        ground,
+        " — the claim never reached its subject, so this is a route gap and not a verdict)"
+      )
+    )
+  )
+}
+
+fn host_tool_body(subject: KnownRedSubject, tool: String, probed: String) -> String {
+  concat(
+    known_red_marker_host_tool,
+    concat("\"", concat(tool, concat("\"", concat(known_red_marker_probed, concat(probed, "))"))))
+  )
+}
+
+fn panicked_body(subject: KnownRedSubject, payload: String) -> String {
+  concat(known_red_marker_panicked, concat(payload, ")"))
+}
+
+fn budget_interrupted_body(subject: KnownRedSubject, label: String) -> String {
+  concat(
+    "(",
+    concat(
+      label,
+      concat(
+        known_red_marker_budget_word,
+        concat("1000ms EXCEEDED; ", known_red_marker_budget_unmeasured, ")")
+      )
+    )
+  )
+}
+
+fn budget_completed_body(subject: KnownRedSubject, label: String) -> String {
+  concat(
+    "(",
+    concat(label, concat(known_red_marker_budget_word, concat("1000ms EXCEEDED; cost=1500ms CEILING)")))
+  )
+}
+
+// THE CAUSE A ROW CARRIES, for the two aborted arms. Read off the row the FOLD produced -- not off a literal
+// this file wrote -- because the fact under test is what the instrument derived from a print. A row that is
+// not `NotAttempted` carries no cause, and `""` says so in a way the caller's comparisons will not mistake
+// for a match: no cause in this file is the empty string.
+fn row_halted_by(rows: List<KnownRedDerivationRow>) -> String {
+  match known_red_first_row(rows: rows).terminal {
+    NotAttempted { halted_by: cause } => cause
+    _ => ""
+  }
 }
 
 // TWO POPULATIONS, ONE IDENTITY, ONE DISPATCH. The seven Group-C identities are BOTH wet-scheduled AND
@@ -1408,4 +1593,286 @@ test fn a_shared_function_name_is_taken_only_by_the_subject_whose_entry_printed_
   // the line came from a child asked under a different entry: ours is owed, and the line is foreign.
   (d.reconciliation.planned_without_terminal |> length) == 1
     && (d.reconciliation.terminal_without_planned |> length) == 1
+}
+
+// ───────────── the field extractors: a located field, or a refusal ─────────
+//
+// THE ARMS BELOW EXIST BECAUSE THE OLD DECODER COULD LIE QUIETLY. Each ledger field used to be pulled out
+// by a helper that took a `fallback` from its caller, and every caller passed either the whole line or an
+// invented label. So when a marker moved, `RouteGap.operation` held the entire print, `HostToolUnresolved.name`
+// held the entire print, and the budget arms' `raised_by` held 'claim_batch budget guard' -- a string the
+// transport never prints. None of those read as a failure; they read as data. Review 83992 called this by
+// name. Each claim here is the RED for one of those three: the same helper, on a line whose marker has been
+// moved, must answer `Absent` (which the fold turns into a refusal) instead of answering with the line.
+
+// THE ROUTE-GAP OPERATION IS THE SERVICE.OPERATION, NOT THE LINE. With the marker present the extractor
+// returns the operation and nothing else; with the marker reworded, it returns Absent. Under the deleted
+// fallback, both of those returned a non-empty String, and the second one was the whole print.
+test fn a_route_gap_operation_is_located_or_the_row_refuses() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_gap_claim")
+  let located = known_red_route_gap_operation(body: route_gap_body(subject: s))
+  // The marker moved: the print still says 'hermetic route' in prose, but not in the position the decoder
+  // reads, so nothing may be filed under `operation`.
+  let moved = known_red_route_gap_operation(
+    body: "(hermetic route lacks arm for Filesystem.IsFile: a ground this file has never read)"
+  )
+  match located {
+    Absent => false
+    Present { value: operation } =>
+      operation == "Filesystem.IsFile" && match moved {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+// THE HOST-TOOL NAME IS THE QUOTED TOOL, NOT THE QUOTED TOOL PLUS ITS PROBED LIST. `{:?}` on a String puts
+// it in quotes (`claim_batch.rs:384-390`), so the quotes delimit the field; a fallback that copied the body
+// put `(probed: …)` INSIDE the name of the tool, which is the same class of lie in a different field.
+test fn a_host_tool_name_is_located_or_the_row_refuses() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_tool_claim")
+  let located = known_red_host_tool_name(
+    body: host_tool_body(subject: s, tool: "git", probed: "usr/bin/git, bin/git")
+  )
+  let moved = known_red_host_tool_name(
+    body: "(host tool unnamed: \"git\" (probed: usr/bin/git))"
+  )
+  match located {
+    Absent => false
+    Present { value: name } =>
+      name == "git" && match moved {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+// THE PANIC PAYLOAD IS WHAT THE HOST UNWOUND WITH, per the seed's own doc for that field. The old extractor
+// fell back to the whole line, so a reworded arm recorded the print as the payload.
+test fn a_panic_payload_is_located_or_the_row_refuses() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_panicked_claim")
+  let located = known_red_payload(body: panicked_body(subject: s, payload: "index out of bounds"))
+  let moved = known_red_payload(
+    body: "(the host blew the stack: index out of bounds)"
+  )
+  match located {
+    Absent => false
+    Present { value: payload } =>
+      payload == "index out of bounds" && match moved {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+// WHICH CEILING FIRED IS READ, NOT ASSUMED. The two budget arms differ ONLY in the label the transport
+// renders from `BudgetKind::label()`, and the old code ignored it and filed 'claim_batch budget guard' -- a
+// label no code prints -- whenever its marker moved. Here the label must come back exactly, and a line whose
+// `' budget '` marker is gone must refuse rather than receive the invented one.
+test fn a_budget_ceiling_label_is_read_rather_than_invented() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_over_budget_claim")
+  let cpu = known_red_budget_operation(
+    body: budget_interrupted_body(subject: s, label: known_red_budget_cpu_label)
+  )
+  let wall = known_red_budget_operation(
+    body: budget_completed_body(subject: s, label: known_red_budget_wall_label)
+  )
+  let moved = known_red_budget_operation(
+    body: "(cpu allowance 1000ms EXCEEDED; cost=UNMEASURED)"
+  )
+  match cpu {
+    Absent => false
+    Present { value: c } =>
+      c == known_red_budget_cpu_label
+        && match wall {
+          Absent => false
+          Present { value: w } =>
+            w == known_red_budget_wall_label
+              && match moved {
+                Absent => true
+                Present { value: _ } => false
+              }
+        }
+  }
+}
+
+// A RUNTIME ERROR KEEPS BOTH HALVES OF ITS CAUSE. The transport prints `runtime error [<cause>]: <message>`
+// and the seed keeps those as two facts -- the cause says WHICH class, the message says which name, type or
+// arity (`cli_run.rs:10814-10819`). The ledger arm has one String, so the extractor must keep both halves
+// rather than pick one; dropping the message would lose the arity, dropping the cause would lose the class.
+// A line missing either marker refuses.
+test fn a_runtime_error_keeps_its_cause_and_its_message() -> Bool {
+  let kept =
+    known_red_runtime_error_parts(
+      body: concat(known_red_marker_runtime_error, concat("unbound-variable: `x` is not bound", ")"))
+    )
+  let lost_message =
+    known_red_runtime_error_parts(body: concat(known_red_marker_runtime_error, "unbound-variable)"))
+  match kept {
+    Absent => false
+    Present { value: both } =>
+      both == "unbound-variable: `x` is not bound"
+        && match lost_message {
+          Absent => true
+          Present { value: _ } => false
+        }
+  }
+}
+
+// THE ROUTE GAP'S GROUND IS ONE OF THREE, AND NOTHING ELSE. The old read ended in `else { NoMockResponse }`,
+// so the third ground was never distinguished from an unrecognized one: a gap the transport described in
+// words this file had never seen was FILED UNDER `NoMockResponse`. Now every label in the closed set decodes
+// to its own arm, and an unknown ground decodes to nothing.
+test fn a_route_gap_ground_decodes_exhaustively_and_an_unknown_one_refuses() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_gap_claim")
+  let unpublished = known_red_route_gap_ground_of(
+    body: route_gap_body_ground(subject: s, ground: known_red_marker_ground_unpublished_mock)
+  )
+  let removal = known_red_route_gap_ground_of(
+    body: route_gap_body_ground(subject: s, ground: known_red_marker_ground_filesystem_removal)
+  )
+  let no_mock = known_red_route_gap_ground_of(
+    body: route_gap_body_ground(subject: s, ground: known_red_marker_ground_no_mock_response)
+  )
+  let unknown = known_red_route_gap_ground_of(
+    body: route_gap_body_ground(subject: s, ground: "a ground this file has never read")
+  )
+  match unpublished {
+    Absent => false
+    Present { value: a } =>
+      a == UnpublishedMockCase
+        && match removal {
+          Absent => false
+          Present { value: b } =>
+            b == FilesystemRemoval
+              && match no_mock {
+                Absent => false
+                Present { value: c } =>
+                  c == NoMockResponse
+                    && match unknown {
+                      Absent => true
+                      Present { value: _ } => false
+                    }
+              }
+        }
+  }
+}
+
+// THE TWO ABORTED ARMS ARE NO LONGER THE SAME FACT. Both are `NotAttempted` -- correctly, the ledger's arm
+// for 'the claim answered nothing', and the seed itself groups `Panicked | NotAttempted` into `Aborted` --
+// but both used to carry `halted_by: body`, the whole print. A reader of the ledger could not tell 'the
+// harness refused to attempt this behind a host it never mints' from 'the harness could not resolve the
+// entry'. They now carry different values, and neither carries the line.
+test fn the_two_aborted_arms_carry_distinguishable_causes() -> Bool {
+  let s = wet_subject(module_path: "test.claim.examples.known_red_fixture", function: "the_aborted_claim")
+  let behind = known_red_fold(
+    head: "0000000000000000000000000000000000000027",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: not_attempted_verdict(subject: s, halted_behind: "gunbc.host.TheHost.the_method")
+      )
+    ]
+  )
+  let unresolved = known_red_fold(
+    head: "0000000000000000000000000000000000000027",
+    subjects: [s],
+    children: [
+      child(
+        claims: [claim_of(subject: s)],
+        stdout: entry_resolve_verdict(subject: s, entry: "dag/test/claim/known_red_fixture.dag")
+      )
+    ]
+  )
+  let behind_cause = row_halted_by(rows: behind.rows)
+  let unresolved_cause = row_halted_by(rows: unresolved.rows)
+  // Different from each other...
+  behind_cause != unresolved_cause
+    // ...each says its own thing, in its own words...
+    && string_contains(s: behind_cause, pattern: "gunbc.host.TheHost.the_method")
+    && behind_cause == "gunbc.host.TheHost.the_method"
+    && unresolved_cause ==
+      known_red_entry_resolve_halted_by(entry: "dag/test/claim/known_red_fixture.dag")
+    // ...and NEITHER is the print it came from, which is what 'the whole line became the cause' looked like.
+    && !string_contains(s: behind_cause, pattern: "which this path never mints")
+    && !string_contains(s: unresolved_cause, pattern: known_red_marker_entry_resolve)
+}
+
+// ───────────── the source tie: the wording is the harness's, not ours ─────────
+
+// THE TIE ACTUALLY TIES. This is the answer to 'nothing ties that text to its source': every marker the
+// decoder matches on is declared against the file that prints it, and the run checks them there before it
+// spends a child execution. This claim is the CONTROL -- at a head where the transport and this file agree,
+// nothing is reported. Its RED pair below is the same function on a text with the marker removed.
+test fn every_decoder_marker_is_present_in_the_source_that_prints_it() -> Bool {
+  (known_red_print_markers_untied() |> length) == 0
+}
+
+// THE TIE IS NOT VACUOUS: THE SAME FUNCTION REPORTS A MOVED MARKER. A check that only ever returns empty is
+// decoration. Handed a source text with one marker's wording changed, it names that marker, qualified by the
+// file it was supposed to be in -- because a refusal that says only 'something moved' cannot be acted on.
+test fn the_source_tie_reports_a_marker_that_moved_out_of_its_source() -> Bool {
+  let source = "src/v1/stage0/src/bin/claim_batch.rs"
+  let markers = [known_red_marker_exit_failure, known_red_marker_runtime_error]
+  let both_present =
+    known_red_untied_markers_in(
+      source: source,
+      markers: markers,
+      text: concat(known_red_marker_exit_failure, known_red_marker_runtime_error)
+    )
+  let one_moved =
+    known_red_untied_markers_in(
+      source: source,
+      markers: markers,
+      text: concat(known_red_marker_exit_failure, "(host error [")
+    )
+  (both_present |> length) == 0
+    && (one_moved |> length) == 1
+    && match one_moved {
+      Cons { head: reported, tail: _ } =>
+        string_contains(s: reported, pattern: source)
+          && string_contains(s: reported, pattern: known_red_marker_runtime_error)
+      Empty => false
+    }
+}
+
+// THE TIE IS WELDED TO SOMETHING. It covers BOTH transport files and no entry of either is empty, so the
+// check cannot be satisfied by one token in one file or by an empty table (which would report 'nothing is
+// untied' for the trivial reason that nothing was declared). The claim that the tied markers are exactly the
+// ones the decoder matches on is carried by the tie itself at run time -- the predicates read the same
+// `known_red_marker_*` constants the table lists, so a marker added to one side and not the other shows up
+// as an untied marker, not as a silent gap.
+test fn the_tied_markers_are_the_ones_the_decoder_matches_on() -> Bool {
+  let sources =
+    fold(
+      xs: known_red_print_authorities,
+      init: [],
+      f: (acc, a) =>
+        fold(
+          xs: a.markers,
+          init: acc,
+          f: (inner, m) => list_snoc_item(xs: inner, item: concat(a.source, "::", m))
+        )
+    )
+  // Both transport files are covered, the table is not empty, and no entry is blank.
+  (sources |> length) > 0
+    && any(xs: known_red_print_authorities, predicate: fn(a) { a.source == known_red_transport_source_claim_batch })
+    && any(xs: known_red_print_authorities, predicate: fn(a) { a.source == known_red_transport_source_cli_run })
+    && !any(xs: known_red_print_authorities, predicate: fn(a) { (a.markers |> length) == 0 })
+}
+
+// THE GENERALIZATION IS DECLARED, WITH ITS TRIGGER (DESIGN 6b). This module matches a human-readable
+// transport, which is a second path beside a modeled route. The alternative -- changing `claim_batch` to
+// emit a typed outcome through `gunbc.cli_wire` -- is in the harness lane, so the deferral is recorded here
+// in the repo's own dissolution vocabulary rather than carried silently: the description names the transport,
+// the typed wire it dissolves into, and the owner of the follow-up. A row that only says 'TODO' would let the
+// second path outlive its reason.
+test fn the_decoder_deferral_is_declared_with_its_trigger_and_owner() -> Bool {
+  let described = dissolution_description(condition: known_red_transport_decoder_dissolution)
+  string_contains(s: described, pattern: "claim_batch")
+    && string_contains(s: described, pattern: "cli_wire")
+    && string_contains(s: described, pattern: "DISSOLVES WHEN")
+    && string_contains(s: described, pattern: "typed outcome")
+    && string_contains(s: described, pattern: "Owner:")
 }
