@@ -152,7 +152,7 @@ fn retired_rows_accounted_for_in(
       xs: rows,
       predicate: fn(r) {
         let qn = witness_identity_qualified_name(identity: r.identity)
-        let rm = r.closure.re_measured
+        let rm = closure_remeasurement(closure: r.closure)
         let durable = closure_durable_account(closure: r.closure)
         // 1. identity: de-enrolled from the roster, and held by the wet lane as a control.
         !(any(xs: enrolled, predicate: fn(id) { id == qn }))
@@ -220,6 +220,15 @@ fn closure_durable_account(closure: Closure) -> List<DeclarationRef> {
   }
 }
 
+// Same reason as above, for the receipt half. A `Closure` is a sum, so its shared field is reached by
+// matching rather than by a dot.
+fn closure_remeasurement(closure: Closure) -> ReMeasurement {
+  match closure {
+    AttributedToChange { change: _, durable_account: _, re_measured: r } => r
+    RestsOnExecutedCheck { why_no_change: _, durable_account: _, re_measured: r } => r
+  }
+}
+
 // CALENDAR ORDER WITHOUT A SECOND CALENDAR. Both dates go through the module's own day number, so the
 // comparison cannot disagree with the arithmetic that defines the type.
 fn date_le(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
@@ -256,19 +265,29 @@ test fn the_carrier_is_not_silently_empty() -> Bool {
 // control by exactly ONE field; a shared file would let two arms differ in unseen ways.
 // ---------------------------------------------------------------------------
 
+// THE RECEIPT ONCE, NOT SIX TIMES. A named fn rather than a literal inside the closure, so the
+// perturbations below rebuild a receipt from the control's fields instead of reaching THROUGH the sum
+// type: `control_remeasurement()` would be field access on a sum value, which this language does
+// not offer -- a `Closure` is read by `match`, exactly so a new arm cannot be ignored.
+fn control_remeasurement() -> ReMeasurement {
+  ReMeasurement {
+    head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
+    on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
+    routes: [Wet, Hermetic],
+    outcome: Passed,
+    instrument: decl_ref(module_path: "test.claim.synthetic_retirement_fixture", decl_name: "synthetic_retired_control"),
+  }
+}
+
+fn control_account() -> List<DeclarationRef> {
+  [decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots")]
+}
+
 fn control_closure() -> Closure {
   RestsOnExecutedCheck {
     why_no_change: "synthetic: no attributed fix commit, the check was executed" as NonEmptyStr,
-    durable_account: [
-      decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
-    ],
-    re_measured: ReMeasurement {
-      head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
-      on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-      routes: [Wet, Hermetic],
-      outcome: Passed,
-      instrument: decl_ref(module_path: "test.claim.synthetic_retirement_fixture", decl_name: "synthetic_retired_control"),
-    },
+    durable_account: control_account(),
+    re_measured: control_remeasurement(),
   }
 }
 
@@ -335,44 +354,44 @@ test fn the_receipt_arms_refuse_a_falsified_closure() -> Bool {
   let empty_account = with_closure(c: RestsOnExecutedCheck {
     why_no_change: "synthetic" as NonEmptyStr,
     durable_account: Empty {},
-    re_measured: control_closure().re_measured,
+    re_measured: control_remeasurement(),
   })
   let phantom_account = with_closure(c: RestsOnExecutedCheck {
     why_no_change: "synthetic" as NonEmptyStr,
     durable_account: [decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module")],
-    re_measured: control_closure().re_measured,
+    re_measured: control_remeasurement(),
   })
   let borrowed_instrument = with_closure(c: RestsOnExecutedCheck {
     why_no_change: "synthetic" as NonEmptyStr,
-    durable_account: control_closure().durable_account,
+    durable_account: control_account(),
     re_measured: ReMeasurement {
-      head: control_closure().re_measured.head,
-      on: control_closure().re_measured.on,
-      routes: control_closure().re_measured.routes,
-      outcome: control_closure().re_measured.outcome,
+      head: control_remeasurement().head,
+      on: control_remeasurement().on,
+      routes: control_remeasurement().routes,
+      outcome: control_remeasurement().outcome,
       instrument: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
     },
   })
   let bad_head = with_closure(c: RestsOnExecutedCheck {
     why_no_change: "synthetic" as NonEmptyStr,
-    durable_account: control_closure().durable_account,
+    durable_account: control_account(),
     re_measured: ReMeasurement {
       head: "not-a-sha" as CommitSha,
-      on: control_closure().re_measured.on,
-      routes: control_closure().re_measured.routes,
-      outcome: control_closure().re_measured.outcome,
-      instrument: control_closure().re_measured.instrument,
+      on: control_remeasurement().on,
+      routes: control_remeasurement().routes,
+      outcome: control_remeasurement().outcome,
+      instrument: control_remeasurement().instrument,
     },
   })
   let one_route = with_closure(c: RestsOnExecutedCheck {
     why_no_change: "synthetic" as NonEmptyStr,
-    durable_account: control_closure().durable_account,
+    durable_account: control_account(),
     re_measured: ReMeasurement {
-      head: control_closure().re_measured.head,
-      on: control_closure().re_measured.on,
+      head: control_remeasurement().head,
+      on: control_remeasurement().on,
       routes: [Wet],
-      outcome: control_closure().re_measured.outcome,
-      instrument: control_closure().re_measured.instrument,
+      outcome: control_remeasurement().outcome,
+      instrument: control_remeasurement().instrument,
     },
   })
   retired_rows_accounted_for_in(rows: [row], enrolled: Empty {}, schedule: scheduled, pool_roots: pool())
