@@ -15,7 +15,9 @@ import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_cou
 
 data cannot_climb_below_ceiling_source: String = "module probe_cannot_climb_below_ceiling\nimport gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }\nimport gunbc.rung_climb { CannotClimbFurther }\nimport gunbc.recurring_failure_mode { RungStanding, BelowCeiling, FoundOnRung }\ndata s: RungStanding = BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: CannotClimbFurther { why: \"x\" }, trigger_capability: \"capability\" }\n"
 
-data can_climb_below_ceiling_source: String = "module probe_can_climb_below_ceiling\nimport gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }\nimport gunbc.rung_climb { AwaitsOneGrounding }\nimport gunbc.recurring_failure_mode { RungStanding, BelowCeiling, FoundOnRung }\ndata s: RungStanding = BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: \"x\" }, trigger_capability: \"capability\" }\n"
+data can_climb_below_ceiling_source: String = "module probe_can_climb_below_ceiling\nimport gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }\nimport gunbc.rung_climb { AwaitsOneGrounding, Undeclared }\nimport gunbc.recurring_failure_mode { RungStanding, BelowCeiling, FoundOnRung }\ndata s: RungStanding = BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: Undeclared }, trigger_capability: \"capability\" }\n"
+
+data duplicate_prose_grounding_source: String = "module probe_duplicate_prose_grounding\nimport gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }\nimport gunbc.rung_climb { AwaitsOneGrounding }\nimport gunbc.recurring_failure_mode { RungStanding, BelowCeiling, FoundOnRung }\ndata s: RungStanding = BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: \"x\" }, trigger_capability: \"capability\" }\n"
 
 data closure_baseline_source: String = "module probe_climb_closure_baseline\nimport gunbc.guarantee_rung { Mitigatable }\nimport gunbc.rung_climb { AwaitsOneGrounding }\nimport gunbc.recurring_failure_mode { RungStanding, BelowCeiling, FoundOnRung }\n"
 
@@ -26,4 +28,8 @@ test fn a_cannot_climb_further_standing_below_its_ceiling_is_refused_at_compile(
 test fn a_can_climb_standing_below_its_ceiling_adds_no_refusal() -> Bool {
   let baseline = total_blocking_count_for(source: closure_baseline_source)
   baseline >= 0 && total_blocking_count_for(source: can_climb_below_ceiling_source) == baseline
+}
+
+test fn a_prose_grounding_beside_the_trigger_capability_is_unwritable() -> Bool {
+  total_blocking_count_for(source: duplicate_prose_grounding_source) > total_blocking_count_for(source: closure_baseline_source)
 }
