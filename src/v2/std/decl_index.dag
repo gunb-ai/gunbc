@@ -1,4 +1,5 @@
 module v2.std.decl_index
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import v2.std.arrow_signature { declared_signature_arrow }

@@ -1,4 +1,5 @@
 module gunbc.host.host_converge_delta
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 
 data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {

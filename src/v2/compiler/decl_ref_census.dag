@@ -1,9 +1,11 @@
 module v2.compiler.decl_ref_census
 
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_head, list_append, list_reverse, list_snoc_item, map_lookup, string_contains }
-import std.decl_ref { DeclField, DeclarationRef, NamedField, WholeDeclaration, declaration_ref_display_key, declaration_ref_eq }
+import std.decl_ref { DeclField, DeclarationRef, NamedField, TypeParameter, WholeDeclaration, declaration_ref_display_key, declaration_ref_eq }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.types { List, NonEmptyStr }
+import std.types { List, Map, NonEmptyStr }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.namespace_alias { AliasBindingRow }
 import v2.compiler.name_resolve { ResolutionContext }
 import v2.std.compilers.lexing { Token }
 import v2.std.decl_ref_resolution {
@@ -16,16 +18,20 @@ import v2.std.decl_ref_resolution {
   resolve_declaration_ref
 }
 import v2.std.integer { Int }
-import v2.std.node { symbol_lexeme }
-import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.extdeps.languages.dag { dag_string_literal_value_symbol_optional }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.type_binder { edge_is_type_alias, type_alias_wrapper_is, type_decl_wrapper_target }
+import v2.std.node { Authored, Node, NodeFold, Positional, StructuralLabel, fold_node, symbol_lexeme }
+import v2.std.node_query { construct_field_edges, construct_tag_path_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, DeclRefDisposition, decl_ref_disposition_roster }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (a pure reader; the verb is
 // v2.compiler.source_root_eval `decl-ref-census`). Two populations, one resolver:
 //
-//   * every `DeclarationRef { module_path: "..", decl_name: "..", field: .. }` literal in the ingested
-//     source, resolved by v2.std.decl_ref_resolution against the native ingest's ResolutionContext;
+//   * every `DeclarationRef { module_path: "..", decl_name: "..", field: .. }` literal of the RESOLVED
+//     Node trees (constructs whose tag resolves to std.decl_ref DeclarationRef), resolved by v2.std.decl_ref_resolution against the native ingest's ResolutionContext;
 //   * every backtick span inside a string literal of the files the caller scopes in (the
 //     recurring-failure-mode and rung_drop ledgers), classified by the CLOSED grammar below.
 //
@@ -65,10 +71,6 @@ type DeclRefCensus {
   unreadable: List<String>
 }
 
-fn token_is_ident(t: Token, lexeme: String) -> Bool {
-  t.class == ^dag_token_ident && t.lexeme == lexeme
-}
-
 fn token_string_body(t: Token) -> Optional<String> {
   if t.class == ^dag_token_string_literal && t.lexeme.length() >= 2 {
     optional_present(value: t.lexeme.substring(start: 1, end: t.lexeme.length() - 1))
@@ -77,89 +79,213 @@ fn token_string_body(t: Token) -> Optional<String> {
   }
 }
 
-// A DeclarationRef literal is a `DeclarationRef` identifier opening a brace block. Its fields are read
-// BY NAME from the block's interior, so field order and commas carry no meaning. A block with no
-// string-literal module_path or decl_name is a computed construction, a pattern or the type's own
-// declaration, which cites nothing by spelling. A block with a string-literal module_path or
-// decl_name that cannot be read whole is a typed refusal (unreadable), never an absence.
+// A DeclarationRef literal is a record construct whose tag RESOLVES, by declaration identity, to
+// std.decl_ref DeclarationRef; the census reads the resolved Node tree and never the lexer's tokens, so
+// a spelling that merely looks like the literal (a return type, a pattern, a same-named type of another
+// module) is not one, and an aliased spelling of the real one is. A construct with no string-literal
+// module_path or decl_name is a computed construction, which cites nothing by spelling. A construct with
+// one of the two that cannot be read whole is a typed refusal (unreadable), never an absence.
+// A roster row's subject is a CitedDeclaration construct: it names a citation it dispositions and is not
+// itself a citation, an identity-grain distinction (the tag resolves to the roster's own arm).
 type LiteralScan {
   cited: List<CitedRef>
   unreadable: List<String>
 }
 
-// The tokens of a brace block after its opening brace, up to the matching close.
-fn block_interior(toks: List<Token>, depth: Int, acc: List<Token>) -> List<Token> {
-  match toks {
-    Empty => acc
-    Cons { head: h, tail: rest } =>
-      if h.class == ^dag_token_lbrace {
-        block_interior(toks: rest, depth: depth + 1, acc: list_snoc_item(xs: acc, item: h))
-      } else if h.class == ^dag_token_rbrace {
-        if depth == 0 { acc } else { block_interior(toks: rest, depth: depth - 1, acc: list_snoc_item(xs: acc, item: h)) }
-      } else {
-        block_interior(toks: rest, depth: depth, acc: list_snoc_item(xs: acc, item: h))
-      }
-  }
+data declaration_ref_path: String = "std.decl_ref.DeclarationRef"
+
+data decl_ref_module: String = "std.decl_ref"
+
+data cited_declaration_spelling: String = "CitedDeclaration"
+
+// THE HEAD IS IDENTIFIED BY THE MODULE'S OWN TYPED IMPORT ROWS, NOT BY A RESOLVER. The authored tag of a
+// construct is the spelling the author wrote; it denotes std.decl_ref DeclarationRef iff its first
+// segment is bound by an AliasBindingRow whose target extends to that path, or it spells the qualified
+// path, or the module is std.decl_ref itself. A bare DeclarationRef that no import row backs is NOT
+// accepted silently: it is counted and listed by module (bare-head), because names resolve by global
+// uniqueness today and the census must not read a spelling the module never bound as a citation.
+type ImportPair {
+  binding: String
+  target: String
 }
 
-// The token after `name :` inside a block.
-fn field_value_token(toks: List<Token>, name: String) -> Optional<Token> {
-  match toks {
-    Empty => optional_absent()
-    Cons { head: h, tail: r1 } =>
-      if token_is_ident(t: h, lexeme: name) {
-        match r1 {
-          Cons { head: colon, tail: r2 } =>
-            if colon.class == ^dag_token_colon {
-              list_head(xs: r2)
-            } else {
-              field_value_token(toks: r1, name: name)
-            }
-          Empty => optional_absent()
-        }
-      } else {
-        field_value_token(toks: r1, name: name)
-      }
-  }
+type LiteralCtx {
+  self_module: String
+  pairs: List<ImportPair>
 }
 
-fn field_string(toks: List<Token>, name: String) -> Optional<String> {
-  match field_value_token(toks: toks, name: name) {
-    Present { value: t } => token_string_body(t: t)
-    Absent => optional_absent()
-  }
+fn import_pairs_of(rows: List<AliasBindingRow>) -> List<ImportPair> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, r) { list_snoc_item(xs: acc, item: ImportPair { binding: symbol_lexeme(sym: r.binding), target: qualified_name_to_dotted_string(qn: r.target) }) }
+  )
 }
 
-fn declared_field(toks: List<Token>) -> Optional<DeclField> {
-  match field_value_token(toks: toks, name: "field") {
-    Absent => optional_absent()
-    Present { value: arm } =>
-      if token_is_ident(t: arm, lexeme: "WholeDeclaration") {
-        optional_present(value: WholeDeclaration)
-      } else if token_is_ident(t: arm, lexeme: "NamedField") {
-        match field_string(toks: toks, name: "field_name") {
-          Present { value: n } => optional_present(value: NamedField { field_name: n as NonEmptyStr })
-          Absent => optional_absent()
-        }
+fn pair_target(pairs: List<ImportPair>, binding: String) -> Optional<String> {
+  fold_list(
+    xs: pairs,
+    empty: optional_absent(),
+    cons: fn(acc, p) { if p.binding == binding { optional_present(value: p.target) } else { acc } }
+  )
+}
+
+fn last_segment(spelling: String) -> String {
+  fold_list(xs: spelling.split(delimiter: "."), empty: "", cons: fn(acc, s) { s })
+}
+
+// The dotted path a spelling denotes under the module's import rows; Absent for a bare spelling that
+// nothing binds (and the module is not std.decl_ref).
+fn expand_spelling(spelling: String, lc: LiteralCtx) -> Optional<String> {
+  let segs = spelling.split(delimiter: ".")
+  let first = span_first_segment(span: spelling)
+  match pair_target(pairs: lc.pairs, binding: first) {
+    Present { value: target } => optional_present(value: join_segments(segs: list_append(left: [target], right: drop_segments(segs: segs, k: 1))))
+    Absent =>
+      if length(xs: segs) > 1 {
+        optional_present(value: spelling)
+      } else if lc.self_module == decl_ref_module {
+        optional_present(value: concat(decl_ref_module, ".", first))
       } else {
         optional_absent()
       }
   }
 }
 
-fn literal_scan_add(scan: LiteralScan, file: Symbol, interior: List<Token>) -> LiteralScan {
-  match field_string(toks: interior, name: "module_path") {
+type HeadClass
+  = HeadIsDeclarationRef
+  | HeadOther
+  | HeadBareUnbacked
+
+fn head_class(spelling: String, lc: LiteralCtx) -> HeadClass {
+  if last_segment(spelling: spelling) != "DeclarationRef" {
+    HeadOther
+  } else {
+    match expand_spelling(spelling: spelling, lc: lc) {
+      Present { value: path } => if path == declaration_ref_path { HeadIsDeclarationRef } else { HeadOther }
+      Absent => HeadBareUnbacked
+    }
+  }
+}
+
+fn is_decl_field_variant(path: String, variant: String) -> Bool {
+  path == concat(decl_ref_module, ".", variant) || path == concat(decl_ref_module, ".DeclField.", variant)
+}
+
+fn tag_path_text(n: Node) -> Optional<String> {
+  match construct_tag_path_optional(n: n) {
+    Absent => optional_absent()
+    Present { value: p } => optional_present(value: qualified_name_to_dotted_string(qn: p))
+  }
+}
+
+// The AUTHORED path of a node that is a construct tag or a bare reference (a nullary variant such as
+// WholeDeclaration is a reference, not a construct).
+fn authored_path_text(n: Node) -> Optional<String> {
+  match tag_path_text(n: n) {
+    Present { value: p } => optional_present(value: p)
     Absent =>
-      match field_string(toks: interior, name: "decl_name") {
+      match declaration_reference_path_optional(node: n) {
+        Present { value: q } => optional_present(value: qualified_name_to_dotted_string(qn: q))
+        Absent =>
+          if qualified_name_spine_shape_present(root: n) {
+            match qualified_name_from_node(root: n) {
+              Accepted { value: q, diagnostics: _ } => optional_present(value: qualified_name_to_dotted_string(qn: q))
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          } else {
+            match node_atom_identity_optional(node: n) {
+              Present { value: id } => optional_present(value: symbol_lexeme(sym: id))
+              Absent => optional_absent()
+            }
+          }
+      }
+  }
+}
+
+fn field_target(n: Node, name: String) -> Optional<Node> {
+  fold(
+    construct_field_edges(n: n),
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match e.label {
+        Authored { name: label } => if symbol_lexeme(sym: label) == name { optional_present(value: e.target) } else { acc }
+        StructuralLabel { label: _ } => acc
+        Positional => acc
+      }
+    }
+  )
+}
+
+fn field_target_or_self(n: Node) -> Node {
+  match field_target(n: n, name: "field") {
+    Present { value: f } => f
+    Absent => n
+  }
+}
+
+fn string_value(n: Optional<Node>) -> Optional<String> {
+  match n {
+    Absent => optional_absent()
+    Present { value: v } =>
+      match dag_string_literal_value_symbol_optional(node: v) {
+        Absent => optional_absent()
+        Present { value: s } => optional_present(value: symbol_lexeme(sym: s))
+      }
+  }
+}
+
+fn declared_field_of(v: Optional<Node>, lc: LiteralCtx) -> Optional<DeclField> {
+  match v {
+    Absent => optional_absent()
+    Present { value: f } =>
+      match authored_path_text(n: f) {
+        Absent => optional_absent()
+        Present { value: spelled } =>
+          match expand_spelling(spelling: spelled, lc: lc) {
+            Absent => optional_absent()
+            Present { value: p } =>
+              if is_decl_field_variant(path: p, variant: "NamedField") {
+                match string_value(n: field_target(n: f, name: "field_name")) {
+                  Present { value: s } => optional_present(value: NamedField { field_name: s as NonEmptyStr })
+                  Absent => optional_absent()
+                }
+              } else if is_decl_field_variant(path: p, variant: "TypeParameter") {
+                match string_value(n: field_target(n: f, name: "name")) {
+                  Present { value: s } => optional_present(value: TypeParameter { name: s as NonEmptyStr })
+                  Absent => optional_absent()
+                }
+              } else if is_decl_field_variant(path: p, variant: "WholeDeclaration") {
+                optional_present(value: WholeDeclaration)
+              } else {
+                optional_absent()
+              }
+          }
+      }
+  }
+}
+
+fn literal_unreadable(scan: LiteralScan, file: Symbol) -> LiteralScan {
+  LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
+}
+
+fn literal_scan_add(scan: LiteralScan, file: Symbol, n: Node, lc: LiteralCtx) -> LiteralScan {
+  match string_value(n: field_target(n: n, name: "module_path")) {
+    Absent =>
+      match string_value(n: field_target(n: n, name: "decl_name")) {
         Absent => scan
-        Present { value: _ } => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
+        Present { value: _ } => literal_unreadable(scan: scan, file: file)
       }
     Present { value: m } =>
-      match field_string(toks: interior, name: "decl_name") {
-        Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
+      match string_value(n: field_target(n: n, name: "decl_name")) {
+        Absent => literal_unreadable(scan: scan, file: file)
         Present { value: d } =>
-          match declared_field(toks: interior) {
-            Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
+          match declared_field_of(v: field_target(n: n, name: "field"), lc: lc) {
+            Absent =>
+              LiteralScan {
+                cited: scan.cited,
+                unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), concat(" field-tag=", match authored_path_text(n: field_target_or_self(n: n)) { Present { value: t } => t  Absent => "none" })))
+              }
             Present { value: fld } =>
               LiteralScan {
                 cited: list_snoc_item(xs: scan.cited, item: CitedRef { file: file, ref: DeclarationRef { module_path: m as NonEmptyStr, decl_name: d as NonEmptyStr, field: fld } }),
@@ -170,71 +296,56 @@ fn literal_scan_add(scan: LiteralScan, file: Symbol, interior: List<Token>) -> L
   }
 }
 
-// A roster row `CitedDeclaration { reference: DeclarationRef { .. } }` names a citation it dispositions;
-// it is not itself a citation, so the scan resumes after that literal's closing brace.
-fn after_block(toks: List<Token>, depth: Int) -> List<Token> {
-  match toks {
-    Empty => toks
-    Cons { head: h, tail: rest } =>
-      if h.class == ^dag_token_lbrace {
-        after_block(toks: rest, depth: depth + 1)
-      } else if h.class == ^dag_token_rbrace {
-        if depth == 0 { rest } else { after_block(toks: rest, depth: depth - 1) }
-      } else {
-        after_block(toks: rest, depth: depth)
-      }
-  }
+fn node_literal_scan_children(file: Symbol, n: Node, scan: LiteralScan, lc: LiteralCtx) -> LiteralScan {
+  fold(n.children, init: scan, f: fn(acc, e) { node_literal_scan(file: file, n: e.target, scan: acc, lc: lc) })
 }
 
-fn after_disposition_citation(toks: List<Token>) -> List<Token> {
-  match toks {
-    Empty => toks
-    Cons { head: h, tail: rest } =>
-      if token_is_ident(t: h, lexeme: "DeclarationRef") {
-        match rest {
-          Empty => rest
-          Cons { head: _, tail: inner } => after_block(toks: inner, depth: 0)
+fn node_literal_scan(file: Symbol, n: Node, scan: LiteralScan, lc: LiteralCtx) -> LiteralScan {
+  match tag_path_text(n: n) {
+    Present { value: p } =>
+      if last_segment(spelling: p) == cited_declaration_spelling {
+        scan
+      } else {
+        match head_class(spelling: p, lc: lc) {
+          HeadIsDeclarationRef => literal_scan_add(scan: scan, file: file, n: n, lc: lc)
+          HeadBareUnbacked =>
+            literal_scan_add(
+              scan: LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), " bare-head ", p)) },
+              file: file,
+              n: n,
+              lc: lc
+            )
+          HeadOther => node_literal_scan_children(file: file, n: n, scan: scan, lc: lc)
         }
-      } else {
-        after_disposition_citation(toks: rest)
       }
+    Absent => node_literal_scan_children(file: file, n: n, scan: scan, lc: lc)
   }
 }
 
-// A `-> DeclarationRef {` is a return type opening a function body, never a record literal.
-fn after_return_type(toks: List<Token>) -> List<Token> {
-  match toks {
-    Empty => toks
-    Cons { head: h, tail: rest } => if token_is_ident(t: h, lexeme: "DeclarationRef") { rest } else { toks }
+// A module that spells DeclarationRef is a candidate (a necessary condition for a literal, since the
+// language has no import renaming). An alias of it would hide a constructor from that filter, so a
+// type alias whose own subtree spells it is reported and the census refuses naming the module.
+data declaration_ref_spelling: String = "DeclarationRef"
+
+fn node_is_declaration_ref_atom(n: Node) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } => symbol_lexeme(sym: id) == declaration_ref_spelling
+    Absent => false
   }
 }
 
-fn literal_scan(file: Symbol, toks: List<Token>, scan: LiteralScan) -> LiteralScan {
-  match toks {
-    Empty => scan
-    Cons { head: h, tail: r1 } =>
-      if token_is_ident(t: h, lexeme: "CitedDeclaration") {
-        literal_scan(file: file, toks: after_disposition_citation(toks: r1), scan: scan)
-      } else if h.lexeme == "->" {
-        literal_scan(file: file, toks: after_return_type(toks: r1), scan: scan)
-      } else if token_is_ident(t: h, lexeme: "DeclarationRef") {
-        match r1 {
-          Cons { head: lb, tail: r2 } =>
-            if lb.class == ^dag_token_lbrace {
-              literal_scan(file: file, toks: r2, scan: literal_scan_add(scan: scan, file: file, interior: block_interior(toks: r2, depth: 0, acc: [])))
-            } else {
-              literal_scan(file: file, toks: r1, scan: scan)
-            }
-          Empty => scan
-        }
-      } else {
-        literal_scan(file: file, toks: r1, scan: scan)
-      }
-  }
+fn root_aliases_declaration_ref(root: Node) -> Bool {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { type_alias_wrapper_is(n: self) && node_is_declaration_ref_atom(n: type_decl_wrapper_target(wrapper: self, pick: fn(e) { edge_is_type_alias(e: e) })) },
+      step: fn(acc, _e, sub) { acc || sub }
+    }
+  )
 }
 
-fn declaration_ref_literals(file: Symbol, tokens: List<Token>) -> LiteralScan {
-  literal_scan(file: file, toks: tokens, scan: LiteralScan { cited: [], unreadable: [] })
+fn declaration_ref_literals(file: Symbol, root: Node, lc: LiteralCtx) -> LiteralScan {
+  node_literal_scan(file: file, n: root, scan: LiteralScan { cited: [], unreadable: [] }, lc: lc)
 }
 
 // ---- prose --------------------------------------------------------------------------------
@@ -310,16 +421,13 @@ fn drop_segments(segs: List<String>, k: Int) -> List<String> {
 }
 
 // A dotted span is split at EVERY k and judged at the longest k whose prefix is a declared module.
-fn span_longest_module(segs: List<String>, k: Int, context: ResolutionContext) -> Optional<Int> {
+fn span_longest_module(segs: List<String>, k: Int, known: Map<String, Bool>) -> Optional<Int> {
   if k < 1 {
     optional_absent()
   } else {
-    match map_lookup(
-      m: context.roots.by_name,
-      key: qualified_name_from_dotted_string(dotted: join_segments(segs: take_segments(segs: segs, k: k)))
-    ) {
+    match map_lookup(m: known, key: join_segments(segs: take_segments(segs: segs, k: k))) {
       Present { value: _ } => optional_present(value: k)
-      Absent => span_longest_module(segs: segs, k: k - 1, context: context)
+      Absent => span_longest_module(segs: segs, k: k - 1, known: known)
     }
   }
 }
@@ -331,9 +439,9 @@ fn join_segments(segs: List<String>) -> String {
   }
 }
 
-fn symbol_span_standing(span: String, context: ResolutionContext) -> SpanStanding {
+fn symbol_span_standing(span: String, known: Map<String, Bool>, context: ResolutionContext) -> SpanStanding {
   let segs = span.split(delimiter: ".")
-  match span_longest_module(segs: segs, k: length(xs: segs), context: context) {
+  match span_longest_module(segs: segs, k: length(xs: segs), known: known) {
     Absent => SpanStale
     Present { value: k } =>
       let rest = drop_segments(segs: segs, k: k)
@@ -365,7 +473,7 @@ fn ref_standing(module: String, decl: String, field: DeclField, context: Resolut
   }
 }
 
-fn span_standing(span: String, namespaces: List<String>, context: ResolutionContext) -> SpanStanding {
+fn span_standing(span: String, namespaces: List<String>, known: Map<String, Bool>, context: ResolutionContext) -> SpanStanding {
   if span.length() == 0 {
     SpanNotASymbol
   } else if !string_all_chars_in(s: span, alphabet: prose_dotted_alphabet) {
@@ -375,16 +483,62 @@ fn span_standing(span: String, namespaces: List<String>, context: ResolutionCont
   } else if !string_any_char_in(s: span, alphabet: ".") {
     SpanUnclassified
   } else if contains_text(xs: namespaces, item: span_first_segment(span: span)) {
-    symbol_span_standing(span: span, context: context)
+    symbol_span_standing(span: span, known: known, context: context)
   } else {
     SpanNotASymbol
   }
+}
+
+// The module a symbol-shaped span names, if the storage lookup knows one: the same shape tests as
+// span_standing, so the modules the census must load are exactly the ones it will resolve in.
+fn span_target_module(span: String, namespaces: List<String>, known: Map<String, Bool>) -> Optional<String> {
+  if span.length() == 0 {
+    optional_absent()
+  } else if !string_all_chars_in(s: span, alphabet: prose_dotted_alphabet) {
+    optional_absent()
+  } else if string_all_chars_in(s: span.substring(start: span.length() - 1, end: span.length()), alphabet: "._") {
+    optional_absent()
+  } else if !string_any_char_in(s: span, alphabet: ".") {
+    optional_absent()
+  } else if contains_text(xs: namespaces, item: span_first_segment(span: span)) {
+    let segs = span.split(delimiter: ".")
+    match span_longest_module(segs: segs, k: length(xs: segs), known: known) {
+      Present { value: k } => optional_present(value: join_segments(segs: take_segments(segs: segs, k: k)))
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn prose_target_modules(tokens: List<Token>, namespaces: List<String>, known: Map<String, Bool>) -> List<String> {
+  fold_list(
+    xs: tokens,
+    empty: [],
+    cons: fn(acc, t) {
+      match token_string_body(t: t) {
+        Absent => acc
+        Present { value: body } =>
+          fold_list(
+            xs: backtick_spans(body: body),
+            empty: acc,
+            cons: fn(inner, span) {
+              match span_target_module(span: span, namespaces: namespaces, known: known) {
+                Present { value: m } => list_snoc_item(xs: inner, item: m)
+                Absent => inner
+              }
+            }
+          )
+      }
+    }
+  )
 }
 
 fn prose_spans_of(
   file: Symbol,
   tokens: List<Token>,
   namespaces: List<String>,
+  known: Map<String, Bool>,
   context: ResolutionContext
 ) -> List<ProseSpan> {
   fold_list(
@@ -401,7 +555,7 @@ fn prose_spans_of(
               list_snoc_item(xs: inner, item: ProseSpan {
                 file: file,
                 span: span,
-                standing: span_standing(span: span, namespaces: namespaces, context: context)
+                standing: span_standing(span: span, namespaces: namespaces, known: known, context: context)
               })
             }
           )
@@ -755,14 +909,7 @@ fn site_of_resolution(file: Symbol, r: DeclarationRefResolution) -> List<String>
   }
 }
 
-fn decl_ref_census_of_file(
-  file: Symbol,
-  tokens: List<Token>,
-  prose_scoped: Bool,
-  namespaces: List<String>,
-  context: ResolutionContext
-) -> DeclRefCensus {
-  let literals = declaration_ref_literals(file: file, tokens: tokens)
+fn decl_ref_census_of_literals(literals: LiteralScan, context: ResolutionContext) -> DeclRefCensus {
   let cited = literals.cited
   DeclRefCensus {
     refused_files: [],
@@ -772,13 +919,26 @@ fn decl_ref_census_of_file(
       empty: [],
       cons: fn(acc, c) { list_snoc_item(xs: acc, item: resolve_declaration_ref(ref: c.ref, context: context)) }
     ),
-    prose: if prose_scoped {
-      prose_spans_of(file: file, tokens: tokens, namespaces: namespaces, context: context)
-    } else {
-      []
-    },
+    prose: [],
     sites: fold_list(xs: cited, empty: [], cons: fn(acc, c) { list_append(left: acc, right: unresolved_site(c: c, context: context)) }),
     unreadable: literals.unreadable
+  }
+}
+
+fn decl_ref_census_of_prose(
+  file: Symbol,
+  tokens: List<Token>,
+  namespaces: List<String>,
+  known: Map<String, Bool>,
+  context: ResolutionContext
+) -> DeclRefCensus {
+  DeclRefCensus {
+    refused_files: [],
+    cited: [],
+    resolutions: [],
+    prose: prose_spans_of(file: file, tokens: tokens, namespaces: namespaces, known: known, context: context),
+    sites: [],
+    unreadable: []
   }
 }
 

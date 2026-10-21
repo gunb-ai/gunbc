@@ -18,9 +18,10 @@ module v2.compiler.decl_ref_disposition_roster
 //                                   decl_ref_named_field_present reads only the labelled children of a type declaration, so a
 //                                   correct field of a data row reads as FieldAbsent. The citation stays NamedField (never widened
 //                                   to WholeDeclaration). dissolve-on: the resolver reads the fields of a data row's literal.
-//   ExternalSubjectLabelNotDeclaration -- an ExternalSubjectRef whose decl_name is the upstream product's own label ("github.CodeSearch"),
-//                                   not a declaration of the cited extdeps module. dissolve-on: ExternalSubjectRef names its subject
-//                                   by a type that is not a DeclarationRef (model first), or each module cites a declaration it owns.
+//   ProductLabelTypedAsDeclarationRef -- a MEANING FORK (DESIGN 3): an ExternalSubjectRef carries the upstream product's own label
+//                                   ("github.CodeSearch") in a DeclarationRef, whose meaning is a declaration of a module. The
+//                                   retype is a follow-up; the row is held at identity grain until then. dissolve-on:
+//                                   ExternalSubjectRef names its subject by a type that is not a DeclarationRef (model first).
 //   IllustrativeName             -- a placeholder in explanatory prose (an example witness or module name), never declared.
 //   NameUnrecoveredFromHistory   -- a witness-module name in a receipt that no path search of history recovers (renamed
 //                                   or never a file of that name). dissolve-on: each owning receipt cites the successor symbol or a commit.
@@ -37,7 +38,7 @@ type DeclRefDispositionReason
   | BindTargetDeleted
   | HostBuiltinSeam
   | DataRowFieldNotResolvable
-  | ExternalSubjectLabelNotDeclaration
+  | ProductLabelTypedAsDeclarationRef
   | IllustrativeName
   | NameUnrecoveredFromHistory
   | HistoricalReceipt { commit: String }
@@ -56,25 +57,25 @@ data decl_ref_disposition_roster: List<DeclRefDisposition> = [
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.claim.observation_model_witness" as NonEmptyStr, decl_name: "observation_model_witnesses" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.claim.observation_model_witness" as NonEmptyStr, decl_name: "observation_model_witnesses" as NonEmptyStr, field: NamedField { field_name: "body" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.test.workflow.claim_witness_corpus_ci_runner" as NonEmptyStr, decl_name: "ClaimWitnessCorpusClaimRunRow" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.http" as NonEmptyStr, decl_name: "redfish.Http" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.ipmi" as NonEmptyStr, decl_name: "diagnostic.ipmi.Tool" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.code_search" as NonEmptyStr, decl_name: "github.CodeSearch" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.git_database" as NonEmptyStr, decl_name: "github.GitDatabase" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.repository_contents" as NonEmptyStr, decl_name: "github.RepositoryContents" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.users" as NonEmptyStr, decl_name: "github.Users" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.linux.cgroup_v2" as NonEmptyStr, decl_name: "linux.CgroupV2" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_rest" as NonEmptyStr, decl_name: "llm.Anthropic" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.openai_rest" as NonEmptyStr, decl_name: "llm.OpenAI" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.node" as NonEmptyStr, decl_name: "node.Runtime" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.getconf" as NonEmptyStr, decl_name: "posix.Getconf" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.process" as NonEmptyStr, decl_name: "posix.Process" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.signal" as NonEmptyStr, decl_name: "posix.Signal" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.rust.rustc" as NonEmptyStr, decl_name: "rustc.Check" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.systemd.journalctl" as NonEmptyStr, decl_name: "systemd.Journalctl" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.systemd.systemd_run" as NonEmptyStr, decl_name: "systemd.SystemdRun" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.tailscale.acl_api" as NonEmptyStr, decl_name: "tailscale.AclAdmin" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.tools.coreutils_head" as NonEmptyStr, decl_name: "coreutils.Head" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
-  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.typescript" as NonEmptyStr, decl_name: "typescript.Compiler" as NonEmptyStr, field: WholeDeclaration } }, reason: ExternalSubjectLabelNotDeclaration },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.http" as NonEmptyStr, decl_name: "redfish.Http" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.ipmi" as NonEmptyStr, decl_name: "diagnostic.ipmi.Tool" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.code_search" as NonEmptyStr, decl_name: "github.CodeSearch" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.git_database" as NonEmptyStr, decl_name: "github.GitDatabase" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.repository_contents" as NonEmptyStr, decl_name: "github.RepositoryContents" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.users" as NonEmptyStr, decl_name: "github.Users" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.linux.cgroup_v2" as NonEmptyStr, decl_name: "linux.CgroupV2" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_rest" as NonEmptyStr, decl_name: "llm.Anthropic" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.openai_rest" as NonEmptyStr, decl_name: "llm.OpenAI" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.node" as NonEmptyStr, decl_name: "node.Runtime" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.getconf" as NonEmptyStr, decl_name: "posix.Getconf" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.process" as NonEmptyStr, decl_name: "posix.Process" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.signal" as NonEmptyStr, decl_name: "posix.Signal" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.rust.rustc" as NonEmptyStr, decl_name: "rustc.Check" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.systemd.journalctl" as NonEmptyStr, decl_name: "systemd.Journalctl" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.systemd.systemd_run" as NonEmptyStr, decl_name: "systemd.SystemdRun" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.tailscale.acl_api" as NonEmptyStr, decl_name: "tailscale.AclAdmin" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.tools.coreutils_head" as NonEmptyStr, decl_name: "coreutils.Head" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.typescript" as NonEmptyStr, decl_name: "typescript.Compiler" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "gunbc.ci.ci_fleet" as NonEmptyStr, decl_name: "gunbc_ci_host" as NonEmptyStr, field: NamedField { field_name: "memory" as NonEmptyStr } } }, reason: DataRowFieldNotResolvable },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "synthetic.keyed_read_module_absent_RED" as NonEmptyStr, decl_name: "anything" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "synthetic.g1_module_absent_RED" as NonEmptyStr, decl_name: "any" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },

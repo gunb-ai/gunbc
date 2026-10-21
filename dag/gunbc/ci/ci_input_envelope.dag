@@ -1,4 +1,5 @@
 module gunbc.ci.ci_input_envelope
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 
 type InputSizeAxis
