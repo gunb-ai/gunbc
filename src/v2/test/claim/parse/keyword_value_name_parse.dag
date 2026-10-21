@@ -241,6 +241,19 @@ test fn kvn_none_let_refuses_at_the_word_holds() -> Bool {
   )
 }
 
+data kvn_none_record_pun_source: String = "module m.t\ndata d: R = R { none }\n"
+
+// A record-init pun named none refuses at the word: bytes 27..31 of kvn_none_record_pun_source.
+test fn kvn_none_record_pun_refuses_at_the_word_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: kvn_none_record_pun_source, file: ^probe_kvn_none_record_pun),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_none_record_pun,
+    start: 27,
+    end: 31
+  )
+}
+
 data kvn_none_label_source: String = "module m.t\ndata d: R = R { none: 1 }\n"
 
 // Control: a record-init field LABEL named none is a label, not a value name, and stays legal.

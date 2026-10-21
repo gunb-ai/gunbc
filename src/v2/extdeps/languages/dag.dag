@@ -2178,8 +2178,26 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
 // (`R { true }` and `R { true s }` would name a value no reference can name, so the pun never reads them (the list is not a record; downstream refuses the leftover), like every
 // keyword, whatever follows it; dag_grammar_value_name_unconditional, the same production a reference reads).
 fn dag_grammar_field_init_pun_expr() -> GrammarExpr {
-  dag_grammar_value_name_unconditional()
+  dag_grammar_sequence(
+    left: dag_grammar_value_name_guard(
+      binder: dag_grammar_choice(
+        left: dag_grammar_value_name_keyword_tokens(admit_bool_literals: false),
+        right: dag_grammar_sequence(
+          left: dag_grammar_keyword_expr(lexeme: "none"),
+          right: dag_grammar_choice(
+            left: dag_grammar_terminal(token_class: ^dag_token_comma),
+            right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+          )
+        )
+      )
+    ),
+    right: dag_grammar_primary_name_expr()
+  )
 }
+
+// `none` IS AN IDENTIFIER TOKEN, so unlike `true` it is in this alternative's first set: `match x { none => .. }`
+// probes `x { none` as a record literal, and an unconditional refusal there refused every match body that
+// leads with the absence arm. The pun refuses `none` only where it can only be a pun, ending the field.
 
 // THE STRING KEY IS THE CLASS-STAMPED STRING TERMINAL -- the one string terminal, whose node carries
 // the literal's decoded value (gunbc#12759) -- never a second, spelling-stamped one.
