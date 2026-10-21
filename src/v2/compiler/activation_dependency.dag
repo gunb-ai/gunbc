@@ -172,7 +172,7 @@ fn activation_branch(acc: ActivationDependencies, site: Node) -> ActivationDepen
             match branch_slot_target(n: site, slot: BranchElseSlot) {
               Present { value: else_arm } =>
                 activation_demand_row(acc: acc, demand: ActivationDemand {
-                  site: site,
+                  site: condition,
                   selector: condition,
                   alternatives: FreeSemigroup {
                     head: ActivationAlternative { selected_by: SelectedByBranchSlot { slot: BranchThenSlot }, root: then_arm },
