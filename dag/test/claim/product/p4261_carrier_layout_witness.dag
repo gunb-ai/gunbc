@@ -128,6 +128,7 @@ import product.p4261_carrier_layout {
   e1_u4, u4_configuration_text, alterations_text,
   e1_u5_2, e1_rw251_bga, u5_2_root_of_trust_text, e1_settled_indicators,
   e1_u2_2, e1_u3_2, e1_j24, island_flash_text,
+  e1_j24_positions, e1_j24_resistances, e1_j24_pitch, e1_j24_pin, j24_text, e1_ds1_2, e1_u104, e1_ds1_2_resistances,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -2330,7 +2331,7 @@ test fn u5_2_is_a_root_of_trust_and_two_indicators_blink_on_measured_periods() -
     })
     && u5_2_root_of_trust_text(layout: p4261_e1_layout).contains("U5_2 reads CEC1736 (orderable suffix unread): a platform root of trust (Arm Cortex-M4, 96 MHz) with 5 protections, secure boot among them")
     && u5_2_root_of_trust_text(layout: without).contains("U5_2 is not a component of this carrier's observation")
-    && carrier_input_reading(layout: p4261_e1_layout).contains("that release as a condition before CONF_DONE")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("U4's configuration has that release as a condition only under that candidate relation")
     && count(component_of(layout: p4261_e1_layout, c: e1_rw251_bga)) == 1
     && count(blinking) == 2 && count(timed) == 2
     && count(ds1_2) == 1
@@ -2363,4 +2364,25 @@ test fn the_island_flashes_decode_to_two_1gbit_and_one_2gbit() -> Bool {
     && count(component_of(layout: p4261_e1_layout, c: e1_j24)) == 1
     && u4_configuration_text(layout: p4261_e1_layout).contains("weak pull-ups if its nIO_PULLUP strap enables them, else high impedance")
     && u4_configuration_text(layout: p4261_e1_layout).contains("holds until VCCBAT is present")
+}
+
+// J24 (2026-10-21): ten named positions, one keyed; ten readings to J20's black lead on the 2k range,
+// eight valued (405 to 485 ohm) and two over range, polarity unrecorded, no baseline, so none joins the
+// return in the live netlist; the pitch is a photographic measurement the report renders with its
+// basis; DS1_2's one side to U104's inner middle pin is a zero without a baseline that joins nothing.
+// Supplied: a layout without J24's row renders the not-a-component text.
+test fn j24_is_named_measured_and_reads_no_return() -> Bool {
+  let live = board_netlist(b: e1_measured)
+  let without = layout_with(base: p4261_e1_layout, components: filter(p4261_e1_layout.components, c => !component_identity_eq(a: c.component, b: e1_j24)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  let valued = filter(e1_j24_resistances, o => match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
+  count(e1_j24_positions) == 10 && count(e1_j24_resistances) == 10 && count(valued) == 8
+    && all(valued, o => match valued_ohms(o: o) { Present { value: v } => v >= 405 && v <= 485, Absent => false })
+    && !any(e1_j24_positions, n => one_node(net: live, a: e1_j24_pin(n: n), b: e1_ground_ref))
+    && e1_j24_pitch.along_row_tenths_mm == 13 && e1_j24_pitch.between_rows_tenths_mm == 25
+    && j24_text(layout: p4261_e1_layout).contains("J24 has 10 positions, one keyed, at 13/10 mm along a row and 25/10 mm between rows by photograph; 10 read to J20's black lead, 8 with a value (405 ohm the least), none near zero, so no position is read as the return")
+    && j24_text(layout: without).contains("J24 is not a component of this carrier's observation")
+    && carrier_input_reading(layout: p4261_e1_layout).contains("no position is read as the return")
+    && count(e1_ds1_2_resistances) == 1 && all(e1_ds1_2_resistances, o => is_reported_zero(o: o))
+    && !one_node(net: live, a: terminal_ref(component: e1_ds1_2, terminal: "one side (which of the two unrecorded)" as TerminalIdentity), b: terminal_ref(component: e1_u104, terminal: "middle pin, inner side (away from the board edge)" as TerminalIdentity))
+    && count(component_of(layout: p4261_e1_layout, c: e1_u104)) == 1
 }
