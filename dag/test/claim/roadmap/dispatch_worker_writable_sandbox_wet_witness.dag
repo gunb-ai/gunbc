@@ -335,6 +335,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
         attempt_key: launcher_probe_key(unit_key: unit_key),
         granted: kibibyte(count: 65536),
         inner_argv: inner,
+        nonce: wet_run_nonce(),
       }
       if !prepare_launcher_probe(instance: instance, unit_key: unit_key) {
         SandboxTouchUnrunnable
@@ -346,8 +347,8 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
         ) {
           AttemptSystemUnitEnqueueRefused { detail: _ } => SandboxTouchUnrunnable
           AttemptSystemUnitEnqueueOccupied { entry: _ } => SandboxTouchUnrunnable
-          AttemptSystemUnitEnqueued { entry: entry } =>
-            if wet_drain_started(instance_root: instance.instance_root as String, entry: entry) {
+          AttemptSystemUnitEnqueued { entry: entry, body: body } =>
+            if wet_drain_started(instance_root: instance.instance_root as String, entry: entry, request_body: body) {
               wet_inner_exit_status(instance_root: instance.instance_root as String, unit_key: unit_key, before: before)
             } else {
               SandboxTouchUnrunnable
@@ -494,6 +495,7 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
     launcher_probe_worktree(instance: inst, unit_key: "roothook"), "/tmp/gunbc-roothook.out", "/tmp/gunbc-roothook.err",
     "65536", join(["+/usr/bin/touch ", launcher_root_hook_marker], ""),
     join(launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []), "\u{1f}"),
+    wet_run_nonce(),
   ], "\n")
   launcher_marker_absent()
     && prepare_launcher_probe(instance: inst, unit_key: "roothook")
@@ -503,9 +505,9 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
       attempt_key: launcher_probe_key(unit_key: "roothook"),
       body: wide,
     ) {
-      AttemptSystemUnitEnqueued { entry: entry } =>
-        wet_drain_answer_arrives(instance_root: inst.instance_root as String, entry: entry)
-          && launcher_run_refused(instance: inst, entry: entry) && launcher_marker_absent()
+      AttemptSystemUnitEnqueued { entry: entry, body: body } =>
+        wet_drain_answer_arrives(instance_root: inst.instance_root as String, entry: entry, request_body: body)
+          && launcher_run_refused(instance: inst, entry: entry, request_body: body) && launcher_marker_absent()
       AttemptSystemUnitEnqueueOccupied { entry: _ } => false
       AttemptSystemUnitEnqueueRefused { detail: _ } => false
     }
@@ -515,12 +517,12 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
 // oneshot), so a wet claim writes its request and then OBSERVES the answer the root helper leaves; it
 // no longer runs the helper itself and holds no sudo grant. The wait is this witness's own bound, not
 // the serve handler's: the handler never waits.
-fn wet_drain_answer_arrives(instance_root: String, entry: String) -> Bool {
-  wet_drain_answer_poll(instance_root: instance_root, entry: entry, remaining: 240)
+fn wet_drain_answer_arrives(instance_root: String, entry: String, request_body: String) -> Bool {
+  wet_drain_answer_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: 240)
 }
 
-fn wet_drain_answer_poll(instance_root: String, entry: String, remaining: Int) -> Bool {
-  match attempt_system_unit_read_answer(instance_root: instance_root, entry: entry) {
+fn wet_drain_answer_poll(instance_root: String, entry: String, request_body: String, remaining: Int) -> Bool {
+  match attempt_system_unit_read_answer(instance_root: instance_root, entry: entry, request_body: request_body) {
     AttemptSystemUnitAnswerFound { answer: _ } => true
     AttemptSystemUnitAnswerUnreadable { detail: _ } => false
     AttemptSystemUnitAnswerMissing =>
@@ -528,7 +530,7 @@ fn wet_drain_answer_poll(instance_root: String, entry: String, remaining: Int) -
         false
       } else {
         let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
-        wet_drain_answer_poll(instance_root: instance_root, entry: entry, remaining: remaining - 1)
+        wet_drain_answer_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: remaining - 1)
       }
   }
 }
@@ -542,12 +544,12 @@ fn wet_drain_answer_poll(instance_root: String, entry: String, remaining: Int) -
 // answers, a record that never lands, and a signalled end are all SandboxTouchUnrunnable: the claim is
 // false, never counted as refused. attempt_exit_record_observe reads inbox, queued, running, done and
 // refused, so the belt-exit drain moving the record between stages cannot hide it.
-fn wet_drain_started(instance_root: String, entry: String) -> Bool {
-  wet_drain_started_poll(instance_root: instance_root, entry: entry, remaining: 240)
+fn wet_drain_started(instance_root: String, entry: String, request_body: String) -> Bool {
+  wet_drain_started_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: 240)
 }
 
-fn wet_drain_started_poll(instance_root: String, entry: String, remaining: Int) -> Bool {
-  match attempt_system_unit_read_answer(instance_root: instance_root, entry: entry) {
+fn wet_drain_started_poll(instance_root: String, entry: String, request_body: String, remaining: Int) -> Bool {
+  match attempt_system_unit_read_answer(instance_root: instance_root, entry: entry, request_body: request_body) {
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => true
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => false
     AttemptSystemUnitAnswerUnreadable { detail: _ } => false
@@ -556,7 +558,7 @@ fn wet_drain_started_poll(instance_root: String, entry: String, remaining: Int) 
         false
       } else {
         let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
-        wet_drain_started_poll(instance_root: instance_root, entry: entry, remaining: remaining - 1)
+        wet_drain_started_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: remaining - 1)
       }
   }
 }
@@ -681,8 +683,8 @@ fn wet_write_refused(touch: SandboxTouch, existed_before: Bool, path: String) ->
   }
 }
 
-fn launcher_run_refused(instance: HostDashboardInstance, entry: String) -> Bool {
-  match attempt_system_unit_read_answer(instance_root: instance.instance_root as String, entry: entry) {
+fn launcher_run_refused(instance: HostDashboardInstance, entry: String, request_body: String) -> Bool {
+  match attempt_system_unit_read_answer(instance_root: instance.instance_root as String, entry: entry, request_body: request_body) {
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => false
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => true
     AttemptSystemUnitAnswerMissing => true
@@ -709,6 +711,7 @@ fn wet_word_request(node_id: String, attempt_key: String, argv_word: String) -> 
     attempt_key: attempt_key,
     granted: kibibyte(count: 1),
     inner_argv: [argv_word],
+    nonce: "n",
   }
 }
 
@@ -720,9 +723,9 @@ test fn two_request_entries_keep_distinct_bodies() -> Bool {
     let root = tmp.path as String
     attempt_system_unit_spool_prepare(instance_root: root)
       && match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n-a", attempt_key: "k1", argv_word: "one")) {
-        AttemptSystemUnitEnqueued { entry: a } =>
+        AttemptSystemUnitEnqueued { entry: a, body: _ } =>
           match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n-b", attempt_key: "k1", argv_word: "two")) {
-            AttemptSystemUnitEnqueued { entry: b } => {
+            AttemptSystemUnitEnqueued { entry: b, body: _ } => {
               let ra = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: a)))
               let rb = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: b)))
               ra.success && rb.success && ra.content != rb.content && a != b
@@ -745,11 +748,11 @@ test fn a_second_request_for_the_same_attempt_is_occupied() -> Bool {
     let request = wet_word_request(node_id: "n1", attempt_key: "k1", argv_word: "x")
     attempt_system_unit_spool_prepare(instance_root: root)
       && match attempt_system_unit_enqueue_start_wait(instance_root: root, request: request) {
-        AttemptSystemUnitEnqueued { entry: _ } =>
+        AttemptSystemUnitEnqueued { entry: _, body: _ } =>
           match attempt_system_unit_enqueue_start_wait(instance_root: root, request: request) {
             AttemptSystemUnitEnqueueOccupied { entry } =>
               entry == attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-            AttemptSystemUnitEnqueued { entry: _ } => false
+            AttemptSystemUnitEnqueued { entry: _, body: _ } => false
             AttemptSystemUnitEnqueueRefused { detail: _ } => false
           }
         AttemptSystemUnitEnqueueOccupied { entry: _ } => false
@@ -769,7 +772,7 @@ test fn a_claimed_entry_is_processed_once_across_two_claim_runs() -> Bool {
         instance_root: root,
         request: wet_word_request(node_id: "n1", attempt_key: "k1", argv_word: "x"),
       ) {
-        AttemptSystemUnitEnqueued { entry } =>
+        AttemptSystemUnitEnqueued { entry, body: _ } =>
           match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
             AttemptSystemUnitClaimed { entry: _, path: _ } =>
               match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
@@ -987,7 +990,7 @@ fn unmovable_request_root(tag: String) -> String? {
     let occupied = attempt_system_unit_claimed_path(instance_root: root, entry: entry)
     if attempt_system_unit_spool_prepare(instance_root: root)
       && match attempt_system_unit_enqueue_start_wait(instance_root: root, request: wet_word_request(node_id: "n1", attempt_key: tag, argv_word: "x")) {
-        AttemptSystemUnitEnqueued { entry: _ } => true
+        AttemptSystemUnitEnqueued { entry: _, body: _ } => true
         AttemptSystemUnitEnqueueOccupied { entry: _ } => false
         AttemptSystemUnitEnqueueRefused { detail: _ } => false
       }
@@ -1015,7 +1018,7 @@ test fn a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record() -
       }
       let exited = match attempt_system_unit_launch_cli(instance_root: root) {
         ExitSuccess => false
-        ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "STALLED")
+        ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "unmovable at claim")
       }
       claim_is_unmovable && verdict && exited && pass.retired == 0 && match spool_stall_read_at(record_path: attempt_unit_spool_stall_record_path(instance_root: root)) {
         SpoolStallHeld { entries } => count(entries) == 1 && (entries |> map(e => e.step)) == [SpoolStallClaim]
@@ -1050,19 +1053,31 @@ test fn a_retired_request_and_an_empty_spool_do_not_stall_the_drain() -> Bool {
     let root = tmp.path as String
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
     let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
-    attempt_system_unit_spool_prepare(instance_root: root)
-      && match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root)) {
-        AttemptUnitNotStalled => true
-        AttemptUnitStalled { unmovable: _ } => false
-      }
-      && shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
-      && {
-        let pass = attempt_system_unit_drain_pass(instance_root: root)
-        pass.retired == 1 && match attempt_unit_stall_verdict(pass: pass) {
-          AttemptUnitNotStalled => true
-          AttemptUnitStalled { unmovable: _ } => false
-        }
-      }
+    let prepared = attempt_system_unit_spool_prepare(instance_root: root)
+    let empty_not_stalled = match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root)) {
+      AttemptUnitNotStalled => true
+      AttemptUnitStalled { unmovable: _ } => false
+    }
+    let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
+    let pass = attempt_system_unit_drain_pass(instance_root: root)
+    let retired_not_stalled = pass.retired == 1 && match attempt_unit_stall_verdict(pass: pass) {
+      AttemptUnitNotStalled => true
+      AttemptUnitStalled { unmovable: _ } => false
+    }
+    prepared && empty_not_stalled && planted && retired_not_stalled
       && spool_stall_read_at(record_path: attempt_unit_spool_stall_record_path(instance_root: root)) == SpoolStallNone
+  }
+}
+
+// A PER-RUN NAME FOR A REQUEST ON THE REAL SPOOL. answers/<entry> is keyed by node and attempt key and outlives
+// the run, so the cells that use the lab's fixed keys bind their request to a fresh value and read only the
+// answer that echoes it. An unmade temp directory yields "", which the encoder refuses: the cell is false, not
+// bound to a shared name.
+fn wet_run_nonce() -> String {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    ""
+  } else {
+    fold(split(s: tmp.path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
   }
 }

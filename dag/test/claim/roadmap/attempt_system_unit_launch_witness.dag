@@ -2,6 +2,7 @@ module test.claim.roadmap.attempt_system_unit_launch_witness
 
 import std.types { Bool, NonEmptyStr, List, String, FilePath }
 import std.optional { Present, Absent }
+import std.algebra { skip }
 import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
@@ -32,7 +33,7 @@ import gunbc.live_deploy.emit {
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import gunbc.live_deploy.spec {
   deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path,
-  deployment_attempt_unit_drain_service_unit_name,
+  deployment_attempt_unit_drain_service_unit_name, deployment_slice_unit_name,
 }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
@@ -60,7 +61,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartVerb, StartDetached, StartAndWait,
   attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
   AttemptSystemUnitStartEncoded, AttemptSystemUnitStartUnencodable,
-  AttemptSystemUnitStartUnencodableCause,
+  AttemptSystemUnitStartUnencodableCause, AttemptSystemUnitNonceUnsafe,
   AttemptSystemUnitArgvEmpty, AttemptSystemUnitArgvWordContainsUnitSeparator,
   AttemptSystemUnitArgvWordContainsNewline,
   AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
@@ -366,6 +367,7 @@ fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStart
     attempt_key: attempt_key,
     granted: kibibyte(count: 1),
     inner_argv: [srv1_lab_dashboard_instance().serve_binary as String, "run"],
+    nonce: "n",
   }
 }
 
@@ -510,6 +512,7 @@ fn request_with_argv(argv: List<String>) -> AttemptSystemUnitStartRequest {
     attempt_key: "k1",
     granted: kibibyte(count: 1),
     inner_argv: argv,
+    nonce: "n",
   }
 }
 
@@ -519,18 +522,21 @@ test fn each_unencodable_argv_refuses_at_encode() -> Bool {
     Present { value: AttemptSystemUnitArgvEmpty } => true
     Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
     Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
+    Present { value: AttemptSystemUnitNonceUnsafe } => false
   }
     && match encode_refuses_cause(request: request_with_argv(argv: ["a\u{1f}b"])) {
       Absent => false
       Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => true
       Present { value: AttemptSystemUnitArgvEmpty } => false
       Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
+      Present { value: AttemptSystemUnitNonceUnsafe } => false
     }
     && match encode_refuses_cause(request: request_with_argv(argv: ["a\nb"])) {
       Absent => false
       Present { value: AttemptSystemUnitArgvWordContainsNewline } => true
       Present { value: AttemptSystemUnitArgvEmpty } => false
       Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
+      Present { value: AttemptSystemUnitNonceUnsafe } => false
     }
 }
 
@@ -556,7 +562,7 @@ test fn each_start_verb_wire_round_trips() -> Bool {
 }
 
 test fn an_empty_argv_line_is_malformed() -> Bool {
-  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", ""]) {
+  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", "", "n"]) {
     AttemptSystemUnitStartRequestMalformed { reason: why } => why == "start request argv is empty"
     AttemptSystemUnitStartVerbUnknown { tag: _ } => false
     AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
@@ -704,7 +710,7 @@ test fn an_unreadable_answer_is_a_failure_not_pending() -> Bool {
 }
 
 test fn a_started_answer_decodes() -> Bool {
-  match attempt_system_unit_decode_answer(content: "started\n") {
+  match attempt_system_unit_decode_answer(content: "body\u{1e}started\n", request_body: "body") {
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => true
     AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => false
     AttemptSystemUnitAnswerMissing => false
@@ -801,4 +807,150 @@ test fn a_declared_instance_launch_argv_stays_ready() -> Bool {
     AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
     AttemptSystemUnitLaunchArgvReady { argv: gunbc } => count(gunbc) > 0 && !any(gunbc, w => w == "/usr/bin/false")
   }
+}
+
+// AN ANSWER ANSWERS ITS OWN REQUEST. answers/<entry> is keyed by node and attempt key and outlives the run, so
+// the answer a requester reads must echo the body it wrote. RED (fixture source): an earlier request's
+// refusal sitting at the entry reads as Missing for a request with a different nonce, never as its outcome.
+test fn an_answer_to_an_earlier_request_for_the_key_reads_as_not_yet_answered() -> Bool {
+  match attempt_system_unit_decode_answer(content: "old-body\u{1e}refused\nwhy\n", request_body: "new-body") {
+    AttemptSystemUnitAnswerMissing => true
+    AttemptSystemUnitAnswerFound { answer: _ } => false
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
+  }
+}
+
+test fn an_answer_echoing_the_request_body_is_its_outcome() -> Bool {
+  match attempt_system_unit_decode_answer(content: "new-body\u{1e}refused\nwhy\n", request_body: "new-body") {
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason } } => reason == "why"
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => false
+    AttemptSystemUnitAnswerMissing => false
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
+  }
+}
+
+test fn an_answer_that_echoes_no_body_is_unreadable_not_a_match() -> Bool {
+  match attempt_system_unit_decode_answer(content: "started\n", request_body: "") {
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => true
+    AttemptSystemUnitAnswerFound { answer: _ } => false
+    AttemptSystemUnitAnswerMissing => false
+  }
+}
+
+test fn two_requests_for_one_attempt_differ_in_their_encoded_body_by_nonce() -> Bool {
+  let a = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "1" }
+  let b = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "2" }
+  match attempt_system_unit_encode_start(verb: StartDetached, request: a) {
+    AttemptSystemUnitStartEncoded { body: ba } =>
+      match attempt_system_unit_encode_start(verb: StartDetached, request: b) {
+        AttemptSystemUnitStartEncoded { body: bb } => ba != bb
+        AttemptSystemUnitStartUnencodable { cause: _ } => false
+      }
+    AttemptSystemUnitStartUnencodable { cause: _ } => false
+  }
+}
+
+test fn a_nonce_that_is_not_one_safe_segment_is_unencodable() -> Bool {
+  let r = AttemptSystemUnitStartRequest { node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 1), inner_argv: ["x"], nonce: "a\nb" }
+  match attempt_system_unit_encode_start(verb: StartDetached, request: r) {
+    AttemptSystemUnitStartUnencodable { cause: AttemptSystemUnitNonceUnsafe } => true
+    AttemptSystemUnitStartUnencodable { cause: _ } => false
+    AttemptSystemUnitStartEncoded { body: _ } => false
+  }
+}
+
+// EVERY SERVICE UNIT THE DEPLOYMENT EMITS THAT RUNS THE GUNBC BINARY IS PLACED IN A BOUNDED SLICE. gunbc refuses to
+// run in system.slice (user_work_scope UncappedSystemSlice), so a gunbc-running service with no Slice= starts,
+// is refused, and trips its start limit; the drain service was emitted so at e926e9f9 and a lab apply reported
+// success over it. The predicate reads the apply text, the same artifact the host receives.
+fn service_body_of_segment(seg: String) -> String {
+  match split(s: seg, delimiter: "\n[").first() {
+    Present { value: body } => body
+    Absent => ""
+  }
+}
+
+fn gunbc_running_service_bodies(text: String) -> List<String> {
+  filter(
+    map(skip(split(s: text, delimiter: "[Service]"), 1), seg => service_body_of_segment(seg: seg)),
+    body => string_contains(s: body, pattern: "ExecStart=") && string_contains(s: body, pattern: " run --source-root"),
+  )
+}
+
+// A Slice= that names a slice the deployment never installs gets no MemoryMax (systemd creates it unbounded),
+// and gunbc refuses in it exactly as in system.slice. So the law is "names a slice this apply installs with a
+// MemoryMax", and the installed set is read from the apply's own install steps: each `[Slice]` unit body that
+// carries MemoryMax= is followed by the redirect that stages it as `<stage>/<name>.slice`.
+fn first_or_empty(parts: List<String>) -> String {
+  match parts.first() {
+    Present { value: head } => head
+    Absent => ""
+  }
+}
+
+fn installed_bounded_slice_name(seg: String) -> String {
+  let body = service_body_of_segment(seg: seg)
+  let after_stage = first_or_empty(parts: skip(split(s: seg, delimiter: "\"$_gunbc_stage\"'/"), 1))
+  let name = first_or_empty(parts: split(s: after_stage, delimiter: "'"))
+  if string_contains(s: body, pattern: "\nMemoryMax=") { name } else { "" }
+}
+
+fn installed_bounded_slices(text: String) -> List<String> {
+  filter(map(skip(split(s: text, delimiter: "[Slice]"), 1), seg => installed_bounded_slice_name(seg: seg)), name => name != "")
+}
+
+fn service_slice_name(body: String) -> String {
+  let after_key = first_or_empty(parts: skip(split(s: body, delimiter: "\nSlice="), 1))
+  first_or_empty(parts: split(s: after_key, delimiter: "\n"))
+}
+
+fn gunbc_running_services_are_all_sliced(text: String) -> Bool {
+  let installed = installed_bounded_slices(text: text)
+  all(
+    gunbc_running_service_bodies(text: text),
+    body => any(installed, sl => service_slice_name(body: body) == sl),
+  )
+}
+
+test fn every_gunbc_running_service_in_the_lab_apply_names_a_bounded_slice() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let text = full_install_apply_text(spec: spec)
+  count(gunbc_running_service_bodies(text: text)) > 0
+    && gunbc_running_services_are_all_sliced(text: text)
+}
+
+test fn the_drain_service_names_the_deployment_slice() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  string_contains(s: full_install_apply_text(spec: spec), pattern: join(["Slice=", deployment_slice_unit_name(names: spec.names) as String], ""))
+}
+
+fn fixture_apply(slice_line: String) -> String {
+  join([
+    "[Unit]\nDescription=s\n\n[Slice]\nMemoryMax=1\n' > \"$_gunbc_stage\"'/gunbc-bounded.slice'",
+    "[Unit]\nDescription=u\n\n[Slice]\nMemoryHigh=1\n' > \"$_gunbc_stage\"'/gunbc-unbounded.slice'",
+    "[Unit]\nDescription=x\n[Service]\nType=oneshot\n", slice_line,
+    "ExecStart=/opt/gunbc run --source-root /d --entry /e\n[Install]\nWantedBy=x\n",
+  ], "")
+}
+
+test fn a_gunbc_running_service_without_a_slice_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: ""))
+}
+
+test fn a_gunbc_running_service_in_an_installed_bounded_slice_is_found_sliced() -> Bool {
+  let sliced = fixture_apply(slice_line: "Slice=gunbc-bounded.slice\n")
+  count(gunbc_running_service_bodies(text: sliced)) == 1
+    && gunbc_running_services_are_all_sliced(text: sliced)
+}
+
+test fn a_gunbc_running_service_in_system_slice_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: "Slice=system.slice\n"))
+}
+
+test fn a_gunbc_running_service_in_a_slice_the_apply_never_installs_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: "Slice=gunbc-never-installed.slice\n"))
+}
+
+test fn a_gunbc_running_service_in_an_installed_slice_with_no_memory_max_is_found_unsliced() -> Bool {
+  !gunbc_running_services_are_all_sliced(text: fixture_apply(slice_line: "Slice=gunbc-unbounded.slice\n"))
 }
