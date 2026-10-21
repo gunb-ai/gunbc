@@ -5944,14 +5944,18 @@ fn infer_transform_freemonoid_introduction(
       // (infer_coproduct_type_applied_open): the empty list is a use of the FreeMonoid introduction whose
       // element type this node does not fix, so a declared position closes it and nothing else does.
       Present {
-        value: match infer_descent_witness_for_node(n: node) {
-          Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
-          Holds { value: descent_proof } =>
-            inferred_facts_from_derived_type(
-              node: node,
-              derived_type: infer_freemonoid_type_of(element_type: infer_open_type_param_atom(name: infer_constructor_use_variable(use: node, label: ^element))),
-              descent: Holds { value: descent_proof }
-            )
+        value: match node_occurrence_id_optional(node: node) {
+          Absent => outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: node))
+          Present { value: use_id } =>
+            match infer_descent_witness_for_node(n: node) {
+              Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+              Holds { value: descent_proof } =>
+                inferred_facts_from_derived_type(
+                  node: node,
+                  derived_type: infer_freemonoid_type_of(element_type: infer_open_type_param_atom(name: fresh_constructor_use_variable(use_id: use_id.value, label: ^element))),
+                  descent: Holds { value: descent_proof }
+                )
+            }
         }
       }
     Present { value: unified } =>
