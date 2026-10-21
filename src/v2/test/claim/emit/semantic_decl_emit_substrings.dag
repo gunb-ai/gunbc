@@ -1,5 +1,6 @@
 module v2.test.claim.emit.semantic_decl_emit_substrings
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
@@ -28,7 +29,7 @@ fn semantic_bool_coproduct() -> Node {
 data golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 
 test fn emit_eq_golden() -> Bool {
-  match emit_semantic_type_decl(header: [], imports: [], members: [], 
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Bool,
     params: Empty,
     node: semantic_bool_coproduct(),

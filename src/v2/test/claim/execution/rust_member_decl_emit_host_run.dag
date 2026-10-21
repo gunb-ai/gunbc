@@ -14,7 +14,7 @@ import v2.extdeps.languages.rust {
   rust_member_decl_runtime_row
 }
 import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_with_runtime }
-import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclMember }
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, TargetSemanticDeclMember }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.std.host_run { HostLogicalRun }
@@ -60,6 +60,8 @@ fn rmd_target(row: TargetEmitHostRuntimeRow) -> TargetModel {
 fn rmd_source(row: TargetEmitHostRuntimeRow, imports: List<Symbol>) -> Medium<String> {
   match emit_semantic_type_decl(
     header: [],
+    documentation: target_semantic_decl_no_documentation(),
+    conformances: ConformancesTargetDefault,
     imports: imports, members: [ TargetSemanticDeclMember { name: ^VERSION, literal: ^V1 } ],
     name: ^Point,
     params: [],

@@ -10,13 +10,20 @@ import v2.extdeps.languages.swift.syntax {
   sw_expr, sw_p, sw_p_, sw_func, sw_struct, sw_enum, sw_cases, sw_doc, sw_cmt, sw_import,
   sw_static_let, sw_stored, sw_field, sw_keypath
 }
+import std.types { NonEmptyStr }
+import extdeps.crypto.signature { EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth }
+import gunbc.auth.approval_device_wire {
+  approval_enrolment_protocol, approval_redemption_protocol, approval_device_read_protocol, approval_device_push_protocol,
+  approval_device_audience, signature_suite_wire, public_key_encoding_wire, signature_encoding_wire
+}
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
 
 // apps/approve-ios/Approve/Protocol.swift AS A SWIFT SYNTAX TREE (v2.extdeps.languages.swift.syntax),
 // emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the committed file (gunbc.generated_artifact
 // ApproveIosProtocolSwiftArtifact; the drift gate refuses a hand edit). The tree is transcribed from
-// the hand-written file it replaces; deriving its constants from gunbc.auth.approval_device_wire is
-// the later step named by gunbc.approve_ios_app approve_ios_transcribed_swift_frontier.
+// the hand-written file it replaces. The protocol constants and the suite/encoding spellings are READ from
+// gunbc.auth.approval_device_wire (no restated literal); framing, field order and carriers are still transcribed
+// (gunbc.approve_ios_app approve_ios_transcribed_swift_frontier).
 
 fn approve_ios_framed_call(fields: List<SwiftExpr>) -> SwiftExpr {
   sw_call(f: sw_path(b: "Protocol", m: "framed"), a: [sw_pos(v: sw_arr(e: fields))])
@@ -24,11 +31,11 @@ fn approve_ios_framed_call(fields: List<SwiftExpr>) -> SwiftExpr {
 
 fn approve_ios_protocol_enum() -> SwiftDecl {
   sw_enum(n: "Protocol", i: [], m: [
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_enrolment_protocol."], d: sw_static_let(n: "enrolmentProtocol", e: sw_str(s: "gunbc.approval-enrolment.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_redemption_protocol."], d: sw_static_let(n: "redemptionProtocol", e: sw_str(s: "gunbc.approval-redemption.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_read_protocol."], d: sw_static_let(n: "readProtocol", e: sw_str(s: "gunbc.approval-device-read.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_push_protocol."], d: sw_static_let(n: "pushProtocol", e: sw_str(s: "gunbc.approval-device-push.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_audience."], d: sw_static_let(n: "audience", e: sw_str(s: "gunbc.roadmap_serve/device-redemption"))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_enrolment_protocol."], d: sw_static_let(n: "enrolmentProtocol", e: sw_str(s: approval_enrolment_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_redemption_protocol."], d: sw_static_let(n: "redemptionProtocol", e: sw_str(s: approval_redemption_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_read_protocol."], d: sw_static_let(n: "readProtocol", e: sw_str(s: approval_device_read_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_push_protocol."], d: sw_static_let(n: "pushProtocol", e: sw_str(s: approval_device_push_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_audience."], d: sw_static_let(n: "audience", e: sw_str(s: approval_device_audience as String))),
     sw_doc(
       c: [
         "framed_field: \"<n>:<field>,\" where n is the field's length in Unicode code points",
@@ -63,8 +70,8 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
         SwiftLineComment { text: "Codable only for the local keychain record; the wire spelling is WireEncode.verifyingKey" },
       ],
       decl: sw_struct(n: "VerifyingKey", i: [sw_t(n: "Equatable"), sw_t(n: "Codable")], m: [
-        sw_static_let(n: "suite", e: sw_str(s: "ECDSA-P256-SHA256")),
-        sw_static_let(n: "encoding", e: sw_str(s: "SEC1-uncompressed")),
+        sw_static_let(n: "suite", e: sw_str(s: signature_suite_wire(s: EcdsaP256Sha256) as String)),
+        sw_static_let(n: "encoding", e: sw_str(s: public_key_encoding_wire(e: Sec1Uncompressed) as String)),
         sw_field(n: "point_b64url", t: sw_t(n: "String")),
       ]),
     },
@@ -74,8 +81,8 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
         "with its suite and encoding explicit (signature_encoding_wire).",
       ],
       d: sw_struct(n: "SignatureBytes", i: [sw_t(n: "Equatable")], m: [
-        sw_static_let(n: "suite", e: sw_str(s: "ECDSA-P256-SHA256")),
-        sw_static_let(n: "encoding", e: sw_str(s: "P1363-fixed-width")),
+        sw_static_let(n: "suite", e: sw_str(s: signature_suite_wire(s: EcdsaP256Sha256) as String)),
+        sw_static_let(n: "encoding", e: sw_str(s: signature_encoding_wire(e: P1363FixedWidth) as String)),
         sw_field(n: "b64url", t: sw_t(n: "String")),
       ])
     ),
