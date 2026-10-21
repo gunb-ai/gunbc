@@ -3618,12 +3618,22 @@ type NativeCensusClosureFanOut
   | NativeCensusClosureFanOutUnavailable { reason: Symbol }
 
 // THE OCCURRENCE COLUMN OF A CAUSE-GROUP ROW (T2.5-B, M1 GO): the authored occurrence the member's
-// fatal answers for, read through the ONE keying rule `census_occurrence_from_locus`. A member whose
-// fatal is a node refusal carries `Present`; a member filed WITHOUT a fatal of its own -- a cascade
-// member of someone else's root, or a front-end refusal whose chain was collapsed to a FileRefusalAt
-// before the census read it -- carries `Absent`, which is the measured (B) finding, not a guess.
-// This is the only occurrence-identity field on a census row; the obligation rows' `occurrence` reads
-// the same helper. `native_census_locate` keeps its own fail-closed collapse for TEXTUAL loci only.
+// fatal answers for, read through the authored keying rule `census_occurrence_from_locus` ->
+// std.occurrence_identity authored_occurrence_of. A member whose fatal is a node refusal carries
+// `Present`; a member filed WITHOUT a fatal of its own -- a cascade member of someone else's root, or
+// a front-end refusal whose chain was collapsed to a FileRefusalAt before the census read it --
+// carries `Absent`, which is the measured (B) finding, not a guess.
+// CONSUMERS, named (DESIGN 3c): (1) the emitted census main prints every cause group and every
+// ranked root through serde (src/v1/05_emit_rust.dag, the `cause_group` and `census_root` printlns) --
+// the field is on the row, so the ranked report names the refusal's authored occurrence, which is
+// what the ranking could not do before; (2) `native_census_cause_member_read` relays it when a member
+// is re-keyed through locate, so relocation never drops it; (3) the claim suite
+// test.claim.native_census.infer_cascade (route, supplied-value, keying).
+// NOT a second keying rule: `native_census_owner_key` below answers a DIFFERENT question -- which id
+// the census POSITION TABLE can be joined on, for locating -- and fails closed on Pending and
+// Synthetic, where the authored rule still answers. Where they disagree (Pending), locate's
+// fail-closed collapse is the law (M1 GO: no second locus authority). The obligation rows'
+// `occurrence` reads the same authored helper as this column; these two are the row identity fields.
 type NativeCensusCauseMember {
   stage: NativeCensusCauseStage
   path: Symbol
