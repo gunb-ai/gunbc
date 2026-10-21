@@ -9,7 +9,7 @@ import std.syntax {
   BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ResourceBody, ServiceBody,
-  OperatorSpec, PrefixOperatorSpec, SyntaxSpec,
+  OperatorSpec, PrefixOperatorSpec, PostfixOperatorSpec, SyntaxSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   LiteralValue, LitBool, LitNull
