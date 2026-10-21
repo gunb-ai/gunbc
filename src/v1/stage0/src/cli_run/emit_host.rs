@@ -2084,8 +2084,15 @@ pub(crate) fn fixture_pool_closure_of(
     let path = pool
         .get(module)
         .ok_or_else(|| format!("generated provider '{module}' is not in the module index"))?;
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("generated provider '{module}' at {path}: {e}"))?;
+    // Read the way the fixture's own imports are read: the index holds workspace-relative paths,
+    // resolved against the process workspace root, never against the current directory.
+    let on_disk = process_workspace_root().join(path);
+    let content = std::fs::read_to_string(&on_disk).map_err(|e| {
+        format!(
+            "generated provider '{module}' at {}: {e}",
+            on_disk.display()
+        )
+    })?;
     resolve_virtual_source_with_imports(&workspace_relative_repo_path(path), &content, pool)
 }
 

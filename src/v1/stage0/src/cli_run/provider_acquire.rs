@@ -290,7 +290,8 @@ mod tests {
             &super::super::default_source_roots(),
         )
         .expect("shared index");
-        let entry = "dag/std/optional.dag";
+        let entry_path = super::super::process_workspace_root().join("dag/std/optional.dag");
+        let entry = entry_path.to_str().expect("utf-8 path");
         let sources = super::super::entry_resolve::load_sources_for_entry_with_pool(&index, entry)
             .expect("entry closure");
         assert!(!sources
