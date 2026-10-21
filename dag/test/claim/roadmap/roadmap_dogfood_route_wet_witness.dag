@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_dogfood_route_wet_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, String, NonEmptyStr, FilePath }
@@ -28,7 +29,7 @@ import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance, dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
 import gunbc.roadmap.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator, launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }

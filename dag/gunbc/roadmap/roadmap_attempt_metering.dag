@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_metering
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
 import std.types { path_segment_is_safe }
@@ -46,12 +47,7 @@ import gunbc.harness.harness_seat_pointer {
   harness_seat_pointer_path, harness_seat_pointer_reference_names_owner,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_state_path_for_instance, dispatch_attempt_events_path_for_instance,
-  dispatch_attempt_review_events_path_for_instance, dispatch_attempt_audit_events_path_for_instance,
-  dispatch_attempt_supervisor_events_path_for_instance, dispatch_worker_attempt_identity,
-  dispatch_reviewer_attempt_identity, dispatch_auditor_attempt_identity, dispatch_supervisor_attempt_identity,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_events_path_for_instance, dispatch_attempt_review_events_path_for_instance, dispatch_attempt_audit_events_path_for_instance, dispatch_attempt_supervisor_events_path_for_instance, dispatch_worker_attempt_identity, dispatch_reviewer_attempt_identity, dispatch_auditor_attempt_identity, dispatch_supervisor_attempt_identity }
 
 // ONE PER-ATTEMPT METERING RECORD (dogfood stage G3). The usage receipt the corpus already carries,
 // gunbc.runner.runner_usage_receipt RunnerUsageReceipt, meters ONE microVM: configured vCPUs times
