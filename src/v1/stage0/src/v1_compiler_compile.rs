@@ -1640,64 +1640,6 @@ pub fn serialize_match_pattern(
     }
 }
 
-pub fn serialize_named_arg(
-    arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "{\"name\": ".to_string(),
-                    json_optional_string(crate::v1_std_core::arg_name_at(
-                        arg.clone(),
-                        source_indices.clone(),
-                    )),
-                ),
-                ", \"value\": ".to_string(),
-            ),
-            serialize_node_ref(
-                crate::v1_std_core::arg_value(arg.clone()),
-                key_to_id.clone(),
-            ),
-        ),
-        "}".to_string(),
-    )
-}
-
-pub fn serialize_match_arm(
-    arm: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "{\"pattern\": ".to_string(),
-                            serialize_match_pattern(
-                                crate::v1_std_core::arm_pattern(arm.clone()),
-                                source_indices.clone(),
-                            ),
-                        ),
-                        ", \"guard\": ".to_string(),
-                    ),
-                    json_optional_node_ref(
-                        crate::v1_std_core::arm_guard(arm.clone()),
-                        key_to_id.clone(),
-                    ),
-                ),
-                ", \"body\": ".to_string(),
-            ),
-            serialize_node_ref(crate::v1_std_core::arm_body(arm.clone()), key_to_id.clone()),
-        ),
-        "}".to_string(),
-    )
-}
-
 pub fn serialize_field_init(
     field_init: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1724,29 +1666,6 @@ pub fn serialize_field_init(
         ),
         "}".to_string(),
     )
-}
-
-pub fn serialize_string_part(
-    part: Rc<StringPart>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    match (*part.clone()).clone() {
-        StringPart::Text { value: inner, .. } => v1_rt::concat(
-            v1_rt::concat(
-                "{\"kind\": \"Text\", \"value\": ".to_string(),
-                crate::v1_compiler_dag_collect_support::json_quote(inner.clone()),
-            ),
-            "}".to_string(),
-        ),
-        StringPart::Interpolation { expr: inner, .. } => v1_rt::concat(
-            v1_rt::concat(
-                "{\"kind\": \"Interpolation\", \"expr\": ".to_string(),
-                serialize_node_ref(inner.clone(), key_to_id.clone()),
-            ),
-            "}".to_string(),
-        ),
-    }
 }
 
 pub fn serialize_resolved_call_formal(
@@ -2667,14 +2586,6 @@ pub fn serialize_resource_use(
     )
 }
 
-pub fn serialize_field(
-    field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), crate::v1_compiler_dag_collect_support::json_quote(crate::v1_std_core::field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node_ref(crate::v1_std_core::field_node_type_expr(field.clone()), key_to_id.clone())), ", \"cardinality\": ".to_string()), crate::v1_compiler_dag_collect_support::json_quote(cardinality_name(crate::v1_std_core::field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node_ref(crate::v1_std_core::field_node_default_value(field.clone()), key_to_id.clone())), ", \"from_key\": ".to_string()), json_optional_string(crate::v1_std_core::field_node_from_key(field.clone(), source_indices.clone()))), ", \"span\": ".to_string()), serialize_span(crate::v1_std_core::field_node_span(field.clone()))), "}".to_string())
-}
-
 pub fn serialize_param(
     param: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3322,84 +3233,30 @@ pub fn census_heads_node(
     children: Rc<Vec<Rc<Node>>>,
     body: Option<Rc<Node>>,
 ) -> Rc<Node> {
-    {
-        let __rb_0_0 = node.occurrence_identity.clone();
-        let __rb_1_0 = node.name.clone();
-        let __rb_2_0 = node.ident.clone();
-        let __rb_3_0 = node.span.clone();
-        let __rb_4_0 = node.ident_span.clone();
-        let __rb_5_0 = children.clone();
-        let __rb_6_0 = node.connective.clone();
-        let __rb_7_0 = node.params.clone();
-        let __rb_8_0 = node.inferred.clone();
-        let __rb_9_0 = node.return_cardinality.clone();
-        let __rb_10_0 = Rc::new(vec![]);
-        let __rb_11_0 = body.clone();
-        let __rb_12_0 = node.transport.clone();
-        let __rb_13_0 = node.properties.clone();
-        let __rb_14_0 = node.type_annotation.clone();
-        let __rb_15_0 = node.is_self_recursive.clone();
-        let __rb_16_0 = node.has_non_tail_self_call.clone();
-        let __rb_17_0 = std::option::Option::None;
-        let __rb_18_0 = node.module_item_kind.clone();
-        let __rb_19_0 = node.declaration_marker.clone();
-        let __rb_20_0 = node.declaration.clone();
-        let __rb_21_0 = Rc::new(ExprData::NoExprData);
-        let mut __rb_h = node;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.occurrence_identity = __rb_0_0;
-                __rb_r.name = __rb_1_0;
-                __rb_r.ident = __rb_2_0;
-                __rb_r.span = __rb_3_0;
-                __rb_r.ident_span = __rb_4_0;
-                __rb_r.children = __rb_5_0;
-                __rb_r.connective = __rb_6_0;
-                __rb_r.params = __rb_7_0;
-                __rb_r.inferred = __rb_8_0;
-                __rb_r.return_cardinality = __rb_9_0;
-                __rb_r.uses = __rb_10_0;
-                __rb_r.body = __rb_11_0;
-                __rb_r.transport = __rb_12_0;
-                __rb_r.properties = __rb_13_0;
-                __rb_r.type_annotation = __rb_14_0;
-                __rb_r.is_self_recursive = __rb_15_0;
-                __rb_r.has_non_tail_self_call = __rb_16_0;
-                __rb_r.match_pattern = __rb_17_0;
-                __rb_r.module_item_kind = __rb_18_0;
-                __rb_r.declaration_marker = __rb_19_0;
-                __rb_r.declaration = __rb_20_0;
-                __rb_r.expr_data = __rb_21_0;
-            }
-            None => {
-                __rb_h = Rc::new(Node {
-                    occurrence_identity: __rb_0_0,
-                    name: __rb_1_0,
-                    ident: __rb_2_0,
-                    span: __rb_3_0,
-                    ident_span: __rb_4_0,
-                    children: __rb_5_0,
-                    connective: __rb_6_0,
-                    params: __rb_7_0,
-                    inferred: __rb_8_0,
-                    return_cardinality: __rb_9_0,
-                    uses: __rb_10_0,
-                    body: __rb_11_0,
-                    transport: __rb_12_0,
-                    properties: __rb_13_0,
-                    type_annotation: __rb_14_0,
-                    is_self_recursive: __rb_15_0,
-                    has_non_tail_self_call: __rb_16_0,
-                    match_pattern: __rb_17_0,
-                    module_item_kind: __rb_18_0,
-                    declaration_marker: __rb_19_0,
-                    declaration: __rb_20_0,
-                    expr_data: __rb_21_0,
-                });
-            }
-        }
-        __rb_h
-    }
+    Rc::new(Node {
+        occurrence_identity: node.occurrence_identity.clone(),
+        name: node.name.clone(),
+        ident: node.ident.clone(),
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        children: children.clone(),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: Rc::new(vec![]),
+        body: body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: std::option::Option::None,
+        module_item_kind: node.module_item_kind.clone(),
+        declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
 }
 
 pub fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
