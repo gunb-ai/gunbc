@@ -8,7 +8,7 @@ import v2.workflow.floor_terminal_ledger {
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
-  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
 }
 
 // A COST ROW MAY NEVER HIDE A SEMANTIC RED (swift-bat-688's triage, gunbc#13327).
@@ -61,6 +61,7 @@ fn cost_debt_verdict_standing(outcome: ClaimDisposition) -> CostDebtVerdictStand
     PanickedBeforeVerdict => CostDebtRowVerdictUnreached {}
     NotAttemptedAfterAbort => CostDebtRowVerdictUnreached {}
     ObservationUnreadableBeforeVerdict => CostDebtRowVerdictUnreached {}
+    SubjectUnresolvedBeforeVerdict => CostDebtRowVerdictUnreached {}
   }
 }
 
