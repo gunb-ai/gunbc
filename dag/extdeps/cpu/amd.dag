@@ -1,6 +1,6 @@
 module extdeps.cpu.amd
 
-import extdeps.external_authority { ExternalAuthority, FactCitation }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { decl_field_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types {
@@ -11,7 +11,7 @@ import std.algebra { FreeSemigroup }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.vendor.amd { amd }
 import std.measure { byte_size, hardware_thread_count, hertz, watt }
-import std.types { List }
+import std.types { List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -284,8 +284,10 @@ data amd_epyc_7702p_authority: ExternalAuthority = ExternalAuthority {
 // Software Optimization Guide for that core and the geometry rows are shared by every model of the
 // microarchitecture (Zen 2: amd_zen2_l1/l2_cache_geometry above, reused by Rome; Zen: below).
 // RETRIEVAL: AMD's own download URL answered 404/302 on 2026-10-21, so the guides were retrieved from
-// the kernel-documentation mirror kib.kiev.ua/x86docs/AMD/Optimization, and the cited document is the
-// AMD order number named in each row. Held copies: 56305 rev 3.00 PDF sha256
+// the kernel-documentation mirror kib.kiev.ua/x86docs/AMD/Optimization, and the cited documents are AMD
+// 56305 rev 3.00 'Software Optimization Guide for AMD Family 17h Models 30h and Greater Processors' and
+// AMD 55723 rev 3.01 'Software Optimization Guide for AMD Family 17h Processors'; ExternalAuthority
+// carries only a URI, so the title, number and revision live here and the locator is where it was retrieved. Held copies: 56305 rev 3.00 PDF sha256
 // 9ac888ea13f03e7491dd330dbef346b23a4865d7596ad8d32cc3f99b8aec7f28 (section 2.6: 32-Kbyte 8-way L1
 // instruction cache, 32-Kbyte 8-way L1 data cache, 512-Kbyte L2, 64-byte instruction cache line);
 // 55723 rev 3.01 zip sha256 d9c3a7daacab554e5ec8c1801301d7bccc9253488c4fad517886849a1c78de6e (key
@@ -355,18 +357,14 @@ data amd_zen2_epyc_l2_cache_citations: List<FactCitation> = [
   },
 ]
 
-// SOCKET SP3. FETCHED 2026-10-21: en.wikipedia.org/wiki/Socket_SP3 infobox reads "Type LGA - ZIF" and
-// "Contacts 4094". That is a SECONDARY source, the same standing the AM4/AM5 rows hold (their
-// authorities are the Wikipedia socket pages); no AMD-hosted document stating the contact count was
-// retrievable (the AMD EPYC 7002 data sheet and embedded product brief were fetched and state the
-// socket name only). The COOLING MOUNT designation is the socket's own name, the identity the AMD
-// product pages carry as "Platform", and is not separately cited: no document fetched states which
-// sockets share a retention geometry.
-data socket_sp3_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "en.wikipedia.org/wiki/Socket_SP3"
-  }
+// SOCKET SP3 IS CARRIED UNCITED. No AMD or socket-vendor document stating the LGA termination or the 4094
+// contact count was retrievable on 2026-10-21 (the AMD EPYC 7002 data sheet and product brief state the
+// socket name only). en.wikipedia.org/wiki/Socket_SP3 reads "Type LGA - ZIF", "Contacts 4094" but a
+// secondary page is not an authority (DESIGN 4d), so no FactCitation is minted; the standing is the
+// read obligation below. The cooling-mount designation is the socket's own name, the identity the AMD
+// product pages carry as "Platform", and is likewise not cited.
+data socket_sp3_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the SP3 socket's termination (LGA) and contact count (4094) from an AMD platform document or the SP3 socket vendor datasheet (e.g. Lotes or Foxconn); en.wikipedia.org/wiki/Socket_SP3 was the transcription source on 2026-10-21." as NonEmptyStr
 }
 
 data amd_sp3_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
@@ -381,16 +379,7 @@ data amd_socket_sp3: CpuSocket = CpuSocket {
   cooling_mount: amd_sp3_cooling_mount,
 }
 
-data socket_sp3_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_sp3", field_name: "termination"),
-    authority: socket_sp3_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_sp3", field_name: "contact_count"),
-    authority: socket_sp3_authority,
-  },
-]
+data socket_sp3_citations: List<FactCitation> = []
 
 // L3 line size is not stated by the product pages, so only the capacity is cited, as the existing
 // Zen 2 row does.
