@@ -1,12 +1,11 @@
 module gunbc.recurring_failure_mode.list_index_typed_optional_but_realized_as_the_bare_element
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data list_index_typed_optional_but_realized_as_the_bare_element: RecurringFailureMode = RecurringFailureMode {
   identity: "list_index_typed_optional_but_realized_as_the_bare_element" as NonEmptyStr,
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed; both reconciliations are decidable from modeled facts." as NonEmptyStr } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: one expression has two answers to whether it can be absent. v1.compiler.infer_access check_index_access_node types `xs[i]` (and a keyed `m[k]`) through with_optional_cardinality, because an out-of-range index has no value; the Rust realization of a list index is the bare element, which panics out of range. The type says the consumer must eliminate an absence, and the realized value has no absence to eliminate.",

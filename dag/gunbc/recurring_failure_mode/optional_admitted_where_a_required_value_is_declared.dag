@@ -1,12 +1,11 @@
 module gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data optional_admitted_where_a_required_value_is_declared: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_admitted_where_a_required_value_is_declared" as NonEmptyStr,
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed (typecheck refusal); decidable from the two resolved types." as NonEmptyStr } },
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a value that carries optionality -- a CardOptional T? or the nominal Optional coproduct -- stands at a position whose declared type is Required and non-generic: a direct-call argument, a list element, or a member of a list literal whose type was elected from a Required head element. Absent inhabits no Required type, so the program has no meaning at that position; the floor obligation 'values inhabit declared types' (DESIGN 4b, the floor first) is broken.",
