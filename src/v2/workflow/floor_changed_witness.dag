@@ -17,7 +17,7 @@ import v2.workflow.floor_terminal_ledger {
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
-  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
 }
 import v2.workflow.wet_evidence {
   WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
@@ -294,6 +294,7 @@ fn changed_witness_planned_standing(
         PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
         ObservationUnreadableBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        SubjectUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
       }
   }
 }

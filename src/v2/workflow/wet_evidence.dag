@@ -11,7 +11,7 @@ import v2.workflow.floor_terminal_ledger {
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
-  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
   claim_disposition
 }
 
@@ -312,6 +312,7 @@ fn wet_disposition_is_agreement(d: ClaimDisposition) -> Bool {
     PanickedBeforeVerdict => false
     NotAttemptedAfterAbort => false
     ObservationUnreadableBeforeVerdict => false
+    SubjectUnresolvedBeforeVerdict => false
   }
 }
 
