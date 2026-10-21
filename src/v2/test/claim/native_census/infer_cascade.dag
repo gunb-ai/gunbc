@@ -344,9 +344,11 @@ test fn census_infer_roots_are_marked_against_the_subject_closure_holds() -> Boo
 // A cause-group row that carries NO node identity cannot be located: the ranking report could name a
 // refusal's reason and path but not the authored occurrence it refuses at. These two controls close
 // that. THE ROUTE CLAIM below runs the real census-infer route and demands the occurrence be PRESENT
-// on both members the route files -- a's infer member and b's resolve root -- so dropping the fatal
-// read at either populate site (the cascade member at add_infer_module, the root member at add_module)
-// reds it. THE KEYING CLAIM supplies the four identity arms directly, because which occurrence a node
+// on the b-side resolve root the route files (dropping the fatal read at its populate site -- the
+// root member at add_module -- reds it); the a-side infer member's populate site (the cascade member
+// at add_infer_module) is red-proved by the SUPPLIED-VALUE CLAIM above, which runs
+// native_census_infer_member over a chain of its own and fails if the code keys on the chain's head
+// instead of its fatal. THE KEYING CLAIM supplies the four identity arms directly, because which occurrence a node
 // ANSWERS FOR is a decision, not a production: the projected and pending arms must follow the cause,
 // and the older own-id projection (node_occurrence_id_optional) answers 900 where the authored answer
 // is 7 -- supplied values make that disagreement a fact the claim checks rather than a reading.
