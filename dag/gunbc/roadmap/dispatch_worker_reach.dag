@@ -2,7 +2,6 @@ module gunbc.roadmap.dispatch_worker_reach
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.algebra { trim }
-import std.filesystem { path_parent_directory }
 import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal }
 import extdeps.tools.coreutils_stat {
   coreutils_stat_path_ownership,
@@ -14,13 +13,9 @@ import extdeps.tools.coreutils_stat {
 }
 import extdeps.tools.id
 import gunbc.file_access { path_ancestor_prefixes }
-import gunbc.host.host_layout { attempt_exit_inbox_dir }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_worker_user }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchWorkerUnitPlan,
-  dispatch_worker_writable_path_list,
-  dispatch_worker_git_pointer_readonly_list,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerUnitPlan, dispatch_worker_handed_set }
+import gunbc.roadmap.dispatch_worker_handed_set { handed_entry_leaf_is_directory }
 
 // A UNIT'S WORKER UID MUST REACH EVERY PATH THE UNIT IS HANDED, AND THAT IS DECIDED BEFORE THE UNIT
 // STARTS. systemd resolves WorkingDirectory=, ExecStart=, ReadWritePaths= and the exit hook as the
@@ -77,27 +72,21 @@ fn dispatch_worker_handed_chain(handed: HandedPath) -> List<String> {
   }
 }
 
-// EVERYTHING THE UNIT PLAN HANDS OVER: the working directory and the serve binary, the writable and
-// read-only carve-outs (dispatch_worker_unit_stream_properties), the stream log directory, and the
-// ExecStopPost exit-record root.
+// EVERYTHING THE UNIT PLAN HANDS OVER, read off the typed set the unit's properties are rendered from
+// (gunbc.roadmap.dispatch_worker_handed_set): the working directory, the serve binary, the exit-record
+// root, the writable and read-only carve-outs, both stream targets and the harness worker's module
+// roots. No list is assembled here, so a path a later change hands the unit is judged the moment it
+// is in the set.
 fn dispatch_worker_handed_paths(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<HandedPath> {
-  let scratch = path_parent_directory(path: plan.stdout_path)
-  concat(
-    [
-      HandedPath { path: plan.working_directory, leaf_is_directory: true },
-      HandedPath { path: instance.serve_binary as String, leaf_is_directory: false },
-      HandedPath { path: attempt_exit_inbox_dir(instance_root: instance.instance_root as String), leaf_is_directory: true },
-    ],
-    concat(
-      map(
-        dispatch_worker_writable_path_list(instance: instance, attempt_worktree: plan.attempt_worktree, scratch_directory: scratch),
-        p => HandedPath { path: p, leaf_is_directory: true },
-      ),
-      map(
-        dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: plan.attempt_worktree),
-        p => HandedPath { path: p, leaf_is_directory: false },
-      ),
+  map(
+    dispatch_worker_handed_set(
+      instance: instance,
+      working_directory: plan.working_directory,
+      attempt_worktree: plan.attempt_worktree,
+      stdout_path: plan.stdout_path,
+      stderr_path: plan.stderr_path,
     ),
+    e => HandedPath { path: e.path, leaf_is_directory: handed_entry_leaf_is_directory(entry: e) },
   )
 }
 

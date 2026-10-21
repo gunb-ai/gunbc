@@ -1,6 +1,6 @@
 module test.claim.roadmap.dispatch_worker_reach_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.access.posix { FileMode, FileOwnership, PermissionBits, file_mode_of_octal_text }
 import gunbc.roadmap.dispatch_worker_reach {
@@ -21,6 +21,22 @@ import gunbc.roadmap.dispatch_worker_reach {
   worker_membership_of_id_line,
 }
 import gunbc.roadmap.roadmap_belt_actuate { belt_worker_reach_outcome }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_worker_unit_properties,
+  dispatch_worker_handed_set,
+  gunbc_harness_spawn_argv,
+}
+import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
+import gunbc.roadmap.dispatch_worker_handed_set {
+  HandedEntry,
+  HandedSourceRoot,
+  HandedReadOnly,
+  dispatch_worker_source_roots,
+  dispatch_worker_path_settings_are_the_set,
+}
+import extdeps.systemd { ReadOnlyPathsProperty, BindPathsProperty }
+import extdeps.systemd.systemd_run { NamedUnitSetting, SystemdRunProperty }
+import std.measure { kibibyte }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_dashboard_lab_root }
 
 // The srv1 lab, 2026-10-21: the unit ran as gunbc-worker (uid 1004; groups gunbc-worker and
@@ -183,4 +199,95 @@ test fn the_chain_orders_ancestors_from_the_root_and_includes_a_directory_leaf()
 test fn the_lab_root_is_outside_the_home_tree() -> Bool {
   !starts_with(s: srv1_dashboard_lab_root as String, prefix: "/home/")
     && starts_with(s: srv1_dashboard_lab_root as String, prefix: "/opt/gunbc-lab/")
+}
+
+// THE UNIT AND THE SET ARE ONE FACT. The worker unit's properties and its handed set come from the
+// same plan fields; the claim compares the unit's path-carrying settings with the set's rendering.
+fn fixture_hook() -> NonEmptyStr {
+  "+install -d -m 00755 -o svc -g grp /i/attempt-exit-spool/inbox/n+k" as NonEmptyStr
+}
+
+fn fixture_properties() -> List<SystemdRunProperty> {
+  dispatch_worker_unit_properties(
+    instance: srv1_lab_dashboard_instance(),
+    working_directory: "/wt",
+    attempt_worktree: "/wt",
+    worker_log_path: "/wt/log",
+    granted: kibibyte(count: 1048576),
+    process_bounds: session_process_bounds,
+    exit_hook: fixture_hook(),
+  )
+}
+
+fn fixture_set() -> List<HandedEntry> {
+  dispatch_worker_handed_set(
+    instance: srv1_lab_dashboard_instance(),
+    working_directory: "/wt",
+    attempt_worktree: "/wt",
+    stdout_path: "/wt/log",
+    stderr_path: "/wt/log",
+  )
+}
+
+test fn the_unit_path_settings_are_exactly_the_handed_set_rendering() -> Bool {
+  dispatch_worker_path_settings_are_the_set(properties: fixture_properties(), set: fixture_set(), exit_hook: fixture_hook())
+}
+
+// RED: a raw path-carrying setting appended beside the set -- a path the hand list never had -- breaks
+// the equality, for a read-only path and for a bind mount alike.
+test fn a_raw_path_setting_beside_the_set_breaks_the_equality() -> Bool {
+  let extra_read_only = concat(fixture_properties(), [NamedUnitSetting { property: ReadOnlyPathsProperty, value: "/srv/elsewhere" as NonEmptyStr }])
+  let extra_bind = concat(fixture_properties(), [NamedUnitSetting { property: BindPathsProperty, value: "/a:/b" as NonEmptyStr }])
+  !dispatch_worker_path_settings_are_the_set(properties: extra_read_only, set: fixture_set(), exit_hook: fixture_hook())
+    && !dispatch_worker_path_settings_are_the_set(properties: extra_bind, set: fixture_set(), exit_hook: fixture_hook())
+}
+
+// The converse: an entry in the set that the unit does not render (a set grown without the unit).
+test fn a_set_entry_the_unit_does_not_render_breaks_the_equality() -> Bool {
+  let grown = concat(fixture_set(), [HandedEntry { role: HandedReadOnly { missing_ok: false }, path: "/only/in/the/set" }])
+  !dispatch_worker_path_settings_are_the_set(properties: fixture_properties(), set: grown, exit_hook: fixture_hook())
+}
+
+// Both module roots the harness worker loads from are in the set, are the same words the argv carries,
+// and so are judged by the reach fold.
+test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool {
+  let repo = srv1_lab_dashboard_instance().repo_root as String
+  let roots = dispatch_worker_source_roots(repo_root: repo)
+  let argv = gunbc_harness_spawn_argv(
+    gunbc_program: "/bin/gunbc",
+    repo_root: repo,
+    worktree_path: "/wt",
+    brief: "b",
+    timeout_program: "/t",
+    request_scratch_path: "/r",
+    events_path: "/e",
+    attempt_identity: "worker:n-k",
+    alignment_chain_fingerprint: "f",
+  )
+  count(roots) == 2
+    && any(fixture_set(), e => e.path == join([repo, "/dag"], ""))
+    && any(fixture_set(), e => e.path == join([repo, "/src/v2"], ""))
+    && any(argv, w => w == join([repo, "/dag"], ""))
+    && any(argv, w => w == join([repo, "/src/v2"], ""))
+    && any(
+      dispatch_worker_chain_paths(handed: map(fixture_set(), e => HandedPath { path: e.path, leaf_is_directory: true })),
+      p => p == join([repo, "/src/v2"], ""),
+    )
+}
+
+// RED on the live candidate: a source root the worker cannot enter (0700 owned by someone else) refuses
+// naming that directory.
+test fn an_unreachable_source_root_refuses_naming_it() -> Bool {
+  let root = "/opt/gunbc-lab/codex-provider-feedback-v0/source/dag"
+  let stats = [
+    dir(path: "/opt", uid: 0, gid: 0, octal: "755"),
+    dir(path: "/opt/gunbc-lab", uid: 1000, gid: 1000, octal: "755"),
+    dir(path: "/opt/gunbc-lab/codex-provider-feedback-v0", uid: 1000, gid: 1003, octal: "750"),
+    dir(path: "/opt/gunbc-lab/codex-provider-feedback-v0/source", uid: 1000, gid: 1003, octal: "2770"),
+    dir(path: root, uid: 1000, gid: 1000, octal: "700"),
+  ]
+  match dispatch_worker_reach_admit(handed: [HandedPath { path: root, leaf_is_directory: true }], stats: stats, membership: worker()) {
+    DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: d, observed_owner: _, observed_mode: _ } => d == root
+    _ => false
+  }
 }

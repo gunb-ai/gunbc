@@ -209,6 +209,38 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   }
 }
 
+// THE PROPERTIES THAT CARRY FILESYSTEM PATHS (systemd.exec(5)): the working directory, the writable,
+// read-only, bind and inaccessible path lists, the stream targets and the stop-post command. A consumer
+// that must account for every path a unit is handed asks THIS predicate which settings carry one, so a
+// path-carrying setting is a fact of the upstream and not a list a consumer keeps beside the unit. The
+// wildcard arm is the only silent one: a property systemd adds later reads as not-path-carrying until
+// it is named here, and the executing claim (gunbc.roadmap.dispatch_worker_handed_set) is what notices.
+fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
+  match property {
+    WorkingDirectoryProperty => true
+    ReadWritePathsProperty => true
+    ReadOnlyPathsProperty => true
+    BindPathsProperty => true
+    InaccessiblePathsProperty => true
+    StandardOutputProperty => true
+    StandardErrorProperty => true
+    ExecStopPostProperty => true
+    ExecStartProperty => true
+    _ => false
+  }
+}
+
+// systemd.exec(5) ReadWritePaths=/ReadOnlyPaths=: entries are space-separated, and an entry prefixed
+// with '-' is ignored when the path does not exist. The prefix is a wire spelling of one typed fact
+// (missing-ok), so a caller passes the Bool and never writes the character.
+data systemd_path_list_separator: String = " "
+
+data systemd_path_missing_ok_prefix: String = "-"
+
+fn systemd_path_list_entry_wire(path: String, missing_ok: Bool) -> String {
+  if missing_ok { join([systemd_path_missing_ok_prefix, path], "") } else { path }
+}
+
 data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr
 
 // systemd.unit(5) LoadState `masked`: the unit file is linked to /dev/null, so the manager will not start it.
