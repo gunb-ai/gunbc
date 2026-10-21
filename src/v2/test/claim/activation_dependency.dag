@@ -541,3 +541,19 @@ fn acd_total_for(src: String) -> Bool {
     Present { value: tree } => acd_total(d: activation_dispositions(tree: tree), root: tree.root)
   }
 }
+
+test fn acd_p1_assembles_holds() -> Bool {
+  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: _ } => true }
+}
+test fn acd_p2_one_site_holds() -> Bool {
+  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => acd_sites(root: t.root) == 1 }
+}
+test fn acd_p3_demand_holds() -> Bool {
+  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => acd_demand_count(d: activation_dispositions(tree: t)) == 1 }
+}
+test fn acd_p4_not_derived_zero_holds() -> Bool {
+  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => length(xs: activation_dispositions(tree: t).not_derived) == 0 }
+}
+test fn acd_p5_children_three_holds() -> Bool {
+  match acd_assemble(src: acd_branch_source) { Absent => false  Present { value: t } => match acd_site_of_kind(root: t.root, want_match: false) { Absent => false  Present { value: b } => length(xs: b.children) == 3 } }
+}
