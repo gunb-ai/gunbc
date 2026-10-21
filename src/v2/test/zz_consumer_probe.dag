@@ -1,0 +1,20 @@
+module v2.test.zz_consumer_probe
+
+import v2.cli.compile_cli { CliEmitted, CliRunRefused, CliUsageRefused, CliPopulationReported, v2_cli_main }
+import v2.std.text { String }
+
+fn probe_argv(m: String) -> List<String> {
+  ["emit", "--entry", m, "--source-root", "dag", "--source-root", "src/v2"]
+}
+
+fn probe_render(m: String) -> String {
+  match v2_cli_main(argv: probe_argv(m: m)) {
+    CliEmitted { text: t, closure_size: c, refused_count: r, refusal_detail: d } => concat("EMITTED refused_count=", concat(to_string(r), concat(" detail=", d)))
+    CliRunRefused { reason: _, detail: d } => concat("RUNREFUSED ", d)
+    CliUsageRefused { reason: _, detail: d } => concat("USAGE ", d)
+    CliPopulationReported { text: _, held: _, detail: d } => concat("POP ", d)
+  }
+}
+fn probe_optional() -> String { probe_render(m: "std.optional") }
+fn probe_float() -> String { probe_render(m: "std.float") }
+fn probe_procfs() -> String { probe_render(m: "extdeps.linux.procfs") }
