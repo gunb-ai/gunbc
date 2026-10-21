@@ -10,8 +10,10 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // was measured dead for the zero-field arms (the field wall never fires on them) and live only for the
 // payload arms below, where the value it admits is HOLLOW: it reaches `discriminant` and nothing else
 // reads it, but nothing in the model says so. The seam is replaced by an enumerated waiver
-// (v1.compiler.infer payload_arm_tag_reference_waiver_pairs), so the same literal anywhere else refuses
-// with one MissingField per owed field. The nine listed arms store the arm name as data, or compare it against a
+// (v1.compiler.infer payload_arm_tag_reference_waiver_pairs), keyed on the arm's OWNING declaration and never on the
+// calling module: a listed arm is waived wherever it is named, and an arm whose owning declaration is not listed
+// refuses with one MissingField per owed field. The waiver is the one place this drop's dissolution condition and
+// its citation live; a data row restating them was deleted (DESIGN 4c). The nine listed arms store the arm name as data, or compare it against a
 // wire Atom identity String; neither has a value of the owner type in hand, so same_arm cannot replace
 // them and Atom.identity is not retyped here. The general seam is deleted and its replacement does not
 // exist yet: v1.compiler.infer elaborate_arm_reference (a ConstructorTag minted from a resolved arm) is

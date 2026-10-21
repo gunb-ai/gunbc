@@ -10958,14 +10958,13 @@ fn sole_constructor_construction_diags(
   } else { [] }
 }
 
-data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15; REPLACED 2026-10-20): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its tag without materializing a value. The corpus-wide seam that sanctioned it was measured dead for zero-field arms (the field wall never fires on them) and live only for payload arms, where the literal is a HOLLOW value. It is now the enumerated waiver payload_arm_tag_reference_waiver_results over payload_arm_tag_reference_waiver_pairs (gunbc.rung_drop payload_arm_tag_reference_hollow_value); a hollow payload-arm literal at `discriminant` in any other module refuses with one MissingField per owed field. DISSOLVE-ON: an arm-name capability from a resolved arm, at which point the function, the list and the row are deleted together."
-
 // THE ENUMERATED PAYLOAD-ARM WAIVER (gunbc.rung_drop payload_arm_tag_reference_hollow_value; replaces the
 // general tag-reference seam of operator Ruling 1a, which had no population: for the zero-field arms
 // it was already dead, and for payload arms it waived every site anywhere). A call
 // `discriminant(v: X {})` whose sole argument is a zero-field literal naming a PAYLOAD coproduct
-// variant X waives the MissingField rows of X on that literal ONLY when the arm's declaration (declaring module and name of its owner type, and the arm name as a named component of that owner) is a row of payload_arm_tag_reference_waiver_pairs. Anywhere else the literal is a
-// hollow construction and refuses with one MissingField per owed field. The argument is inferred as
+// variant X waives the MissingField rows of X on that literal ONLY when the arm's declaration (declaring module and name of its owner type, and the arm name as a named component of that owner) is a row of payload_arm_tag_reference_waiver_pairs. The key is the arm's OWNING declaration, never the
+// calling module: a listed arm named from any module is waived, and an arm whose owning declaration is
+// not listed is a hollow construction and refuses with one MissingField per owed field. The argument is inferred as
 // any other expression (typed node, type and every other diagnostic unchanged). A call through a
 // body binding named `discriminant` is a function value, not the builtin, and is not the idiom.
 // DISSOLVE-ON: an arm-name capability from a resolved arm (Charter 3 R1's resolved-arm surface, with
