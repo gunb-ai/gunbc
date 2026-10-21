@@ -3370,7 +3370,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it",
       expectation: ExpectedToHold {}
     }
-    }
   ]
 }
 
