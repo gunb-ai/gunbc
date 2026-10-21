@@ -19,3 +19,15 @@ Base: origin/main 647d770c78c. Working notes, not an authority.
 | 11 | CensusNotRunnable collapsed to false / -1 in claims (exit 1, not UNOBSERVED) | 119 files, 148 `-1`, 38 `false`; no `=> true`, no `=> 0`; the 2 `=> []` sites are guarded by census_ran. Host projects the arm faithfully. | keen-owl-704 (scope only) | needs a shared helper built on #14539's UNOBSERVED terminal; not started |
 | 12 | direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch (ExpectedRed, NotRunnable false reads as a held red) | closed by #14545 (silent-bee-194): at its head the row is retired from floor_expected_red and scheduled ExpectedToHold | n/a | closed by #14545 |
 | 13 | documentary_refs_generated_document_renders_the_rows: RED at main, 23 of 39 ruling rows uncited in generated DESIGN.md, enrolled on no lane | receipt 6313082487 on #14613 | keen-owl-704 | enrol + list the 23 for warm-wolf-570; not started **UPDATE 2026-10-21:** PR #14657 (typed standing + agreement claim + wet enrolment), approved, not merged; claim modules are census members of v1_required_lanes_withdrawn (wet-only execution). |
+
+## UPDATE 2026-10-21 (later)
+
+| # | state |
+|---|-------|
+| 3 | ROOT CAUSE (data join, no logs): accepted set from roadmap_acceptance_event_history.jsonl (16) vs the 162 edge() rows; the only offenders are 2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model, 2-claim-indexed-evidence, each with parent fabric-bringup, added by operator ruling in #13052 (b9cc71cf46d). Claim is right. Repair (remove the 4 edges vs revoke the 4 acceptances) escalated to warm-wolf-570; nothing edited. |
+| 7, 8 | CULPRIT BY IDENTITY: PASS at dae01be7434, FAIL at 226bb079ecc (#13832, kind eligibility before none/one/many). Claim wrong, product right: both positives put an operation (`p.s.E.Get`, `t.s.F.Run`) in TYPE position. Fixed by #14680 (positives in value position, type-position refusal pinned). All 7 claims in the file PASS on the branch. |
+| 10 | fix #14666 (name the type at the two literals); receipt #14668 (approved), which also enrols the two emit-route ambiguous-literal REDs (`record_emission_candidate_set_witness`, PASS) on the wet schedule. The claim_batch half stays a stated ceiling (trigger: inference carries the expected nominal type to the literal). Residual: `url_file_acquisition.dag:34` compile error from #14607, not this lane. |
+| ledger_row_coherence (18 unrostered claims) | #14671 enrols all 18 as one batch; claim_batch --wet PASS=18. |
+| allocation_client_execution (8 claims) | not a red: declared route gap plus host premise (RunnerBrowserToolchainReadyForJobUser); the wet lane reports `WetTerminalHostPremiseUnmet`, a non-verdict. PASS to be settled on a toolchain-ready runner. |
+| serving_caller_backlog_witness (harness_seat.dag) | CLOSED, stale checker not a red: silent-bee-194 used an old foreign-built binary; sunny-ibex-149 shows 33/33 at 13 main commits (manager ruling). |
+| 11 | scoping against #14539's UNOBSERVED terminal; also covers bare claim_batch on premised claims. Not started. |
