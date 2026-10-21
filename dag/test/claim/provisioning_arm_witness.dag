@@ -18,7 +18,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootVerdictRejected,
   site_pxe_edge_chainloader_build_receipt,
 }
-import gunbc.secure_boot_observation { SecureBootDisabled }
+import gunbc.secure_boot_observation { SecureBootDisabled, VendorCommandRejected }
 import gunbc.provisioning.provisioning_arm {
   provisioning_arm_consumer_frontier,
   provisioning_arm_consumer_ref,
@@ -74,8 +74,7 @@ import gunbc.firmware_network_boot_standing {
   firmware_network_boot_standing,
   boot_option,
   boot_order_entry,
-  TransportRefusedVendorCommand,
-  VendorCommandRejected,
+  FirmwareReadRefused,
 }
 import extdeps.bmc.types { BootTargetHdd, BootTargetUefiHttp }
 import extdeps.provisioning.network_boot { UefiHttpBoot }
@@ -349,7 +348,7 @@ test fn unavailable_virtual_media_is_refused_not_rerouted_to_pxe() -> Bool {
 }
 
 test fn the_refused_firmware_standing_is_terminal() -> Bool {
-  let e = evidence_with(firmware: Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } }, gaps: [] }, chainloader: pinned(), virtual_media: media_available())
+  let e = evidence_with(firmware: Refused { cause: FirmwareReadRefused { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } }, gaps: [] }, chainloader: pinned(), virtual_media: media_available())
   match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
     ArmRefused { cause: _ } => true
     ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
