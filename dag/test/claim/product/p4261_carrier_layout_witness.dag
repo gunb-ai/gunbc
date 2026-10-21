@@ -130,6 +130,7 @@ import product.p4261_carrier_layout {
   e1_u2_2, e1_u3_2, e1_j24, island_flash_text,
   e1_j24_positions, e1_j24_resistances, e1_j24_pitch, e1_j24_pin, j24_text, e1_ds1_2, e1_u104, e1_ds1_2_resistances,
   e1_j68_resistances, j68_shape_text, j68_shape_from, j68_jtag_standing, e1_j68_volts_under_labels, e1_j68_chain_scans, JtagChainScan, e1_j68_disputed_volt, e1_j68_labelled_photo,
+  k1_measured, k1_phases, k1_j68, k1_return, k1_j68_volts_at_40ma, k1_j30, k1_j30_volts_at_40ma,
   CarrierLayoutObservation,
   InstalledComponent,
   MeasuredBoard,
@@ -1909,7 +1910,7 @@ fn phase_text_in(layout: CarrierLayoutObservation, key: NonEmptyStr) -> String {
   }
 }
 
-// THE PHASES CLASSIFY FROM THEIR RECORDS, NEVER FROM A FUNCTION. Live, the E1's fifteen recorded phases
+// THE PHASES CLASSIFY FROM THEIR RECORDS, NEVER FROM A FUNCTION. Live, the E1's sixteen recorded phases
 // (nine with the module absent, the all-poles-on state with its indicators unrecorded, the settled
 // state after a J30 tap, and P0 to P3 repeated with the module installed, each naming the module's
 // state in its text)
@@ -1932,7 +1933,7 @@ test fn the_carrier_phases_classify_from_their_records() -> Bool {
     && phase_arm(layout: live, key: "j30-release") == 5 && phase_arm(layout: live, key: "j68-release") == 5
     && phase_arm(layout: live, key: "first-lit-state") == 6 && phase_gap_is(layout: live, key: "first-lit-state", which: 1)
     && phase_arm(layout: live, key: "p9-not-recorded") == 9
-    && count(e1_phases) == 15 && count(e1_transitions) == 13
+    && count(e1_phases) == 16 && count(e1_transitions) == 13
     && phase_arm(layout: live, key: "p3-all-poles-on") == 6 && phase_gap_is(layout: live, key: "p3-all-poles-on", which: 4)
     && phase_arm(layout: live, key: "p3-after-j30-tap") == 3
     && phase_arm(layout: live, key: "p0-bias-module-installed") == 0 && phase_arm(layout: live, key: "p1-s2-domain-module-installed") == 1
@@ -2100,7 +2101,7 @@ test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() 
     && !one_node(net: live, a: j68_point(name: "R2"), b: e1_ground_ref)
     && carrier_input_reading(layout: p4261_e1_layout).contains("Carrier phases (names of what was observed, not of a function): ")
     && carrier_input_reading(layout: p4261_e1_layout).contains("on J20 power alone with the module absent, the carrier's local controls put it through recorded states")
-    && carrier_input_reading(layout: p4261_k1_layout).contains("no carrier phase recorded")
+    && carrier_input_reading(layout: p4261_k1_layout).contains("k1-all-poles-on") && !carrier_input_reading(layout: p4261_k1_layout).contains("no carrier phase recorded")
     && phases_reading(layout: unmeasured_k1()).contains("no carrier phase recorded")
 }
 
@@ -2434,6 +2435,8 @@ test fn j68_jtag_standing_is_derived_from_the_readings() -> Bool {
     && match j68_jtag_standing(rs: rs, vs: no_powered, scans: e1_j68_chain_scans) { CandidateByResistanceFingerprint => true, _ => false }
     && match j68_jtag_standing(rs: rs, vs: r2_dropped, scans: e1_j68_chain_scans) { CandidateByResistanceFingerprint => true, _ => false }
     && count(e1_j68_volts_under_labels) == 10
+    && j68_shape_text(layout: e1_with_phases(ps: filter(e1_phases, p => !(p.key == "j68-labelled-reread")))).contains("J68 as a JTAG header is a candidate by its resistance fingerprint")
+    && count(filter(e1_phases, p => p.key == "j68-labelled-reread")) == 1
     && count(filter(e1_j68_volts_under_labels, v => match v.value { ReadAbout { value } => millivolt_count(v: value) == 1800, ReadBelow { bound: _ } => false })) == 4
     && match j68_jtag_standing(rs: rs, vs: powered, scans: e1_j68_chain_scans) { PoweredCorroborated => true, _ => false }
     && match j68_jtag_standing(rs: rs, vs: powered, scans: scan) { FunctionallyIdentified => true, _ => false }
@@ -2441,4 +2444,25 @@ test fn j68_jtag_standing_is_derived_from_the_readings() -> Bool {
     && count(e1_j68_chain_scans) == 0
     && j68_shape_text(layout: p4261_e1_layout).contains("J68 as a JTAG header is corroborated powered (returns at 0 V, the reference near 1.8 V); a read-only chain scan returning an IDCODE is not yet taken; under the candidate map R2 is the reference rail and R1, R5 the returns, so no bridge is placed between any two of its positions again")
     && all(flat_map(e1_phase_named(key: "p3-settled"), p => p.node_voltages), v => match v.certainty { StatedHedged { verbatim: _ } => true, StatedPlainly => false })
+}
+
+// The K1 (2026-10-21): two recorded states, 13 mA with lamps unread and 40 mA with every pole toward ON
+// and no lamp, one transition between them; the 40 mA state classifies as the auxiliary domain (the
+// K1 has no recorded source draws, so its bias ceiling is zero and 13 mA with lamps unread stays
+// unclassified); J68's six requested positions read 0 V there, R2 among them, where the E1's labelled
+// set holds R2 at 1.8 V. Supplied: the K1's R2 at 1.8 V makes the two carriers agree, which they do not.
+fn node_mv(v: PhaseNodeVoltage) -> Nat {
+  match v.value { ReadAbout { value } => millivolt_count(v: value), ReadBelow { bound: _ } => 0 }
+}
+
+test fn the_k1_reaches_the_auxiliary_domain_with_no_jtag_reference() -> Bool {
+  let k1_r2 = filter(k1_j68_volts_at_40ma, v => terminal_ref_equal(a: v.at, b: terminal_ref(component: k1_j68, terminal: "R2" as TerminalIdentity)))
+  let e1_r2 = filter(e1_j68_volts_under_labels, v => terminal_ref_equal(a: v.at, b: j68_point(name: "R2")))
+  count(k1_phases) == 2 && count(k1_measured.transitions) == 1
+    && phase_arm(layout: p4261_k1_layout, key: "k1-all-poles-on") == phase_arm(layout: p4261_e1_layout, key: "p1-s2-domain")
+    && phase_text_in(layout: p4261_k1_layout, key: "k1-all-poles-on").contains("AUXILIARY DOMAIN ACTIVE")
+    && count(k1_j68_volts_at_40ma) == 6 && all(k1_j68_volts_at_40ma, v => node_mv(v: v) == 0)
+    && count(k1_r2) == 1 && count(e1_r2) == 1 && all(e1_r2, v => node_mv(v: v) == 1800)
+    && count(k1_j30_volts_at_40ma) == 3 && count(filter(k1_j30_volts_at_40ma, v => node_mv(v: v) == 260)) == 2
+    && carrier_input_reading(layout: p4261_k1_layout).contains("k1-all-poles-on")
 }
