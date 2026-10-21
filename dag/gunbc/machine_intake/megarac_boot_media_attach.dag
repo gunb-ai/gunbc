@@ -313,6 +313,8 @@ fn megarac_stale_power_off(
         username: host.binding.account,
         password_file: password_file,
         action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
+        deadline: coreutils_duration_operand(d: bound.deadline) as NonEmptyStr,
+        kill_after: coreutils_duration_operand(d: bound.kill_after) as NonEmptyStr,
       )
       if control.success == false {
         StalePowerOffCommandRefused { stale_image: stale, before: before }

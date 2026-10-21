@@ -328,7 +328,7 @@ pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
 pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
     match (*spec.service_return.clone()).clone() {
         ServiceReturnStrategy::ArrowReturn => {
-            v1_rt::concat(spec.items.clone().return_arrow.clone(), ret_type.clone())
+            v1_rt::concat(spec.items.return_arrow.clone(), ret_type.clone())
         }
         ServiceReturnStrategy::ErrorTupleReturn { error_type: et, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -1375,12 +1375,6 @@ pub fn visibility_for_target(target: RenderTarget) -> Rc<VisibilitySpec> {
 
 pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
     language_spec_for_target(target.clone()).sharing.clone()
-}
-
-pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSemantics> {
-    language_spec_for_target(target.clone())
-        .expression_semantics
-        .clone()
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {

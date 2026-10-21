@@ -48,6 +48,7 @@ import extdeps.uri {
   Uri,
   Https
 }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -67,6 +68,35 @@ data rust_container_templates: Map<String, String> = {
   "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
   "free_monoid": "Vec<\{0\}>",
   "boolean_algebra": "bool"
+}
+
+// A std.machine_word operation at a literal operator and width, expanded at EMIT time to the runtime's
+// width-generic operator row (`v1.compiler.emit_rust` `emit_machine_word_lowered_call`). The operator's
+// meaning and refusals live ONCE, in MACHINE_WORD_OPERATOR_ROWS (src/v1/runtime_rust.dag
+// rt_machine_word_ops). The operator's label and the width's bit count are NOT restated here or in the
+// runtime: the emitter folds them out of the two declarations that own them, which this row only NAMES.
+type MachineWordLowering {
+  owner_module: String
+  apply_fn: String
+  operator_param: String
+  width_param: String
+  a_param: String
+  b_param: String
+  operator_label_fn: String
+  width_bits_fn: String
+  template: String
+}
+
+data rust_machine_word_lowering: MachineWordLowering = {
+  owner_module: "std.machine_word",
+  apply_fn: "machine_word_apply",
+  operator_param: "op",
+  width_param: "width",
+  a_param: "a",
+  b_param: "b",
+  operator_label_fn: "machine_word_operator_label",
+  width_bits_fn: "word_width_bits",
+  template: "v1_rt::machine_word_operate_at::<\{v1_rt::machine_word_row_index(\"\{label\}\")\}, \{bits\}>(\{a\}, \{b\})"
 }
 
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
@@ -284,6 +314,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "substring",          bridge_name: "substring",        passes_by_ref: true,  wraps_result: false },
   { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: true,  wraps_result: false },
   { name: "chars",              bridge_name: "chars",            passes_by_ref: true,  wraps_result: false },
+  { name: "machine_word_native_operate", bridge_name: "machine_word_native_operate", passes_by_ref: true, wraps_result: false },
   { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: true,  wraps_result: false },
   { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: true, wraps_result: false },
   { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true,  wraps_result: false },

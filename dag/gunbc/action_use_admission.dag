@@ -320,6 +320,12 @@ fn workflow_action_uses_refusal_reason(workflow_module: String, refusals: List<W
 // branch name into it gets that branch.
 data checkout_revision_inputs: List<String> = ["expected_revision", "head_sha", "expected_healed_sha"]
 
+// A JOB OUTPUT THAT NAMES A COMMIT, by construction of the job that assigns it: `plan-revision` writes
+// only a revision that gunbc.fleet.fleet_converge_plan_revision admitted from GitHub's record of the
+// plan run, and `build` re-exports either that or the event sha. Both sit behind `|| github.sha`
+// in fleet-converge, so an empty output falls to a commit.
+data checkout_commit_job_outputs: List<String> = ["plan-revision.outputs.revision", "build.outputs.revision"]
+
 fn checkout_names_a_revision_input(name: String) -> Bool {
   fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || n == name })
 }
@@ -331,7 +337,16 @@ fn checkout_context_names_a_commit(context: ExpressionContext, path: List<String
       dotted == "sha" || dotted == "event.pull_request.head.sha"
         || fold(checkout_revision_inputs, init: false, f: fn(acc, n) { acc || dotted == concat("event.inputs.", n) })
     Inputs => checkout_names_a_revision_input(name: dotted)
-    _ => false
+    Needs => fold(checkout_commit_job_outputs, init: false, f: fn(acc, n) { acc || dotted == n })
+    Env => false
+    Vars => false
+    Job => false
+    Jobs => false
+    Steps => false
+    Runner => false
+    Secrets => false
+    Strategy => false
+    Matrix => false
   }
 }
 
@@ -345,7 +360,11 @@ fn checkout_ref_value_refusals(ref_expression: Expression, falls_through: Bool) 
       else { [concat(serialize_expression(expression: ref_expression), " (a condition with no fallback yields a non-commit value)")] }
     ContextAccess { context: c, path: p } =>
       if checkout_context_names_a_commit(context: c, path: p) { [] } else { [serialize_expression(expression: ref_expression)] }
-    _ => [serialize_expression(expression: ref_expression)]
+    FunctionCall { function: _, args: _ } => [serialize_expression(expression: ref_expression)]
+    StringLiteral { value: _ } => [serialize_expression(expression: ref_expression)]
+    Equals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    NotEquals { left: _, right: _ } => [serialize_expression(expression: ref_expression)]
+    LogicalNot { operand: _ } => [serialize_expression(expression: ref_expression)]
   }
 }
 

@@ -3,7 +3,7 @@ module test.claim.host.path_observation_witness
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.measure { byte_size }
 import gunbc.host.host_operation_exec { StatFileType, HeadBytes, host_operation_materialize_argv }
-import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
 import gunbc.spark.model_snapshot_materialize { spark_remote_run_of_session, RemoteRan, RemoteUnreachable }

@@ -482,7 +482,7 @@ pub fn emitted_workspace_red_realization(
     workspace: Rc<EmittedWorkspaceRealized>,
 ) -> Rc<EmittedWorkspaceRedRealization> {
     match (*crate::gunbc_emitted_crate_workspace::emitted_workspace_red_over(
-        workspace.build.clone().layout.clone(),
+        workspace.build.layout.clone(),
     ))
     .clone()
     {
@@ -498,7 +498,7 @@ pub fn emitted_workspace_red_realization(
                 red_rows.clone(),
                 Rc::new({
                     let mut __result = Vec::new();
-                    for r in workspace.build.clone().rows.clone().iter().cloned() {
+                    for r in workspace.build.rows.clone().iter().cloned() {
                         if (r.crate_dir.clone() == emitted_workspace_root_crate_dir()) {
                             __result.push(r);
                         }

@@ -11,7 +11,7 @@ use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{CostShape, Ordering};
+pub use crate::std_algebra::{collection_concat_shape, CostShape, Ordering};
 pub use crate::std_checked_arithmetic::{
     checked_int_add, checked_int_multiply, checked_int_optional,
 };
@@ -838,9 +838,9 @@ pub fn atomic_factors_growth_in_param(
         param_growth_zero(),
         |acc: Rc<ParamGrowth>, c: Rc<AtomicCost>| {
             if (atomic_cost_param(c.clone()) == param.clone()) {
-                param_growth_multiply(acc.clone(), atomic_cost_growth(c.clone()))
+                param_growth_multiply(acc, atomic_cost_growth(c.clone()))
             } else {
-                acc.clone()
+                acc
             }
         },
     )

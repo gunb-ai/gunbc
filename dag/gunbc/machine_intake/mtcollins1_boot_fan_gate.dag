@@ -4,13 +4,15 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
 
+import std.measure { Second, second, second_count }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_chassis_control { chassis_power_off_poll_settled, ChassisPowerObservation, IpmiChassisPowerDown, ipmi_chassis_control_verb }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetOperatorAssumed, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, post_power_fan_verdict }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, observe_fan_round }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, observe_fan_round, fan_round_ipmi_read_deadline, fan_round_ipmi_kill_after }
 import gunbc.machine_intake.post_power_fan_gate_outcome { any_readback_off, FanGatePowerDownAttempt, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWrite, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_pre_stop_text, post_power_fan_gate_stop_section, post_power_fan_gate_text, PostPowerFanGateReading, PostPowerFanGateReached }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_stale_power_off_samples, megarac_stale_power_off_interval }
@@ -60,6 +62,8 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
     username: username,
     password_file: password_file,
     action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   FanGatePowerDownAttempt {
     command_success: down.success,
@@ -68,6 +72,17 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
     command_stderr: down.transport_stderr,
     readbacks: boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: megarac_stale_power_off_samples),
   }
+}
+
+// WHAT THE GATE MAY SPEND, DERIVED, not asserted: the settle window; the round's three IPMI reads (chassis status, temperature,
+// fan) at the round's read ceiling; and a refusal's safe stop, at most two PowerDown attempts, each the bounded PowerDown command
+// (ChassisPowerControl runs under coreutils timeout at the boot read ceiling) and every read-back sample with its pacing interval.
+// The step budget (mtcollins1_boot_run mtcollins1_boot_step_timeout_minutes) adds this; the two file writes are local.
+fn mtcollins1_boot_fan_gate_allowance() -> Second {
+  let boot_read = (second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)) as Int
+  let round_read = (second_count(s: fan_round_ipmi_read_deadline) + second_count(s: fan_round_ipmi_kill_after)) as Int
+  let attempt = boot_read + megarac_stale_power_off_samples * (boot_read + (second_count(s: megarac_stale_power_off_interval) as Int))
+  second(count: (second_count(s: mtcollins1_fan_transition_window) as Int) + 3 * round_read + 2 * attempt)
 }
 
 // ONE PowerDown + readback; if never read off, ONE repeated PowerDown + readback; never a loop. Both attempts' readbacks are kept.
@@ -108,7 +123,11 @@ fn fan_gate_summary_append(block: String) -> FanGateWrite {
 // A REFUSAL: the stopping observation is WRITTEN BEFORE ANY PowerDown: the write is attempted and its result discriminated first; a failed write is kept
 // as FanGateWriteFailed and the safe stop still proceeds. If execution completes, the observation is also in the typed outcome and the
 // bundle. Then the safe stop, then the full text overwrites the file and a digest block is appended to the step summary.
-fn fan_gate_refuse(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation: FanObservationRound, username: NonEmptyStr, password_file: NonEmptyStr) -> PostPowerFanGateOutcome {
+fn fan_gate_refuse(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation: FanObservationRound, username: NonEmptyStr, password_file: NonEmptyStr) -> PostPowerFanGateOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "mtcollins1_boot_fan_gate"),
+  ]
+{
   let manager = FanManagerUnread { read_obligation: "the cooling-manager standing is read only by the operator-session fan-mode GET (extdeps.bmc.megarac); this path executes no REST read and no fan-control write (ruling gunbc#14243); treat as NOT automatic until read" as NonEmptyStr }
   let pre = post_power_fan_gate_pre_stop_text(fitted: fitted, cause: cause, observation: observation, manager: manager)
   let pre_write = fan_gate_write(path: fan_gate_observation_path, content: pre)
@@ -143,7 +162,7 @@ fn mtcollins1_boot_fan_gate(username: NonEmptyStr, password_file: NonEmptyStr) -
   let _settled = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_fan_transition_window)
   let round = observe_fan_round(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, round_index: 0)
   let fitted = mtcollins1_fitted_fan_set
-  match post_power_fan_verdict(fitted: fitted, chassis: round.chassis, fans: round.fans) {
+  match post_power_fan_verdict(fitted: fitted, chassis: round.chassis, thermal: round.thermal, fans: round.fans) {
     PostPowerFanVerdictEstablished => PostPowerFanGateReached { fitted: fitted, outcome: PostPowerFanEstablished { observation: round } }
     PostPowerFanVerdictRefused { cause: cause } => PostPowerFanGateReached { fitted: fitted, outcome: fan_gate_refuse(fitted: fitted, cause: cause, observation: round, username: username, password_file: password_file) }
   }

@@ -13,7 +13,7 @@ import v2.extdeps.languages.rust {
 }
 
 import v2.std.compilers.lexing { ModeledLexRules, VoidLexRules }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty,
@@ -86,6 +86,7 @@ fn sg_rc_layering_fixture_translation_rules_edge() -> Edge {
 // value-expression path consults either.
 fn sg_rc_layering_gate_target() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: sg_rc_layering_fixture_bundle(
       children: [
@@ -108,6 +109,7 @@ fn sg_rc_layering_gate_target() -> TargetModel {
 // values ARE that claim's subject, so substituting cheaper ones would change what it tests.
 fn sg_rc_layering_serialize_target() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: sg_rc_layering_fixture_bundle(
       children: [
