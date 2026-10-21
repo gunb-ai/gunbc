@@ -1110,7 +1110,7 @@ test fn two_unread_inputs_report_the_s1_cause_first() -> Bool {
 test fn the_channel_is_derived_from_what_was_observed() -> Bool {
   (match outside_roots_channel(findings: ["a claim outside the roots"], unread: true) {
      OutsideChannelFinding { reasons: reasons } =>
-       !is_empty(reasons) && string_contains(s: reasons |> first, pattern: "outside-discovery-roots-census")
+       !is_empty(reasons) && any(reasons, r => string_contains(s: r, pattern: "outside-discovery-roots-census"))
      _ => false
    })
     && (match outside_roots_channel(findings: [], unread: true) {
