@@ -1,0 +1,72 @@
+module test.claim.nominal_cast_wall_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key, census_blocking_rows, census_total_count,
+  // EVERY REFUSAL CLAIM HERE IS KEYED (class + subject_name + blocking), the form
+  // gunbc.compile_diagnostic_census documents. The subject of an InternalError row is the message
+  // truncated at 80 characters (compile_clean_internal_error_histogram_name), so the subjects below
+  // are validate_cast's own refusal text for the probe's source spelling.
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT A NOMINAL VALUE HAS NO IMPLICIT ROUTE TO A STRING THROUGH `as`, on the
+// source -> .dag-acceptance path (gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text, chain (i)). Before
+// v1.compiler.infer validate_cast refused a nominal source with no declared route, the checker
+// ABSTAINED and v1_interpreter eval_cast rendered the host's debug text. The RED is the specimen's
+// shape (a record carrier cast to String, #14732) and its coproduct sibling; the controls keep the
+// wall from being a wrecking ball: a kernel Int still casts, a String refinement still casts, an
+// identity cast of the nominal still compiles, and the DECLARED conversion route (a function the
+// author names) compiles. PATH SCOPE: compile acceptance only; the concat/join route is a different
+// chain (ii) and is not measured here.
+
+fn refusals(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "InternalError", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data record_as_string_source: String = "module probe_nominal_cast_record\nimport std.types { String, Int }\ntype P { value: Int }\nfn text(p: P) -> String { p as String }\n"
+
+data coproduct_as_string_source: String = "module probe_nominal_cast_coproduct\nimport std.types { String, Int }\ntype C = Red | Green { n: Int }\nfn text(c: C) -> String { c as String }\n"
+
+data int_as_string_source: String = "module probe_nominal_cast_int\nimport std.types { String, Int }\nfn text(n: Int) -> String { n as String }\n"
+
+data refinement_as_string_source: String = "module probe_nominal_cast_refinement\nimport std.types { String, NonEmptyStr }\nfn text(s: NonEmptyStr) -> String { s as String }\n"
+
+data identity_cast_source: String = "module probe_nominal_cast_identity\nimport std.types { Int }\ntype P { value: Int }\nfn same(p: P) -> P { p as P }\n"
+
+data declared_conversion_source: String = "module probe_nominal_cast_declared\nimport std.types { String, Int }\ntype P { value: Int }\nfn p_wire_text(p: P) -> String { p.value as String }\nfn text(p: P) -> String { p_wire_text(p: p) }\n"
+
+test fn a_record_cast_to_string_with_no_declared_route_is_refused() -> Bool {
+  refusals(
+    source: record_as_string_source,
+    subject: "invalid cast: P as String: a nominal value has no declared conversion",
+  ) == 1
+}
+
+test fn a_coproduct_cast_to_string_with_no_declared_route_is_refused() -> Bool {
+  refusals(
+    source: coproduct_as_string_source,
+    subject: "invalid cast: C as String: a nominal value has no declared conversion",
+  ) == 1
+}
+
+test fn the_kernel_refinement_identity_and_declared_routes_still_compile() -> Bool {
+  blocking_total(source: int_as_string_source) == 0
+    && blocking_total(source: refinement_as_string_source) == 0
+    && blocking_total(source: identity_cast_source) == 0
+    && blocking_total(source: declared_conversion_source) == 0
+}
