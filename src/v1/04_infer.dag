@@ -7412,7 +7412,10 @@ fn non_empty_text_cast_diags(inner_typed: Node, target_type: Node, span: SourceS
             CodePointSequence => []
             NonEmptyCodePointSequence => []
             NotText => []
-            TextRepresentationUnidentified => []
+            // UNJUDGED, NEVER SILENT: an operand whose type reads no declaration identity is the text wall's
+            // unidentified population (gunbc.rung_drop text_boundary_identity_wall), counted and located like
+            // every other unidentified text boundary rather than admitted with no trace.
+            TextRepresentationUnidentified => [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: "cast operand into a non-empty code-point sequence", span: span }, module_name: scope.module_name)]
           }
       }
     CodePointSequence => []
