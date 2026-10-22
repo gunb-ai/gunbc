@@ -1,6 +1,6 @@
 module test.claim.fleet.fleet_converge_roster_token_prelude_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
@@ -30,7 +30,7 @@ data token_marker: String = "GUNBC_ORG_ADMIN_TOKEN"
 data roster_read_name: String = "gunbc.fleet.organization_runner_roster_read.organization_runner_roster_live_read"
 
 fn entry_module(t: GunbcRunStepTarget) -> String {
-  string_replace(source: string_replace(source: string_replace(source: t.entry, needle: "dag/", replacement: ""), needle: ".dag", replacement: ""), needle: "/", replacement: ".")
+  string_replace(source: string_replace(source: string_replace(source: t.entry, needle: "dag/" as NonEmptyStr, replacement: ""), needle: ".dag" as NonEmptyStr, replacement: ""), needle: "/" as NonEmptyStr, replacement: ".")
 }
 
 fn in_pool(t: GunbcRunStepTarget) -> Bool {
@@ -42,7 +42,7 @@ fn reaches_roster_read_over(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> 
     entry_module: entry_module(t: t),
     fn_name: t.function,
     terminal_callee_symbols: [],
-    closure_modules: map(decls, d => string_replace(source: d.qualified_name, needle: concat(".", d.name), replacement: "")),
+    closure_modules: map(decls, d => string_replace(source: d.qualified_name, needle: concat(".", d.name) as NonEmptyStr, replacement: "")),
     decls: decls
   )
   any(reach.reached, d => d.qualified_name == roster_read_name)
