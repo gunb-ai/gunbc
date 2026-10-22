@@ -260,6 +260,11 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
     reason: "FieldDefault (literal vs malformed) is read only by test.claim.decl_facts_field_binder_witness; no production reader distinguishes a literal default from a malformed one yet",
     dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- the Wire.swift generator emits a field's default from the declared field list, which needs a literal default as a value and refuses a malformed one; that generator is the first production reader of field_default_reading"),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireShape"),
+    reason: "the sum shapes' arm members (push_shape, evidence_shape) are supplied values not paired to their variant declarations (declared_field_list reads a record's fields, not a sum arm's payload); the shape drives only the READ direction; the server *_json encoders are hand-written and merely judged against the shape's member order and admitted spellings by test.claim.wire_encoder_conformance_witness, because dag cannot take a typed value apart by derived field name",
+    dissolution: unbound_dissolution(description: "feature:value-reflection -- a field read by derived name with declaration-driven newtype, enum-spelling and nested dispatch; with it a generic fold from a value plus its WireShape to JsonValue replaces the hand-written *_json encoders and the conformance witness becomes the differential against them"),
+  ),
 ]
 // B3/B4 POLICY ROWS (rulings B3 admitted arms, B4 admitted values). A row names a wire subject, the
 // spellings of EVERY declared arm of its sum (declared, from the sum's *_wire spelling fn over the

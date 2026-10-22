@@ -1,6 +1,7 @@
 module test.claim.wire_strict_reader_witness
 
-import std.roster_frontier { frontier_rows_well_formed }
+import std.roster_frontier { frontier_rows_well_formed, FrontierRow, DeclSubject, PathSubject }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.auth.wire_strict_reader { wire_strict_reader_frontier_rows }
 import std.types { String, List, Bool, NonEmptyStr }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
@@ -124,6 +125,14 @@ test fn a_policy_that_is_not_the_declared_fields_is_refused() -> Bool {
   }
 }
 
+// RED: the same fields in another order are not the declared fields in declaration order (CausePolicyFieldsDiffer says "in declaration order").
+test fn a_policy_that_reorders_the_declared_fields_is_refused() -> Bool {
+  match bind_record(derived: read_authentication_declared, rules: concat(read_authentication_rules() |> filter(f => f.name == "assertion_b64"), read_authentication_rules() |> filter(f => f.name != "assertion_b64"))) {
+    ShapeRefused { cause: c } => wire_cause_text(c: c) == "policy fields are not the declared fields in declaration order"
+    ShapeBound { shape: _ } => false
+  }
+}
+
 test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
   match bind_record(derived: read_authentication_declared, rules: read_authentication_rules()) {
     ShapeBound { shape: _ } => true
@@ -131,9 +140,56 @@ test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
   }
 }
 
-// The four declared consumers carry a reason and a bound-or-described dissolution trigger.
+// Every declared frontier row carries a reason and a bound-or-described dissolution trigger (review 83284: no row count is asserted).
 test fn the_declared_frontier_rows_are_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows) && count(wire_strict_reader_frontier_rows) == 4
+  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows)
+}
+
+// Completeness at identity grain: each declaration the fold's consumers are still owed on is joined to a row's DeclSubject by its complete DeclarationRef (module, name, field), never by its name alone.
+fn frontier_owed_declarations() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "read_shape"),
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "admission_verdict"),
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireSumArm"),
+    decl_ref(module_path: "v2.std.node_query", decl_name: "field_default_reading"),
+    decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireShape"),
+  ]
+}
+
+fn row_names_declaration(r: FrontierRow, n: DeclarationRef) -> Bool {
+  match r.subject {
+    DeclSubject { ref: d } => declaration_ref_eq(a: d, b: n)
+    PathSubject { path: _ } => false
+  }
+}
+
+fn owed_all_named(rows: List<FrontierRow>) -> Bool {
+  all(frontier_owed_declarations(), n => any(rows, r => row_names_declaration(r: r, n: n)))
+}
+
+test fn every_owed_declaration_has_a_frontier_row() -> Bool {
+  owed_all_named(wire_strict_reader_frontier_rows)
+}
+
+// RED: a dropped row fails the join.
+test fn a_dropped_frontier_row_fails_the_join() -> Bool {
+  !owed_all_named(wire_strict_reader_frontier_rows |> filter(r => !row_names_declaration(r: r, n: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "read_shape"))))
+}
+
+// RED: a row with the owed NAME under another module does not discharge the obligation.
+test fn a_row_with_the_same_name_in_another_module_fails_the_join() -> Bool {
+  !owed_all_named(map(wire_strict_reader_frontier_rows, r => match r.subject {
+    DeclSubject { ref: d } => if d.decl_name == "field_default_reading" { FrontierRow { subject: DeclSubject { ref: decl_ref(module_path: "v2.std.some_other_module", decl_name: "field_default_reading") }, reason: r.reason, dissolution: r.dissolution } } else { r }
+    PathSubject { path: _ } => r
+  }))
+}
+
+// RED: a path subject spelled like an owed declaration does not discharge it.
+test fn a_path_subject_with_the_same_spelling_fails_the_join() -> Bool {
+  !owed_all_named(map(wire_strict_reader_frontier_rows, r => match r.subject {
+    DeclSubject { ref: d } => if d.decl_name == "WireShape" { FrontierRow { subject: PathSubject { path: "WireShape" }, reason: r.reason, dissolution: r.dissolution } } else { r }
+    PathSubject { path: _ } => r
+  }))
 }
 
 // B3/B4: every admission row the protocol declares is a subset of its declared arms.
