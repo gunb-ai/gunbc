@@ -85,11 +85,11 @@ import extdeps.github.deployment_protection_rule {
   wait_timer_maximum,
   rule_delivery_documented_guarantee,
   review_endpoint_path_built_for,
-  ReviewPathBuildRefusal,
-  BuiltReviewPath,
-  BuiltReviewPathOk,
-  BuiltReviewPathRefused,
-  ReviewPathSegment,
+  RoutePathBuildRefusal,
+  BuiltRoutePath,
+  BuiltRoutePathOk,
+  BuiltRoutePathRefused,
+  RoutePathSegment,
 }
 import extdeps.github.app {
   // THE ID CARRIERS, imported rather than re-declared here. A second `Int` for an installation id
@@ -1047,8 +1047,8 @@ type AcceptedReviewRefusal =
     // WHICH AXIS the builder refused, and the value it blamed. Carried from the builder rather than
     // re-derived, because only the builder knows whether the owner, the repo or the run id was the
     // problem — re-deriving it here is how a valid owner came to be blamed for a zero run id.
-    refusal: ReviewPathBuildRefusal,
-    hostile_segment: ReviewPathSegment,
+    refusal: RoutePathBuildRefusal,
+    hostile_segment: RoutePathSegment,
   }
   // The readback attributed the rule for a different gate than the receipt would claim. Distinct from
   // BodyNamesAnotherEnvironment, which is the CALLER's body disagreeing: this is GitHub's read.
@@ -1165,7 +1165,7 @@ fn mint_accepted_rule_review(
     // path to another endpoint whose digits happen to line up. Building it from the pinned template
     // leaves nothing to compare — a caller CANNOT hand this mint a path.
     match review_endpoint_path_built_for(owner: owner, repo: repo, run_id: run_id) {
-      BuiltReviewPathRefused { refusal: axis, hostile_segment: segment } => AcceptedReviewRefused {
+      BuiltRoutePathRefused { refusal: axis, hostile_segment: segment } => AcceptedReviewRefused {
         because: RouteSegmentsAreNotRouteSafe {
           refusal: axis,
           hostile_segment: segment,
@@ -1175,7 +1175,7 @@ fn mint_accepted_rule_review(
       // and the builder's own witness pins its exact output; re-validating a construction at its
       // consumer is a check whose forbidden state is expressible nowhere it runs (§4b), which is what
       // the side chat ruled on.
-      BuiltReviewPathOk { path: _ } => match ownership {
+      BuiltRoutePathOk { path: _ } => match ownership {
       NotOwnedByGateApp { because: b } =>
         // The refusal the READBACK gave, carried rather than renamed: "no rule is enabled" and "the
         // rule belongs to another App" are different operator situations, and minting one name for

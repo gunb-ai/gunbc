@@ -45,9 +45,10 @@ import extdeps.github.deployment_protection_rule {
   installation_readback_path_built_for,
   enabled_rule_readback_path_built_for,
   environment_protection_readback_path_built_for,
-  BuiltReadPathOk,
-  BuiltReadPathRefused,
-  ReadRepoAxis,
+  BuiltRoutePathOk,
+  BuiltRoutePathRefused,
+  RepoSegment,
+  HostileSegment,
   InstallationWireFields,
   Approved,
   Rejected,
@@ -586,22 +587,22 @@ test fn a_protection_read_that_did_not_answer_waits() -> Bool {
 // second time (a brace) is refused rather than substituted.
 test fn each_read_path_is_its_template_with_the_placeholders_filled() -> Bool {
   (match installation_readback_path_built_for(owner: "gunb-ai", repo: "gunbc") {
-     BuiltReadPathOk { path: p } => p == replace(replace(installation_readback_endpoint_path as String, "\{owner\}", "gunb-ai"), "\{repo\}", "gunbc")
-     BuiltReadPathRefused { axis: _, hostile_value: _ } => false
+     BuiltRoutePathOk { path: p } => p == replace(replace(installation_readback_endpoint_path as String, "\{owner\}", "gunb-ai"), "\{repo\}", "gunbc")
+     BuiltRoutePathRefused { refusal: _, hostile_segment: _ } => false
    })
   && (match enabled_rule_readback_path_built_for(owner: "gunb-ai", repo: "gunbc", environment_name: gated_env) {
-        BuiltReadPathOk { path: p } =>
+        BuiltRoutePathOk { path: p } =>
           p == replace(replace(replace(enabled_rule_readback_endpoint_path as String, "\{owner\}", "gunb-ai"), "\{repo\}", "gunbc"), "\{environment_name\}", gated_env as String)
-        BuiltReadPathRefused { axis: _, hostile_value: _ } => false
+        BuiltRoutePathRefused { refusal: _, hostile_segment: _ } => false
       })
   && (match environment_protection_readback_path_built_for(owner: "gunb-ai", repo: "gunbc", environment_name: gated_env) {
-        BuiltReadPathOk { path: p } =>
+        BuiltRoutePathOk { path: p } =>
           p == replace(replace(replace(environment_protection_readback_endpoint_path as String, "\{owner\}", "gunb-ai"), "\{repo\}", "gunbc"), "\{environment_name\}", gated_env as String)
-        BuiltReadPathRefused { axis: _, hostile_value: _ } => false
+        BuiltRoutePathRefused { refusal: _, hostile_segment: _ } => false
       })
   && (match installation_readback_path_built_for(owner: "gunb-ai", repo: "\{owner\}") {
-        BuiltReadPathRefused { axis: ReadRepoAxis, hostile_value: _ } => true
-        BuiltReadPathRefused { axis: _, hostile_value: _ } => false
-        BuiltReadPathOk { path: _ } => false
+        BuiltRoutePathRefused { refusal: HostileSegment {  }, hostile_segment: RepoSegment { value: _ } } => true
+        BuiltRoutePathRefused { refusal: _, hostile_segment: _ } => false
+        BuiltRoutePathOk { path: _ } => false
       })
 }

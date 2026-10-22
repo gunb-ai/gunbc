@@ -37,15 +37,11 @@ import extdeps.github.deployment_protection_rule {
   installation_readback_call,
   enabled_rule_readback_call,
   environment_protection_readback_call,
-  BuiltReviewPath,
-  BuiltReviewPathOk,
-  BuiltReviewPathRefused,
-  BuiltReadPath,
-  BuiltReadPathOk,
-  BuiltReadPathRefused,
-  ReadPathAxis,
-  ReviewPathBuildRefusal,
-  ReviewPathSegment,
+  BuiltRoutePath,
+  BuiltRoutePathOk,
+  BuiltRoutePathRefused,
+  RoutePathBuildRefusal,
+  RoutePathSegment,
   review_endpoint_path_built_for,
   installation_readback_path_built_for,
   enabled_rule_readback_path_built_for,
@@ -141,8 +137,7 @@ type GateWaitReason
   | ClaimNamesAnotherEnvironment { claimed: NonEmptyStr, boundary: NonEmptyStr }
   | EnvironmentReadDidNotAnswer { status: HttpStatus }
   | ProtectionNotEstablished { because: ProtectionResponseNamedAnotherEnvironment }
-  | RouteSegmentIsNotRouteSafe { axis: ReadPathAxis, hostile_value: NonEmptyStr }
-  | ReviewRouteSegmentIsNotRouteSafe { refusal: ReviewPathBuildRefusal, hostile_segment: ReviewPathSegment }
+  | RouteSegmentIsNotRouteSafe { refusal: RoutePathBuildRefusal, hostile_segment: RoutePathSegment }
   | ReadWasNotTheRoute { route: GateRoute, expected: SentRequest, sent: SentRequest }
   | InstallationNotObserved { because: InstallationObservationRefusal }
   | RuleReadDidNotAnswer { status: HttpStatus }
@@ -208,9 +203,9 @@ fn protection_phase(boundary: DeploymentGateBoundary, response: ProtectionReadRe
     repo: boundary_repo(boundary: boundary),
     environment_name: boundary.environment_name
   ) {
-    BuiltReadPathRefused { axis: a, hostile_value: v } =>
-      ProtectionStopped { outcome: wait_for(reason: RouteSegmentIsNotRouteSafe { axis: a, hostile_value: v }) }
-    BuiltReadPathOk { path: path } => {
+    BuiltRoutePathRefused { refusal: r, hostile_segment: h } =>
+      ProtectionStopped { outcome: wait_for(reason: RouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h }) }
+    BuiltRoutePathOk { path: path } => {
       let expected = expected_request(call: environment_protection_readback_call, path: path)
       if !is_the_route(expected: expected, sent: response.sent) {
         ProtectionStopped { outcome: wait_for(reason: ReadWasNotTheRoute { route: EnvironmentRoute, expected: expected, sent: response.sent }) }
@@ -282,8 +277,8 @@ fn prepare_review(
   review_response: ReviewResponse
 ) -> ReviewPrep {
   match installation_readback_path_built_for(owner: boundary_owner(boundary: boundary), repo: boundary_repo(boundary: boundary)) {
-    BuiltReadPathRefused { axis: a, hostile_value: v } => stopped(reason: RouteSegmentIsNotRouteSafe { axis: a, hostile_value: v })
-    BuiltReadPathOk { path: ipath } => {
+    BuiltRoutePathRefused { refusal: r, hostile_segment: h } => stopped(reason: RouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h })
+    BuiltRoutePathOk { path: ipath } => {
       let iexpected = expected_request(call: installation_readback_call, path: ipath)
       if !is_the_route(expected: iexpected, sent: installation_read.sent) {
         stopped(reason: ReadWasNotTheRoute { route: InstallationRoute, expected: iexpected, sent: installation_read.sent })
@@ -322,8 +317,8 @@ fn prepare_after_installation(
     repo: boundary_repo(boundary: boundary),
     environment_name: boundary.environment_name
   ) {
-    BuiltReadPathRefused { axis: a, hostile_value: v } => stopped(reason: RouteSegmentIsNotRouteSafe { axis: a, hostile_value: v })
-    BuiltReadPathOk { path: rpath } => {
+    BuiltRoutePathRefused { refusal: r, hostile_segment: h } => stopped(reason: RouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h })
+    BuiltRoutePathOk { path: rpath } => {
       let rexpected = expected_request(call: enabled_rule_readback_call, path: rpath)
       if !is_the_route(expected: rexpected, sent: rule_read.sent) {
         stopped(reason: ReadWasNotTheRoute { route: EnabledRuleRoute, expected: rexpected, sent: rule_read.sent })
@@ -366,9 +361,9 @@ fn prepare_after_ownership(
         repo: boundary_repo(boundary: boundary),
         run_id: claim.run_id
       ) {
-        BuiltReviewPathRefused { refusal: r, hostile_segment: h } =>
-          stopped(reason: ReviewRouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h })
-        BuiltReviewPathOk { path: path } => {
+        BuiltRoutePathRefused { refusal: r, hostile_segment: h } =>
+          stopped(reason: RouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h })
+        BuiltRoutePathOk { path: path } => {
           let expected = expected_request(call: review_call, path: path)
           if !is_the_route(expected: expected, sent: review_response.sent) {
             stopped(reason: ReadWasNotTheRoute { route: ReviewRoute, expected: expected, sent: review_response.sent })
