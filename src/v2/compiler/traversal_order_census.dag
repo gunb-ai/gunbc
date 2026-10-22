@@ -366,11 +366,12 @@ fn trav_site_key(f: TraversalFnFact, m: TraversalMention) -> TraversalSiteKey {
   TraversalSiteKey { function: f.function, path: m.path, callee: m.callee, kind: m.kind, shape: m.shape }
 }
 
-// A mention is a SITE when it is a primitive call, a primitive named as a value, or a children read.
-fn trav_is_site(prims: Map<String, Bool>, m: TraversalMention) -> Bool {
+// A mention is a SITE when it is a primitive call, a call of the enclosing function itself (direct
+// recursion over a Cons or a tree; mutual recursion is NOT detected), a primitive named as a value, or a children read.
+fn trav_is_site(prims: Map<String, Bool>, f: TraversalFnFact, m: TraversalMention) -> Bool {
   match m.kind {
     SiteChildrenRead => true
-    SiteCall => trav_has(m: prims, key: m.callee)
+    SiteCall => trav_has(m: prims, key: m.callee) || m.callee == f.function
     SiteValueReference => trav_has(m: prims, key: m.callee)
   }
 }
@@ -490,7 +491,7 @@ fn traversal_census_join(
   let results = fold_list(xs: facts, empty: [], cons: fn(acc, f) {
     if trav_has(m: owned, key: f.module) {
       fold_list(xs: f.mentions, empty: acc, cons: fn(a, m) {
-        if trav_is_site(prims: prims, m: m) {
+        if trav_is_site(prims: prims, f: f, m: m) {
           list_snoc_item(xs: a, item: trav_result(stage: trav_stage_of_module(stages: stages, module: f.module), module: f.module, key: trav_site_key(f: f, m: m), rows: rows, discharges: discharges))
         } else {
           a

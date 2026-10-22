@@ -2,7 +2,9 @@ module v2.test.claim.native_driver_plan
 
 import std.types { List }
 import v2.std.text { String }
-import std.algebra { length }
+import std.algebra { length, fold_list }
+import gunbc.instrument_targets { instrument_bindings }
+import gunbc.target_binding { TargetBinding, NativeCensusVerbProducer }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
@@ -16,6 +18,10 @@ import v2.compiler.source_root_eval {
   NativeDriverCensusInfer,
   NativeDriverCensusScoped,
   NativeDriverCensusVerb,
+  NativeCensusVerbWord,
+  native_census_verb_of_word,
+  native_census_verb_word,
+  native_census_verbs,
   NativeDriverPlanRefused,
   NativeDriverPlanned,
   native_driver_adjudicate_needs_facts,
@@ -365,4 +371,43 @@ test fn census_scoped_against_names_a_baseline_and_not_a_root_holds() -> Bool {
 test fn census_scoped_against_without_a_path_refuses_as_misuse_holds() -> Bool {
   (refusal_detail(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against"]) == native_driver_census_scoped_needs_against)
   && plan_exit_is_misuse(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against"])
+}
+
+// THE JOIN THAT KEEPS THE VERB'S SPELLINGS ONE FACT. NativeCensusVerbWord (v2.compiler.source_root_eval)
+// is the closed set; the instrument bindings (gunbc.instrument_targets) spell a verb as a String because
+// gunbc.target_binding sits below the compiler. Both directions are joined by identity here: a binding
+// whose verb is not a word is refused, and a word that no binding names is refused.
+fn binding_names_verb(b: TargetBinding, word: String) -> Bool {
+  match b.producer {
+    NativeCensusVerbProducer { verb: v } => v == word
+    _ => false
+  }
+}
+
+fn binding_verb_is_admitted(b: TargetBinding) -> Bool {
+  match b.producer {
+    NativeCensusVerbProducer { verb: v } =>
+      match native_census_verb_of_word(word: v) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    _ => true
+  }
+}
+
+test fn every_native_census_binding_names_an_admitted_verb_holds() -> Bool {
+  fold_list(xs: instrument_bindings(), empty: true, cons: fn(ok, b) { ok && binding_verb_is_admitted(b: b) })
+}
+
+test fn every_native_census_verb_word_has_a_binding_holds() -> Bool {
+  fold_list(xs: native_census_verbs, empty: true, cons: fn(ok, v) {
+    ok && fold_list(xs: instrument_bindings(), empty: false, cons: fn(found, b) { found || binding_names_verb(b: b, word: native_census_verb_word(v: v)) })
+  })
+}
+
+test fn a_misspelled_census_verb_is_not_a_word_holds() -> Bool {
+  match native_census_verb_of_word(word: "traversal-order-cenzus") {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
