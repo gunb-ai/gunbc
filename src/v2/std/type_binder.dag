@@ -360,6 +360,7 @@ fn where_clause_standing(clause: Node) -> WhereStanding {
                 ComputationNode { behavior: _ } => MalformedWhere { missing: ^reflected_predicate_standing }
               }
           }
+      }
   }
 }
 
