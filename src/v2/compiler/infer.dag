@@ -3639,25 +3639,32 @@ fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_
           match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
             Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
             Present { value: codomain } =>
-              if infer_algebra_field_declared_arity(arrow: arrow) != arity {
-                AlgebraFieldRowMalformed { cause: ^infer_operator_arity_mismatch }
-              } else if infer_branch_type_atoms_equal(a: codomain, b: carrier) {
-                AlgebraFieldResultType { result: operand_type }
-              } else {
-                AlgebraFieldResultType { result: codomain }
+              match infer_algebra_field_declared_arity(arrow: arrow) {
+                Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_domain_unreadable }
+                Present { value: declared_arity } =>
+                if declared_arity != arity {
+                  AlgebraFieldRowMalformed { cause: ^infer_operator_arity_mismatch }
+                } else if infer_branch_type_atoms_equal(a: codomain, b: carrier) {
+                  AlgebraFieldResultType { result: operand_type }
+                } else {
+                  AlgebraFieldResultType { result: codomain }
+                }
               }
           }
       }
   }
 }
 
-fn infer_algebra_field_declared_arity(arrow: Node) -> Int {
+// THE FIELD'S DECLARED ARITY, OR NOTHING: a field arrow whose domain is absent or whose formals are not all
+// named has no readable arity, and that is the ROW's defect, refused as ^algebra_field_domain_unreadable by the
+// caller, never a number standing in for one (which would blame the operator's use site).
+fn infer_algebra_field_declared_arity(arrow: Node) -> Optional<Int> {
   match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
-    Absent => 0 - 1
+    Absent => optional_absent()
     Present { value: domain } =>
       match infer_formals_from_domain(domain: domain) {
-        Absent => 0 - 1
-        Present { value: formals } => length(xs: formals)
+        Absent => optional_absent()
+        Present { value: formals } => optional_present(value: length(xs: formals))
       }
   }
 }

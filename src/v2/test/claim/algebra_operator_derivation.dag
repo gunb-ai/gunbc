@@ -1,16 +1,18 @@
 module v2.test.claim.algebra_operator_derivation
 
-import v2.compiler.infer { AlgebraFieldNotCarried, AlgebraFieldResultType, AlgebraFieldRowMalformed, InferAlgebraFieldResult, infer, infer_algebra_field_result_type }
-import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
+import v2.compiler.infer { AlgebraFieldNotCarried, AlgebraFieldResultType, AlgebraFieldRowMalformed, InferAlgebraFieldResult, infer, infer_algebra_field_declared_arity, infer_algebra_field_result_type }
+import v2.std.algebra_structure_signature { algebra_unary_fn_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.integer { integer_int_type_node }
 import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.types { List }
+import std.optional { Absent, Present }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool, bool_node }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Arrow, Edge, Node, Positional, Symbol, TypeNode }
+import std.occurrence_identity { OccurrenceSynthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -166,9 +168,32 @@ test fn aod_complement_at_arity_one_answers_bool() -> Bool {
   )
 }
 
+// A field arrow with no readable formals has NO arity (review 84467): the reader answers Absent, which the caller
+// refuses as the row's own defect (^algebra_field_domain_unreadable), never a sentinel number that would be
+// reported as the use site's arity mismatch. Its partner: a declared one-operand signature reads arity 1.
+test fn aod_an_arrow_without_formals_has_no_arity() -> Bool {
+  match infer_algebra_field_declared_arity(arrow: Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: bool_node() }, Edge { label: Positional, target: bool_node() }],
+    occurrence_id: OccurrenceSynthetic
+  }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn aod_a_unary_signature_reads_arity_one() -> Bool {
+  match infer_algebra_field_declared_arity(arrow: algebra_unary_fn_node(domain: bool_node(), codomain: bool_node())) {
+    Present { value: n } => n == 1
+    Absent => false
+  }
+}
+
 fn aod_arity_receipt() -> String {
-  concat(concat(
+  concat(concat(concat(
     if aod_a_binary_field_at_arity_one_is_refused() { "binary_at_one_refused=yes" } else { "binary_at_one_refused=no" },
     if aod_complement_at_arity_one_answers_bool() { "\ncomplement_at_one_bool=yes" } else { "\ncomplement_at_one_bool=no" }),
-    if aod_embedded_carrier_selects_the_row() { "\nbinary_join_at_two=yes" } else { "\nbinary_join_at_two=no" })
+    if aod_embedded_carrier_selects_the_row() { "\nbinary_join_at_two=yes" } else { "\nbinary_join_at_two=no" }),
+    concat(if aod_an_arrow_without_formals_has_no_arity() { "\nno_formals_no_arity=yes" } else { "\nno_formals_no_arity=no" },
+      if aod_a_unary_signature_reads_arity_one() { "\nunary_sig_arity_one=yes" } else { "\nunary_sig_arity_one=no" }))
 }
