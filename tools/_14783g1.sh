@@ -22,7 +22,9 @@ export CARGO_INCREMENTAL=0 RUSTC_WRAPPER= CARGO_TARGET_DIR=/root/workspace/repo-
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 git worktree prune >/dev/null 2>&1 || true
 git fetch -q origin +refs/pull/14783/head:refs/verifier/f783g || { echo FETCH_FAIL; exit 9; }
-git cat-file -e $BASE^{commit} 2>/dev/null || git fetch -q origin $BASE || git fetch -q --deepen=20 origin refs/pull/14783/head || true
+git cat-file -e $BASE^{commit} 2>/dev/null || git fetch -q origin $BASE || true
+git cat-file -e $BASE^{commit} 2>/dev/null || git fetch -q --deepen=400 origin refs/pull/14783/head || true
+git cat-file -e $BASE^{commit} 2>/dev/null || git fetch -q --deepen=2000 origin refs/pull/14783/head || true
 git cat-file -e $BASE^{commit} 2>/dev/null || { echo "BASE_UNREACHABLE -- STOP"; exit 9; }
 [ "$(git rev-parse refs/verifier/f783g)" = "$HEAD" ] || { echo "PR_REF_MOVED -- STOP"; exit 9; }
 CB=/root/workspace/repo-root/.t783b/release/claim_batch
