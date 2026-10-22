@@ -7372,13 +7372,25 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String) -> ErrorNode? {
+// A NOMINAL PRODUCT OR COPRODUCT HAS NO IMPLICIT ROUTE THROUGH `as`
+// (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text,
+// chain (i)). std.coercion dag_cast_rules rosters only Int, Float and Bool, so a nominal source
+// has no declared conversion to any target; abstaining here (the is_dag_cast_domain_type arms
+// below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
+// source_is_nominal is the head exposure of the source's declaration identity, the same authority
+// product_at_scalar_declared_type reads, never a bare spelling.
+fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
       if source_name == target_name { none }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
+        let diag = InternalError { message: msg, span: span }
+        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+      }
+      else if source_is_nominal {
+        let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
@@ -10351,7 +10363,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let inner_emissions = inner_result.emissions
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name)
+      let source_is_nominal = match inner_typed.inferred {
+        Present { value: Resolved { node: source_node } } =>
+          type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
+            || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
+        _ => false
+      }
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
