@@ -26,6 +26,10 @@ import gunbc.serving.flash_next_quant_matrix {
   WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
 import gunbc.serving.gpu_bench_warm_standing { WarmValid, WarmOverCapacity }
+import gunbc.serving.flash_next_topology {
+  ServingTopology, CardBudget, TopologyFits, TopologyRefused, topology_capacity, card_budget_from_measured_cell,
+  topology_cards, topology_host_ngram_copies, flash_next_topology_frontier,
+}
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
 import gunbc.serving.flash_next_image_capability_observation {
   Sm90, Sm100, Sm120, Fp8MainKvCache, FlashInferNativeFp4Moe, Nvfp4PleTable, JitIfCompiles, NotBuilt, BuiltIn,
@@ -230,6 +234,7 @@ test fn w_declared_frontiers_are_open() -> Bool {
     && !dissolution_is_bound(condition: observed_memory_frontier)
     && !dissolution_is_bound(condition: flash_next_experiment_identity_frontier)
     && !dissolution_is_bound(condition: flash_next_quant_matrix_frontier)
+    && !dissolution_is_bound(condition: flash_next_topology_frontier)
     && !dissolution_is_bound(condition: flash_next_roofline_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_measured_readings_frontier)
 }
@@ -355,4 +360,34 @@ test fn w_warm_throughput_scoreable_only_under_warm_valid() -> Bool {
   !throughput_scoreable(a: WarmNotYetAdmitted { trigger: bench_v2_records_trigger })
     && !throughput_scoreable(a: WarmAdmissionStanding { standing: WarmOverCapacity { working_set_tokens: token_count(count: 10), measured_kv_tokens: token_count(count: 5) } })
     && throughput_scoreable(a: WarmAdmissionStanding { standing: WarmValid { working_set_tokens: token_count(count: 5), measured_kv_tokens: token_count(count: 10) } })
+}
+
+// DP8 holds eight weight copies and TP8 one; the KV pool saved by sharding is capped by the 2 KV heads, so TP past 2
+// stops adding KV. Eight B200s of DP1 reproduce the measured card eight times.
+test fn w_topology_dp_replicates_weights_and_tp_kv_pool_caps_at_kv_heads() -> Bool {
+  let cell = quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 })
+  match cell {
+    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c) {
+      Present { value: b } => {
+        let dp8 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, b: b, kv_heads: 2)
+        let tp2dp4 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 4, expert_parallel: false }, b: b, kv_heads: 2)
+        let tp8 = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b, kv_heads: 2)
+        match dp8 {
+          TopologyFits { retained_tokens: r8, per_replica_tokens: p8, weight_copies_bytes: w8 } => match tp8 {
+            TopologyFits { retained_tokens: r1, per_replica_tokens: _, weight_copies_bytes: w1 } => match tp2dp4 {
+              TopologyFits { retained_tokens: r24, per_replica_tokens: _, weight_copies_bytes: _ } =>
+                p8 > 5000000 && p8 < 5100000 && r8 == p8 * 8 && w8 == w1 * 8 && r1 > p8 && r1 < p8 * 8 + p8 && r24 > r8 && r24 > r1
+              _ => false
+            }
+            _ => false
+          }
+          _ => false
+        }
+      }
+      none => false
+    }
+    none => false
+  }
+  && topology_cards(t: ServingTopology { tensor_parallel: 2, data_parallel: 4, expert_parallel: false }) == 8
+  && topology_host_ngram_copies(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, shared_copy: true) == 1
 }

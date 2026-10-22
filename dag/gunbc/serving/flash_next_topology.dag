@@ -1,0 +1,86 @@
+module gunbc.serving.flash_next_topology
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.serving.flash_next_quant_matrix { CellOutcome, CellMeasured }
+import gunbc.serving.flash_next_experiment_identity { host_ngram_table_copies }
+
+// TOPOLOGY IS A PARAMETER, not a hard-coded 8x1: tensor-parallel width x data-parallel replicas, with expert
+// parallelism a declared flag. DP replicates the weights per replica; TP shards them across the replica's cards.
+type ServingTopology {
+  tensor_parallel: Nat
+  data_parallel: Nat
+  expert_parallel: Bool
+}
+
+fn topology_cards(t: ServingTopology) -> Nat {
+  t.tensor_parallel * t.data_parallel
+}
+
+// What one card contributes, taken from a MEASURED matrix cell so overhead is derived, not assumed:
+//   overhead = utilization x memory - weights - kv   (everything the measured cell spent that is neither).
+type CardBudget {
+  memory_bytes: Nat
+  utilization_basis_points: Nat
+  weights_bytes: Nat
+  overhead_bytes: Nat
+  kv_bytes_per_token: Nat
+}
+
+fn gib_from_centi(centi: Nat) -> Nat {
+  centi * 1073741824 / 100
+}
+
+fn card_budget_from_measured_cell(memory_bytes: Nat, cell: CellOutcome) -> CardBudget? {
+  match cell {
+    CellMeasured { weights_centi_gib: w, kv_centi_gib: k, kv_tokens: t, gpu_memory_utilization_basis_points: u, throughput: _ } => {
+      let usable = memory_bytes * u / 10000
+      let weights = gib_from_centi(centi: w)
+      let kv = gib_from_centi(centi: k)
+      if usable >= weights + kv {
+        Present { value: CardBudget { memory_bytes: memory_bytes, utilization_basis_points: u, weights_bytes: weights, overhead_bytes: usable - weights - kv, kv_bytes_per_token: kv / t } }
+      } else {
+        none
+      }
+    }
+    _ => none
+  }
+}
+
+// KV heads cannot be split below one per card: past tp > kv_heads each extra card holds a full copy of the KV, so the
+// per-replica KV pool grows by min(tp, kv_heads), not tp. kv_heads is the config's 2 (qwen3_8_flash_next_architecture).
+fn kv_pool_cards(tp: Nat, kv_heads: Nat) -> Nat {
+  if tp > kv_heads { kv_heads } else { tp }
+}
+
+type TopologyCapacity
+  = TopologyFits { retained_tokens: Nat, per_replica_tokens: Nat, weight_copies_bytes: Nat }
+  | TopologyRefused { cause: NonEmptyStr }
+
+data weights_do_not_fit_cause: NonEmptyStr = "per-card weight shard plus overhead exceeds the utilization-scaled card memory" as NonEmptyStr
+
+// Aggregate retained tokens of the topology under the cell's own utilization. Weights shard by TP and replicate by DP;
+// the KV pool of a replica is the cards' usable memory minus the replica's weights and per-card overhead, divided by the
+// measured bytes per token, with KV replication past kv_heads accounted by kv_pool_cards.
+fn topology_capacity(t: ServingTopology, b: CardBudget, kv_heads: Nat) -> TopologyCapacity {
+  let usable = b.memory_bytes * b.utilization_basis_points / 10000
+  let shard = b.weights_bytes / t.tensor_parallel
+  if usable < shard + b.overhead_bytes {
+    TopologyRefused { cause: weights_do_not_fit_cause }
+  } else {
+    let free_per_card = usable - shard - b.overhead_bytes
+    let replica_kv = free_per_card * kv_pool_cards(tp: t.tensor_parallel, kv_heads: kv_heads)
+    let per_replica = replica_kv / b.kv_bytes_per_token
+    TopologyFits { retained_tokens: per_replica * t.data_parallel, per_replica_tokens: per_replica, weight_copies_bytes: b.weights_bytes * t.data_parallel }
+  }
+}
+
+// Host RAM for the n-gram table: one shared copy upstream for co-located DP replicas.
+fn topology_host_ngram_copies(t: ServingTopology, shared_copy: Bool) -> Nat {
+  host_ngram_table_copies(replicas: t.data_parallel, shared_copy: shared_copy)
+}
+
+data flash_next_topology_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: TP/EP collective-communication cost and the replica-to-card routing, CPU, NIC, thermal and NVSwitch effects are unmodeled until a multi-card run reports; the capacity here is KV arithmetic only, a first-order prediction and not a system result. EP weight placement (experts sharded separately from dense weights) is treated as TP sharding until measured." as NonEmptyStr
+)
