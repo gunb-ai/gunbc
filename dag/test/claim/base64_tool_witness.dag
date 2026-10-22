@@ -1,0 +1,75 @@
+module test.claim.base64_tool_witness
+
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.tools.base64 {
+  Base64FileRead,
+  Base64FileEncoded,
+  Base64FileUnreadable,
+  Base64FileStatusUnrecognized,
+  base64_file_read,
+  base64_encode_file_via_shell,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EXIT-STATUS TABLE OF extdeps.tools.base64, one witness per row. The statuses are the ones measured
+// on GNU coreutils 9.7 (missing path, permission-denied path and directory all exit 1), supplied here
+// as values at the fold's boundary. THE INHABITANCE CLAIM is test.claim.base64_tool_real_execution_witness: a real base64 run
+// over the committed chainloader, which executes the argv these supplied-status witnesses never reach.
+
+test fn status_zero_is_the_encoding() -> Bool {
+  match base64_file_read(text: "AAEC", exit_code: 0, stderr: "") {
+    Base64FileEncoded { text: t } => t == "AAEC"
+    Base64FileUnreadable { stderr: _ } => false
+    Base64FileStatusUnrecognized { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn an_empty_encoding_at_status_zero_is_the_empty_file_not_a_refusal() -> Bool {
+  match base64_file_read(text: "", exit_code: 0, stderr: "") {
+    Base64FileEncoded { text: t } => t == ""
+    Base64FileUnreadable { stderr: _ } => false
+    Base64FileStatusUnrecognized { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn status_one_is_unreadable_and_carries_stderr_unparsed() -> Bool {
+  match base64_file_read(text: "", exit_code: 1, stderr: "base64: /x: Permission denied") {
+    Base64FileUnreadable { stderr: s } => s == "base64: /x: Permission denied"
+    Base64FileEncoded { text: _ } => false
+    Base64FileStatusUnrecognized { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn status_one_ignores_stdout_even_when_text_is_present() -> Bool {
+  match base64_file_read(text: "QUJD", exit_code: 1, stderr: "base64: read error") {
+    Base64FileUnreadable { stderr: _ } => true
+    Base64FileEncoded { text: _ } => false
+    Base64FileStatusUnrecognized { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn an_unlisted_status_is_unrecognized_never_a_read() -> Bool {
+  match base64_file_read(text: "QUJD", exit_code: 2, stderr: "") {
+    Base64FileStatusUnrecognized { exit_code: c, stderr: _ } => c == 2
+    Base64FileEncoded { text: _ } => false
+    Base64FileUnreadable { stderr: _ } => false
+  }
+}
+
+test fn a_signal_status_is_unrecognized() -> Bool {
+  match base64_file_read(text: "", exit_code: 141, stderr: "") {
+    Base64FileStatusUnrecognized { exit_code: c, stderr: _ } => c == 141
+    Base64FileEncoded { text: _ } => false
+    Base64FileUnreadable { stderr: _ } => false
+  }
+}
+
+test fn the_hermetic_mock_realizes_the_empty_file() -> Bool {
+  match base64_encode_file_via_shell(path: "/mock/empty") {
+    Base64FileEncoded { text: t } => t == ""
+    Base64FileUnreadable { stderr: _ } => false
+    Base64FileStatusUnrecognized { exit_code: _, stderr: _ } => false
+  }
+}
