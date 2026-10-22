@@ -1,9 +1,9 @@
 module test.claim.fleet_fan_mint_seal_witness
 
 import std.types { String, Bool, Int }
-import std.optional { Present, Absent }
+import std.process { ProcessExit }
 import gunbc.compile_diagnostic_census { CensusNotRunnable, CensusObserved, CompileDiagnosticCensus, census_blocking_histograms_equal }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_rows, census_total_count }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
 
 // THE FLEET FAN OBSERVATION MINT IS TERMINAL-SEALED. Each probe is source handed to the compiler as
 // DATA (the pattern of operation_admit_callers_inert_witness), written as an OUTSIDE module that is
@@ -36,11 +36,8 @@ fn fan_census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn blocked_with(source: String, class: String) -> Bool {
-  match census_blocking_count_for_class(census: fan_census_of(source: source), wanted: class) {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
+fn blocked_with(source: String, class: String) -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: source, wanted_class: class), holds: fn(n) { n >= 1 }))
 }
 
 
@@ -60,19 +57,19 @@ fn clean(source: String) -> Bool {
   }
 }
 
-test fn witness_direct_literal_is_refused() -> Bool {
+test fn witness_direct_literal_is_refused() -> ProcessExit {
   blocked_with(source: literal_source, class: "SoleConstructorViolation")
 }
 
-test fn witness_direct_mint_call_is_refused() -> Bool {
+test fn witness_direct_mint_call_is_refused() -> ProcessExit {
   blocked_with(source: direct_mint_source, class: "ConstructorCallAdmissionRefused")
 }
 
-test fn witness_indirect_mint_through_read_is_refused() -> Bool {
+test fn witness_indirect_mint_through_read_is_refused() -> ProcessExit {
   blocked_with(source: indirect_read_source, class: "ConstructorCallAdmissionRefused")
 }
 
-test fn witness_indirect_subject_through_variant_subject_is_refused() -> Bool {
+test fn witness_indirect_subject_through_variant_subject_is_refused() -> ProcessExit {
   blocked_with(source: indirect_subject_source, class: "ConstructorCallAdmissionRefused")
 }
 
@@ -80,11 +77,11 @@ test fn witness_a_legal_outside_module_compiles_clean() -> Bool {
   clean(source: legal_outside_source)
 }
 
-test fn witness_converged_evidence_literal_is_refused() -> Bool {
+test fn witness_converged_evidence_literal_is_refused() -> ProcessExit {
   blocked_with(source: evidence_literal_source, class: "SoleConstructorViolation")
 }
 
-test fn witness_converged_evidence_mint_call_is_refused() -> Bool {
+test fn witness_converged_evidence_mint_call_is_refused() -> ProcessExit {
   blocked_with(source: evidence_mint_source, class: "ConstructorCallAdmissionRefused")
 }
 
