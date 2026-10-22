@@ -1,11 +1,4 @@
 module test.claim.srv3.srv3_os_install_actuate_workflow_witness
-import gunbc.srv3.srv3_os_install_actuate_workflow { Srv3BootOverrideSubject }
-import std.content_hash { ContentHash }
-import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent, CasSlotObservationRefused, CasSlotVersion, CasStoreRefused, CasUnreadableReadRefused }
-import std.effect_grant { NamespacePosition, NamespaceTree, ServiceOpTree, Verb }
-import std.live_tree { LiveTreeDisposition }
-import std.scoped_authorization { AuthorizationClaimState, AuthorizationGranted, AuthorizationRequest, AuthorizationScope, AuthorizedAction, OperatorGrant, ScopedAuthorization }
-import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
