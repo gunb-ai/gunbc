@@ -52,8 +52,7 @@ import gunbc.target_binding {
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, BindingDiffReading, NativeProcessMemoryReading,
-  DependencyDemandCensusProducer,
-  DeclRefCensusProducer,
+  NativeCensusVerbProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -829,11 +828,11 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 }
 
 fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: "demand-census" } }
 }
 
 fn decl_ref_census_binding() -> TargetBinding {
-  TargetBinding { target: decl_ref_census_label() producer: DeclRefCensusProducer {} }
+  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: "decl-ref-census" } }
 }
 
 fn generic_identity_census_binding() -> TargetBinding {

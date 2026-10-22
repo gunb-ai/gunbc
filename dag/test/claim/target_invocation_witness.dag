@@ -51,7 +51,7 @@ import gunbc.target_binding {
   DifferentialSourceRootAbsent, DifferentialReadingExecutionRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  DependencyDemandCensusProducer,
+  NativeCensusVerbProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -1053,7 +1053,7 @@ test fn the_dependency_demand_census_operand_routes_to_its_own_producer() -> Boo
   match invoke_target(operand: "//gunbc/instruments:dependency-demand-census") {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: dependency_demand_census_label())
-        && (b.producer == DependencyDemandCensusProducer {})
+        && (b.producer == NativeCensusVerbProducer { verb: "demand-census" })
         && !(b.producer == SelfHostBehavioralEquivalenceProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
@@ -1065,7 +1065,7 @@ test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: generic_identity_census_label())
         && (b.producer == GenericIdentityCensusProducer {})
-        && !(b.producer == DependencyDemandCensusProducer {})
+        && !(b.producer == NativeCensusVerbProducer { verb: "demand-census" })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
