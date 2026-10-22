@@ -3,7 +3,19 @@
 Opening commit of the representation PR (design note + reader census). Status: census classified, no production edit yet.
 
 ## Rule
-A type-argument node is the AUTHORED reference: authored name + its `DeclarationRef` + its authored arguments. Only `settled_type` expands an alias. Substitution keys on declaration-parameter identity, never on spelling, and never rewrites a cached expansion (drop it and re-settle).
+**The one applied type.** An applied type is ONE node: the carrier holding its authored name, its `DeclarationRef`, and its authored arguments. A type-argument wrapper holds that carrier and nothing else.
+
+**The cached expansion is not a value.** Today the carrier also holds `inferred: Resolved{expanded_node}`, the declaration body with slots substituted. That is a second representation of the same applied type, and readers (via `child_type_node` = `resolved_type(ch)`) hold it as if independent, which is how a stale or name-captured copy escapes. After this PR no reader may hold it. `settled_type` is its sole reader; it is at most a derived memo of (declaration, authored args), invalidated by any change to either, and substitution never rewrites it (drop, re-settle). Target end state: the field is removed from the node and any memo lives outside it.
+
+**Question kind decides which view a reader takes** (one rule, no per-reader exceptions without a stated reason):
+1. Nominal identity (brand, spelling, hashing, "was it written as X"): reads the authored reference. Brand/nominal aliases are opaque on purpose.
+2. Type equality of two instantiations: settles through TRANSPARENT aliases only, stops at a brand alias, compares arguments recursively.
+3. Structure, kind, inhabitance (container? arrow? coproduct? kernel scalar? read element or fields): calls `settled_type` first. An alias to a container is still a container.
+4. Pass-through and builders read no structure.
+
+Substitution keys on declaration-parameter identity, never spelling.
+
+**Fifth control** (with the four REDs below): one applied alias; change only the declaration parameters' spelling and order, preserving declaration identities. Every structural consumer gets the identical settled result; identity consumers still see the authored reference.
 
 ## Observed effects (each gets one RED, red on main, green at head)
 1. `Pair<B, A>` permutation by name capture (swift-badger p7–p9, `generic_arity_n_descent_witness`).
