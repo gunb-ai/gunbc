@@ -10,7 +10,7 @@ echo "REPO=$REPO"
 git remote set-url origin https://github.com/gunb-ai/gunbc 2>/dev/null || true
 git fetch -q origin +refs/heads/session/nimble-badger-800:refs/heads/session/nimble-badger-800 2>/dev/null || true
 git checkout -q -f -B session/nimble-badger-800 origin/session/nimble-badger-800 2>/dev/null || true
-OID=$(git rev-parse refs/verifier/668m 2>/dev/null || echo "")
+OID=7c97832508ad532bcc996b5ac520b862c43cb33f   # gh-resolved
 [ -d /sys/fs/cgroup ] || { echo "NO_CGROUP2 -- STOP"; exit 9; }
 echo +memory > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
 rm -rf /sys/fs/cgroup/ver668n 2>/dev/null || true; mkdir -p /sys/fs/cgroup/ver668n
