@@ -1,5 +1,7 @@
 module v2.test.claim.execution.rust_record_construct_emit_host_equals_eval
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_host {
@@ -143,7 +145,8 @@ fn rust_rec_nine_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
 fn rust_rec_nine_eval_inferred_tree() -> InferredTree {
   InferredTree {
     root: rust_rec_nine_arrow_node(),
-    facts: PartialFunction { lookup: rust_rec_nine_eval_composed_facts }
+    facts: PartialFunction { lookup: rust_rec_nine_eval_composed_facts },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 
