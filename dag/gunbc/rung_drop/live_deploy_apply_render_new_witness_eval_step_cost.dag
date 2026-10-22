@@ -1,7 +1,7 @@
 module gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged, population_from_list }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_apply_render_rows }
 
@@ -43,7 +43,7 @@ data live_deploy_apply_render_new_witness_eval_step_cost: RungDrop = RungDrop {
     reason: ReplacementStaged {
           replacement: "the production apply script as a shared fill-netted artifact reachable from every required-floor subject, so a changed emit claim does not re-pay live_deploy_apply_script_for in-frame",
     },
-    population: live_deploy_apply_render_new_witness_eval_step_cost_population,
+    population: population_from_list(xs: live_deploy_apply_render_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER: (i) emission witnesses reach a terminal verdict over the production apply script because that script is a shared fill-netted artifact (the capability v2.workflow.floor_cost_debt already names on this subject: either the script becomes a shared fill-netted artifact or an emission lane declares and enforces its own sufficient ceiling). Seeding a dag/test/claim module into every floor subject is a floor POLICY change and is one way to make the fill resolve; restoring the gunbc#11204 warm rows without that reach is not the capability. WHAT THE FILL MUST BE SUFFICIENT FOR: a required-floor claim over apply_script_stays_within_ci_runner_grants or repository_convergence_is_ordered_after_binary_and_before_readback does not re-pay live_deploy_apply_script_for per claim frame. (ii) AND each of the two identities measured under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Measuring the two under budget without the shared-fill capability does not retire the row; landing a fill that does not cover these two identities does not retire it either. Merely deleting either identity, emptying floor_cost_debt, or replacing production emission with a smaller fixture satisfies neither clause.",
   }
 }

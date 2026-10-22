@@ -1,4 +1,5 @@
 module gunbc.runner.runner_unit_live_read
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 
 type RunnerUnitLiveReadRow {
