@@ -5,11 +5,12 @@ import std.markdown {
   MarkdownTableCell, MarkdownTableRow, HeadingLevel,
   H1, H2, H3, H4, H5, H6,
   HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, TaskListBlock,
-  CodeBlock, CodeText, BlockquoteBlock, TableBlock,
+  CodeBlock, CodeText, CodeSymbolRef, SymbolRefInline, BlockquoteBlock, TableBlock,
   TextInline, EmphasisInline, StrongInline, CodeInline, LinkInline, ImageInline,
   CheckboxState, Checked, Unchecked,
   MarkdownAlignment, AlignNone, AlignLeft, AlignCenter, AlignRight,
 }
+import std.decl_ref { DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref, decl_field_ref }
 import extdeps.languages.markdown {
   MarkdownSpellings, commonmark_gfm_spellings,
   ingest_markdown_source, ingest_markdown_source_with,
@@ -195,3 +196,25 @@ test fn witness_row_driven_bullet() -> Bool {
   (canonical == "- x\n") && (perturbed == "+ x\n") && !(canonical == perturbed)
 }
 
+// A CITED SYMBOL IS SERIALIZED AS A CODE SPAN OF ITS ONE CANONICAL SPELLING, so typing a citation that
+// was hand-spelled in the spaced form changes no byte of a projected document. Each arm of CitedSymbol
+// (module; declaration; declaration field) is compared with the CodeInline the author used to write,
+// in a paragraph and inside a code block, and the field arm's spelling is asserted literally so a
+// renderer that dropped the field would not compare equal to itself.
+fn one_paragraph(inlines: List<MarkdownInline>) -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: [ParagraphBlock { inlines: inlines }] })
+}
+
+test fn witness_symbol_ref_serializes_as_its_canonical_code_span() -> Bool {
+  one_paragraph(inlines: [TextInline { text: "see " }, SymbolRefInline { symbol: ModuleSymbol { module: ModuleIdentity { name: "std.markdown" } } }])
+    == one_paragraph(inlines: [TextInline { text: "see " }, CodeInline { text: "std.markdown" }])
+  && one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.markdown", decl_name: "CodeBlock") } }])
+    == one_paragraph(inlines: [CodeInline { text: "std.markdown CodeBlock" }])
+  && one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_field_ref(module_path: "std.markdown", decl_name: "CodeText", field_name: "text") } }])
+    == "`std.markdown CodeText.text`\n"
+}
+
+test fn witness_code_symbol_ref_serializes_as_its_canonical_spelling() -> Bool {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: [CodeBlock { segments: [CodeText { text: "x // " }, CodeSymbolRef { symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.markdown", decl_name: "CodeBlock") } }, CodeText { text: "\n" }] }] })
+    == serialize_markdown_source(doc: code_only_doc(code: "x // std.markdown CodeBlock\n"))
+}
