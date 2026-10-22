@@ -64,7 +64,8 @@ service base64.Encode {
     transport shell { argv: ["base64", "-w", "0", "--", "{path}"] }
     exit {
       0 => Unit "the file's octets were printed as one base64 line"
-      nonzero => String "base64 could not read the file"
+      1 => String "base64 could not read the path (every file error, undivided)"
+      nonzero => String "base64 exited with a status this table has no row for; base64_file_read refuses it"
     }
     mock_response {
       0 => { text: "", success: true, exit_code: 0, stderr: "" } "hermetic coreutils base64: an empty file encodes to the empty string"
