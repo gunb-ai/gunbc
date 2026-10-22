@@ -604,6 +604,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("traversal-order-census"),
+            TargetProducer::NativeCensusVerb {
+                verb: "traversal-order-census",
+            },
+        ),
+        (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
         ),
