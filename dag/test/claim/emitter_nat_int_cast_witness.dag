@@ -17,8 +17,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // from Nat to i64")`). LEGALITY is a source-language fact: std.coercion declared_widening_rules names
 // the std.nat Nat DECLARATION (never the spelling) as widening to Int, validate_cast refuses any other
 // cast from that declaration at TYPE CHECK ("no declared conversion route"), and emit only realizes
-// the declared route as the identity. The emitter's unsupported-cast arm is therefore an unreachable
-// invariant on an Accepted program.
+// the declared route as the identity. The emitter's unsupported-cast arm remains a RESIDUAL GAP, not
+// an invariant: a cast the checker skips (below) still reaches it as a runtime abort.
 //
 // dissolve-on: std.coercion cast rows are declaration-keyed throughout (grounded_primitive_coproduct_identities
 // and dag_cast_rules are still name-keyed); a user `type Nat` cast to Int is skipped by the checker
