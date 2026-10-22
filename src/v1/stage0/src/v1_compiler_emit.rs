@@ -23,6 +23,7 @@ pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
+pub use crate::gunbc_structural_realization_bindings::kernel_grounding_rows;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 use crate::std_coercion::TypeRealizationDecision::*;
@@ -39,6 +40,7 @@ pub use crate::std_compiler_entry::{
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_literal_elaboration::declaration_is_grounded_natural;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
@@ -6856,8 +6858,6 @@ pub fn cast_source_representation_identical(
 pub fn cast_source_grounded_onto_target_carrier(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
-    target_spelling: String,
-    target: RenderTarget,
     env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -6869,29 +6869,16 @@ pub fn cast_source_grounded_onto_target_carrier(
                 env.clone(),
             ) {
                 Some(d) => {
-                    if crate::std_coercion::dag_declared_widening_admits(
+                    (crate::std_coercion::dag_declared_widening_admits(
                         d.clone(),
                         crate::v1_std_core::authored_name_at(
                             source_indices.clone(),
                             cast_target_node.clone(),
                         ),
-                    ) {
-                        match crate::v1_compiler_coercion::realization_host_numeric_spelling(
-                            crate::v1_compiler_coercion::type_reference_realization(
-                                n.clone(),
-                                crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    n.clone(),
-                                ),
-                                target.clone(),
-                            ),
-                        ) {
-                            Some(spelling) => (spelling.clone() == target_spelling.clone()),
-                            std::option::Option::None => false,
-                        }
-                    } else {
-                        false
-                    }
+                    ) && crate::std_literal_elaboration::declaration_is_grounded_natural(
+                        kernel_grounding_rows(),
+                        d.clone(),
+                    ))
                 }
                 std::option::Option::None => false,
             }
@@ -6935,8 +6922,6 @@ pub fn emit_typed_cast_shared(
                 if cast_source_grounded_onto_target_carrier(
                     expr.clone(),
                     cast_target_node.clone(),
-                    ty_str.clone(),
-                    target.clone(),
                     env.clone(),
                     source_indices.clone(),
                 ) {
