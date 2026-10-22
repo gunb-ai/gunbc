@@ -49,8 +49,8 @@ RBB=$(cat /sys/fs/cgroup/verB/memory.max)
 echo "  B cgroup=/sys/fs/cgroup/verB memory.max(read-back)=$RBB BUILDBUDDY_RUN_ID=[unset]"
 exec 12>>/sys/fs/cgroup/verB/cgroup.procs; echo $BASHPID >&12
 cd $WT && env -u BUILDBUDDY_RUN_ID timeout 900 $CB $CMD > /tmp/c4h_B.out 2>&1
-echo "  B cgroup now: $(cat /proc/self/cgroup)"
 RC_B=$?
+echo "  B cgroup now: $(cat /proc/self/cgroup)"
 echo "  rc=$RC_B $(date -u +%H:%M:%S)Z"
 sed 's/^/    B| /' /tmp/c4h_B.out | grep -aE 'UNOBSERVED|HostBudget|panic|OUTPUT-POLICY|REFUSAL' | cut -c1-190 | head -10
 echo "  B counters: PASS=$(grep -ac '^PASS ' /tmp/c4h_B.out) FAIL=$(grep -ac '^FAIL ' /tmp/c4h_B.out) UNOBSERVED_HBU=$(grep -ac 'UNOBSERVED cause=HostBudgetUnreadable' /tmp/c4h_B.out) panic=$(grep -ac 'panicked' /tmp/c4h_B.out)"
