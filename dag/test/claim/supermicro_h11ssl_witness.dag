@@ -39,7 +39,7 @@ import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   ServiceRootRefused, ServiceRootAnswered,
   UnitVariantObserved, UnitStorageProjected, UnitStorageRefusedVariantUnread,
   supermicro_h11ssl_receipt_bmc_identity_coherent, H11sslLabelObservation, H11sslLicenceActivation, supermicro_h11ssl_unit_variant_standing, supermicro_h11ssl_unit_storage_projection,
-  supermicro_h11ssl_unit_population_observation, supermicro_h11ssl_unit_fan_wiring, supermicro_h11ssl_unit_wired_fans_are_board_headers, H11sslUnitFanWiring,
+  supermicro_h11ssl_unit_population_observation, UnitPopulationObserved, UnitCalloutUnrecognised, supermicro_h11ssl_unit_fan_wiring, supermicro_h11ssl_unit_wired_fans_are_board_headers, H11sslUnitFanWiring,
 }
 
 // The 4-DIMM guides differ by CPU family: the 7001 guide is C1,A1,E1,H1 and the 7002 guide is
@@ -350,12 +350,26 @@ test fn w_population_read_is_cited_to_authority() -> Bool {
 // Unit observation: DIMMA1 is A1, same bank as the pictured C1 and nearer the socket; the
 // standing is unestablished placement, not a refusal.
 test fn w_unit_dimma1_is_an_observation_not_a_refusal() -> Bool {
-  let o = supermicro_h11ssl_unit_population_observation(family: Epyc7002, reported_callout: "DIMMA1")
-  o.reported_short_name == "A1"
-    && o.pictured_single_dimm_slot == "C1"
-    && o.same_bank_as_pictured_slot
-    && o.nearer_socket_than_pictured_slot
-    && match o.standing { PlacementUnestablished { slots: _ } => true  _ => false }
+  match supermicro_h11ssl_unit_population_observation(family: Epyc7002, reported_callout: "DIMMA1") {
+    UnitPopulationObserved { observation: o } =>
+      o.reported_short_name == "A1"
+        && o.pictured_single_dimm_slots == ["C1"]
+        && o.same_bank_as_a_pictured_slot
+        && o.nearer_socket_than_a_pictured_slot
+        && match o.standing { PlacementUnestablished { slots: _ } => true  _ => false }
+    UnitCalloutUnrecognised { reported_callout: _ } => false
+  }
+}
+
+// RED control: a callout or casing the board does not have is refused, not carried as a slot.
+test fn w_unit_unknown_callout_is_refused() -> Bool {
+  match supermicro_h11ssl_unit_population_observation(family: Epyc7002, reported_callout: "DIMMZ1") {
+    UnitCalloutUnrecognised { reported_callout: _ } => true
+    UnitPopulationObserved { observation: _ } => false
+  } && match supermicro_h11ssl_unit_population_observation(family: Epyc7002, reported_callout: "dimma1") {
+    UnitCalloutUnrecognised { reported_callout: _ } => true
+    UnitPopulationObserved { observation: _ } => false
+  }
 }
 
 test fn w_unit_fan3_is_a_board_header_and_chassis_fans_are_not() -> Bool {

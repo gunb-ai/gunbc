@@ -9,7 +9,7 @@ import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStandi
 import extdeps.boards.supermicro_h11ssl {
   supermicro_h11ssl_board_authority, H11sslVariant, H11sslStorageSupport, supermicro_h11ssl_storage_support,
   H11sslCpuFamily, H11sslPopulationStanding, supermicro_h11ssl_population_standing,
-  supermicro_h11ssl_dimm_placements, supermicro_h11ssl_fan_headers,
+  supermicro_h11ssl_dimm_placements, supermicro_h11ssl_fan_headers, supermicro_h11ssl_pictured_single_dimm_slots,
 }
 import extdeps.boards.physical_layout { dimm_slots_named, dimms_share_bank, dimm_nearer_socket_than }
 import extdeps.board_authority { BoardAuthorityRef }
@@ -388,25 +388,34 @@ fn supermicro_h11ssl_receipt_bmc_identity_coherent(r: H11sslFirstContactReceipt)
 type H11sslUnitPopulationObservation {
   reported_callout: NonEmptyStr
   reported_short_name: NonEmptyStr
-  pictured_single_dimm_slot: NonEmptyStr
+  pictured_single_dimm_slots: List<NonEmptyStr>
   standing: H11sslPopulationStanding
-  same_bank_as_pictured_slot: Bool
-  nearer_socket_than_pictured_slot: Bool
+  same_bank_as_a_pictured_slot: Bool
+  nearer_socket_than_a_pictured_slot: Bool
 }
 
-fn h11ssl_short_name_of_callout(callout: NonEmptyStr) -> NonEmptyStr {
-  fold(supermicro_h11ssl_dimm_placements, init: callout, f: (acc, p) => if p.callout == callout { p.short_name } else { acc })
-}
+// A callout the board does not have is refused, never carried as a short name.
+type H11sslUnitPopulationReading
+  = UnitPopulationObserved { observation: H11sslUnitPopulationObservation }
+  | UnitCalloutUnrecognised { reported_callout: NonEmptyStr }
 
-fn supermicro_h11ssl_unit_population_observation(family: H11sslCpuFamily, reported_callout: NonEmptyStr) -> H11sslUnitPopulationObservation {
+fn h11ssl_observe_population(family: H11sslCpuFamily, callout: NonEmptyStr, short: NonEmptyStr) -> H11sslUnitPopulationObservation {
+  let pictured = supermicro_h11ssl_pictured_single_dimm_slots(family: family)
   H11sslUnitPopulationObservation {
-    reported_callout: reported_callout,
-    reported_short_name: h11ssl_short_name_of_callout(callout: reported_callout),
-    pictured_single_dimm_slot: "C1",
-    standing: supermicro_h11ssl_population_standing(family: family, candidate: [h11ssl_short_name_of_callout(callout: reported_callout)]),
-    same_bank_as_pictured_slot: dimms_share_bank(placements: supermicro_h11ssl_dimm_placements, a: h11ssl_short_name_of_callout(callout: reported_callout), b: "C1"),
-    nearer_socket_than_pictured_slot: dimm_nearer_socket_than(placements: supermicro_h11ssl_dimm_placements, near: h11ssl_short_name_of_callout(callout: reported_callout), far: "C1"),
+    reported_callout: callout,
+    reported_short_name: short,
+    pictured_single_dimm_slots: pictured,
+    standing: supermicro_h11ssl_population_standing(family: family, candidate: [short]),
+    same_bank_as_a_pictured_slot: any(pictured, c => dimms_share_bank(placements: supermicro_h11ssl_dimm_placements, a: short, b: c)),
+    nearer_socket_than_a_pictured_slot: any(pictured, c => dimm_nearer_socket_than(placements: supermicro_h11ssl_dimm_placements, near: short, far: c)),
   }
+}
+
+fn supermicro_h11ssl_unit_population_observation(family: H11sslCpuFamily, reported_callout: NonEmptyStr) -> H11sslUnitPopulationReading {
+  fold(supermicro_h11ssl_dimm_placements, init: UnitCalloutUnrecognised { reported_callout: reported_callout }, f: (acc, p) =>
+    if p.callout == reported_callout {
+      UnitPopulationObserved { observation: h11ssl_observe_population(family: family, callout: reported_callout, short: p.short_name) }
+    } else { acc })
 }
 
 // Fan wiring as the operator reports it (2026-10-18): only FAN3 carries a fan, and the chassis
