@@ -14975,11 +14975,18 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
 
     let new_children = n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices))
     let new_params = n.params |> map(p => substitute_generics_apply(n: p, subst: subst, source_indices: source_indices))
+    // An arrow's inferred IS its return type, so it substitutes. On any other non-bare node the
+    // Resolved target is the cached EXPANSION of the application, spelled in the declaration's
+    // parameter names, which the callee's names are not: rewriting it captures them (a permuting
+    // return -> Pair<B, A>) or leaves a stale body. The substituted children carry the instantiation,
+    // so the cache is dropped and the reader settles through them.
     let new_inferred = match n.inferred {
       Present { value: Resolved { node: rt } } =>
-        let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
-        if rc_ptr_eq(new_rt, rt) { n.inferred }
-        else { Present { value: Resolved { node: new_rt } } }
+        if n.connective == Arrow {
+          let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
+          if rc_ptr_eq(new_rt, rt) { n.inferred }
+          else { Present { value: Resolved { node: new_rt } } }
+        } else { none }
       _ => n.inferred
     }
     if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
