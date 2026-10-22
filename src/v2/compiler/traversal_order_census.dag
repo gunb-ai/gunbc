@@ -376,14 +376,6 @@ fn trav_is_site(prims: Map<String, Bool>, f: TraversalFnFact, m: TraversalMentio
   }
 }
 
-fn trav_class_word(c: TraversalClass) -> String {
-  match c {
-    StructuralEnumeration { builds: _ } => "structural"
-    ExplicitRecurrence { carrier: _ } => "recurrence"
-    AdmittedFusedRealization { discharge: _ } => "fused"
-  }
-}
-
 fn trav_row_count(rows: List<TraversalDisposition>, key: TraversalSiteKey) -> Int {
   fold_list(xs: rows, empty: 0, cons: fn(n, r) { if traversal_key_same(a: r.key, b: key) { n + 1 } else { n } })
 }
@@ -397,32 +389,24 @@ fn trav_row_for(rows: List<TraversalDisposition>, key: TraversalSiteKey) -> Opti
   })
 }
 
-// A row is a CLAIM and is judged: a fused arm is valid
-// only when its discharge is an existing plan-discharge record.
-fn trav_judged_word(c: TraversalClass, discharges: List<String>) -> String {
+// A row is a CLAIM about the site; its class word is the arm. A fused arm carries a DeclarationRef to the
+// plan's discharge declaration, which the compiler resolves, so a fused row naming nothing real is unwritable.
+fn trav_class_word(c: TraversalClass) -> String {
   match c {
     StructuralEnumeration { builds: _ } => "structural"
     ExplicitRecurrence { carrier: _ } => "recurrence"
-    AdmittedFusedRealization { discharge: d } => if fold_list(xs: discharges, empty: false, cons: fn(any, x) { any || x == d.part }) { "fused" } else { "unresolved" }
+    AdmittedFusedRealization { discharge: _ } => "fused"
   }
 }
 
-fn trav_judged_cause(c: TraversalClass, discharges: List<String>) -> String {
-  match c {
-    StructuralEnumeration { builds: _ } => ""
-    ExplicitRecurrence { carrier: _ } => ""
-    AdmittedFusedRealization { discharge: d } => if fold_list(xs: discharges, empty: false, cons: fn(any, x) { any || x == d.part }) { "" } else { "fused_without_discharge" }
-  }
-}
-
-fn trav_result(stage: String, module: String, key: TraversalSiteKey, rows: List<TraversalDisposition>, discharges: List<String>) -> TraversalSiteResult {
+fn trav_result(stage: String, module: String, key: TraversalSiteKey, rows: List<TraversalDisposition>) -> TraversalSiteResult {
   if trav_row_count(rows: rows, key: key) > 1 {
     TraversalSiteResult { stage: stage, module: module, key: key, class_word: "unresolved", cause: "duplicate_row" }
   } else {
     match trav_row_for(rows: rows, key: key) {
       Absent => TraversalSiteResult { stage: stage, module: module, key: key, class_word: "unresolved", cause: "no_row" }
       Present { value: c } =>
-        TraversalSiteResult { stage: stage, module: module, key: key, class_word: trav_judged_word(c: c, discharges: discharges), cause: trav_judged_cause(c: c, discharges: discharges) }
+        TraversalSiteResult { stage: stage, module: module, key: key, class_word: trav_class_word(c: c), cause: "" }
     }
   }
 }
@@ -482,8 +466,7 @@ fn traversal_census_join(
   stages: List<TraversalStage>,
   facts: List<TraversalFnFact>,
   rows: List<TraversalDisposition>,
-  seeds: List<String>,
-  discharges: List<String>
+  seeds: List<String>
 ) -> TraversalCensusReport {
   let owned = trav_owned_modules(stages: stages)
   let prims = trav_primitives(seeds: seeds, facts: facts, owned: owned)
@@ -492,7 +475,7 @@ fn traversal_census_join(
     if trav_has(m: owned, key: f.module) {
       fold_list(xs: f.mentions, empty: acc, cons: fn(a, m) {
         if trav_is_site(prims: prims, f: f, m: m) {
-          list_snoc_item(xs: a, item: trav_result(stage: trav_stage_of_module(stages: stages, module: f.module), module: f.module, key: trav_site_key(f: f, m: m), rows: rows, discharges: discharges))
+          list_snoc_item(xs: a, item: trav_result(stage: trav_stage_of_module(stages: stages, module: f.module), module: f.module, key: trav_site_key(f: f, m: m), rows: rows))
         } else {
           a
         }

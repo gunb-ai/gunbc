@@ -305,7 +305,6 @@ import v2.compiler.fold_lowering { collection_roster_rows }
 import v2.compiler.traversal_order_roster {
   traversal_closure_scope,
   traversal_dispositions,
-  traversal_plan_discharges,
   traversal_primitive_seeds,
   traversal_stage_roster
 }
@@ -3324,8 +3323,7 @@ fn native_traversal_order_census_output(ingest: SourceRootIngest) -> NativeTrave
               stages: traversal_stage_roster,
               facts: walked.facts,
               rows: traversal_dispositions,
-              seeds: native_traversal_census_seeds(),
-              discharges: traversal_plan_discharges
+              seeds: native_traversal_census_seeds()
             )
             let report = TraversalCensusReport {
               results: joined.results,

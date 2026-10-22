@@ -13,10 +13,10 @@ module v2.compiler.traversal_order_roster
 //                                  built. A `builds` that names nothing is unwritable (NonEmptyStr).
 //   ExplicitRecurrence          -- a real carrier: each step's result feeds the next. `carrier` names the
 //                                  value that is threaded. A `carrier` that names nothing is unwritable (NonEmptyStr).
-//   AdmittedFusedRealization    -- the site realizes a named part of the demand-engine plan. It carries the
-//                                  path of an ACTUAL plan-discharge record; the arm is not valid unless
-//                                  that path is one of traversal_plan_discharges(), and no plan exists
-//                                  yet, so a site claiming it stays Unresolved.
+//   AdmittedFusedRealization    -- the site realizes a named part of the demand-engine plan. It carries a
+//                                  DeclarationRef to the plan's discharge declaration, which the compiler
+//                                  resolves, so a row naming nothing real is unwritable; no plan exists
+//                                  yet, so expect no such row.
 //
 // THE SITE KEY is (enclosing declaration, child-index path from the declaration's body, the callee or
 // field read, the kind, a content digest of the site's own expression). The path is POSITIONAL: an edit
@@ -26,6 +26,7 @@ module v2.compiler.traversal_order_roster
 // disagrees with the code now at that path. No line number or ordinal appears in a key.
 
 import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import v2.std.text { String }
 import v2.std.integer { Int }
 
@@ -42,14 +43,10 @@ type TraversalSiteKey {
   shape: String
 }
 
-type TraversalPlanDischarge {
-  part: String
-}
-
 type TraversalClass
   = StructuralEnumeration { builds: NonEmptyStr }
   | ExplicitRecurrence { carrier: NonEmptyStr }
-  | AdmittedFusedRealization { discharge: TraversalPlanDischarge }
+  | AdmittedFusedRealization { discharge: DeclarationRef }
 
 type TraversalDisposition {
   key: TraversalSiteKey
@@ -94,10 +91,6 @@ data traversal_primitive_seeds: List<String> = [
   "v2.std.node.fold_node_dependent",
   "v2.std.node.node_subtree_nodes"
 ]
-
-// The plan-discharge records that exist. No demand-engine plan has been discharged, so no fused
-// realization can be admitted; the arm exists so that the first discharge makes a row, not a branch.
-data traversal_plan_discharges: List<String> = []
 
 // Rows are added only where the class can be justified from what the site computes. A site whose class
 // cannot be justified stays Unresolved, and that is a valid answer.
