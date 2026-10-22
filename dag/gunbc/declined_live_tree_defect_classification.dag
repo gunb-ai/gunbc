@@ -100,16 +100,19 @@ type WrongWitnessFault =
 // NO FIGURES FIELD EXISTS, deliberately. A receipt that copies "declared roots 27, admitted roots 27"
 // duplicates what the named instrument computes, so the copy can go stale while the instrument still
 // says otherwise -- review 84083's count-copy. What a carrier may assert is that the named instrument,
-// run on the named head over the named routes, produced the named outcome. Anyone can re-run the
-// instrument; nobody can keep a stale number alive by editing a string.// THE RESULT THE RE-RUN PRODUCED is a ClaimDisposition from the ledger's own sum — the same authority
-// the floor uses to say what a claim did — not a word typed into this file. `Passed` is the only
-// disposition that closes a row, and the witness refuses anything else rather than reading closure off
-// prose.
+// run on the named head over the named routes, produced the result. Anyone can re-run the instrument;
+// nobody can keep a stale number alive by editing a string.
+// THE OLD `outcome: ClaimDisposition` FIELD WAS DELETED (review 84472). Both arms of `Closure` record a
+// CLOSED row, so `Passed` was the only value the field could legally hold and `outcome_is_passed` was a
+// validator restating a constraint the type already carried -- DESIGN §5: "a check restating a constraint
+// the model already carries is a second representation of it." Deleting the field makes the non-Passed
+// receipt unwritable instead of refused, which is what the same PR did to `on_both_routes` (84231) and to
+// `standing_before`. Whether a closed row's claim still passes is established by EXECUTING it: the wet
+// schedule enrolment the retirement witness joins against, not by a field that could only say it passed.
 type ReMeasurement {
   head: CommitSha
   on: Iso8601CivilDate
   routes: List<ExecutionMode>
-  outcome: ClaimDisposition
   instrument: DeclarationRef
 }
 
@@ -124,7 +127,8 @@ type ReMeasurement {
 //    reference to a fact nobody can re-check, which is what reviews 84071/84083 refused.
 //  - RestsOnExecutedCheck: no change can be attributed — the history was rewritten, or the row's wall
 //    was never a defect at all — and what closes it instead is the executed re-measurement plus the
-//    durable account of why nothing is attributable. `re_measured.outcome` must still be `Passed`;
+//    durable account of why nothing is attributable. What closes the row is the executed re-measurement
+//    itself -- the named instrument, the named head, the named routes -- and nothing else;
 //    this arm is not a place to put an unverified row.
 // `RoutedToOwner` is deliberately NOT reused with a receipt: an owner who has not closed anything is a
 // different fact from a closure that rests on a check (DESIGN §3 — one name, one meaning).
@@ -136,10 +140,9 @@ type Closure
   = AttributedToChange { change: ChangeCitation, durable_account: List<DeclarationRef>, re_measured: ReMeasurement }
   | RestsOnExecutedCheck { why_no_change: NonEmptyStr, durable_account: List<DeclarationRef>, re_measured: ReMeasurement }
 
-// THE CLOSURE A CLOSED ROW CARRIES. `ClosedByPriorChange` below and `RetiredExpectedRedRow` in
-// v2.workflow.floor_expected_red read this one sum; the old `ClosureReceipt` record it replaces had
-// two String fields and no readers. A row whose closure is an empty `durable_account` on the
-// RestsOnExecutedCheck arm, or an outcome that is not `Passed`, is refused by
+// THE CLOSURE A CLOSED ROW CARRIES. `RetiredExpectedRedRow` in v2.workflow.floor_expected_red reads this
+// one sum; the old `ClosureReceipt` record it replaces had two String fields and no readers. A row whose
+// closure is an empty `durable_account` on the RestsOnExecutedCheck arm is refused by
 // test.claim.floor_expected_red_retirement_witness, not accepted as prose.
 
 type ClassificationDisposition =
@@ -202,7 +205,7 @@ data doc_reachability_rows: List<ClassifiedRow> = [
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     // MEASURED, NOT RESTATED-AS-GREEN. This claim runs in neither the wet nor the hermetic lane on this
-    // dispatch, so this row carries NO re-measurement: a ReMeasurement whose outcome is Passed would be an
+    // dispatch, so this row carries NO re-measurement: any ReMeasurement recorded here would assert an
     // executed rung the claim has not earned (§4b(1) rung inflation). It stays on the roster as ExpectedRed
     // with this 2026-08-24 measured statement of the population it failed on. The g1 controls' re-homing by
     // #9181 has no surviving record in this tree (see the group-B header), so the row is NOT closed by that

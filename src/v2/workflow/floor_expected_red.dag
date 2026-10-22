@@ -1407,7 +1407,7 @@ fn floor_expected_red_chunk_belt_recapture_wet_red() -> List<String> {
 // THE RETIRED ROWS, SAID IN DATA RATHER THAN COMMENT. When a row leaves this roster, its reason and
 // its receipt used to live only in a `//` block above `floor_expected_red_chunks()`, where no fold
 // reads them and a reviewer cannot check them against the tree. Each retirement this roster records
-// now carries its own row here: the identity, the standing it held, why it left, and the typed
+// now carries its own row here: the identity, why it left, and the typed
 // closure receipt (the commits that closed it, or the honest statement that none is established, plus
 // what was re-measured and where). The prose blocks above the chunks keep only what a reader needs at
 // the site (a pointer here); the ACCOUNTING is this data.
@@ -1432,8 +1432,11 @@ fn floor_expected_red_chunk_belt_recapture_wet_red() -> List<String> {
 // FIELD-BY-FIELD, the witness (`retired_rows_are_accounted_for` + the three arm controls) reads
 // EVERY field of this record, so none can lie quietly:
 //  - identity: joined against the live roster (arm 1) and the wet schedule (arm 2).
-//  - standing_before: refused unless it is ExpectedRed — a row cannot retire from a standing it
-//    never held, and the field is checked rather than decorative.
+//  - (there is no standing field). A row of this type STOOD RED — that is what the type's name
+//    asserts, so the old `standing_before: ClaimExpectation` was DELETED (review 84472). It admitted
+//    exactly one legal value, `ExpectedRed`, and the witness refused every other one: a validator
+//    restating a constraint the model already carries, DESIGN §5's "correctness by construction, not
+//    validation". With the field gone the illegal standing is unwritable rather than refused.
 //  - enrolled_on: a real calendar date (the module's own civil-date round-trip) on or before the
 //    re-measurement day; Absent where the ledger never recorded one, which row 3 discloses.
 //  - (there is no route boolean). Which routes the row was measured on is a fact the closure's
@@ -1448,7 +1451,6 @@ fn floor_expected_red_chunk_belt_recapture_wet_red() -> List<String> {
 //  - closure: see gunbc.declined_live_tree_defect_classification — two arms, no third.
 type RetiredExpectedRedRow {
   identity: WitnessIdentity,
-  standing_before: ClaimExpectation,
   enrolled_on: Optional<Iso8601CivilDate>,
   trigger: Optional<DeclarationRef>,
   closure: Closure,
@@ -1495,7 +1497,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
         module_path: "test.claim.direct_call_argument_type_witness",
         function: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch",
       },
-      standing_before: ExpectedRed,
       enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
       trigger: Absent,
       closure: RestsOnExecutedCheck {
@@ -1509,7 +1510,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
           head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
           on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
           routes: [Wet, Hermetic],
-          outcome: Passed,
           instrument: decl_ref(module_path: "test.claim.direct_call_argument_type_witness", decl_name: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch"),
         },
       },
@@ -1525,7 +1525,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
         module_path: "v2.test.claim.manual.bootstrap_footprint_anchor",
         function: "bootstrap_footprint_canonical_holds",
       },
-      standing_before: ExpectedRed,
       enrolled_on: Absent,
       trigger: Present { value: decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point") },
       closure: AttributedToChange {
@@ -1538,7 +1537,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
           head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
           on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
           routes: [Wet, Hermetic],
-          outcome: Passed,
           instrument: decl_ref(module_path: "v2.test.claim.manual.bootstrap_footprint_anchor", decl_name: "bootstrap_footprint_canonical_holds"),
         },
       },
@@ -1553,7 +1551,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
         module_path: "v2.test.claim.manual.ingest_bridge",
         function: "ingest_identity_coercion_accepts_source_present_in_authored_roster",
       },
-      standing_before: ExpectedRed,
       enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 9, day: 27 } },
       trigger: Present { value: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic") },
       closure: AttributedToChange {
@@ -1566,7 +1563,6 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
           head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
           on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
           routes: [Wet, Hermetic],
-          outcome: Passed,
           instrument: decl_ref(module_path: "v2.test.claim.manual.ingest_bridge", decl_name: "ingest_identity_coercion_accepts_source_present_in_authored_roster"),
         },
       },

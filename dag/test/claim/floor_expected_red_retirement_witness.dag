@@ -17,7 +17,12 @@ module test.claim.floor_expected_red_retirement_witness
 //                   enrolled), and the wet lane's own schedule carries that same qualified name with
 //                   expectation ExpectedToHold (§4b meta-obligation 4: a row that went green when its
 //                   wall landed becomes a permanent regression control).
-//   2. standing_before -- must be ExpectedRed. A row cannot retire from a standing it never held.
+//   2. (no field) -- a retired row STOOD RED; that is what the type says, so the old `standing_before`
+//                   field was DELETED (review 84472). It held one legal value, `ExpectedRed`, and the
+//                   witness refused every other one -- which is a check restating a constraint the model
+//                   already carried (DESIGN 5: correctness by construction, not validation), and it meant
+//                   the illegal `ExpectedToHold` row was writable at all. What is unwritable needs no
+//                   validator, so the field and its refusal arm went together.
 //   3. enrolled_on -- when Present, a real civil date (the calendar module's own round-trip) that does
 //                   not post-date its own re-measurement. When Absent, honest absence: two rows'
 //                   enrolling date was never recorded, and this claim does not let one be invented.
@@ -33,8 +38,13 @@ module test.claim.floor_expected_red_retirement_witness
 //                   `cited_declaration_ref_refusal_count_live` the long-haul carrier witness uses. An
 //                   attributed closure that consists only of a pull-request number is a reference to a
 //                   fact nobody can check from the tree, which is what review 84071's first finding named.
-//   6. closure.re_measured -- a well-formed head, a real date, a non-empty route list, the outcome, and
-//                   the instrument that produced it.
+//   6. closure.re_measured -- a well-formed head, a real date, a non-empty route list, and the
+//                   instrument that produced it. The old `outcome` field was deleted with `standing_before`
+//                   (review 84472) for the same reason: `Closure` has exactly two arms and both record a
+//                   CLOSED row, so the only legal value was `Passed` and `outcome_is_passed` was a
+//                   validator restating the sum. Whether the row's claim actually passes is settled by
+//                   EXECUTING it -- the wet schedule enrolment checked by item 1 -- not by a field that
+//                   could only ever say it did.
 //   7. instrument -- named as the claim ITSELF: its module_path and decl_name must equal the retired
 //                   row's own identity, and its module must be a declared module the live module index
 //                   can name. A receipt crediting some unrelated claim with closing a row is exactly the
@@ -104,20 +114,6 @@ fn expectation_is_expected_to_hold(e: ClaimExpectation) -> Bool {
   }
 }
 
-fn expectation_is_expected_red(e: ClaimExpectation) -> Bool {
-  match e {
-    ExpectedRed => true
-    ExpectedToHold => false
-  }
-}
-
-fn outcome_is_passed(d: ClaimDisposition) -> Bool {
-  match d {
-    Passed => true
-    _ => false
-  }
-}
-
 // A REAL CALENDAR DAY, checked by the calendar module's own round-trip rather than by a shape test
 // written here. A date that cannot survive days -> civil -> days is not a date, and the old
 // `re_measured_at` string accepted any text at all, including a blank.
@@ -168,14 +164,12 @@ fn refusal_labels_for_row(
     "still-enrolled",
     "absent-from-wet-schedule",
     "scheduled-under-wrong-expectation",
-    "standing-not-ExpectedRed",
     "enrolment-date-not-a-civil-date",
     "enrolment-date-after-its-own-measurement",
     "empty-durable-account",
     "unresolvable-durable-account",
     "head-not-a-commit-sha",
     "receipt-names-no-route",
-    "outcome-not-Passed",
     "instrument-is-not-the-row-itself",
     "instrument-module-not-declared",
     "trigger-declaration-does-not-resolve",
@@ -219,8 +213,6 @@ fn refusal_fires(
           && !(expectation_is_expected_to_hold(e: s.expectation))
       }
     )
-  } else if label == "standing-not-ExpectedRed" {
-    !(expectation_is_expected_red(e: r.standing_before))
   } else if label == "enrolment-date-not-a-civil-date" {
     match r.enrolled_on {
       Absent => false
@@ -246,8 +238,6 @@ fn refusal_fires(
   // what was actually executed.
   } else if label == "receipt-names-no-route" {
     length(xs: rm.routes) == 0
-  } else if label == "outcome-not-Passed" {
-    !(outcome_is_passed(d: rm.outcome))
   } else if label == "instrument-is-not-the-row-itself" {
     (rm.instrument.module_path as String != r.identity.module_path as String)
       || (rm.instrument.decl_name as String != r.identity.function as String)
@@ -401,7 +391,6 @@ fn control_remeasurement() -> ReMeasurement {
     head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
     on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
     routes: [Wet, Hermetic],
-    outcome: Passed,
     // REAL AND RESOLVABLE, per the manager ruling. A control that must refuse nothing cannot rest on a
     // fictional module: `instrument-module-not-declared` fires on any instrument whose module resolves to
     // no declaration, and a control that fires it makes all seven arm controls fail (each demands the
@@ -434,7 +423,6 @@ fn control_row() -> RetiredExpectedRedRow {
       module_path: "gunbc.doc_graph_roots",
       function: "doc_graph_roots_all",
     },
-    standing_before: ExpectedRed,
     enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
     trigger: Absent,
     closure: control_closure(),
@@ -527,43 +515,24 @@ test fn the_schedule_arms_distinguish_missing_from_mis_expectationed() -> Bool {
     && !(arm_appears(labels: wrong, arm: "absent-from-wet-schedule"))
 }
 
-// ARM: standing-not-ExpectedRed. The standing field is read, not decorative: a row that did not retire
-// from ExpectedRed refuses.
-test fn the_standing_arm_refuses_a_row_that_never_stood_red() -> Bool {
-  let base = control_row()
-  arm_refuses_exactly(
-    arm: "standing-not-ExpectedRed",
-    row: RetiredExpectedRedRow {
-      identity: base.identity,
-      standing_before: ExpectedToHold,
-      enrolled_on: base.enrolled_on,
-      trigger: base.trigger,
-      closure: base.closure,
-    }
-  )
-}
-
 // ARMS: the two date arms are separate obligations. An absent date is honest absence and must refuse
 // NOTHING; a date that is not a civil date and a date after its own measurement each fire their own arm.
 test fn the_enrolment_date_arms_separate_absence_from_fabrication() -> Bool {
   let base = control_row()
   let absent = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: Absent,
     trigger: base.trigger,
     closure: base.closure,
   }
   let later = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: Present { value: Iso8601CivilDate { year: 2027, month: 1, day: 1 } },
     trigger: base.trigger,
     closure: base.closure,
   }
   let impossible = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 13, day: 45 } },
     trigger: base.trigger,
     closure: base.closure,
@@ -583,7 +552,6 @@ test fn the_durable_account_arms_refuse_empty_and_phantom() -> Bool {
   let base = control_row()
   let empty_account = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
@@ -594,7 +562,6 @@ test fn the_durable_account_arms_refuse_empty_and_phantom() -> Bool {
   }
   let phantom_account = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
@@ -613,7 +580,6 @@ test fn the_instrument_arm_refuses_a_credit_to_another_claim() -> Bool {
   let base = control_row()
   let borrowed = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
@@ -623,7 +589,6 @@ test fn the_instrument_arm_refuses_a_credit_to_another_claim() -> Bool {
         head: control_remeasurement().head,
         on: control_remeasurement().on,
         routes: control_remeasurement().routes,
-        outcome: control_remeasurement().outcome,
         instrument: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
       },
     },
@@ -631,13 +596,14 @@ test fn the_instrument_arm_refuses_a_credit_to_another_claim() -> Bool {
   arm_refuses_exactly(arm: "instrument-is-not-the-row-itself", row: borrowed)
 }
 
-// ARMS: the head and the outcome. A head that is not a sha, and an outcome that is not Passed -- the
-// receipt cannot close a row on a measurement that did not pass.
-test fn the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass() -> Bool {
+// ARM: the head. A head that is not a sha is refused. The outcome that used to be a field here was
+// deleted (review 84472): RetiredExpectedRedRow's closure only admits a row that actually closed, and
+// the ledger's own disposition now lives in the one place that can carry it, so there is no non-Passed
+// value left for a fixture to plant.
+test fn the_receipt_shape_arm_refuses_a_bad_head() -> Bool {
   let base = control_row()
   let bad_head = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
@@ -647,30 +613,11 @@ test fn the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass() -> Bool {
         head: "not-a-sha" as CommitSha,
         on: control_remeasurement().on,
         routes: control_remeasurement().routes,
-        outcome: control_remeasurement().outcome,
-        instrument: control_remeasurement().instrument,
-      },
-    },
-  }
-  let not_passed = RetiredExpectedRedRow {
-    identity: base.identity,
-    standing_before: base.standing_before,
-    enrolled_on: base.enrolled_on,
-    trigger: base.trigger,
-    closure: RestsOnExecutedCheck {
-      why_no_change: "synthetic" as NonEmptyStr,
-      durable_account: control_account(),
-      re_measured: ReMeasurement {
-        head: control_remeasurement().head,
-        on: control_remeasurement().on,
-        routes: control_remeasurement().routes,
-        outcome: Failed,
         instrument: control_remeasurement().instrument,
       },
     },
   }
   arm_refuses_exactly(arm: "head-not-a-commit-sha", row: bad_head)
-    && arm_refuses_exactly(arm: "outcome-not-Passed", row: not_passed)
 }
 
 // ARM: trigger-declaration-does-not-resolve. The row's OWN named discharge condition must still exist:
@@ -679,14 +626,12 @@ test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool 
   let base = control_row()
   let real_trigger = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
     trigger: Present { value: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots") },
     closure: base.closure,
   }
   let phantom_trigger = RetiredExpectedRedRow {
     identity: base.identity,
-    standing_before: base.standing_before,
     enrolled_on: base.enrolled_on,
     trigger: Present { value: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module") },
     closure: base.closure,
