@@ -43,7 +43,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, type_reference_declaration_ref }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, carried_declaration_ref }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -3394,7 +3394,7 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
 fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, target_spelling: String, target: RenderTarget, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   match expr.inferred {
     Present { value: Resolved { node: n } } =>
-      match type_reference_declaration_ref(n: n, source_indices: source_indices, env: env) {
+      match carried_declaration_ref(n: n, source_indices: source_indices, env: env) {
         Present { value: d } =>
           if dag_declared_widening_admits(source: d, target_type: authored_name_at(source_indices: source_indices, node: cast_target_node)) {
             match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: authored_name_at(source_indices: source_indices, node: n), target: target)) {
