@@ -128,6 +128,7 @@ type HostOperation =
   | CgroupReadEvents { cgroup_path: NonEmptyStr }
   | ProcfsReadStat
   | ProcfsReadMeminfo
+  | ProcfsReadBootId
   | ProcfsReadPidStat { pid: NonEmptyStr }
   | ProcfsReadPidCgroup { pid: NonEmptyStr }
   | ProcfsReadNetTcp
@@ -256,6 +257,10 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     )
     ProcfsReadMeminfo => bind_operation_invocation(
       at: procfs_operation_ref(operation: "ReadMeminfo"),
+      bindings: [],
+    )
+    ProcfsReadBootId => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadBootId"),
       bindings: [],
     )
     ProcfsReadPidStat { pid: p } => bind_operation_invocation(
@@ -430,6 +435,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     ProcfsReadMeminfo => {
       let result = linux.Procfs.ReadMeminfo()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    ProcfsReadBootId => {
+      let result = linux.Procfs.ReadBootId()
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     ProcfsReadPidStat { pid: p } => {
