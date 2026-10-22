@@ -3,7 +3,7 @@ module gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_no
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data declaration_reference_cites_a_declaration_nothing_resolved: RecurringFailureMode = RecurringFailureMode {
   identity: "declaration_reference_cites_a_declaration_nothing_resolved" as NonEmptyStr,
@@ -13,7 +13,7 @@ data declaration_reference_cites_a_declaration_nothing_resolved: RecurringFailur
     standing: BelowCeiling {
       current: FoundOnRung { rung: Mitigatable },
       ceiling: StructurallyGuaranteed,
-      blocker: AwaitsOneGrounding { grounding: "the decl-ref-census on the required path -- a row in the emitted subject build rows, closed to new jobs without operator sign-off -- and its four discriminating REDs enrolled, which the row's declared stall ties to one un-built capability: a fixture-root parameter on the decl-ref-census label" },
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
       trigger_capability: "a fixture-root parameter on the decl-ref-census label that adds a fixtures directory to the census roots, after which the four dispatch-only fixtures (invented reference, bare head, alias of the reference type, invented prose span) are enrolled with a positive control; the further ceiling step needs substrate construction that refuses an unresolvable DeclarationRef literal",
     },
   },
