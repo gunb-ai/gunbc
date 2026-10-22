@@ -4,6 +4,7 @@ import std.types { Bool, FilePath, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import gunbc.self_host_artifact_materialization
 import v2.compiler.self_host.generation {
@@ -59,7 +60,7 @@ fn build_fixture_from_source(target_name: String, main_source: String) -> BuiltF
         outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
           workdir: root,
           manifest_path: manifest,
-          target_dir: "{root}/target",
+          target_dir: cargo_default_target_dir(build_root: root),
           target_name: target_name,
           extra_args: []
         )
@@ -199,7 +200,7 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
     } else {
       let first = gunbc.self_host_artifact_materialization.artifact_identity_of(
         outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
-          workdir: root, manifest_path: manifest, target_dir: "{root}/target",
+          workdir: root, manifest_path: manifest, target_dir: cargo_default_target_dir(build_root: root),
           target_name: fixture_target_name, extra_args: []
         )
       )
@@ -211,7 +212,7 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
           first: first,
           second: gunbc.self_host_artifact_materialization.artifact_identity_of(
             outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
-              workdir: root, manifest_path: manifest, target_dir: "{root}/target",
+              workdir: root, manifest_path: manifest, target_dir: cargo_default_target_dir(build_root: root),
               target_name: fixture_target_name, extra_args: []
             )
           )

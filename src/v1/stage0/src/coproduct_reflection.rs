@@ -26,10 +26,11 @@ use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, str_value, InterpContext, InterpError, InterpResult, Value,
 };
+use crate::v1_std_core::Cardinality;
 use crate::v1_std_core::{
-    authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex,
-    Node, VarBindingKind,
+    authored_name_at, expr_var_name_at, field_node_cardinality, field_node_default_value,
+    field_node_type_expr, inferred_to_node, param_node_name_at, param_node_type_expr,
+    source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -276,8 +277,149 @@ fn marshal_variant_arm_target(
             .as_ref()
             .and_then(|inf| inferred_to_node(inf.clone()))
             .unwrap_or_else(|| field_node_type_expr(field.clone()));
-        let target = marshal_type_expr_ref(ctx, si, &type_expr)?;
+        let target = marshal_field_binder(ctx, si, field, &field_name, &type_expr)?;
         edges.push(edge_named(ctx, &field_name, target));
+    }
+    Ok(node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        edges,
+    ))
+}
+
+fn core_edge_value(ctx: &InterpContext, marker: &str, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("StructuralLabel"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("label"),
+                        Value::Variant {
+                            type_name: ctx.sym("StructuralEdgeLabel"),
+                            variant_name: ctx.sym("CoreMarker"),
+                            fields: Rc::new(vec![(
+                                ctx.sym("marker"),
+                                Value::Variant {
+                                    type_name: ctx.sym("CoreEdgeLabel"),
+                                    variant_name: ctx.sym(marker),
+                                    fields: Rc::new(vec![]),
+                                },
+                            )]),
+                        },
+                    )]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
+    }
+}
+
+// ONE std.optional LAYER over a payload: an Instantiation whose head is the declaration reference
+// std.optional.Optional and whose second child is the payload, the node v2.std.optional_layers
+// wrap_type_node_occupancy builds at depth one (differential claim:
+// test.claim.decl_facts_field_binder_witness). The reference is the marked carrier of
+// v2.std.qualified_name declaration_reference_node: a Conj whose one DeclarationReferenceEdge targets
+// the segment spine v2.std.node fold_list_node builds over synthetic atoms.
+fn optional_layer_node(ctx: &InterpContext, payload: Value) -> Value {
+    let mut spine = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![],
+    );
+    for segment in ["Optional", "optional", "std"] {
+        spine = node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+            vec![
+                edge_named(ctx, "fold_list_node_head", atom_identity_node(ctx, segment)),
+                edge_named(ctx, "fold_list_node_tail", spine),
+            ],
+        );
+    }
+    let reference = node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+        vec![core_edge_value(ctx, "DeclarationReferenceEdge", spine)],
+    );
+    node_record(
+        ctx,
+        node_kind_type_node(ctx, nullary_connective_variant(ctx, "Instantiation")),
+        vec![
+            edge_positional(ctx, reference),
+            edge_positional(ctx, payload),
+        ],
+    )
+}
+
+// A DECLARED FIELD IS A BINDER NODE, the one shape v2.std.node_query binder_node builds and
+// declared_field_list reads: a Conj of a BinderTypeEdge to the field's type and, when the field
+// declares a default, a BinderDefaultEdge. An optional field (`f: T?`) targets one std.optional layer over its
+// type (optional_layer_node), as declared_field_cardinality_of_target decodes. A literal default is a
+// ComputationNode { Value } over the atom of its own spelling. Every non-literal default REFUSES
+// (TypeError): the host cannot elaborate it, and none comes out as no default, which would be a
+// silent loss of a declared fact.
+fn marshal_field_binder(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field: &Rc<Node>,
+    field_name: &str,
+    type_expr: &Rc<Node>,
+) -> InterpResult<Value> {
+    let mut type_target = marshal_type_expr_ref(ctx, si, type_expr)?;
+    if matches!(
+        field_node_cardinality(field.clone()),
+        Cardinality::CardOptional
+    ) {
+        type_target = optional_layer_node(ctx, type_target);
+    }
+    let mut edges = vec![core_edge_value(ctx, "BinderTypeEdge", type_target)];
+    // A parsed field keeps its default in `body`; a normalized one (make_field_node) as child 1.
+    if let Some(default) = field
+        .body
+        .clone()
+        .or_else(|| field_node_default_value(field.clone()))
+    {
+        // A literal is an elaborated value: ComputationNode { Value } over the atom of its own
+        // spelling (a string keeps its quotes, so "false" is not false). Anything else refuses.
+        let spelling = literal_source_lexeme(&default, si);
+        let target = match default.expr_data.as_ref() {
+            ExprData::ExprLiteral { value, .. } => {
+                let lexeme = spelling.or_else(|| match value.as_ref() {
+                    crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                        Some(format!("\"{s}\""))
+                    }
+                    crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+                    crate::std_syntax::LiteralValue::LitBool { value: b, .. } => {
+                        Some(b.to_string())
+                    }
+                    crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
+                    _ => None,
+                });
+                lexeme.map(|l| {
+                    node_record(
+                        ctx,
+                        node_kind_computation_node(ctx, nullary_behavior_variant(ctx, "Value")),
+                        vec![edge_positional(ctx, atom_identity_node(ctx, &l))],
+                    )
+                })
+            }
+            // binder_node carries an ELABORATED default. The host cannot elaborate a non-literal
+            // expression, and reflecting its source text as the same BinderDefaultEdge would give
+            // that edge two meanings by producer, so every non-literal default refuses below.
+            _ => None,
+        };
+        let Some(target) = target else {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "marshal_field_binder: field `{field_name}` declares a default that is not a literal; the host cannot express it as binder_node's elaborated default, so it refuses rather than reflecting it as source text or as no default"
+                ),
+            });
+        };
+        edges.push(core_edge_value(ctx, "BinderDefaultEdge", target));
     }
     Ok(node_record(
         ctx,
@@ -2548,5 +2690,123 @@ mod parse_only_uppercase_variant_regression_tests {
             production.contains("should_emit_nullary_variant_value_atom"),
             "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
         );
+    }
+}
+
+#[cfg(test)]
+mod field_binder_default_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+    use crate::std_syntax::LiteralValue;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, InterpError};
+    use crate::v1_std_core::{
+        build_newline_index, empty_node_list, make_field_node, make_named_expr_node, Cardinality,
+        ExprData, Node, SourceSpan,
+    };
+
+    use super::{literal_source_lexeme, marshal_field_binder};
+
+    // The fixture's one source file. Every expression's span covers its own spelling in it, so
+    // `literal_source_lexeme` READS that spelling: the source-text acceptance path the refusal must
+    // not take is reachable, not starved by an empty index.
+    const SOURCE: &str = "default_computed false";
+
+    fn span_of(start: i64, end: i64) -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start,
+            end,
+        })
+    }
+
+    fn span() -> Rc<SourceSpan> {
+        span_of(0, SOURCE.len() as i64)
+    }
+
+    fn expr_at(name: &str, data: ExprData, at: Rc<SourceSpan>) -> Rc<Node> {
+        make_named_expr_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(data),
+            empty_node_list(),
+            None,
+            at.clone(),
+            at,
+        )
+    }
+
+    fn expr(name: &str, data: ExprData) -> Rc<Node> {
+        expr_at(name, data, span_of(0, 1))
+    }
+
+    fn source_indices() -> Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>> {
+        let mut m = HashMap::new();
+        m.insert(
+            "test.dag".to_string(),
+            build_newline_index("test.dag".to_string(), SOURCE.to_string()),
+        );
+        Rc::new(m)
+    }
+
+    fn marshal_with_default(default: Rc<Node>) -> Result<(), InterpError> {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, source_indices(), ExecutionMode::Hermetic);
+        let si = ctx.source_indices();
+        let type_expr = expr("Int", ExprData::NoExprData);
+        let field = make_field_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            "f".to_string(),
+            type_expr.clone(),
+            Cardinality::Required,
+            Some(default),
+            Rc::new(im_vec![]),
+            span(),
+            span(),
+        );
+        marshal_field_binder(&ctx, &si, &field, "f", &type_expr).map(|_| ())
+    }
+
+    // RED: a default the host cannot elaborate (a reference to a name) refuses; it is not reflected
+    // as its source text under BinderDefaultEdge (review 83500).
+    #[test]
+    fn a_non_literal_default_refuses() {
+        let reference = expr_at(
+            "default_computed",
+            ExprData::ExprVar { binding_kind: None },
+            span_of(0, 16),
+        );
+        // Precondition that makes this a discriminator: the source IS readable at the default's span,
+        // so restoring a source-text acceptance arm would marshal it and fail the refusal below.
+        assert_eq!(
+            literal_source_lexeme(&reference, &source_indices()).as_deref(),
+            Some("default_computed")
+        );
+        match marshal_with_default(reference) {
+            Err(InterpError::TypeError { msg }) => assert!(msg.contains("not a literal"), "{msg}"),
+            other => panic!("expected a typed refusal, got {other:?}"),
+        }
+    }
+
+    // CONTROL: the same field with a literal default marshals, so the refusal above is the default's
+    // shape and not the field.
+    #[test]
+    fn a_literal_default_marshals() {
+        let literal = expr_at(
+            "false",
+            ExprData::ExprLiteral {
+                value: Rc::new(LiteralValue::LitBool { value: false }),
+            },
+            span_of(17, 22),
+        );
+        marshal_with_default(literal).expect("a literal default marshals");
     }
 }
