@@ -4,7 +4,9 @@ import std.types { Bool, String }
 import std.algebra { string_contains }
 import extdeps.github.expressions { interpolate }
 import gunbc.fleet.fleet_converge_workflow {
-  fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_build_checkout_ref
+  fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_build_checkout_ref,
+  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
+  fleet_converge_shared_job_if, fleet_converge_any_mode_step_if
 }
 
 // THE CHECKOUT TRUST BOUNDARY, ASSERTED PER JOB KIND (one shared predicate for the three mode
@@ -25,4 +27,15 @@ fn fleet_converge_checkout_trust_holds() -> Bool {
     && !string_contains(s: build_ref, pattern: "expected_revision")
     && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "inputs")
     && !string_contains(s: build_ref, pattern: "inputs")
+}
+
+// THE POSITIVE MODE SET OF THE SHARED JOB. The shared job checks out needs.build.outputs.revision,
+// so a mode that must be shielded from that ref has its own job and must never run in the shared
+// one. Pinned by EQUALITY against the condition derived from the modes whose job id is the shared
+// one, minus the excluded mode, so `always()`, `true`, a reformatted comparison or the excluded
+// mode joining the shared job all go red; the excluded mode keeping a job of its own is asserted
+// separately because the derivation alone would follow it into the shared set.
+fn fleet_converge_shared_job_runs_all_but(excluded: FleetConvergeWorkflowMode) -> Bool {
+  fleet_converge_mode_job_id(mode: excluded) != fleet_converge_shared_job_id
+    && fleet_converge_shared_job_if == fleet_converge_any_mode_step_if(modes: filter(fleet_converge_workflow_modes, mode => fleet_converge_mode_job_id(mode: mode) == fleet_converge_shared_job_id && mode != excluded))
 }
