@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.green_required_head_while_heal_holds_an_unapplied_repair
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
+
+data green_required_head_while_heal_holds_an_unapplied_repair: RecurringFailureMode = RecurringFailureMode {
+  identity: "green_required_head_while_heal_holds_an_unapplied_repair" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a pull request head is green on the required `witnesses` context while a stage0 mirror is stale against its .dag authority, because heal (non-required) holds the repair as an unapplied candidate until the publisher pushes it. HARM: the seed is built from the stale mirror and the required job reports the old behavior as green; a landing in the window takes it.",
+    "RECEIPT: gunbc#14493 head a642bb2194a, a merge took main's side of the v1_compiler_emit_rust.rs mirror while src/v1/05_emit_rust.dag carried `__keyed`. Heal run 39378154865 detected it (WholePopulationScope, repair candidate naming the mirror); heal-publish run 39383896432 pushed bot commit 5b255a972a6. Timing endpoints: v2-bootstrap green 06:33:00Z, heal done 07:01:45Z, publish/readback 07:14:18Z, so the exposure was about 41 minutes and 12 minutes is only the publisher tail. The scoped-affected-set hypothesis did not reproduce: the .dag edit selected the whole population.",
+    "DISTINGUISHING FACTS: heal DID find the drift, so this is not a heal miss; the required context simply compares no generated artifact with its authority (the declared drop v1_required_lanes_withdrawn). A separate residual is PRECONDITION 3 of v2.workflow.required_regen RegenEmissionScope: a scoped round never compares a mirror outside its bound.",
+    "RUNG FOUND AT: mitigatable (declared drop). CEILING: mechanically preventable (rung 2) -- a required-path comparison of generated artifacts against their authority leaves the stale artifact writable and depends on the guard executing and staying enrolled; native execution does not make it structurally guaranteed, and no proof or acceptance construction is named for rung 3. CURRENT STANDING: mitigatable. NEXT TRIGGER: the restoration trigger of gunbc.rung_drop v1_required_lanes_withdrawn, member (3); a required-path refusal is the operator's call and is not built here.",
+    "SECOND SPECIMEN, a different cause: gunbc#14493 head 8807d2405c6, heal run 39389776978 was green and uploaded a correct repair candidate (artifact 12250899316, 12 entries; the candidate mirrors carry the new `__keyed` shape the head lacked, and round 2 of the convergence loop was a seed rebuilt from those mirrors reproducing them). The publisher, heal-publish run 39396236576, concluded FAILURE with a resolve failure on the default-branch corpus (dag/extdeps/github/expressions.dag, non-exhaustive match missing LogicalNot), so the candidate was never pushed and no PR context went red. The misreading to refuse: heal green with no bot commit is not a convergence verdict on the head.",
+    "RECOGNITION RULE: when a non-required repair job and a required judge disagree in time, ask whether the required green can be read while a repair candidate is still unapplied.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration },
+  ],
+}

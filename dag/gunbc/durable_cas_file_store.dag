@@ -17,6 +17,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
   filesystem_entry_presence,
 }
+import std.host_text { chars }
 
 data authorization_claim_store_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
 

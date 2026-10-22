@@ -250,6 +250,48 @@ fn recorded_decision(code: Int, out: String) -> SudoDecision {
   sudo_decision_from_run(query: recorded_true_query, version: witness_supported_version, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: "") })
 }
 
+// Sudo version 1.9.15p5, recorded on srv1 by bright-moth-475 on 2026-10-19 (see extdeps.sudo.nopasswd_decision): the verbatim
+// stdout of ghrunner's self-listing `sudo -n -u ghrunner sudo -n -ll -u root <argv>` for the granted install argv (the `-U ghrunner`
+// form run as root gave identical stdout).
+data recorded_15p5_query: SudoDecisionQuery = SudoDecisionQuery { runas: "root" as NonEmptyStr, argv: ["/usr/bin/install" as NonEmptyStr, "-d" as NonEmptyStr, "-m" as NonEmptyStr, "00755" as NonEmptyStr, "-o" as NonEmptyStr, "ghrunner" as NonEmptyStr, "-g" as NonEmptyStr, "ghrunner" as NonEmptyStr, "/var/lib/gunbc/fleet-converge" as NonEmptyStr] }
+
+data recorded_15p5_stdout: String = "Sudoers entry: /etc/sudoers.d/gunbc-ghrunner\n    RunAsUsers: root\n    Options: !authenticate\n    Commands:\n\t/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge\n    Matched: /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge\n"
+
+fn recorded_15p5_under(banner: String, code: Int, out: String) -> SudoDecision {
+  sudo_decision_from_run(query: recorded_15p5_query, version: SudoVersionObserved { banner: banner as NonEmptyStr }, outcome: ProcessRan { observation: process_observation(exit_code: code, stdout: out, stderr: "") })
+}
+
+test fn recorded_15p5_srv1_nopasswd_listing_admits_under_its_banner() -> Bool {
+  match recorded_15p5_under(banner: "Sudo version 1.9.15p5", code: 0, out: recorded_15p5_stdout) {
+    SudoDecisionAdmits => true
+    _ => false
+  }
+}
+
+// PASSWD arm on 1.9.15p5, recorded in the noble chroot by sunny-gull-750 (same layout, Options: authenticate).
+test fn recorded_15p5_passwd_listing_needs_a_password() -> Bool {
+  let out = "Sudoers entry: /etc/sudoers.d/p\n    RunAsUsers: root\n    Options: authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n"
+  match sudo_decision_from_run(query: recorded_true_query, version: SudoVersionObserved { banner: "Sudo version 1.9.15p5" as NonEmptyStr }, outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: out, stderr: "") }) {
+    SudoDecisionNeedsPassword => true
+    _ => false
+  }
+}
+
+test fn recorded_15p5_denied_exit_one_is_denied() -> Bool {
+  match recorded_15p5_under(banner: "Sudo version 1.9.15p5", code: 1, out: "") {
+    SudoDecisionDenied { reason: _ } => true
+    _ => false
+  }
+}
+
+// CONTROL: the same recorded bytes under an unlisted banner stay Unobserved.
+test fn recorded_15p5_stdout_under_an_unlisted_banner_stays_unobserved() -> Bool {
+  match recorded_15p5_under(banner: "Sudo version 1.9.14", code: 0, out: recorded_15p5_stdout) {
+    SudoDecisionUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
 // (a) `Defaults listpw=any` / `probe ALL=(root) NOPASSWD: /usr/bin/true` -> the only recorded admission.
 test fn recorded_a_genuine_nopasswd_admits() -> Bool {
   match recorded_decision(code: 0, out: "Sudoers entry: /etc/sudoers\n    RunAsUsers: root\n    Options: !authenticate\n    Commands:\n\t/usr/bin/true\n    Matched: /usr/bin/true\n") {

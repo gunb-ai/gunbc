@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.emitter_clones_a_whole_record_to_read_one_field
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data emitter_clones_a_whole_record_to_read_one_field: RecurringFailureMode = RecurringFailureMode {
   identity: "emitter_clones_a_whole_record_to_read_one_field" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: the Rust emitter lowers every variable read as `x.clone()`, including the receiver of a field access, so reading ONE field of an immutable record emits a clone of the WHOLE record first. The source `r.window.w0` is emitted as `r.window.clone().w0.clone()`: the 16-field Sha256Window is copied to read one i64, and the copy is dropped.",

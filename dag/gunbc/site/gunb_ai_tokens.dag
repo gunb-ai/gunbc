@@ -23,9 +23,12 @@ import gunbc.design.gunb_ai_hues {
   gunb_ai_hues, near_black, soot, graphite, sand, taupe, umber, warm_white, off_white,
   moss, moss_deep, clay, clay_deep, brass, brass_deep,
 }
+import gunbc.design.gunb_ai_live_scale {
+  live_scale_token, live_scale_font_token, live_font_sans, live_measure_page, live_measure_wide, live_measure_title, live_measure_prose, live_gap_xs, live_gap_sm, live_gap_md, live_gap_lg, live_gap_xl,
+}
 import gunbc.design.scale {
   ScaleToken, LengthValue, FontStackValue, scale_decl, scale_value_wire, scale_var,
-  scale_border, named_length_token, border_1, measure_prose,
+  scale_border, named_length_token, border_1,
 }
 import gunbc.site.markup { txt, el, el_class }
 
@@ -125,15 +128,16 @@ fn token_binding_complete() -> Bool {
 // containers are gunb.ai's own widths, so they carry the site prefix in both the
 // Rust name and the custom property — distinct facts, distinct names. The parity
 // audit compares the rendered result.
-data gunb_measure_page: ScaleToken = named_length_token(name: "gunb-measure-page", px: 896)
-data gunb_measure_wide: ScaleToken = named_length_token(name: "gunb-measure-wide", px: 992)
-data measure_title: ScaleToken = ScaleToken { name: "measure-title", value: LengthValue { length: css_ch(n: 16) } }
+data gunb_measure_page: ScaleToken = live_scale_token(name: "gunb-measure-page", m: live_measure_page)
+data gunb_measure_wide: ScaleToken = live_scale_token(name: "gunb-measure-wide", m: live_measure_wide)
+data site_measure_prose: ScaleToken = live_scale_token(name: "measure-prose", m: live_measure_prose)
+data measure_title: ScaleToken = live_scale_token(name: "measure-title", m: live_measure_title)
 
-data gap_xs: ScaleToken = named_length_token(name: "gap-xs", px: 6)
-data gap_sm: ScaleToken = named_length_token(name: "gap-sm", px: 14)
-data gap_md: ScaleToken = named_length_token(name: "gap-md", px: 20)
-data gap_lg: ScaleToken = named_length_token(name: "gap-lg", px: 40)
-data gap_xl: ScaleToken = named_length_token(name: "gap-xl", px: 64)
+data gap_xs: ScaleToken = live_scale_token(name: "gap-xs", m: live_gap_xs)
+data gap_sm: ScaleToken = live_scale_token(name: "gap-sm", m: live_gap_sm)
+data gap_md: ScaleToken = live_scale_token(name: "gap-md", m: live_gap_md)
+data gap_lg: ScaleToken = live_scale_token(name: "gap-lg", m: live_gap_lg)
+data gap_xl: ScaleToken = live_scale_token(name: "gap-xl", m: live_gap_xl)
 
 // The operator's pick (option B — compact), relayed 2026-10-17; the review site
 // rendered options A editorial (52/24/17/14/12) and B compact before the pick, and
@@ -151,16 +155,10 @@ data scale_label: ScaleToken = named_length_token(name: "label", px: 11)
 // string in assets/site.css with no .dag home (the inventory's gap row). Modelled as
 // a font-stack ScaleToken over extdeps.languages.css.values' family rows so the
 // review surface reads a token reference and the stack has one home.
-data font_body: ScaleToken = ScaleToken {
-  name: "font-body",
-  value: FontStackValue { stack: CssFontStack { families: [
-    GenericFamily { kind: GenericSystemUi },
-    GenericFamily { kind: GenericSansSerif },
-  ] } },
-}
+data font_body: ScaleToken = live_scale_font_token(name: "font-body", live_name: "font-sans", live_stack: live_font_sans)
 
 data gap_tokens: List<ScaleToken> = [gap_xs, gap_sm, gap_md, gap_lg, gap_xl]
-data measure_tokens: List<ScaleToken> = [gunb_measure_page, gunb_measure_wide, measure_prose, measure_title]
+data measure_tokens: List<ScaleToken> = [gunb_measure_page, gunb_measure_wide, site_measure_prose, measure_title]
 data type_scale_tokens: List<ScaleToken> = [scale_display, scale_heading, scale_body, scale_small, scale_label]
 data font_tokens: List<ScaleToken> = [font_body]
 // The 28px chip face: the review surface needs a measure the live page never carried
@@ -356,7 +354,7 @@ fn review_rules() -> List<BuildRule> {
         StaticRule { selector: ClassSelector { name: "body-sample" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_body)),
           decl(prop: Color, value: role_var(t: token_text_dim)),
-          decl(prop: MaxWidth, value: scale_var(t: measure_prose)),
+          decl(prop: MaxWidth, value: scale_var(t: site_measure_prose)),
         ] },
         StaticRule { selector: ClassSelector { name: "label-sample" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_label)),
@@ -383,7 +381,7 @@ fn review_rules() -> List<BuildRule> {
         ] },
         StaticRule { selector: ClassSelector { name: "dim" }, decls: [
           decl(prop: Color, value: role_var(t: token_text_dim)),
-          decl(prop: MaxWidth, value: scale_var(t: measure_prose)),
+          decl(prop: MaxWidth, value: scale_var(t: site_measure_prose)),
         ] },
       ],
     ),

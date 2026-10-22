@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.an_attempt_worktree_has_no_owner_until_the_a
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data an_attempt_worktree_has_no_owner_until_the_attempt_state_exists: RecurringFailureMode = RecurringFailureMode {
   identity: "an_attempt_worktree_has_no_owner_until_the_attempt_state_exists" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: an attempt's worktree is created (git worktree add) before any record under the attempt names it, and no terminal path releases it from a record; the commit step's outcome write was unchecked, so a failed write read as a settled step. HARM: a killed attempt leaves a tree nothing owns, release cannot tell its tree from another attempt's, and a lost write hides an unsettled capture (DESIGN section 4b found at mitigatable).",

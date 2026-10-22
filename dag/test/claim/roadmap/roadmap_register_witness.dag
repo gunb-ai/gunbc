@@ -193,6 +193,9 @@ fn subtree_carries_wordmark(f: Fragment) -> Bool {
         fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
       FragmentText { content: _ } => false
       RawNode { content: _ } => false
+      MarkupComment { body: _ } => false
+      // Walked, not false: the Element arm folds over children, so a page handed over as a Document
+      // must reach its root or the scan reports "no wordmark" for a page that has one.
     })
 }
 
@@ -203,6 +206,7 @@ fn header_subtree_carries_wordmark(h: Fragment) -> Bool {
         && fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
+    MarkupComment { body: _ } => false
   }
 }
 

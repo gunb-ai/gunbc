@@ -9,6 +9,7 @@ import v2.cli.parse_verdict_reuse {
   parse_verdict_base_from,
   parse_verdict_receipt_lines,
   parse_verdict_reuse_counts_text,
+  parse_verdict_reuse_counts_field_names,
 }
 import gunbc.parse_verdict_schema {
   ParseVerdictStanding,
@@ -41,7 +42,7 @@ import gunbc.parse_verdict_schema {
   parse_verdict_receipts_empty_detail,
   parse_verdict_stored_accepted_line,
 }
-import std.algebra { fold_list, length, list_head, empty_map }
+import std.algebra { fold_list, for_all, length, list_head, empty_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -430,4 +431,37 @@ test fn parse_verdict_reuse_off_has_no_standing_holds() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// THE DECLARED COUNTS SHAPE IS BOUND TO THE PRINTED LINE, BYTE FOR BYTE. The fleet's reuse walk reads
+// this line back and its only contract on it is a shell exit code, so the field set IS the contract
+// (gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions, silent arm:
+// four PR runs printed the six-field shape with no ancestor= under the NEW workflow and exited green with
+// reused=0). gunbc.witness.compiler_gate_contract_stamp hashes these rows, so if the verb printed a field
+// the rows omitted -- or stopped printing one -- the stamp would go on certifying a contract nobody has,
+// and the guard built on it would pass a stale subject. That is a silent-green of exactly the kind this
+// class records, smuggled into the mitigation, so the binding is a witness and not a comment.
+test fn parse_verdict_counts_shape_matches_declared_rows_holds() -> Bool {
+  let printed = parse_verdict_reuse_counts_text(
+    counts: ParseVerdictReuseCounts {
+      ancestor: "ancestor-sha",
+      reused: 1,
+      miss_identity_absent: 2,
+      miss_identity_mismatch: 3,
+      miss_entry_absent: 4,
+      miss_digest_unseen: 5,
+      miss_declared_refused: 6
+    }
+  )
+  // THE BINDING IS EXACT, AND IT RUNS BOTH WAYS. Equality against the full printed line catches a
+  // renamed, reordered, dropped or ADDED field; the occurrence fold catches the other direction, where
+  // somebody edits the rows to match a print that had drifted away from them. Either way the stamp can
+  // only certify a shape the verb actually prints.
+  printed ==
+    "parse-verdict reuse: ancestor=ancestor-sha reused=1 miss_identity_absent=2 miss_identity_mismatch=3 miss_entry_absent=4 miss_digest_unseen=5 miss_declared_refused=6"
+    && string_contains(s: printed, pattern: parse_verdict_reuse_counts_prefix)
+    && for_all(
+      parse_verdict_reuse_counts_field_names(),
+      label => string_contains(s: printed, pattern: join([" ", label, "="], ""))
+    )
 }

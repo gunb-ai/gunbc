@@ -5,6 +5,7 @@ use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
 pub use crate::std_algebra::{collection_concat_shape, collection_join_shape};
+pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;

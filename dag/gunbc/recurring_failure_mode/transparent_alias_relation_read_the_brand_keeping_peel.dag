@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.transparent_alias_relation_read_the_brand_keeping_peel
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data transparent_alias_relation_read_the_brand_keeping_peel: RecurringFailureMode = RecurringFailureMode {
   identity: "transparent_alias_relation_read_the_brand_keeping_peel" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A record literal handed to a formal declared through a transparent alias of a record was refused as a mismatch between the alias and its own body.** `gunbc.econ.llm_attempt_receipt` declares `type TokenThroughput = FieldOfFractions<Nat>`, and `test.claim.llm_attempt_receipt_witness` `zero_denominator_floor_projection_returns_none` passes `FieldOfFractions { num: 1000, denom: 0 }` to `throughput_per_second_floor(t: TokenThroughput)`. The v1 compile of that witness refused with `type mismatch: expected 'Node(TokenThroughput<Primitive(Nat)>)', got 'Product(FieldOfFractions)'`. This was latent on main and blocked the floor of gunbc#12381. A fabricated refusal of correct code is the DESIGN section 5 mirror of a fabricated success.",

@@ -32,7 +32,7 @@ import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 // compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists
 // so a retract cannot name a revision even accidentally — the arm that would render ExecStart under
 // it REFUSES with a poison marker, the same unreachable-arm discipline
-// emit_deploy_teardown_dependency_refusal uses.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
+// the deleted retract emitter used.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
 // REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the
 // unit so a committed script could defer its revision to invocation. It could never have worked:
 // the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter
@@ -85,8 +85,14 @@ fn release_locus_releases_dir(root: String) -> String {
   join([root, "/releases"], "")
 }
 
+// A MEMBER OF THE LOCUS IS NAMED BY ONE FOLD: the gunbc binary and any further binary installed beside it (the
+// device-crypto sidecar) resolve their path through it, so a second binary is a name, not a second path rule.
+fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, name: String) -> String {
+  join([release_locus_dir(root: root, revision: revision), "/", name], "")
+}
+
 fn release_locus_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
-  join([release_locus_dir(root: root, revision: revision), "/", gunbc_release_bin_name], "")
+  release_locus_member_path(root: root, revision: revision, name: gunbc_release_bin_name)
 }
 
 fn release_locus_tree_receipt_path(root: String, revision: ReleaseRevisionBinding) -> String {

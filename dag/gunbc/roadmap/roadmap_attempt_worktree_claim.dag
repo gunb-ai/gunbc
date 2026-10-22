@@ -78,12 +78,6 @@ type WorktreeClaim {
   state: AttemptState
 }
 
-data worktree_claim_slots_dirname: String = "worktree-claims"
-
-fn worktree_claim_slots_root(records_dir: String) -> NonEmptyStr {
-  join([records_dir, "/", worktree_claim_slots_dirname], "") as NonEmptyStr
-}
-
 // The reference is the worktree's own directory name, so the record and the tree it owns share one name.
 fn worktree_claim_reference(node_id: String, attempt_key: String) -> String {
   join([node_id, "-a", attempt_key], "")

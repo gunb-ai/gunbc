@@ -1,0 +1,365 @@
+module test.claim.firmware_network_boot_readers_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochMs, list_length }
+import std.optional { Optional, Present, Absent }
+import std.algebra { list_map }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest { RestExchangeObservation, RestResponseObserved, RestExchangeRefused, RestBodyRead, RestBodyReadRefused }
+import gunbc.firmware_network_boot_standing { BootOrderObserved, BootOptionsUnobserved, NicsUnobserved, BiosVersionObserved, BootOrderEntry, FirmwareBootObservation, FirmwareReadRefused, Refused, firmware_network_boot_standing }
+import gunbc.secure_boot_observation { SecureBootEnabled, ResourceNotFound, AuthenticationRequired, AuthorizationDenied, UnexpectedHttpStatus, ReplyShapeUnrecognized }
+import gunbc.firmware_network_boot_probe {
+  AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc, ReplyBeyondDecoder, NicsAxis, BootOptionsAxis,
+  DecodedFromSuppliedReplies, SuppliedSilence, SuppliedRouteMismatch, ReadAttemptReceipt, ReadResponseReceipt, ProbeSubject, probe, supplied_probe_input, BmcResponded, firmware_boot_family_rows,
+  FirmwareFamilyStack, FirmwareBootFamilyRow, ReadRoute, no_reply_reason,
+}
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
+import extdeps.uri { uri_https }
+import extdeps.provisioning.network_boot { UefiPxe }
+import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
+import gunbc.firmware_network_boot_readers {
+  RedfishBootReads, redfish_axis_replies, decode_redfish_boot_reads, RedfishDecoded, RedfishRouteNotRedfish, RedfishDecodeOutcome, RedfishUnread, RedfishUnreadCause, RedfishExchangeUnreached, RedfishResponseBodyUnreadable, SystemExchange, SecureBootExchange, RedfishExchange,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DMTF-schema-shaped bodies, NOT captures: no MegaRAC or OpenBMC body for these axes is in the corpus.
+fn ok(body: String) -> RestExchangeObservation { RestResponseObserved { status: 200, body: RestBodyRead { body: body } } }
+fn status(code: Int) -> RestExchangeObservation { RestResponseObserved { status: code, body: RestBodyRead { body: "{}" } } }
+fn system_ok() -> RestExchangeObservation {
+  ok(body: "{\"BiosVersion\":\"2.4.1\",\"Boot\":{\"BootOrder\":[\"Boot0001\",\"Boot0002\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"None\",\"Pxe\",\"UefiHttp\"]}}")
+}
+fn secure_on() -> RestExchangeObservation { ok(body: "{\"SecureBootEnable\":true}") }
+fn reads(system: RestExchangeObservation, secure: RestExchangeObservation) -> RedfishBootReads {
+  RedfishBootReads { system: system, secure_boot: secure }
+}
+
+fn references_of(es: List<BootOrderEntry>) -> List<NonEmptyStr> {
+  list_map(xs: es, f: fn(e) { e.reference })
+}
+
+fn is_order_two(r: AxisReply) -> Bool {
+  match r {
+    ReplyBootOrder { devices: es } => references_of(es: es) == ["Boot0001", "Boot0002"]
+    _ => false
+  }
+}
+fn is_options(r: AxisReply) -> Bool { match r { ReplyBootOptions { options: _ } => true _ => false } }
+fn is_nics(r: AxisReply) -> Bool { match r { ReplyNics { nics: _ } => true _ => false } }
+fn is_nics_gap(r: AxisReply) -> Bool { match r { ReplyBeyondDecoder { axis: NicsAxis, why: _ } => true _ => false } }
+fn is_options_gap(r: AxisReply) -> Bool { match r { ReplyBeyondDecoder { axis: BootOptionsAxis, why: _ } => true _ => false } }
+fn is_bios(r: AxisReply) -> Bool { match r { ReplyBiosVersion { version: v } => v == "2.4.1" _ => false } }
+fn is_shape_refusal(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: ReplyShapeUnrecognized { detail: _ } } => true _ => false }
+}
+fn is_not_found(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: ResourceNotFound { detail: _ } } => true _ => false }
+}
+fn is_auth(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: AuthenticationRequired { detail: _ } } => true _ => false }
+}
+fn is_denied(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: AuthorizationDenied { detail: _ } } => true _ => false }
+}
+fn is_unexpected(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: UnexpectedHttpStatus { status: _, detail: _ } } => true _ => false }
+}
+fn is_refusal(r: AxisReply) -> Bool { match r { ReplyRefusedByBmc { axis: _, refusal: _ } => true _ => false } }
+fn is_secure_on(r: AxisReply) -> Bool { match r { ReplySecureBootEnabled => true _ => false } }
+fn is_secure_off(r: AxisReply) -> Bool { match r { ReplySecureBootDisabled => true _ => false } }
+fn any_of(rs: List<AxisReply>, p: fn(AxisReply) -> Bool) -> Bool { fold(rs, init: false, f: (a, r) => a || p(r)) }
+fn count_refusals(rs: List<AxisReply>) -> Int {
+  fold(rs, init: 0, f: (n, r) => if is_refusal(r: r) { n + 1 } else { n })
+}
+
+test fn a_well_formed_system_yields_five_replies_two_of_them_our_stated_gaps() -> Bool {
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on()))
+  list_length(items: rs) == 5 && any_of(rs: rs, p: is_order_two) && any_of(rs: rs, p: is_nics_gap) && any_of(rs: rs, p: is_options_gap) &&
+  any_of(rs: rs, p: is_secure_on) && any_of(rs: rs, p: is_bios) && count_refusals(rs: rs) == 0
+}
+
+// EthernetInterfaces is not the firmware-bootable set, and no kind is invented for BootOptions.
+test fn nics_and_boot_options_are_never_minted_from_the_system_documents() -> Bool {
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on()))
+  !any_of(rs: rs, p: is_nics) && !any_of(rs: rs, p: is_options)
+}
+
+test fn an_empty_boot_order_reference_is_refused() -> Bool {
+  let blank = ok(body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[\"Boot0001\",\"\"]}}")
+  let rs = redfish_axis_replies(reads: reads(system: blank, secure: secure_on()))
+  !any_of(rs: rs, p: is_order_two) && count_refusals(rs: rs) == 1 && any_of(rs: rs, p: is_shape_refusal)
+}
+
+test fn an_empty_boot_order_is_refused_never_observed_empty() -> Bool {
+  let empty_boot = ok(body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[]}}")
+  let rs = redfish_axis_replies(reads: reads(system: empty_boot, secure: secure_on()))
+  count_refusals(rs: rs) == 1 && any_of(rs: rs, p: is_shape_refusal)
+}
+
+test fn secure_boot_reads_the_flag_and_refuses_a_missing_one() -> Bool {
+  let off = ok(body: "{\"SecureBootEnable\":false}")
+  let missing = ok(body: "{\"SecureBootMode\":\"UserMode\"}")
+  let r_off = redfish_axis_replies(reads: reads(system: system_ok(), secure: off))
+  let r_missing = redfish_axis_replies(reads: reads(system: system_ok(), secure: missing))
+  any_of(rs: r_off, p: is_secure_off) && !any_of(rs: r_off, p: is_secure_on) && count_refusals(rs: r_missing) == 1 && !any_of(rs: r_missing, p: is_secure_on) && !any_of(rs: r_missing, p: is_secure_off)
+}
+
+test fn http_statuses_map_to_their_refusal_arms() -> Bool {
+  let nf = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 404)))
+  let au = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 401)))
+  let fb = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 403)))
+  let rj = redfish_axis_replies(reads: reads(system: system_ok(), secure: status(code: 500)))
+  any_of(rs: nf, p: is_not_found) && any_of(rs: au, p: is_auth) && !any_of(rs: au, p: is_denied) &&
+  any_of(rs: fb, p: is_denied) && !any_of(rs: fb, p: is_auth) && !any_of(rs: fb, p: is_unexpected) && any_of(rs: rj, p: is_unexpected)
+}
+
+// A non-2xx status with a readable JSON body is still a refusal by status, never decoded as the resource.
+test fn a_non_success_status_is_not_decoded_even_with_a_plausible_body() -> Bool {
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: RestResponseObserved { status: 503, body: RestBodyRead { body: "{\"SecureBootEnable\":true}" } }))
+  !any_of(rs: rs, p: is_secure_on) && any_of(rs: rs, p: is_unexpected)
+}
+
+test fn an_unreadable_body_or_missing_response_is_typed_not_decoded() -> Bool {
+  let unreadable = redfish_axis_replies(reads: reads(system: system_ok(), secure: RestResponseObserved { status: 200, body: RestBodyReadRefused { cause: "truncated" } }))
+  let silent = redfish_axis_replies(reads: reads(system: RestExchangeRefused { cause: "connection refused" }, secure: secure_on()))
+  count_refusals(rs: unreadable) == 0 && !any_of(rs: unreadable, p: is_shape_refusal) && !any_of(rs: unreadable, p: is_secure_on) && !any_of(rs: unreadable, p: is_secure_off) &&
+  count_refusals(rs: silent) == 0 && !any_of(rs: silent, p: is_order_two) && !any_of(rs: silent, p: is_bios) && any_of(rs: silent, p: is_secure_on)
+}
+
+test fn an_unreadable_system_refuses_its_two_axes_and_nothing_else() -> Bool {
+  let bad = ok(body: "<html>login</html>")
+  let rs_bad = redfish_axis_replies(reads: reads(system: bad, secure: secure_on()))
+  let rs_gone = redfish_axis_replies(reads: reads(system: status(code: 404), secure: secure_on()))
+  count_refusals(rs: rs_bad) == 2 && any_of(rs: rs_bad, p: is_shape_refusal) && count_refusals(rs: rs_gone) == 2 && any_of(rs: rs_gone, p: is_not_found) && any_of(rs: rs_gone, p: is_secure_on)
+}
+
+test fn a_missing_bios_version_is_refused() -> Bool {
+  let nobios = ok(body: "{\"Boot\":{\"BootOrder\":[\"Pxe\"]}}")
+  let blank = ok(body: "{\"BiosVersion\":\"\",\"Boot\":{\"BootOrder\":[\"Pxe\"]}}")
+  let a = redfish_axis_replies(reads: reads(system: nobios, secure: secure_on()))
+  let b = redfish_axis_replies(reads: reads(system: blank, secure: secure_on()))
+  count_refusals(rs: a) == 1 && count_refusals(rs: b) == 1 && !any_of(rs: a, p: is_bios)
+}
+
+fn order_ok(o: FirmwareBootObservation) -> Bool {
+  match o.boot_order { BootOrderObserved { devices: es } => references_of(es: es) == ["Boot0001", "Boot0002"] _ => false }
+}
+// Our gap is Unobserved with OUR reason (not the no-reply fallback), never a BMC refusal.
+fn options_gap(o: FirmwareBootObservation) -> Bool { match o.boot_options { BootOptionsUnobserved { reason: r } => r != no_reply_reason() _ => false } }
+fn nics_gap(o: FirmwareBootObservation) -> Bool { match o.nics { NicsUnobserved { reason: r } => r != no_reply_reason() _ => false } }
+fn secure_ok(o: FirmwareBootObservation) -> Bool { match o.secure_boot { SecureBootEnabled => true _ => false } }
+fn bios_ok(o: FirmwareBootObservation) -> Bool { match o.bios_version { BiosVersionObserved { version: v } => v == "2.4.1" _ => false } }
+
+fn route_of(row: FirmwareBootFamilyRow) -> ReadRoute { row.route }
+
+fn row_for(stack: FirmwareFamilyStack) -> Optional<FirmwareBootFamilyRow> {
+  fold(firmware_boot_family_rows(), init: Absent, f: (acc, r) => match acc { Present { value: _ } => acc Absent => if r.family.stack == stack { Present { value: r } } else { Absent } })
+}
+
+fn decode_with(row: FirmwareBootFamilyRow, rs: RedfishBootReads) -> RedfishDecodeOutcome {
+  decode_redfish_boot_reads(route: route_of(row: row), reads: rs)
+}
+
+fn unread_count(o: RedfishDecodeOutcome) -> Int {
+  match o { RedfishDecoded { replies: _, unread: u } => list_length(items: u) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
+}
+fn reply_count(o: RedfishDecodeOutcome) -> Int {
+  match o { RedfishDecoded { replies: r, unread: _ } => list_length(items: r) RedfishRouteNotRedfish { route: _ } => 0 - 1 }
+}
+
+// The receipt join is the future observe_redfish_boot_axes's: the test plays it, to show the decoder's replies are what probe() consumes.
+test fn decoder_output_feeds_the_probe() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: secure_on())) {
+        RedfishRouteNotRedfish { route: _ } => false
+        RedfishDecoded { replies: rep, unread: _ } =>
+          match probe(input: supplied_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, contact: BmcResponded { receipt: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: r) }, response_identity: "r" }, replies: rep })) {
+            DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+              order_ok(o: o) && options_gap(o: o) && nics_gap(o: o) && secure_ok(o: o) && bios_ok(o: o)
+            SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+            SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+          }
+      }
+  }
+}
+
+// All exchanges answered: five replies, nothing unread.
+test fn an_all_response_batch_reports_nothing_unread() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: secure_on())) {
+        o => unread_count(o: o) == 0 && reply_count(o: o) == 5
+      }
+  }
+}
+
+// One exchange refused by the transport: its axes get no reply and it is named unread; the other still decodes.
+test fn a_partial_batch_names_the_unread_exchange_and_decodes_the_rest() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: RestExchangeRefused { cause: "timeout" })) {
+        o => unread_count(o: o) == 1 && reply_count(o: o) == 4
+      }
+  }
+}
+
+// No exchange answered: no response-derived reply, both exchanges unread; the two replies left are exactly the NIC and BootOptions decoder gaps.
+// Nothing here is a responded contact.
+test fn a_no_response_batch_has_no_response_derived_replies_and_keeps_the_two_decoder_gaps() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: RestExchangeRefused { cause: "refused" }, secure: RestExchangeRefused { cause: "refused" })) {
+        o => unread_count(o: o) == 2 && reply_count(o: o) == 2 && gaps_only(o: o)
+      }
+  }
+}
+
+// A MegaRAC proprietary-route row is refused, whatever the reads.
+test fn a_megarac_proprietary_route_row_is_not_decoded_as_redfish() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: AmiMegaRac }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: secure_on())) {
+        RedfishRouteNotRedfish { route: _ } => true
+        RedfishDecoded { replies: _, unread: _ } => false
+      }
+  }
+}
+
+fn gaps_only(o: RedfishDecodeOutcome) -> Bool {
+  match o {
+    RedfishDecoded { replies: rs, unread: _ } => any_of(rs: rs, p: is_nics_gap) && any_of(rs: rs, p: is_options_gap) && fold(rs, init: true, f: (a, r) => a && (is_nics_gap(r) || is_options_gap(r)))
+    RedfishRouteNotRedfish { route: _ } => false
+  }
+}
+
+fn unreached_with(u: RedfishUnread, exchange: RedfishExchange, cause: NonEmptyStr) -> Bool {
+  u.exchange == exchange && (match u.why { RedfishExchangeUnreached { cause: c } => c == cause RedfishResponseBodyUnreadable { status: _, cause: _ } => false })
+}
+
+fn body_unreadable_with(u: RedfishUnread, exchange: RedfishExchange, code: Int, cause: NonEmptyStr) -> Bool {
+  u.exchange == exchange && (match u.why { RedfishExchangeUnreached { cause: _ } => false RedfishResponseBodyUnreadable { status: s, cause: c } => s == code && c == cause })
+}
+
+// A transport refusal (no response) and a 2xx unreadable body are DIFFERENT causes, and the second keeps its status.
+fn unread_has_body(o: RedfishDecodeOutcome, exchange: RedfishExchange, code: Int, cause: NonEmptyStr) -> Bool {
+  match o {
+    RedfishDecoded { replies: _, unread: us } => fold(us, init: false, f: (a, u) => a || body_unreadable_with(u: u, exchange: exchange, code: code, cause: cause))
+    RedfishRouteNotRedfish { route: _ } => false
+  }
+}
+
+fn unread_has(o: RedfishDecodeOutcome, exchange: RedfishExchange, cause: NonEmptyStr) -> Bool {
+  match o {
+    RedfishDecoded { replies: _, unread: us } => fold(us, init: false, f: (a, u) => a || unreached_with(u: u, exchange: exchange, cause: cause))
+    RedfishRouteNotRedfish { route: _ } => false
+  }
+}
+
+// Each refused exchange is paired with its OWN cause: causes may not be swapped or collapsed.
+test fn a_secure_boot_refusal_keeps_its_exchange_and_cause() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: RestExchangeRefused { cause: "secure-timeout" })) {
+        o => unread_has(o: o, exchange: SecureBootExchange, cause: "secure-timeout") && unread_count(o: o) == 1
+      }
+  }
+}
+
+test fn a_system_refusal_keeps_its_exchange_and_cause() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: RestExchangeRefused { cause: "system-reset" }, secure: secure_on())) {
+        o => unread_has(o: o, exchange: SystemExchange, cause: "system-reset") && unread_count(o: o) == 1
+      }
+  }
+}
+
+test fn a_no_response_batch_keeps_both_distinct_causes_paired() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: RestExchangeRefused { cause: "system-reset" }, secure: RestExchangeRefused { cause: "secure-timeout" })) {
+        o => unread_has(o: o, exchange: SystemExchange, cause: "system-reset") && unread_has(o: o, exchange: SecureBootExchange, cause: "secure-timeout") && !unread_has(o: o, exchange: SystemExchange, cause: "secure-timeout") && !unread_has(o: o, exchange: SecureBootExchange, cause: "system-reset")
+      }
+  }
+}
+
+// UNREAD BODY: a success status whose body could not be read is not a BMC answer about the resource. It mints
+// no reply (not a shape refusal) and is reported unread against its OWN exchange with its own cause.
+test fn a_success_status_with_an_unreadable_body_is_unread_for_that_exchange_only() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: RestResponseObserved { status: 200, body: RestBodyReadRefused { cause: "truncated" } })) {
+        o => unread_has_body(o: o, exchange: SecureBootExchange, code: 200, cause: "truncated") && !unread_has(o: o, exchange: SecureBootExchange, cause: "truncated") && !unread_has_body(o: o, exchange: SystemExchange, code: 200, cause: "truncated") && unread_count(o: o) == 1 && reply_count(o: o) == 4
+      }
+  }
+}
+
+test fn an_unreadable_system_body_is_unread_for_the_system_exchange() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: RestResponseObserved { status: 200, body: RestBodyReadRefused { cause: "reset" } }, secure: secure_on())) {
+        o => unread_has_body(o: o, exchange: SystemExchange, code: 200, cause: "reset") && !unread_has(o: o, exchange: SystemExchange, cause: "reset") && !unread_has_body(o: o, exchange: SecureBootExchange, code: 200, cause: "reset") && unread_count(o: o) == 1
+      }
+  }
+}
+
+// A non-success status with an unreadable body is still the BMC's answer by status: refused, not unread.
+test fn a_non_success_status_with_an_unreadable_body_is_a_status_refusal_not_unread() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: RestResponseObserved { status: 500, body: RestBodyReadRefused { cause: "reset" } })) {
+        RedfishDecoded { replies: rep, unread: us } => list_length(items: us) == 0 && any_of(rs: rep, p: is_unexpected)
+        RedfishRouteNotRedfish { route: _ } => false
+      }
+  }
+}
+
+data witness_authority: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority { uri: uri_https(locator: "example.invalid/witness-fixture-not-fleet-fact") },
+}
+
+data witness_epoch: EpochMs = 1765000000000
+
+// THE FULL DRY ROUTE, ONE CLAIM: RestResponseObserved(500) -> decode_redfish_boot_reads -> ReplyRefusedByBmc(UnexpectedHttpStatus)
+// -> probe -> standing, ending at FirmwareReadRefused with status 500 intact.
+test fn a_supplied_500_reaches_the_final_standing_refusal_with_its_status() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: status(code: 500))) {
+        RedfishRouteNotRedfish { route: _ } => false
+        RedfishDecoded { replies: rep, unread: _ } =>
+          match probe(input: supplied_probe_input(subject: ProbeSubject { unit_label: "u" }, row: r, contact: BmcResponded { receipt: ReadResponseReceipt { attempt: ReadAttemptReceipt { observed_at: 1, attempt_identity: "a", route: route_of(row: r) }, response_identity: "r" }, replies: rep })) {
+            DecodedFromSuppliedReplies { subject: _, provenance: _, observation: o } =>
+              match firmware_network_boot_standing(observation: o, authority: witness_authority, observed_at: witness_epoch, boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") }) {
+                Refused { cause: FirmwareReadRefused { refusal: UnexpectedHttpStatus { status: st, detail: _ } }, gaps: _ } => st == 500
+                _ => false
+              }
+            SuppliedSilence { subject: _, provenance: _, attempt: _ } => false
+            SuppliedRouteMismatch { subject: _, row_route: _, receipt_route: _ } => false
+          }
+      }
+  }
+}
+
+// The unread cause keeps the BMC's own status: a 206 with an unreadable body is not recorded as a 200.
+test fn an_unreadable_body_keeps_its_own_success_status() -> Bool {
+  match row_for(stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match decode_with(row: r, rs: reads(system: system_ok(), secure: RestResponseObserved { status: 206, body: RestBodyReadRefused { cause: "cut" } })) {
+        o => unread_has_body(o: o, exchange: SecureBootExchange, code: 206, cause: "cut") && !unread_has_body(o: o, exchange: SecureBootExchange, code: 200, cause: "cut")
+      }
+  }
+}

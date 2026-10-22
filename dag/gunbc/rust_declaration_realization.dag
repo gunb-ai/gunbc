@@ -1,0 +1,54 @@
+module gunbc.rust_declaration_realization
+
+import std.types { List }
+import std.algebra { Cons, Empty }
+import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef }
+import std.target_representation { SourceTypeTargetBinding }
+import std.kernel_type_denotation { KernelTypeDenotationAdmission, BinaryInterchangeFormatMeaning, DeclarationDenoted, DeclarationDenotationAmbiguous, DeclarationUndenoted, kernel_type_denotation_for_declaration }
+import extdeps.languages.rust.representation { RustRepresentation }
+import extdeps.languages.rust.primitives { rust_float_binding_for_representation, rust_float_binding_matches_format }
+
+// A SIBLING OF gunbc.rust_source_type_bindings IN THE SAME BINDING LAYER, AND NOT INSIDE IT, because that module
+// is compiled into the v1 seed: importing the denotation and the Rust primitives model there would pull both into
+// the seed's crates (required-regen refused it, Stage0EmittedEdgesNotCovered), growing a frozen seed for a check.
+// This module reads that module's rows; the Rust external model still depends on nothing in gunbc.
+
+// ONE DECLARATION, ITS MEANING AND ITS RUST REALIZATION, JOINED BY IDENTITY (operator kernel-type layer rule,
+// 2026-10-18). For a declaration whose meaning is a binary interchange format, the representation its exact row
+// binds must be a Rust float primitive that realizes that format. The three facts keep their own homes -- the
+// meaning in std.kernel_type_denotation, the binding in this module's rows, the primitive's parameters in
+// extdeps.languages.rust.primitives -- and this is the one judgment that reads all three for the SAME
+// declaration, so a wrong or missing exact row, or a row disagreeing with the meaning, refuses here. Rows and
+// denotations are parameters so a claim can plant a table; the production reading is
+// rust_declaration_float_verdict(declaration, rows: rust_source_type_binding_rows, denotations: kernel_type_denotation_rows).
+type RustDeclarationFloatVerdict
+  = RustDeclarationFloatHolds
+  | RustDeclarationFloatUnbound { declaration: DeclarationRef }
+  | RustDeclarationFloatAmbiguous { declaration: DeclarationRef }
+  | RustDeclarationFloatNotAFloatRepresentation { declaration: DeclarationRef }
+  | RustDeclarationFloatUndenoted { declaration: DeclarationRef }
+  | RustDeclarationFloatDenotationAmbiguous { declaration: DeclarationRef }
+  | RustDeclarationFloatDisagrees { declaration: DeclarationRef }
+
+fn rust_declaration_float_verdict(declaration: DeclarationRef, rows: List<SourceTypeTargetBinding<RustRepresentation>>, denotations: List<KernelTypeDenotationAdmission>) -> RustDeclarationFloatVerdict {
+  let bound = rows |> filter(r => (r.source.module_path as String) == (declaration.module_path as String) && (r.source.decl_name as String) == (declaration.decl_name as String))
+  match bound {
+    Empty => RustDeclarationFloatUnbound { declaration: declaration }
+    Cons { head: row, tail: Empty } => rust_declaration_float_against_meaning(declaration: declaration, representation: row.representation, denotations: denotations)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => RustDeclarationFloatAmbiguous { declaration: declaration }
+  }
+}
+
+fn rust_declaration_float_against_meaning(declaration: DeclarationRef, representation: RustRepresentation, denotations: List<KernelTypeDenotationAdmission>) -> RustDeclarationFloatVerdict {
+  match rust_float_binding_for_representation(representation: representation) {
+    Absent => RustDeclarationFloatNotAFloatRepresentation { declaration: declaration }
+    Present { value: b } =>
+      match kernel_type_denotation_for_declaration(declaration: declaration, rows: denotations) {
+        DeclarationUndenoted { declaration: _ } => RustDeclarationFloatUndenoted { declaration: declaration }
+        DeclarationDenotationAmbiguous { declaration: _ } => RustDeclarationFloatDenotationAmbiguous { declaration: declaration }
+        DeclarationDenoted { meaning: BinaryInterchangeFormatMeaning { format: f } } =>
+          if rust_float_binding_matches_format(b: b, f: f) { RustDeclarationFloatHolds } else { RustDeclarationFloatDisagrees { declaration: declaration } }
+      }
+  }
+}
