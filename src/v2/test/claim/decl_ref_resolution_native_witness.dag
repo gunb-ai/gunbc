@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.compiler.source_root_eval { native_test_context_from_ingest }
-import v2.test.claim.resolve.namespace_candidate_rule { ncr_double_read, ncr_home_a_read, ncr_home_b_read, ncr_relay_read, ncr_shadow_read }
+import v2.test.claim.resolve.namespace_candidate_rule { ncr_read, ncr_double_read, ncr_home_a_read, ncr_home_b_read, ncr_relay_read, ncr_shadow_read }
 import std.optional { Absent, Optional, Present }
 import v2.std.decl_ref_resolution { DeclarationRefResolution, DeclarationRefContested, DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefResolved, resolve_declaration_ref }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted, bind_outcome }
@@ -137,5 +137,34 @@ test fn re_exported_name_resolves_under_its_home_not_the_relay() -> Bool {
   match dr_ingest_resolution(ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
     Present { value: DeclarationRefResolved { declaration_identity: i } } => i.qualified_name == "v2.ncr_home_a.NcrTwin"
     _ => false
+  }
+}
+
+// AMBIGUOUS VERSUS CONTESTED, DECIDED BY EXECUTION. The retired host resolver's Ambiguous arm fired on
+// two declaration rows for one qualified name. This is that population on the native path: ONE module
+// declaring the same type name twice. It never reaches the resolver as two claimants: the ingest
+// refuses the file (one file refusal), so its module is not among the roots and the reference is
+// ModuleAbsent. The host arm's population is therefore refused one stage earlier, not renamed, and
+// Contested stays the arm for the other population (two claimants at a binding position, above).
+data dr_duplicate_declaration_source: String = "module v2.dr_dup\n\nimport std.types { Bool }\n\ntype DrTwin = Bool\n\ntype DrTwin = Bool\n"
+
+data dr_duplicate_ingest: SourceRootIngest = Cons {
+  head: ncr_read(source: dr_duplicate_declaration_source, id: ^dr_dup_artifact, unit: ^dr_dup_cu, path: "dag/dr_dup.dag"),
+  tail: Empty
+}
+
+test fn duplicate_declaration_is_refused_at_ingest_not_contested() -> Bool {
+  match native_test_context_from_ingest(ingest: dr_duplicate_ingest) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      match t.resolution {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: c, diagnostics: _ } =>
+          length(xs: t.file_refusals) == 1 &&
+          match resolve_declaration_ref(ref: dr_ref(module_path: "v2.dr_dup", decl_name: "DrTwin"), context: c) {
+            DeclarationRefModuleAbsent { reference: _ } => true
+            _ => false
+          }
+      }
   }
 }
