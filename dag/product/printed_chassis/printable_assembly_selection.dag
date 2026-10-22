@@ -1,0 +1,54 @@
+module product.printed_chassis.printable_assembly_selection
+
+import std.types { String, List }
+import product.printed_chassis.printable_assembly {
+  PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16InletDuct,
+  PrintableAssembly, PrintableAssemblySelection, PrintableAssemblyReady, PrintableAssemblyRefused,
+}
+import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
+import product.printed_chassis.residential_review { residential_assembly, ResidentialAssemblyReady, ResidentialAssemblyRefused }
+import product.printed_chassis.cassette { rear_socket_bolt_clearances }
+import product.printed_chassis.cassette_review { cassette_printable, rack_review_assembly }
+import product.printed_chassis.gpu_duct {
+  a16_duct, GpuDuctAdmitted, GpuDuctOutlineRefused, GpuDuctFacePixelsOutOfOrder, GpuDuctFanMountRefused,
+  GpuDuctWindowTallerThanFan, GpuDuctPlugPassageClosed, duct_presentation_members, duct_readme,
+}
+
+// THE ONE PLACE A ROOT BECOMES PARTS. Every consumer on the print path -- the CAD check, preparation
+// identity and the inventory verbs -- asks here instead of calling an assembly's producer itself, so
+// adding a printable assembly is an arm and a row rather than a new set of call sites.
+//
+// Each arm declares its own required keep-outs and combined-assembly membership. The residential
+// cassette keeps the rear-socket hardware envelopes it has always required; the A16 duct requires
+// its 8-pin power keep-out, so the CAD kernel checks that clearance on solids as well as the
+// source-model construction in gpu_duct.
+fn select_printable_assembly(root: PrintedAssemblyRoot) -> PrintableAssemblySelection {
+  match root {
+    ResidentialCassette => match residential_assembly() {
+      ResidentialAssemblyReady { parts: parts, joints: joints, pitch: _, cooling: _ } =>
+        PrintableAssemblyReady { assembly: cassette_printable(root: root, parts: parts, joints: joints, keepouts: map(rear_socket_bolt_clearances(), p => p.id)) }
+      ResidentialAssemblyRefused { reason: r } => PrintableAssemblyRefused { reason: r }
+    }
+    CassetteRackReview => PrintableAssemblyReady { assembly: rack_review_assembly() }
+    A16InletDuct => match a16_duct {
+      GpuDuctAdmitted { parts: parts, interfaces: joints, face: f } => PrintableAssemblyReady {
+        assembly: PrintableAssembly {
+          root: root,
+          parts: parts,
+          interfaces: joints,
+          required_keepouts: ["POWER-KEEPOUT"],
+          assembly_members: map(filter(parts, p => match p.kind { Clearance => false Printed => true Purchased => true Metal => true }), p => p.id),
+          package: "a16-inlet-duct",
+          schema: "gunbc.a16-inlet-duct-review.v1",
+          readme: duct_readme,
+          presentation: duct_presentation_members(f: f),
+        }
+      }
+      GpuDuctOutlineRefused { inference: _ } => PrintableAssemblyRefused { reason: "A16 outline inference contradicted" }
+      GpuDuctFacePixelsOutOfOrder => PrintableAssemblyRefused { reason: "A16 end-face photo reading out of order" }
+      GpuDuctFanMountRefused { mount: _ } => PrintableAssemblyRefused { reason: "A16 duct fan mount refused" }
+      GpuDuctWindowTallerThanFan { window_height: _, fan_edge: _ } => PrintableAssemblyRefused { reason: "A16 fin window taller than the fan frame" }
+      GpuDuctPlugPassageClosed { plug_height: _, wall: _ } => PrintableAssemblyRefused { reason: "A16 duct plug passage closed" }
+    }
+  }
+}

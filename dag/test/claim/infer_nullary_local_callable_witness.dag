@@ -1,7 +1,8 @@
 module test.claim.infer_nullary_local_callable_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for, any_class_count_for }
+import gunbc.compile_census_probe { any_class_census, blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 
 // THE EXECUTING EVIDENCE FOR gunbc.recurring_failure_mode
 // arity_proxy_for_callability_misroutes_a_found_local.
@@ -33,32 +34,36 @@ data unary_parameter_source: String = "module test.claim.tmp_nullary_local_probe
 
 data nullary_parameter_surplus_source: String = "module test.claim.tmp_nullary_local_probe\nimport std.types { Int }\nfn host(pick: fn() -> Int) -> Int { pick(3) }\n"
 
-fn resolves_clean(source: String) -> Bool {
-  blocking_subject_count_for(source: source, wanted_class: "InternalError", wanted_subject: "function:pick") == 0
-    && total_blocking_count_for(source: source) == 0
+fn resolves_clean(source: String) -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_subject_census(source: source, wanted_class: "InternalError", wanted_subject: "function:pick"), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: source), holds: fn(n) { n == 0 }),
+  ])
 }
 
-test fn nullary_parameter_callable_resolves() -> Bool {
+test fn nullary_parameter_callable_resolves() -> ProcessExit {
   resolves_clean(source: nullary_parameter_source)
 }
 
-test fn nullary_callable_argument_binds_to_a_nullary_formal() -> Bool {
+test fn nullary_callable_argument_binds_to_a_nullary_formal() -> ProcessExit {
   resolves_clean(source: nullary_argument_source)
 }
 
-test fn nullary_alias_typed_parameter_resolves() -> Bool {
+test fn nullary_alias_typed_parameter_resolves() -> ProcessExit {
   resolves_clean(source: nullary_alias_parameter_source)
 }
 
-test fn nullary_global_still_resolves() -> Bool {
-  total_blocking_count_for(source: nullary_global_source) == 0
+test fn nullary_global_still_resolves() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: nullary_global_source), holds: fn(n) { n == 0 }))
 }
 
-test fn unary_local_still_resolves() -> Bool {
+test fn unary_local_still_resolves() -> ProcessExit {
   resolves_clean(source: unary_parameter_source)
 }
 
-test fn nullary_local_refuses_a_surplus_argument() -> Bool {
-  any_class_count_for(source: nullary_parameter_surplus_source, wanted_class: "CallPositionalSurplus") > 0
-    && blocking_subject_count_for(source: nullary_parameter_surplus_source, wanted_class: "InternalError", wanted_subject: "function:pick") == 0
+test fn nullary_local_refuses_a_surplus_argument() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: any_class_census(source: nullary_parameter_surplus_source, wanted_class: "CallPositionalSurplus"), holds: fn(n) { n > 0 }),
+    census_verdict(census: blocking_subject_census(source: nullary_parameter_surplus_source, wanted_class: "InternalError", wanted_subject: "function:pick"), holds: fn(n) { n == 0 }),
+  ])
 }
