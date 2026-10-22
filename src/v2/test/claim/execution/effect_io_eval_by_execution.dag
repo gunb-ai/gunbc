@@ -1,5 +1,7 @@
 module v2.test.claim.execution.effect_io_eval_by_execution
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -225,7 +227,8 @@ fn effect_io_eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
 fn effect_io_eval_tree() -> InferredTree {
   InferredTree {
     root: effect_io_eval_roundtrip_node,
-    facts: PartialFunction { lookup: effect_io_eval_fact_lookup }
+    facts: PartialFunction { lookup: effect_io_eval_fact_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

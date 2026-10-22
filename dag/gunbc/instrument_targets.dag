@@ -53,6 +53,7 @@ import gunbc.target_binding {
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, BindingDiffReading, NativeProcessMemoryReading,
   DependencyDemandCensusProducer,
+  DeclRefCensusProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -678,6 +679,15 @@ fn dependency_demand_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
 }
 
+// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (v2.compiler.source_root_eval
+// native_decl_ref_census_output, the emitted compiler's `decl-ref-census` verb): resolves every
+// std.decl_ref DeclarationRef literal and every backtick symbol span in the recurring-failure-mode and
+// rung_drop ledgers against the native ingest's ResolutionContext; exit 1 on any unresolved reference
+// or stale span. `gunbc test //gunbc/instruments:decl-ref-census`.
+fn decl_ref_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "decl-ref-census" } }
+}
+
 // THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
 // class gunbc.recurring_failure_mode generic_identity_decided_by_spelling). The seed's own
 // v1.tests.claim.generic_identity_census reads the typed graph and reports, per stored type node,
@@ -822,6 +832,10 @@ fn dependency_demand_census_binding() -> TargetBinding {
   TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
 }
 
+fn decl_ref_census_binding() -> TargetBinding {
+  TargetBinding { target: decl_ref_census_label() producer: DeclRefCensusProducer {} }
+}
+
 fn generic_identity_census_binding() -> TargetBinding {
   TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
 }
@@ -872,6 +886,26 @@ fn claim_coverage_census_function() -> String {
 
 fn claim_coverage_census_binding() -> TargetBinding {
   TargetBinding { target: claim_coverage_census_label() producer: CliWireProgramProducer { entry: claim_coverage_census_entry() function: claim_coverage_census_function() } }
+}
+
+// THE KNOWN-RED DERIVATION. The label exists to print a list no file holds: which ExpectedToHold claims
+// fail at the head this run executed on. Its producer is asked only for a head and a population — it
+// reads the schedule from the wet lane's own accessor and the enrollment from floor_expected_red — so
+// the printed rows can only come from a run. See the module header for what each refusal arm refuses.
+fn known_red_derivation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "known-red-derivation" } }
+}
+
+fn known_red_derivation_entry() -> String {
+  "dag/gunbc/instruments/known_red_derivation.dag"
+}
+
+fn known_red_derivation_function() -> String {
+  "known_red_derivation_exit"
+}
+
+fn known_red_derivation_binding() -> TargetBinding {
+  TargetBinding { target: known_red_derivation_label() producer: CliWireProgramProducer { entry: known_red_derivation_entry() function: known_red_derivation_function() } }
 }
 
 fn compute_run_unit_cold_label() -> Label {
@@ -1201,11 +1235,11 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    claim_coverage_census_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), claim_coverage_census_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -1223,11 +1257,11 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    claim_coverage_census_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), claim_coverage_census_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

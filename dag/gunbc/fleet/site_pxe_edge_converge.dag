@@ -13,6 +13,7 @@ import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, 
 import extdeps.systemd { ActiveState }
 import extdeps.systemd.systemctl {
   systemctl_daemon_reload_argv,
+  systemctl_disable_now_argv,
   systemctl_enable_argv,
   systemctl_restart_argv,
   systemctl_show_property_argv,
@@ -31,6 +32,9 @@ import extdeps.systemd.unit_file {
   serialize_systemd_unit_file,
   systemd_system_unit_directory,
 }
+import extdeps.package_managers.apt { package_dnsmasq_base, apt_exact_non_removing_install_command, apt_remove_command, AptGetInstallCommand, AptGetInstallCommandReady, AptGetInstallCommandRefused }
+import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import extdeps.exec.command { argv_words }
 import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
@@ -552,6 +556,144 @@ fn site_pxe_edge_subject(host: HostIdentity) -> SitePxeEdgeSubjectAdmission {
   }
 }
 
+// ── The dnsmasq-base ensure step ─────────────────────────────────────────────────────────────────
+
+// AUTHORITY: operator escalation msg_af2a60f0 (approved by default at its timeout), relayed by merry-fox-82.
+// It authorizes installing the package dnsmasq-base ONLY (never the dnsmasq package, whose postinst would
+// enable and start a competing resolver on srv4). It does NOT open the Secure Boot gate: this step runs
+// whatever the gate says, and the gate then reads the binary it produced, so a closed gate still means
+// no config file, no unit and no serving.
+data site_pxe_edge_package: NonEmptyStr = package_dnsmasq_base
+data site_pxe_edge_package_authority: String = "operator escalation msg_af2a60f0, relayed by merry-fox-82: install dnsmasq-base only; the Secure Boot gate stays separate and closed"
+
+// THE PACKAGE'S STANDING DECIDES THE ACTION, and only a uniquely decoded dpkg answer may authorize the
+// install (extdeps.package_managers.dpkg: undecidable is never read as absent).
+type SitePxeEdgePackageAction
+  = PackageActionNone
+  | PackageActionInstall
+  | PackageActionRefuse { reason: String }
+
+fn site_pxe_edge_package_action(state: DpkgInstalledState) -> SitePxeEdgePackageAction {
+  match state {
+    DpkgPackageInstalled => PackageActionNone
+    DpkgPackageUnknown => PackageActionInstall
+    DpkgPackageNotInstalled { status: _ } => PackageActionInstall
+    DpkgQueryUndecidable { reason: r } => PackageActionRefuse { reason: r }
+  }
+}
+
+// The hash of the binary the package left at the path the gate and the unit execute. Recorded as OBSERVED:
+// no digest of the Ubuntu build is pinned in this repository, so nothing is compared, and the receipt says
+// which bytes were read rather than claiming they are the expected ones.
+type SitePxeEdgePackageBinaryDigest
+  = PackageBinaryDigestRead { digest: ContentHash }
+  | PackageBinaryDigestUnread { reason: String }
+
+type SitePxeEdgePackageOutcome
+  = PackageHeld { binary: SitePxeEdgePackageBinaryDigest }
+  | PackageObservedMissing
+  | PackageInstalledAndReadBack { binary: SitePxeEdgePackageBinaryDigest }
+  | PackageInstallRefused { step: String, reason: String }
+  | PackageReadBackFailed { reason: String, rolled_back: SitePxeEdgeProbe }
+  | PackageUndecidable { reason: String }
+  | PackageNotAttempted { reason: String }
+
+fn site_pxe_edge_package_binary_digest(observation: SitePxeEdgeChainloaderObservation) -> SitePxeEdgePackageBinaryDigest {
+  match observation {
+    ChainloaderDigestObserved { digest: d } => PackageBinaryDigestRead { digest: d }
+    ChainloaderDigestUnobservable { reason: r } => PackageBinaryDigestUnread { reason: r }
+  }
+}
+
+// THE READBACK AFTER AN INSTALL: dpkg must now say installed AND the binary must have been hashed off
+// srv4. Either missing is a failed readback, which the caller answers with the rollback.
+fn site_pxe_edge_package_readback_failure(state: DpkgInstalledState, binary: SitePxeEdgePackageBinaryDigest) -> String? {
+  match state {
+    DpkgPackageInstalled =>
+      match binary {
+        PackageBinaryDigestRead { digest: _ } => none
+        PackageBinaryDigestUnread { reason: r } => Present { value: concat("binary not hashed after install: ", r) }
+      }
+    DpkgPackageUnknown => Present { value: "dpkg does not know the package after install" }
+    DpkgPackageNotInstalled { status: st } => Present { value: concat("dpkg status after install: ", st) }
+    DpkgQueryUndecidable { reason: r } => Present { value: concat("dpkg status undecidable after install: ", r) }
+  }
+}
+
+// THE ROLLBACK, STAGED BEFORE THE WRITE AND RECORDED IN THE RECEIPT, in the order that leaves no running
+// daemon without its files: stop and disable the unit, remove the unit, the config and the TFTP root,
+// daemon-reload, then remove the package. The unit, config and root are written by the later steps, so a
+// rollback of THIS step alone is its last leg (package_leg); the earlier legs are the rollback of a
+// completed converge. apt's --no-remove install means nothing else was removed to be restored.
+// NEEDRESTART_MODE=l (list only) in both package commands means needrestart never restarts a service
+// on its own; a daemon left stale by the library change is reported, not bounced.
+type SitePxeEdgeRollbackStep { step: String, argv: List<String> }
+
+fn site_pxe_edge_package_install_argv() -> List<String>? {
+  match apt_exact_non_removing_install_command(selection: site_pxe_edge_package) {
+    AptGetInstallCommandReady { command: c } => Present { value: argv_words(command: c) }
+    AptGetInstallCommandRefused { cause: _ } => none
+  }
+}
+
+fn site_pxe_edge_package_remove_argv() -> List<String>? {
+  match apt_remove_command(package: site_pxe_edge_package) {
+    AptGetInstallCommandReady { command: c } => Present { value: argv_words(command: c) }
+    AptGetInstallCommandRefused { cause: _ } => none
+  }
+}
+
+fn site_pxe_edge_package_leg() -> SitePxeEdgeRollbackStep? {
+  match site_pxe_edge_package_remove_argv() {
+    Absent => none
+    Present { value: argv } => Present { value: SitePxeEdgeRollbackStep { step: "apt-get remove dnsmasq-base", argv: elevated_argv(command: argv) } }
+  }
+}
+
+fn site_pxe_edge_rollback_steps() -> List<SitePxeEdgeRollbackStep> {
+  let package_leg = match site_pxe_edge_package_leg() {
+    Absent => []
+    Present { value: leg } => [leg]
+  }
+  concat([
+    SitePxeEdgeRollbackStep { step: "disable --now unit", argv: elevated_argv(command: systemctl_disable_now_argv(unit: site_pxe_edge_unit_name)) },
+    SitePxeEdgeRollbackStep { step: "remove unit and config", argv: elevated_argv(command: ["rm", "-f", "--", site_pxe_edge_unit_path as String, site_pxe_edge_config_path as String]) },
+    SitePxeEdgeRollbackStep { step: "remove tftp root", argv: elevated_argv(command: ["rm", "-rf", "--", site_pxe_edge_tftp_root as String]) },
+    SitePxeEdgeRollbackStep { step: "daemon-reload", argv: elevated_argv(command: systemctl_daemon_reload_argv()) },
+  ], package_leg)
+}
+
+fn site_pxe_edge_package_outcome_settled(outcome: SitePxeEdgePackageOutcome) -> Bool {
+  match outcome {
+    PackageHeld { binary: _ } => true
+    PackageInstalledAndReadBack { binary: _ } => true
+    PackageObservedMissing => false
+    PackageInstallRefused { step: _, reason: _ } => false
+    PackageReadBackFailed { reason: _, rolled_back: _ } => false
+    PackageUndecidable { reason: _ } => false
+    PackageNotAttempted { reason: _ } => false
+  }
+}
+
+fn site_pxe_edge_package_binary_wire(binary: SitePxeEdgePackageBinaryDigest) -> String {
+  match binary {
+    PackageBinaryDigestRead { digest: d } => concat("sha256 observed ", serialize_content_hash(hash: d) as String)
+    PackageBinaryDigestUnread { reason: r } => concat("UNREAD ", r)
+  }
+}
+
+fn site_pxe_edge_package_outcome_wire(outcome: SitePxeEdgePackageOutcome) -> String {
+  match outcome {
+    PackageHeld { binary: b } => concat("held ", site_pxe_edge_package_binary_wire(binary: b))
+    PackageObservedMissing => "missing (observe-only, nothing installed)"
+    PackageInstalledAndReadBack { binary: b } => concat("installed-and-read-back ", site_pxe_edge_package_binary_wire(binary: b))
+    PackageInstallRefused { step: st, reason: why } => join(["REFUSED step=", st, " ", why], "")
+    PackageReadBackFailed { reason: r, rolled_back: rb } => join(["READBACK-FAILED ", r, "; rollback ", site_pxe_edge_probe_wire(probe: rb)], "")
+    PackageUndecidable { reason: r } => concat("UNDECIDABLE ", r)
+    PackageNotAttempted { reason: r } => concat("not-attempted ", r)
+  }
+}
+
 // ── Observation (effectful) ──────────────────────────────────────────────────────────────────────
 
 fn site_pxe_edge_argv_probe(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, what: String) -> SitePxeEdgeProbe
@@ -648,6 +790,70 @@ fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecuti
   }
 }
 
+fn observe_site_pxe_edge_package(target: SshTarget, context: FleetSshExecutionContext) -> DpkgInstalledState
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: dpkg_query_status_argv(package: site_pxe_edge_package)) {
+    TypedArgvExecRefused { reason: why } => DpkgQueryUndecidable { reason: why }
+    TypedArgvExecConverged { result: r } => dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  }
+}
+
+fn observe_site_pxe_edge_package_binary(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgePackageBinaryDigest
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sha256sum", site_pxe_edge_dnsmasq_binary as String]) {
+    TypedArgvExecRefused { reason: why } => PackageBinaryDigestUnread { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      site_pxe_edge_package_binary_digest(observation: site_pxe_edge_digest_observation(path: site_pxe_edge_dnsmasq_binary, success: r.success, line: r.stdout))
+  }
+}
+
+// THE ENSURE STEP: observe dpkg, install only on an Absent/NotInstalled verdict in apply mode, then read the
+// package state and the binary hash back off srv4. A failed readback runs the package leg of the staged
+// rollback and says whether it held. Privilege is the caller's probe: refused or unobservable privilege
+// attempts nothing.
+fn ensure_site_pxe_edge_package(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode, privilege: SitePxeEdgeProbe) -> SitePxeEdgePackageOutcome
+{
+  let before = observe_site_pxe_edge_package(target: target, context: context)
+  match site_pxe_edge_package_action(state: before) {
+    PackageActionRefuse { reason: r } => PackageUndecidable { reason: r }
+    PackageActionNone => PackageHeld { binary: observe_site_pxe_edge_package_binary(target: target, context: context) }
+    PackageActionInstall =>
+      match mode {
+        SitePxeEdgeObserveOnly => PackageObservedMissing
+        SitePxeEdgeApply =>
+          if site_pxe_edge_probe_held(probe: privilege) == false {
+            PackageNotAttempted { reason: "administrator privilege not held" }
+          } else {
+            match site_pxe_edge_package_install_argv() {
+              Absent => PackageInstallRefused { step: "install argv", reason: "the apt InstallExactNonRemoving row did not materialize" }
+              Present { value: argv } =>
+                match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: argv), what: "apt-get install dnsmasq-base") {
+                  SitePxeEdgeProbeHeld => {
+                    let after = observe_site_pxe_edge_package(target: target, context: context)
+                    let binary = observe_site_pxe_edge_package_binary(target: target, context: context)
+                    match site_pxe_edge_package_readback_failure(state: after, binary: binary) {
+                      Absent => PackageInstalledAndReadBack { binary: binary }
+                      Present { value: why } => PackageReadBackFailed { reason: why, rolled_back: rollback_site_pxe_edge_package(target: target, context: context) }
+                    }
+                  }
+                  SitePxeEdgeProbeObservedNegative { reason: r } => PackageInstallRefused { step: "install", reason: r }
+                  SitePxeEdgeProbeUnobservable { reason: r } => PackageInstallRefused { step: "install", reason: r }
+                  SitePxeEdgeProbeNotAttempted { reason: r } => PackageInstallRefused { step: "install", reason: r }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn rollback_site_pxe_edge_package(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgeProbe
+{
+  match site_pxe_edge_package_leg() {
+    Absent => SitePxeEdgeProbeNotAttempted { reason: "the apt Remove row did not materialize" }
+    Present { value: leg } => site_pxe_edge_argv_probe(target: target, context: context, argv: leg.argv, what: leg.step)
+  }
+}
+
 // ── Plan and apply ───────────────────────────────────────────────────────────────────────────────
 
 type SitePxeEdgeMode
@@ -689,6 +895,7 @@ fn site_pxe_edge_post_activation(pin: SitePxeEdgeChainloaderPin, observation: Si
 
 type SitePxeEdgeRun {
   mode: SitePxeEdgeMode
+  package: SitePxeEdgePackageOutcome
   gate_causes: List<SitePxeEdgeGateCause>
   files: List<SitePxeEdgeFileResult>
   activation: SitePxeEdgeProbe
@@ -784,6 +991,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
 {
   let pin = site_pxe_edge_chainloader_pin
   let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
+  let package = ensure_site_pxe_edge_package(target: target, context: context, mode: mode, privilege: privilege)
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let chainloader = observe_site_pxe_edge_chainloader(target: target, context: context, pin: pin)
   let embedded = observe_site_pxe_edge_embedded_revision(target: target, context: context, pin: pin)
@@ -814,6 +1022,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   }
   SitePxeEdgeRun {
     mode: mode,
+    package: package,
     gate_causes: causes,
     files: results,
     activation: activation,
@@ -828,6 +1037,15 @@ fn site_pxe_edge_run_succeeded(run: SitePxeEdgeRun) -> Bool {
   match run.mode {
     SitePxeEdgeObserveOnly =>
       !any(run.gate_causes, c => site_pxe_edge_gate_cause_is_unobserved(cause: c))
+        && (match run.package {
+          PackageUndecidable { reason: _ } => false
+          PackageHeld { binary: _ } => true
+          PackageObservedMissing => true
+          PackageInstalledAndReadBack { binary: _ } => true
+          PackageInstallRefused { step: _, reason: _ } => true
+          PackageReadBackFailed { reason: _, rolled_back: _ } => true
+          PackageNotAttempted { reason: _ } => true
+        })
         && site_pxe_edge_probe_observable(probe: run.unit_active)
         && !any(run.files, r => match r.before {
           EdgeFileUnobservable { reason: _ } => true
@@ -837,6 +1055,7 @@ fn site_pxe_edge_run_succeeded(run: SitePxeEdgeRun) -> Bool {
         })
     SitePxeEdgeApply =>
       length(run.gate_causes) == 0
+        && site_pxe_edge_package_outcome_settled(outcome: run.package)
         && all(run.files, r => site_pxe_edge_file_outcome_settled(outcome: r.outcome))
         && site_pxe_edge_probe_held(probe: run.activation)
         && site_pxe_edge_probe_held(probe: run.unit_active)
@@ -906,6 +1125,8 @@ fn site_pxe_edge_post_activation_wire(post: SitePxeEdgePostActivation) -> String
 fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
   join([
     "mode=", match run.mode { SitePxeEdgeObserveOnly => "observe" SitePxeEdgeApply => "apply" }, "\n",
+    "package=", site_pxe_edge_package_outcome_wire(outcome: run.package), " authority=", site_pxe_edge_package_authority, "\n",
+    join(map(site_pxe_edge_rollback_steps(), r => join(["rollback-staged ", r.step, ": ", join(r.argv, " "), "\n"], "")), ""),
     join(map(run.gate_causes, c => join(["gate-closed ", site_pxe_edge_gate_cause_text(cause: c), "\n"], "")), ""),
     join(map(run.files, r => join(["file ", r.file.subject as String, " path=", r.file.path as String, " before=", site_pxe_edge_file_standing_wire(standing: r.before), " outcome=", site_pxe_edge_file_outcome_wire(outcome: r.outcome), "\n"], "")), ""),
     "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
