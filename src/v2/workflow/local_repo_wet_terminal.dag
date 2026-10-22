@@ -3181,6 +3181,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "a_missing_file_is_the_real_unreadable_arm" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "a_missing_file_is_the_real_unreadable_arm",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.seeded_filler_real_execution", function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution" },
       entry: "dag/test/claim/seeded_filler_real_execution.dag",
       function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution",
