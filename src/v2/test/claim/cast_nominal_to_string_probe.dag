@@ -35,7 +35,7 @@ fn cns_int_to_string() -> Outcome<ResolvedTree> {
 // POSITIVE CONTROLS, declared routes v2 is known to admit (v2.std.coercion rows): Int -> Float and
 // an identity cast. Int -> String is NOT a control: it has no declared route.
 fn cns_int_to_float() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Float {\n  x as Float\n}\n")
+  tpb_assemble(src: "module p\n\nimport std.types { Float }\n\nfn f(x: Int) -> Float {\n  x as Float\n}\n")
 }
 
 fn cns_int_identity() -> Outcome<ResolvedTree> {
