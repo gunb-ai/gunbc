@@ -1,0 +1,11 @@
+set -u
+cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -2
+B=target/release/claim_batch
+echo "FILE dag/test/claim/floor/floor_expected_red_coherence_witness.dag"; timeout 600 $B --source-root dag --source-root src/v2 --entry dag/test/claim/floor/floor_expected_red_coherence_witness.dag --functions w_severed_fixture_refuses_with_named_causes,w_severed_fixture_names_the_orphaned_identities,w_severed_fixture_names_the_broken_link,w_severed_fixture_refusal_message_names_the_derivation_not_an_exclusion,w_severed_fixture_linked_chunks_only_is_coherent,each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to_hold,the_dry_lane_hold_still_wins_and_the_wet_enrolment_is_load_bearing 2>&1 | grep -aE "^(PASS|FAIL|UNOBSERVED)|rror" | cut -c1-200; echo "rc=${PIPESTATUS[0]}"
+echo "FILE dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag"; timeout 600 $B --source-root dag --source-root src/v2 --entry dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag --functions the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution,a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution,a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution,a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall,a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent,no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent 2>&1 | grep -aE "^(PASS|FAIL|UNOBSERVED)|rror" | cut -c1-200; echo "rc=${PIPESTATUS[0]}"
+echo MUTATION_RENAME
+sed -i '0,/a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution/s//a_capture_claiming_this_head_stored_under_another_basename_RENAMED/' src/v2/workflow/local_repo_wet_terminal.dag
+git diff --stat | tail -1
+for f in each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to_hold the_dry_lane_hold_still_wins_and_the_wet_enrolment_is_load_bearing; do timeout 600 $B --source-root dag --source-root src/v2 --entry dag/test/claim/floor/floor_expected_red_coherence_witness.dag --functions $f 2>&1 | grep -aE "^(PASS|FAIL|UNOBS)" | cut -c1-200; done
+git checkout -- src/v2/workflow/local_repo_wet_terminal.dag
+echo ENDRUN
