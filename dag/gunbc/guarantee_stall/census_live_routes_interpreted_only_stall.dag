@@ -15,17 +15,16 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // WHAT HOLDS MEANWHILE: the census bodies are pure functions of supplied captures and their
 // witness claims execute on supplied inputs; only the live capture is unexecuted at corpus scale.
 data census_live_routes_interpreted_only_stall: GuaranteeStall = GuaranteeStall {
-  subject: "a census live route (gunbc.claim_coverage_census_live, the outside-discovery-roots census live entry) runs to completion over the tracked corpus and prints its head",
+  subject: "the claim-coverage census live route (gunbc.claim_coverage_census_live and gunbc.claim_coverage_census_s1_live) runs to completion over the tracked corpus and prints its head",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
-    grounding: "the native compiler resolving module_acquisition and the census closure (Charter 6, the native resolve frontier), or the captured inputs (file list, marker reads) supplied to a native entry so the census body needs no change"
+    grounding: "the native compiler resolving module_acquisition and the census closure (the native resolve frontier, owned by Charter 6, not by C4-E), or the captured inputs (file list, marker reads) supplied to a native entry so the census body needs no change; a host-native marker read is that second arm and has no owner yet, so its authoring is a Charter 6 or successor item and is not claimed by this row"
   },
   population: BoundedPopulation {
     members: [
       "the claim-coverage census S1 live route, bound as CliWireProgramProducer at gunbc.instrument_targets claim_coverage_census_binding",
-      "the outside-discovery-roots census live entry, interpreted-only through gunbc.command_runner run_shell_command_capture",
     ]
   },
-  next_rung_trigger: climbs_when(capability: "a census live route completes over the tracked corpus on a fleet host and prints its head, observed as the instrument-dispatch run for its label exiting 0, with the native resolve of its closure refusing nothing as declarer_refused")
+  next_rung_trigger: climbs_when(capability: "the claim-coverage census live route completes over the tracked corpus on a fleet host and prints its head, observed as the instrument-dispatch run for its label exiting 0, with the native resolve of its closure refusing nothing as declarer_refused")
 }
