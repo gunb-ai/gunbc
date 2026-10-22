@@ -10868,7 +10868,10 @@ pub fn non_empty_text_cast_diags(
     TextRepresentation::CodePointSequence => Rc::new(vec![]),
     TextRepresentation::NonEmptyCodePointSequence => Rc::new(vec![]),
     TextRepresentation::NotText => Rc::new(vec![]),
-    TextRepresentation::TextRepresentationUnidentified => Rc::new(vec![]),
+    TextRepresentation::TextRepresentationUnidentified => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary {
+    position: "cast operand into a non-empty code-point sequence".to_string(),
+    span: span.clone(),
+}), scope.module_name.clone())]),
 },
 },
     TextRepresentation::CodePointSequence => Rc::new(vec![]),
