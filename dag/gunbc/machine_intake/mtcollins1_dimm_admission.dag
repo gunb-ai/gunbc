@@ -8,7 +8,7 @@ import extdeps.memory.micron { mta36asf2g72pz_2g1a2_catalog }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
 import std.content_hash { Sha256Digest }
 import gunbc.machine_intake.ampere_dram_console_observation { AmpereDramTrainedDimm, nth_token, prefixed_int }
-import std.measure { MegatransfersPerSecond, megatransfers_per_second }
+import std.measure { ByteSize, MegatransfersPerSecond, gibibyte, gibibyte_to_byte_size, megatransfers_per_second }
 
 // THE PER-PLATFORM DIMM POPULATION ADMISSION ROW OF MT. COLLINS UNIT 1 (ruling
 // gunbc.design_ruling dimm_population_is_admitted_permissively, 2026-10-17). It lives in the observing
@@ -75,7 +75,7 @@ type DimmFirmwareFacts {
   buffering: DimmBuffering
   non_volatile_backing: Bool
   spd_manufacturer: NonEmptyStr
-  capacity_gb: Int
+  capacity: ByteSize
   megatransfers: MegatransfersPerSecond
   rank_count: Int
   controller: NonEmptyStr
@@ -97,6 +97,7 @@ fn counted(token: String, suffix: String) -> Int? {
   if !ends_with(s: token, suffix: suffix) { none } else { parse_int(s: join(split(s: token, delimiter: suffix), "")) }
 }
 
+// The firmware's "<n>GB" is the JEDEC binary gigabyte: n GiB, n * 2^30 bytes, converted here and not left implied.
 fn decode_fields(class: DimmClassSpelling, spd: String, tokens: List<String>) -> DimmDecode {
   match counted(token: nth_token(tokens: tokens, n: 1), suffix: "GB") {
     Absent => DimmUndecodable { field: "capacity" }
@@ -109,7 +110,7 @@ fn decode_fields(class: DimmClassSpelling, spd: String, tokens: List<String>) ->
           Present { value: controller } => if spd == "" || controller == "" || nth_token(tokens: tokens, n: 7) == "" { DimmUndecodable { field: "empty-identity" } } else {
             DimmDecoded { facts: DimmFirmwareFacts {
               buffering: class.buffering, non_volatile_backing: class.non_volatile_backing, spd_manufacturer: spd as NonEmptyStr,
-              capacity_gb: capacity, megatransfers: megatransfers_per_second(count: rate), rank_count: rank,
+              capacity: gibibyte_to_byte_size(g: gibibyte(count: capacity)), megatransfers: megatransfers_per_second(count: rate), rank_count: rank,
               controller: controller as NonEmptyStr, part_number: nth_token(tokens: tokens, n: 7) as NonEmptyStr,
             } }
           }
@@ -212,7 +213,7 @@ data mtcollins1_accepted_observation: DramTableObservation = DramTableObservatio
 }
 
 fn dimm_facts_identical(a: DimmFirmwareFacts, b: DimmFirmwareFacts) -> Bool {
-  a.buffering == b.buffering && a.non_volatile_backing == b.non_volatile_backing && a.spd_manufacturer == b.spd_manufacturer && a.capacity_gb == b.capacity_gb
+  a.buffering == b.buffering && a.non_volatile_backing == b.non_volatile_backing && a.spd_manufacturer == b.spd_manufacturer && a.capacity == b.capacity
     && a.megatransfers == b.megatransfers && a.rank_count == b.rank_count && a.controller == b.controller && a.part_number == b.part_number
 }
 
