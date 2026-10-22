@@ -107,12 +107,12 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_type_declaration_use_census_runs, run_v2_demand_census,
-    run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit,
-    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
-    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
-    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
+    run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
+    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord,
+    NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun,
+    NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases,
+    NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
@@ -147,7 +147,8 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
+    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
+    whole_tree_resolved_ctx, EntryResolveRefusal,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -721,7 +722,9 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -17782,7 +17785,9 @@ pub fn handle_serve(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -20215,7 +20220,7 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // exec created and is not inherited. A missing field is None, never a fabricated zero.
     #[cfg(target_os = "linux")]
     {
-        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+        proc_status_kb_field("VmHWM").filter(|b| *b > 0)
     }
     #[cfg(target_os = "macos")]
     {
@@ -20317,16 +20322,17 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 // the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
 
 /// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
-/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
-/// `project_falsifier_witness_entries` turn them into explicit entries that RUN, and explicit rows
+/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries`
+/// turns them into explicit entries that RUN, and explicit rows
 /// merge after discovery with no exclusion filter — so an enrolled witness under an offline path
 /// executes even though the path excludes it (the two-edit rule `enforcement_coverage_exclusion_note`
 /// records: offlining such a witness requires deleting its enrollment too).
 ///
 /// Without this, the freeze wall would refuse 31 identities that already have a real consumer —
-/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count:
-/// `GitPrePushHook` is fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only
-/// that surface is not a consumer.
+/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count
+/// (`EXECUTING_COMMIT_SURFACES`): `GitPrePushHook` is fmt-only since 2026-07-25 and
+/// `FalsifierCadenceJob` lost its executor at 611fd02770, so an enrollment naming only those is
+/// not a consumer.
 fn commit_roster_witness_claim_keys() -> &'static [String] {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
@@ -20338,13 +20344,20 @@ fn commit_roster_witness_claim_keys() -> &'static [String] {
     })
 }
 
+/// The enrollment surfaces that execute a witness. Hand-listed here only because the seed reads
+/// `commit_workflow.dag` by text scan; the authority is
+/// `gunbc.commit_workflow enrollment_is_scheduled`, and the unit test
+/// `executing_surfaces_mirror_enrollment_is_scheduled` pins this list to that predicate's body.
+/// `FalsifierCadenceJob` is deliberately absent: its executor (falsifier.yml) was deleted at
+/// 611fd02770 (#8283), so a row enrolled only there executes nowhere.
+const EXECUTING_COMMIT_SURFACES: [&str; 1] = ["GithubActionsCiJob"];
+
 fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
     // The ROW head, not the bare constructor name: `CommitWitnessClaim {` also opens the coproduct
     // declaration and every pattern-match arm over it, and one such arm's window happens to reach a
     // prose `entry:` literal in a neighbouring note. A row is always a `check:` field of a
     // `CommitCheckEnrollment`, so that prefix is the identity of a row rather than a guess about it.
     const HEAD: &str = "check: CommitWitnessClaim {";
-    const EXECUTING_SURFACES: [&str; 2] = ["GithubActionsCiJob", "FalsifierCadenceJob"];
     let mut keys: Vec<String> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
@@ -20369,7 +20382,10 @@ fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
                  {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable enrollment `surfaces:` list"
             );
         };
-        if !EXECUTING_SURFACES.iter().any(|s| surfaces.contains(s)) {
+        if !EXECUTING_COMMIT_SURFACES
+            .iter()
+            .any(|s| surfaces.contains(s))
+        {
             continue;
         }
         for function in quoted_literals(&list) {
@@ -24230,10 +24246,45 @@ mod node_frontier_plumbing_controls {
             keys,
             vec![
                 "src/v2/test/claim/long/a_test.dag::ci_holds".to_string(),
-                "src/v2/test/claim/long/b_test.dag::falsifier_holds".to_string(),
             ],
-            "executing surfaces admit; the coproduct declaration and a pre-push-only row do not"
+            "only an executing surface admits; the coproduct declaration, a FalsifierCadenceJob-only \
+             row (dead executor) and a pre-push-only row do not"
         );
+    }
+
+    // THE DIFFERENTIAL PIN. The seed cannot call the .dag fact, so it mirrors it; this reads the
+    // authority's own body and refuses if the two surface sets ever differ. A mirror with no pin is
+    // a second authority that drifts silently (the fail-open this list once carried: it credited
+    // FalsifierCadenceJob after the predicate's executor was deleted).
+    #[test]
+    fn executing_surfaces_mirror_enrollment_is_scheduled() {
+        let content =
+            std::fs::read_to_string(workspace_root().join(super::COMMIT_WORKFLOW_AUTHORITY_REL))
+                .expect("read commit_workflow authority");
+        let head = content
+            .find("fn enrollment_is_scheduled(")
+            .expect("enrollment_is_scheduled is declared in the authority");
+        let body = &content[head..];
+        let body = &body[..body
+            .find("\n}\n")
+            .expect("enrollment_is_scheduled body closes")];
+        let mut authored: Vec<&str> = body
+            .split("surface: ")
+            .skip(1)
+            .map(|rest| {
+                rest.split(|c: char| !c.is_alphanumeric())
+                    .next()
+                    .unwrap_or("")
+            })
+            .collect();
+        authored.sort_unstable();
+        let mut mirrored: Vec<&str> = super::EXECUTING_COMMIT_SURFACES.to_vec();
+        mirrored.sort_unstable();
+        assert_eq!(
+            authored, mirrored,
+            "EXECUTING_COMMIT_SURFACES drifted from enrollment_is_scheduled"
+        );
+        assert!(!mirrored.contains(&"FalsifierCadenceJob"));
     }
 
     // The live half of the same fact: an enrolled witness under an offline path is admitted, and
@@ -30198,6 +30249,9 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
+    /// Declared-input names (variables intersected with `declared_inputs`) read anywhere inside `argv[0]`, calls and field accesses
+    /// included. Empty means the executable position reads no input.
+    pub executable_input_refs: Vec<String>,
 }
 
 fn collect_argv_input_refs(
@@ -30221,6 +30275,34 @@ fn collect_argv_input_refs(
             }
         }
         _ => {}
+    }
+}
+
+/// Every variable read anywhere under `node` (call arguments, field accesses, interpolations),
+/// in first-seen order. Unlike `collect_argv_input_refs` it descends through every expression
+/// form, because its question is "can an input reach this position", not "which inputs does
+/// this element interpolate".
+fn collect_expression_var_reads(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    if let ExprData::ExprVar { .. } = node.expr_data.as_ref() {
+        let name = expr_var_name_at(node.clone(), source_indices.clone());
+        if !name.is_empty() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    if let ExprData::ExprStringInterp = node.expr_data.as_ref() {
+        for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+            if let StringPart::Interpolation { expr } = part.as_ref() {
+                collect_expression_var_reads(expr, source_indices, out);
+            }
+        }
+    }
+    for child in node.children.iter() {
+        collect_expression_var_reads(child, source_indices, out);
     }
 }
 
@@ -30298,6 +30380,20 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                 for argv_node in transport.children.iter() {
                     collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
                 }
+                let mut executable_input_refs: Vec<String> = Vec::new();
+                if let Some(executable) = transport.children.iter().next() {
+                    collect_expression_var_reads(
+                        executable,
+                        &source_indices,
+                        &mut executable_input_refs,
+                    );
+                    let declared = operation_declared_inputs(op, &source_indices);
+                    executable_input_refs.retain(|name| {
+                        declared
+                            .iter()
+                            .any(|(declared_name, _)| declared_name == name)
+                    });
+                }
                 rows.push(ShellTransportOperationCensusRow {
                     path: rel.clone(),
                     service: item.name.clone(),
@@ -30307,6 +30403,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         .map(|(name, _)| name)
                         .collect(),
                     argv_input_refs,
+                    executable_input_refs,
                 });
             }
         }

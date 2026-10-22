@@ -20,6 +20,7 @@ import gunbc.ci.ci_layer_roots {
   witness_exclusion_row_is_rehomed_bin_wet,
   witness_exclusion_row_is_substrate_long_lane,
   falsifier_rehomed_bin_wet_entries,
+  falsifier_rehomed_roster_entries,
   falsifier_substrate_long_lane_entries,
   falsifier_substrate_long_lane_batch_schedule_entries
 }
@@ -45,8 +46,7 @@ import std.realization_schedule {
 import std.algebra { list_snoc_item, contains, fold_list, length, Empty }
 import gunbc.commit_workflow {
   commit_gate_roster,
-  project_ci_floor_witness_entries,
-  project_falsifier_witness_entries
+  project_ci_floor_witness_entries
 }
 import gunbc.witness.witness_deferral_freeze {
   FrozenPathDeferral,
@@ -161,6 +161,12 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessCons
   ) {
     FalsifierRehomedBinWet
   } else if schedule_contains_entry(
+    xs: falsifier_rehomed_roster_entries(),
+    entry: entry,
+    function: function
+  ) {
+    FalsifierRehomedBinWet
+  } else if schedule_contains_entry(
     xs: explicit_witness_admission_substrate_long_lane_roster(),
     entry: entry,
     function: function
@@ -266,11 +272,6 @@ fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
     entry: entry,
     function: function
   )
-    || schedule_contains_entry(
-      xs: project_falsifier_witness_entries(roster: commit_gate_roster),
-      entry: entry,
-      function: function
-    )
 }
 
 fn witness_execution_standing_for_row(
@@ -446,7 +447,7 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
         ),
         concat(
           concat(
-            falsifier_rehomed_bin_wet_entries(),
+            concat(falsifier_rehomed_bin_wet_entries(), falsifier_rehomed_roster_entries()),
             falsifier_substrate_long_lane_batch_schedule_entries()
           ),
           explicit_witness_admission_executing_witness_roster()

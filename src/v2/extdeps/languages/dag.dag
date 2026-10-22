@@ -148,7 +148,8 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   lex_rules_literal_for_class,
   char_kernel_type_node,
   symbol_kernel_type_node,
-  IntLiteralUnwired,
+  ListIntroductionUnwired,
+  IntLiteralDecimal,
   ProducedDeclUnwired,
   CanonicalOperation,
   ConcreteSyntaxToken,
@@ -170,6 +171,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   canonical_operation_op_ge,
   canonical_operation_op_eq,
   canonical_operation_op_ne,
+  canonical_operation_op_not,
   target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
@@ -449,6 +451,8 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_div())
   } else if surface_token == ^dag_token_kw_as {
     outcome_accepted(canonical_operation_op_coerce())
+  } else if surface_token == ^dag_token_bang {
+    outcome_accepted(canonical_operation_op_not())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
@@ -747,6 +751,7 @@ fn dag_lex_rules_except_braces() -> List<LexRule> {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_false, text: "false"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_where, text: "where"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_as, text: "as"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_is, text: "is"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_return, text: "return"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_nominal_opaque, text: "nominal_opaque"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_sole_constructor, text: "sole_constructor"),
@@ -1395,6 +1400,7 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
     ^dag_token_kw_false,
     ^dag_token_kw_where,
     ^dag_token_kw_as,
+    ^dag_token_kw_is,
     ^dag_token_kw_return,
     ^dag_token_kw_nominal_opaque,
     ^dag_token_kw_sole_constructor
@@ -1918,6 +1924,16 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
   )
 }
 
+// `x is V` is a postfix step beside the cast: the arm V is spelled as one name and is only a
+// SOURCE SPELLING here. Resolving it against x's type declaration is elaboration's work, and the
+// resolved arm it produces has no row in this grammar, so no source text can spell it.
+fn dag_grammar_postfix_is_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_is),
+    right: dag_grammar_binding_name_terminal()
+  )
+}
+
 // An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
 // postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
 // list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
@@ -1952,7 +1968,10 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
         left: dag_grammar_postfix_dot_suffix_expr(),
         right: dag_grammar_choice(
           left: dag_grammar_postfix_as_suffix_expr(),
-          right: dag_grammar_postfix_index_suffix_expr()
+          right: dag_grammar_choice(
+            left: dag_grammar_postfix_is_suffix_expr(),
+            right: dag_grammar_postfix_index_suffix_expr()
+          )
         )
       )
     )
@@ -6870,7 +6889,8 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^dag_token_kw_true,
       false_token: ^dag_token_kw_false
     },
-    int_literal_form: IntLiteralUnwired,
+    int_literal_form: IntLiteralDecimal { literal_token: ^dag_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: dag_block_evaluation_mode()
   }
 }

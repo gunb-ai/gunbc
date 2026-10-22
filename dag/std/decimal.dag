@@ -1,7 +1,7 @@
 module std.decimal
 
 import std.types { String, Int, Bool, range }
-import std.error_primitives { pure_dag_seam_unreachable }
+import std.error_primitives { pure_dag_seam_unreachable_int }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.algebra { string_concat_join }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_multiply, checked_int_subtract }
@@ -121,7 +121,7 @@ fn admit_exact_decimal(units: Int, fraction_digits: Int) -> ExactDecimalAdmissio
 // because dropping a zero there would change the number rather than its spelling.
 fn canonical_exact_decimal(d: ExactDecimal) -> ExactDecimal {
   if d.fraction_digits < 0 {
-    ExactDecimal { units: pure_dag_seam_unreachable(), fraction_digits: 0 }
+    ExactDecimal { units: pure_dag_seam_unreachable_int(), fraction_digits: 0 }
   } else if d.fraction_digits == 0 {
     ExactDecimal { units: d.units, fraction_digits: 0 }
   } else if d.units - ((d.units / 10) * 10) == 0 {
