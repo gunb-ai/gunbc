@@ -313,6 +313,42 @@ fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration>
   }
 }
 
+// THE STANDING OF A REFINEMENT'S WHERE CLAUSE, AS A CLOSED SUM. The host reflection route
+// (coproduct_reflection marshal_non_connective_type_item) cannot elaborate a where-predicate, so it
+// reflects the captured predicates as their source spellings beside the edge
+// reflected_predicate_standing -> source_spelled_unelaborated; an elaborated set
+// (body_lowering_fold body_lower_kept_where_clause) has no such edge. A clause missing the production
+// or captured-projection structure either route builds is MalformedWhere, never read as elaborated.
+// CONSUMERS: none reads predicates from a reflected fact yet. The obligation on the first change that
+// does: it refuses on SourceSpelledWhere and MalformedWhere, and its own RED lands with it. The claim
+// test.claim.decl_facts_alias_refinement_reflection pins that the real reflected NonEmptyStr is
+// SourceSpelledWhere. type_declaration_use_census where_clause_references reads r.where_clause
+// directly: its inputs are compile-derived symbol-index nodes, which carry no
+// reflected_predicate_standing edge, and it has no refusal channel; it is NOT routed through this sum.
+// ElaboratedWhere means ABSENCE of the host mark on a well-formed clause: the host marshal is the only
+// producer of source spellings, and it stamps the mark in one place (marshal_non_connective_type_item).
+// Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
+// SourceSpelledWhere, the reflected_predicate_standing edge in coproduct_reflection, and the refusal arm.
+type WhereStanding
+  = ElaboratedWhere { clause: Node }
+  | SourceSpelledWhere { clause: Node }
+  | MalformedWhere { missing: Symbol }
+
+fn where_clause_standing(clause: Node) -> WhereStanding {
+  match find_labeled_child(root: clause, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
+    Rejected { diagnostics: _ } => MalformedWhere { missing: ^where_clause_production }
+    Accepted { value: production, diagnostics: _ } =>
+      match find_named_child(root: production, name: ^grammar_production_captured_node_projection) {
+        Rejected { diagnostics: _ } => MalformedWhere { missing: ^captured_predicate_projection }
+        Accepted { value: captured, diagnostics: _ } =>
+          match find_named_child(root: captured, name: ^reflected_predicate_standing) {
+            Rejected { diagnostics: _ } => ElaboratedWhere { clause: clause }
+            Accepted { value: _, diagnostics: _ } => SourceSpelledWhere { clause: clause }
+          }
+      }
+  }
+}
+
 // A DECLARATION'S BINDER EDGE: the <type-parameters> edge of a type-declaration wrapper -- a generic
 // member, an alias or an opaque declaration, as type_decl_view classifies the parent -- never the same
 // marker on an Arrow. It carries names the binder authority checks and resolve scopes, not values, so

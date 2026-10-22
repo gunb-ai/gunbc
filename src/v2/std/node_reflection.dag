@@ -3,6 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { List }
+import std.algebra { list_snoc_item }
 import std.decl_ref { DeclarationRef }
 import v2.std.diagnostic {
   AmbiguousIntent,
@@ -21,7 +22,9 @@ import v2.std.decl_index {
   logical_qualified_name_from_module,
   type_declarer_qualified_names
 }
-import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.type_binder { TypeAlias, refinement_declaration_of_node, type_decl_view }
+import v2.extdeps.languages.dag { dag_kernel_type_binding_optional }
 import v2.std.node_query { coproduct_arm_key_list_from_node, node_is_coproduct }
 
 // THE HOST TYPE-REFLECTION SURFACE, AND WHY ONE OF ITS TWO SEAMS IS GONE.
@@ -163,7 +166,7 @@ fn scoped_type_reflection_diagnostic(type_name: Symbol, invariant: Symbol) -> Di
 // authorable from the live corpus, and writing a refusal claim against it would be a decoration
 // that greens by construction (DESIGN section 4b). The mismatch is removed at the read instead,
 // where it cannot be reintroduced by someone later adding the declaration that would populate it.
-fn accept_sole_declaration(
+fn sole_type_declaration_node(
   pool_roots: List<String>,
   type_name: Symbol,
   sole_qualified_name: String
@@ -186,18 +189,36 @@ fn accept_sole_declaration(
             invariant: ^type_declaration_absent
           )
         )
-      Present { value: sole } =>
-        if node_is_coproduct(node: sole.node) {
-          outcome_accepted(value: sole.node)
-        } else {
-          outcome_rejected(
-            d: scoped_type_reflection_diagnostic(
-              type_name: type_name,
-              invariant: ^type_spelling_is_not_a_closed_coproduct
-            )
-          )
-        }
+      Present { value: sole } => outcome_accepted(value: sole.node)
     }
+  }
+}
+
+fn accept_sole_declaration(
+  pool_roots: List<String>,
+  type_name: Symbol,
+  sole_qualified_name: String
+) -> Outcome<Node> {
+  bind_outcome(
+    o: sole_type_declaration_node(
+      pool_roots: pool_roots,
+      type_name: type_name,
+      sole_qualified_name: sole_qualified_name
+    ),
+    f: fn(sole) { require_coproduct(type_name: type_name, node: sole) }
+  )
+}
+
+fn require_coproduct(type_name: Symbol, node: Node) -> Outcome<Node> {
+  if node_is_coproduct(node: node) {
+    outcome_accepted(value: node)
+  } else {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^type_spelling_is_not_a_closed_coproduct
+      )
+    )
   }
 }
 
@@ -207,39 +228,10 @@ fn accept_sole_declaration(
 // that may reach the bare host seam, and it may do so precisely because uniqueness has been
 // established BEFORE the call rather than assumed by it.
 fn resolve_type_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
-  let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
-  let n = length(xs: candidates)
-  if n == 0 {
-    outcome_rejected(
-      d: scoped_type_reflection_diagnostic(
-        type_name: type_name,
-        invariant: ^type_declaration_absent
-      )
-    )
-  } else if n > 1 {
-    outcome_rejected(
-      d: scoped_type_reflection_diagnostic(
-        type_name: type_name,
-        invariant: ^type_spelling_ambiguous_across_modules
-      )
-    )
-  } else {
-    match list_head(xs: candidates) {
-      Absent =>
-        outcome_rejected(
-          d: scoped_type_reflection_diagnostic(
-            type_name: type_name,
-            invariant: ^type_declaration_absent
-          )
-        )
-      Present { value: sole_qualified_name } =>
-        accept_sole_declaration(
-          pool_roots: pool_roots,
-          type_name: type_name,
-          sole_qualified_name: sole_qualified_name
-        )
-    }
-  }
+  bind_outcome(
+    o: resolve_type_declaration_node(pool_roots: pool_roots, type_name: type_name),
+    f: fn(sole) { require_coproduct(type_name: type_name, node: sole) }
+  )
 }
 
 fn coproduct_arm_keys(
@@ -326,5 +318,100 @@ fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcom
       type_name: type_name,
       sole_qualified_name: wanted
     )
+  }
+}
+
+// THE KERNEL CARRIER OF A DECLARED TYPE: the kernel value type a domain atom (Timestamp, NonEmptyStr,
+// LeaseToken) is, read once here so no target carries a per-atom row. A target's rows speak only for
+// kernel types (v2.extdeps.languages.dag dag_kernel_value_type_roster is the authority for which
+// spellings those are); this reader is the join from a reflected field type to one of them.
+//
+// IT FOLLOWS THE CARRIER AND NOTHING ELSE. An alias contributes its aliased type and a refinement its
+// carrier; a refinement's predicate is not read here, it stays a fact of the wire (the reflected
+// where-clause is source-spelled, type_binder where_clause_standing). A node that is a kernel atom
+// answers itself. Every other node is a bare atom spelling, resolved through the SAME keyed route as
+// resolve_type_node_at (type_declarer_names, then decl_facts_at at the one qualified name), so an
+// absent or ambiguous spelling refuses with the reasons that route already types.
+//
+// WHEN NO KERNEL ATOM IS REACHED IT REFUSES, naming the atom where the chain stopped
+// (carrier_chain_reaches_no_kernel_atom), a carrier position that is no atom, named by its connective
+// (carrier_position_is_not_an_atom), or the atom a chain revisited (carrier_chain_cycles). It
+// CONSUMER: the Protocol.swift carrier switch (node://adhoc-bd767f51-51d), the next change stacked on this
+// one; it calls this on each reflected wire field type. Until it lands only the witness runs it.
+// It never answers the last atom it saw: an unreached kernel type is a gap in the rows, and the caller
+// must see it rather than print a spelling no row backs (DESIGN section 5).
+fn kernel_carrier_of_type_node(pool_roots: List<String>, node: Node) -> Outcome<Symbol> {
+  kernel_carrier_from(pool_roots: pool_roots, node: node, visited: [])
+}
+
+fn kernel_carrier_from(pool_roots: List<String>, node: Node, visited: List<String>) -> Outcome<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: spelling } } =>
+      match dag_kernel_type_binding_optional(sym: spelling) {
+        Present { value: binding } => outcome_accepted(value: binding)
+        Absent => kernel_carrier_through_declaration(pool_roots: pool_roots, spelling: spelling, visited: visited)
+      }
+    _ =>
+      outcome_rejected(
+        d: scoped_type_reflection_diagnostic(
+          type_name: non_atom_carrier_shape(node: node),
+          invariant: ^carrier_position_is_not_an_atom
+        )
+      )
+  }
+}
+
+// The located port of a carrier position that is not an atom: the connective the node actually has,
+// so the refusal names the shape it was given and invents no type.
+fn non_atom_carrier_shape(node: Node) -> Symbol {
+  match node.kind {
+    TypeNode { connective: Atom { identity: i } } => i
+    TypeNode { connective: Conj } => ^Conj
+    TypeNode { connective: Disj } => ^Disj
+    TypeNode { connective: Arrow } => ^Arrow
+    TypeNode { connective: Instantiation } => ^Instantiation
+    _ => ^not_a_type_node
+  }
+}
+
+fn kernel_carrier_through_declaration(pool_roots: List<String>, spelling: Symbol, visited: List<String>) -> Outcome<Symbol> {
+  let lexeme = symbol_lexeme(sym: spelling)
+  if any(visited, fn(seen) { seen == lexeme }) {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(type_name: spelling, invariant: ^carrier_chain_cycles)
+    )
+  } else {
+    bind_outcome(
+      o: resolve_type_declaration_node(pool_roots: pool_roots, type_name: spelling),
+      f: fn(decl) {
+        match refinement_declaration_of_node(decl: decl) {
+          Present { value: r } =>
+            kernel_carrier_from(pool_roots: pool_roots, node: r.carrier, visited: list_snoc_item(xs: visited, item: lexeme))
+          Absent =>
+            match type_decl_view(target: decl) {
+              TypeAlias { binders: _, aliased: aliased } =>
+                kernel_carrier_from(pool_roots: pool_roots, node: aliased, visited: list_snoc_item(xs: visited, item: lexeme))
+              _ =>
+                outcome_rejected(
+                  d: scoped_type_reflection_diagnostic(type_name: spelling, invariant: ^carrier_chain_reaches_no_kernel_atom)
+                )
+            }
+        }
+      }
+    )
+  }
+}
+
+fn resolve_type_declaration_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Node> {
+  let candidates = type_declarer_names(pool_roots: pool_roots, type_name: type_name)
+  if length(xs: candidates) == 0 {
+    outcome_rejected(d: scoped_type_reflection_diagnostic(type_name: type_name, invariant: ^type_declaration_absent))
+  } else if length(xs: candidates) > 1 {
+    outcome_rejected(d: scoped_type_reflection_diagnostic(type_name: type_name, invariant: ^type_spelling_ambiguous_across_modules))
+  } else {
+    match list_head(xs: candidates) {
+      Absent => outcome_rejected(d: scoped_type_reflection_diagnostic(type_name: type_name, invariant: ^type_declaration_absent))
+      Present { value: qn } => sole_type_declaration_node(pool_roots: pool_roots, type_name: type_name, sole_qualified_name: qn)
+    }
   }
 }

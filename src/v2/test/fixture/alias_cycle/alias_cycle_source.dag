@@ -1,0 +1,9 @@
+module v2.test.fixture.alias_cycle.alias_cycle_source
+
+// FIXTURE SOURCE: an alias cycle (CycleHeadAtom = CycleTailAtom, CycleTailAtom = CycleHeadAtom). It is
+// reachable from the main pool too, because every pool root includes src/v2/test/fixture; the front end
+// accepts it (measured: gunbc run --entry on this file reports no refusal), so the reader's
+// carrier_chain_cycles refusal is the consumer-local guard until the front-end climb of
+// gunbc.recurring_failure_mode cyclic_alias_head_is_accepted lands; this file is that climb's RED input.
+type CycleHeadAtom = CycleTailAtom
+type CycleTailAtom = CycleHeadAtom

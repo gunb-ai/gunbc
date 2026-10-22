@@ -54,7 +54,7 @@ import v2.extdeps.languages.swift.syntax {
   SwiftForInStmt, SwiftSwitchStmt, SwiftDoStmt, SwiftCommentedStmt,
   SwiftParameter, SwiftEnumCaseElement,
   SwiftDecl, SwiftImportDecl, SwiftVariableDecl, SwiftComputedPropertyDecl, SwiftFunctionDecl, SwiftInitializerDecl,
-  SwiftStructDecl, SwiftClassDecl, SwiftEnumDecl, SwiftEnumCaseDecl, SwiftExtensionDecl, SwiftCommentedDecl,
+  SwiftStructDecl, SwiftClassDecl, SwiftEnumDecl, SwiftEnumCaseDecl, SwiftExtensionDecl, SwiftCommentedDecl, SwiftRenderedDecl,
   SwiftSourceFile
 }
 import std.host_text { chars }
@@ -149,6 +149,7 @@ fn swift_row_productions_structure() -> List<FormalProduction> {
 fn swift_row_productions_decls() -> List<FormalProduction> {
   swr_cat(parts: [[
     swr_p(lhs: ^swr_decl, tag: ^swr_k_commented, rhs: [swr_n(x: ^swr_comments), swr_n(x: ^swr_decl)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_rendered, rhs: [swr_i()]),
     swr_p(lhs: ^swr_decl, tag: ^swr_k_import, rhs: [swr_n(x: ^swr_attrs), swr_t(c: ^swift_tok_import), swr_i()]),
     swr_p(lhs: ^swr_decl, tag: ^swr_k_variable, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_n(x: ^swr_bindkw), swr_n(x: ^swr_pattern), swr_n(x: ^swr_opt_annot), swr_n(x: ^swr_opt_init)]),
     swr_p(lhs: ^swr_decl, tag: ^swr_k_computed, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_t(c: ^swift_tok_var), swr_i(), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_type), swr_n(x: ^swr_block)]),
@@ -846,6 +847,7 @@ fn swl_decl_has_body(d: SwiftDecl) -> Bool {
     SwiftEnumCaseDecl { elements: _ } => false
     SwiftExtensionDecl { extended: _, inherits: _, members: _ } => true
     SwiftCommentedDecl { comments: _, decl: x } => swl_decl_has_body(d: x)
+    SwiftRenderedDecl { text: _ } => true
   }
 }
 
@@ -862,6 +864,7 @@ fn swl_decl_is_import(d: SwiftDecl) -> Bool {
     SwiftEnumCaseDecl { elements: _ } => false
     SwiftExtensionDecl { extended: _, inherits: _, members: _ } => false
     SwiftCommentedDecl { comments: _, decl: x } => swl_decl_is_import(d: x)
+    SwiftRenderedDecl { text: _ } => false
   }
 }
 
@@ -918,6 +921,7 @@ fn swl_decl(d: SwiftDecl) -> Node {
     SwiftExtensionDecl { extended: t, inherits: i, members: ms } =>
       swl_node(tag: ^swr_k_extension, slots: [swl_type(t: t), swl_inherits(i: i), swl_member_block(members: ms)])
     SwiftCommentedDecl { comments: cs, decl: x } => swl_node(tag: ^swr_k_commented, slots: [swl_comments(cs: cs), swl_decl(d: x)])
+    SwiftRenderedDecl { text: t } => swl_node(tag: ^swr_k_rendered, slots: [swl_ident(s: t)])
   }
 }
 

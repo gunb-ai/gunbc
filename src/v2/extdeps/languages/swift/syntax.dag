@@ -224,6 +224,7 @@ type SwiftDecl
   | SwiftEnumCaseDecl { elements: List<SwiftEnumCaseElement> }
   | SwiftExtensionDecl { extended: SwiftType, inherits: List<SwiftType>, members: List<SwiftDecl> }
   | SwiftCommentedDecl { comments: List<SwiftComment>, decl: SwiftDecl }
+  | SwiftRenderedDecl { text: String }
 
 // top-level-declaration: a source file is its statements' declarations, in order.
 type SwiftSourceFile {
@@ -318,6 +319,9 @@ fn sw_struct(n: String, i: List<SwiftType>, m: List<SwiftDecl>) -> SwiftDecl { S
 fn sw_enum(n: String, i: List<SwiftType>, m: List<SwiftDecl>) -> SwiftDecl { SwiftEnumDecl { attributes: [], modifiers: [], name: n, inherits: i, members: m } }
 fn sw_cases(n: List<String>) -> SwiftDecl { SwiftEnumCaseDecl { elements: map(n, c => SwiftEnumCaseElement { name: c, associated: [] }) } }
 fn sw_case_payload(n: String, a: List<SwiftTupleTypeElement>) -> SwiftDecl { SwiftEnumCaseDecl { elements: [SwiftEnumCaseElement { name: n, associated: a }] } }
+// A declaration already PRINTED by the decl door (v2.compiler.emit_semantic_decl emit_semantic_type_decl): its text is
+// the door's, carried to the file as one unit, never re-parsed or re-spelled here.
+fn sw_rendered(t: String) -> SwiftDecl { SwiftRenderedDecl { text: t } }
 fn sw_doc(c: List<String>, d: SwiftDecl) -> SwiftDecl { SwiftCommentedDecl { comments: map(c, t => SwiftDocLineComment { text: t }), decl: d } }
 fn sw_cmt(c: List<String>, d: SwiftDecl) -> SwiftDecl { SwiftCommentedDecl { comments: map(c, t => SwiftLineComment { text: t }), decl: d } }
 fn sw_import(n: String) -> SwiftDecl { SwiftImportDecl { attributes: [], module_name: n } }

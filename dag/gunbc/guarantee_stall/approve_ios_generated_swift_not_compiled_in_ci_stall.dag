@@ -1,0 +1,28 @@
+module gunbc.guarantee_stall.approve_ios_generated_swift_not_compiled_in_ci_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// AN EXISTING DEFICIT, RECORDED AS ONE -- NOT A DROP FROM A WALL THAT NEVER HELD (gunbc#14721,
+// 2026-10-22). No swiftc step has ever run in CI (`git log -S swiftc -- .github` on origin/main is
+// empty), so no mechanically-preventable rung was established for the generated Swift of
+// apps/approve-ios and none is claimed to have fallen. What holds is Mitigatable: the regeneration
+// fixed point and the generated-artifact drift gate expose a hand edit of the bytes, but prove
+// neither that they compile nor that ProtocolVectorTests holds against the server vectors.json.
+// Measured 2026-10-22: `which swiftc swift` is empty on the session host and on the amd64
+// ctrl-build runner; swiftc is driven by xcodebuild on the operator's Mac (gunbc.generated_artifact
+// RepoConsumer SwiftCompiler), where the tests last ran by hand.
+data approve_ios_generated_swift_not_compiled_in_ci_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the generated Swift files of apps/approve-ios are not compiled by swiftc and ProtocolVectorTests is not executed against dag/test/fixture/approval_device_redemption/vectors.json in any CI lane; only the regeneration fixed point and the generated-artifact drift gate hold",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: "a CI-reachable runner carrying an Apple Swift toolchain; none exists on any session host or fleet runner" },
+  population: BoundedPopulation { members: [
+      "apps/approve-ios/Approve/Protocol.swift: gunbc.generated_artifact ApproveIosProtocolSwiftArtifact",
+      "apps/approve-ios/Approve/Wire.swift: gunbc.generated_artifact ApproveIosWireSwiftArtifact",
+      "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift: gunbc.generated_artifact ApproveIosProtocolVectorTestsSwiftArtifact",
+      "apps/approve-ios/Approve/EnrolmentMachine.swift: gunbc.generated_artifact ApproveIosEnrolmentMachineSwiftArtifact",
+      "apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift: gunbc.generated_artifact ApproveIosEnrolmentMachineTestsSwiftArtifact"
+    ] },
+  next_rung_trigger: climbs_when(capability: "THE CAPABILITY: a CI-reachable runner with an Apple Swift toolchain that EXECUTES swiftc over the five generated files above and runs ProtocolVectorTests against the server vectors.json, as a phase of a lane whose red blocks a merge. NOT satisfied by the regeneration fixed point, by the drift gate, or by an operator running xcodebuild on a Mac: each leaves the compile and the vector execution unobserved by the merge path. The row retires when that lane executes and is green over every member.")
+}

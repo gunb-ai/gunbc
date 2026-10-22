@@ -1,0 +1,105 @@
+module gunbc.approve_ios_swift_derived
+
+import std.types { String, List }
+import std.optional { Absent, Present }
+import std.algebra { list_snoc_item, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome, outcome_accepted, outcome_rejected, None }
+import v2.std.decl_index { DeclFact, TypeItem, decl_facts_at, logical_qualified_name_from_module }
+import v2.std.node { Node, Edge, Symbol, TypeNode, Atom, symbol_intern_lexeme }
+import v2.std.node_query { declared_field_from_edge, binder_edge, binder_edge_with_default }
+import v2.std.node_reflection { kernel_carrier_of_type_node, scoped_type_reflection_diagnostic }
+import v2.std.type_binder { PlainTypeDecl, type_decl_view }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclDocumentation, ConformancesTargetDefault }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.swift { swift_target_model }
+
+// THE SWIFT RECORDS PRINTED BY THE DECL DOOR FROM THE WIRE'S OWN DECLARATIONS (Charter 5 L2,
+// node://adhoc-bd767f51-51d). A record is reflected by its qualified name (decl_facts_at, keyed), each field type is
+// replaced by its kernel carrier (v2.std.node_reflection kernel_carrier_of_type_node: Timestamp and
+// NonEmptyStr are String), and the result goes through emit_semantic_type_decl over the Swift target
+// model. No Swift row names a domain atom and no field is restated here.
+//
+// CONSUMER: gunbc.approve_ios_swift_protocol approve_ios_protocol_swift_file, which splices the printed text
+// into the registered ApproveIosProtocolSwiftArtifact.
+
+fn approve_ios_pool_roots() -> List<String> { ["dag", "src/v2"] }
+
+fn approve_ios_carrier_node(carrier: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: carrier } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn approve_ios_carrier_edge(edge: Edge) -> Outcome<Edge> {
+  match declared_field_from_edge(e: edge) {
+    Absent => outcome_rejected(d: scoped_type_reflection_diagnostic(type_name: ^record_member_is_not_a_field, invariant: ^record_member_is_not_a_field))
+    Present { value: field } =>
+      bind_outcome(
+        o: kernel_carrier_of_type_node(pool_roots: approve_ios_pool_roots(), node: field.type_node),
+        f: fn(carrier) {
+          match field.default {
+            Absent => outcome_accepted(value: binder_edge(name: field.name, type_node: approve_ios_carrier_node(carrier: carrier)))
+            Present { value: d } => outcome_accepted(value: binder_edge_with_default(name: field.name, type_node: approve_ios_carrier_node(carrier: carrier), default: d))
+          }
+        }
+      )
+  }
+}
+
+fn approve_ios_carrier_edges(edges: List<Edge>) -> Outcome<List<Edge>> {
+  fold(edges, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+    bind_outcome(o: acc, f: fn(done) { bind_outcome(o: approve_ios_carrier_edge(edge: e), f: fn(next) { outcome_accepted(value: list_snoc_item(xs: done, item: next)) }) })
+  })
+}
+
+// A coproduct's variants keep their labels; an arm's payload fields get the same carrier substitution a record's do.
+fn approve_ios_variant_edge(edge: Edge) -> Outcome<Edge> {
+  bind_outcome(o: approve_ios_carrier_edges(edges: edge.target.children), f: fn(fields) {
+    outcome_accepted(value: Edge { label: edge.label, target: Node { kind: edge.target.kind, children: fields, occurrence_id: edge.target.occurrence_id } })
+  })
+}
+
+fn approve_ios_variant_edges(edges: List<Edge>) -> Outcome<List<Edge>> {
+  fold(edges, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+    bind_outcome(o: acc, f: fn(done) { bind_outcome(o: approve_ios_variant_edge(edge: e), f: fn(next) { outcome_accepted(value: list_snoc_item(xs: done, item: next)) }) })
+  })
+}
+
+fn approve_ios_reflected_record(module_name: String, type_name: String) -> Outcome<Node> {
+  let sym = symbol_intern_lexeme(lexeme: type_name)
+  let rows = filter(
+    decl_facts_at(pool_roots: approve_ios_pool_roots(), qualified_name: logical_qualified_name_from_module(module_name: module_name, name: type_name)),
+    fn(f) { f.kind == TypeItem }
+  )
+  match list_head(xs: rows) {
+    Absent => outcome_rejected(d: scoped_type_reflection_diagnostic(type_name: sym, invariant: ^type_declaration_absent))
+    Present { value: fact } =>
+      match type_decl_view(target: fact.node) {
+        PlainTypeDecl { member: m } =>
+          match m.kind {
+            TypeNode { connective: Disj } =>
+              bind_outcome(o: approve_ios_variant_edges(edges: m.children), f: fn(edges) {
+                outcome_accepted(value: Node { kind: m.kind, children: edges, occurrence_id: m.occurrence_id })
+              })
+            _ =>
+              bind_outcome(o: approve_ios_carrier_edges(edges: m.children), f: fn(edges) {
+                outcome_accepted(value: Node { kind: m.kind, children: edges, occurrence_id: m.occurrence_id })
+              })
+          }
+        _ => outcome_rejected(d: scoped_type_reflection_diagnostic(type_name: sym, invariant: ^type_declaration_is_not_a_plain_record))
+      }
+  }
+}
+
+// The printed declaration text. `doc` is the declaration's documentation lines.
+fn approve_ios_derived_record(module_name: String, type_name: String, doc: List<String>) -> Outcome<String> {
+  bind_outcome(o: approve_ios_reflected_record(module_name: module_name, type_name: type_name), f: fn(record) {
+    match emit_semantic_type_decl(
+      name: symbol_intern_lexeme(lexeme: type_name), params: [], node: record, members: [], imports: [], header: [],
+      documentation: TargetSemanticDeclDocumentation { lines: doc, fields: [] },
+      conformances: ConformancesTargetDefault, target: swift_target_model(), realization_host: swift_target_model()
+    ) {
+      Accepted { value: medium, diagnostics: _ } => outcome_accepted(value: medium.carried)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  })
+}
