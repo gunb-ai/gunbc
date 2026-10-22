@@ -43,16 +43,16 @@ run3() { # tag mode(wet|hermetic) [dir]
   local tag=$1 mode=$2 dir=${3:-/tmp/wf17}
   cd $dir || { echo "  [$tag] DIR_FAIL"; return; }
   local flag=--hermetic; [ "$mode" = wet ] && flag=--wet
-  timeout 900 $CB --claim-run $flag --source-root dag --entry $BOOT --function "$BN" > /tmp/f17_${tag}.out 2>&1
+  timeout 900 $CB --claim-run $flag --source-root dag --source-root src/v2 --entry $BOOT --function "$BN" > /tmp/f17_${tag}.out 2>&1
   local r1=$?
-  timeout 900 $CB --claim-run $flag --source-root dag --entry $PRINTER --function "$PN" > /tmp/f17_${tag}_p.out 2>&1
+  timeout 900 $CB --claim-run $flag --source-root dag --source-root src/v2 --entry $PRINTER --function "$PN" > /tmp/f17_${tag}_p.out 2>&1
   local r2=$?
-  timeout 900 $CB --claim-run $flag --source-root dag --entry $NC --function "$PN" > /tmp/f17_${tag}_n.out 2>&1
+  timeout 900 $CB --claim-run $flag --source-root dag --source-root src/v2 --entry $NC --function "$PN" > /tmp/f17_${tag}_n.out 2>&1
   local r3=$?
   echo "  [$tag $mode] boot rc=$r1 $(grep -aoE '^(PASS|FAIL|UNOBSERVED)' /tmp/f17_${tag}.out | head -1) | printer rc=$r2 $(grep -aoE '^(PASS|FAIL|UNOBSERVED)' /tmp/f17_${tag}_p.out | head -1) | namecheap rc=$r3 $(grep -aoE '^(PASS|FAIL|UNOBSERVED)' /tmp/f17_${tag}_n.out | head -1)"
   for l in "" _p _n; do
-    echo "    ----- raw /tmp/f17_${tag}$l.out ($(wc -c < /tmp/f17_${tag}$l.out)B):"
-    head -12 /tmp/f17_${tag}$l.out | sed "s/^/    O| /" | cut -c1-220
+    echo "    ----- raw /tmp/f17_${tag}$l.out ($(wc -c < /tmp/f17_${tag}$l.out)B) TAIL:"
+    tail -30 /tmp/f17_${tag}$l.out | sed "s/^/    O| /" | cut -c1-220
   done
 }
 restore() { cp -f /tmp/fc_head_orig $FC; [ "$(sha $FC)" = "$(sha /tmp/fc_head_orig)" ] && echo "  RESTORE_BYTE_EXACT=YES" || echo "  RESTORE_BYTE_EXACT=NO -- STOP"; }
