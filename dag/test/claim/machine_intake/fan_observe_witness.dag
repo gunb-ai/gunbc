@@ -36,7 +36,8 @@ import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.managed_host { ManagedHostFound, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
 import gunbc.machine_intake.fan_observe {
@@ -98,8 +99,8 @@ test fn an_openbmc_bound_row_is_read_against_the_phosphor_policy() -> Bool {
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: openbmc) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
+          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { host: openbmc, control: bmc_control_binding(observed: openbmc.access, secured: openbmc.secure) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
         }
       }
   }
@@ -115,8 +116,8 @@ test fn a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation(
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: unobserved) }) {
+          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+          match fan_observe_admission(lookup: ManagedHostFound { host: unobserved, control: bmc_control_binding(observed: unobserved.access, secured: unobserved.secure) }) {
             FanObserveRefused { cause: FanHostFamilyUnobserved { endpoint: e } } =>
               (e.host as String) == (o.endpoint.host as String)
                 && string_contains(s: fan_observe_refusal_text(cause: FanHostFamilyUnobserved { endpoint: e }) as String, pattern: "was never observed")
