@@ -950,6 +950,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         AmbiguousReference { name: s(), candidates: istrings(), span: no_span() },
         AmbiguousAnonymousRecordLiteral { candidates: istrings(), span: no_span() },
         EffectfulSelfRecursionUnrealized { name: s(), span: no_span() },
+        LeafSharingDisagreement { name: s(), declarers: istrings(), span: no_span() },
         ModuleFilenameCollision { filename: s(), modules: istrings(), span: no_span() },
         EmittedSymbolCollision { symbol: s(), identities: istrings(), span: no_span() },
         NativeEffectRealizationRefused { entry: s(), refusals: istrings(), span: no_span() },
@@ -1416,6 +1417,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { .. } => {
             "EffectfulSelfRecursionUnrealized"
         }
+        CompilerDiagnostic::LeafSharingDisagreement { .. } => "LeafSharingDisagreement",
         CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::EmittedSymbolCollision { .. } => "EmittedSymbolCollision",
         CompilerDiagnostic::NativeEffectRealizationRefused { .. } => {
@@ -1539,6 +1541,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name, .. } => name.clone(),
+        CompilerDiagnostic::LeafSharingDisagreement { name, .. } => name.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { symbol, .. } => symbol.clone(),
         CompilerDiagnostic::NativeEffectRealizationRefused {
