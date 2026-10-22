@@ -3553,6 +3553,13 @@ data equality_inadmissible_declaration_identities: List<String> = [
   type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Edge")
 ]
 
+// THE WALK STOPS AT THESE: Node's children reach Edge, but Node == is not yet inadmissible (ruling A:
+// Edge now, Node when its existing == sites are moved to the erasure route). Each row is a site-debt
+// boundary that leaves with the Node row above, not a second admission.
+data equality_walk_boundary_declaration_identities: List<String> = [
+  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
+]
+
 fn equality_inadmissible_type_refusal(identity: String, name: String) -> EqualityAdmissionRefusal? {
   if equality_inadmissible_declaration_identities |> any(i => i == identity) {
     equality_refused(carrier: name, member: "declared equality-inadmissible", member_judged: true)
@@ -3600,6 +3607,8 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
         let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
         if equality_inadmissible_type_refusal(identity: identity, name: name) != none {
           equality_inadmissible_type_refusal(identity: identity, name: name)
+        } else if equality_walk_boundary_declaration_identities |> any(i => i == identity) {
+          none
         } else if (peeled.connective == Arrow) {
           equality_refused(carrier: name, member: "function value", member_judged: true)
         } else if (peeled.connective == Conj) {
