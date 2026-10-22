@@ -4991,10 +4991,20 @@ fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   let r = expect(tokens: r.tokens, expected: ExpectEq)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
+  // The initializer's line rule is the rule every sibling `=` position already follows (the
+  // `=` of a type alias, of an expression-bodied `fn`, and of `let` all skip_newlines here):
+  // after the `=`, the initializer is the expression production with newlines skipped, and a
+  // stream whose next real token cannot START an expression -- another `data`, EOF -- refuses
+  // at that token exactly as before. The data site alone fed the post-`=` token straight into
+  // expression parsing, so a continuation-line initializer refused at its leading Newline:
+  // emergent, declared by no grammar, and the v2 grammar route (whose data rule declares no
+  // line condition) admitted it -- the #14608 divergence. Controls that pin this:
+  // v2.test.claim.parse.data_initializer_layout_parse; the class is
+  // gunbc.recurring_failure_mode.v2_grammar_admits_a_continuation_line_data_initializer_the_host_route_refuses.
   let r = if ctx.heads_only {
-    parse_data_value_heads_only(tokens: r.tokens, ctx: ctx)
+    parse_data_value_heads_only(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
   } else {
-    parse_expr(tokens: r.tokens, ctx: ctx)
+    parse_expr(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
   }
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
