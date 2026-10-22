@@ -787,6 +787,7 @@ fn observe_repository_shared_posture(arm: ObservationArm, instance: HostDashboar
           path: instance.repo_root as NonEmptyStr,
           document: content_hash_atom(value: document as NonEmptyStr),
         } } }
+      }
     }
   }
 }
