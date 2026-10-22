@@ -88,42 +88,7 @@ fn blocking_subject_census(source: String, wanted_class: String, wanted_subject:
   }
 }
 
-// THE COUNT, when there is one. For the callers that do arithmetic or compare against a computed
-// baseline rather than a literal: they get `Int?`, so the absence is still a value they must handle.
-// `census_count(c) |> ...` with no arm for `Absent` is a compile refusal, which is the point -- the
-// old code's equivalent was `-1` flowing into the arithmetic unnoticed.
-fn census_count(census: CompileDiagnosticCensus) -> Int? {
-  match census {
-    CensusObserved { rows: rows } => Present { value: census_total_count(rows: rows) }
-    CensusNotRunnable { cause: _ } => none
-  }
-}
-
-fn census_rows(census: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow>? {
-  match census {
-    CensusObserved { rows: rows } => Present { value: rows }
-    CensusNotRunnable { cause: _ } => none
-  }
-}
-
-fn not_runnable_cause(census: CompileDiagnosticCensus) -> String? {
-  match census {
-    CensusObserved { rows: _ } => none
-    CensusNotRunnable { cause: cause } => Present { value: cause }
-  }
-}
-
 // THE VERDICT A CLAIM RETURNS. `holds` is the comparison the claim means -- a caller writes
-// `probe_holds_count(c, fn(n) { n >= 1 })` or `fn(n) { n == 0 }` and cannot write a verdict for a
-// count it never observed: the predicate is only ever handed an observed number. On refusal the
-// claim is refused with the builtin's cause verbatim, worded per the manager's convention
-// `not evaluated: census not runnable: <cause>`. Code 2 is the label contract's "no observation"
-// (DESIGN "Building & checks": exit 2 means there was no observation), so a refused claim states its
-// class in its exit code TODAY. It prints UNOBSERVED verbatim-for-verbatim the moment claim_batch
-// maps a claim's ExitFailure code 2 onto the UNOBSERVED verdict line (fleet follow-up on gunbc#14539's
-// axis, in claim_batch's own lane; this PR deliberately does not touch the harness). Until that
-// lands the row still prints FAIL, and only the reason separates "the census refused to run" from
-// "the census saw something the claim got wrong" -- which is why the reason carries the whole cause.// THE VERDICT A CLAIM RETURNS. `holds` is the comparison the claim means -- a caller writes
 // `census_verdict(c, fn(n) { n >= 1 })` or `fn(n) { n == 0 }` and cannot write a verdict for a count it
 // never observed: the predicate is only ever handed an observed number. The verdict is a SUM, not a
 // rendered exit code -- CensusHeld, CensusDisagreed (an observation ran and the comparison did not hold,
@@ -173,11 +138,14 @@ fn worst_census_verdict(verdicts: List<CensusVerdict>) -> CensusVerdict {
 // THE ONE PROCESS BOUNDARY. Held succeeds; a Disagreed finding is exit 1 naming its reason; an Unobserved
 // refusal is exit 2 with the builtin's cause worded `not evaluated: census not runnable: <cause>` -- Code
 // 2 is the label contract's "no observation" (DESIGN "Building & checks"). This is the sole place the
-// integer appears; the harness maps a claim's ExitFailure code 2 onto the UNOBSERVED verdict line (a
-// claim_batch follow-up on gunbc#14539's axis, in claim_batch's own lane; this PR deliberately does not
-// touch the harness). Until that lands the row still prints FAIL, and only the reason separates "the
-// census refused to run" from "the census saw something the claim got wrong" -- which is why the reason
-// carries the whole cause.
+// integer appears. TODAY the harness renders any claim's ExitFailure as a FAIL row (cli_run.rs:
+// `ClaimOutcome::ExitFailure { .. } => CiWitnessVerdict::Failed`); it does NOT yet map a returned code 2
+// onto a UNOBSERVED verdict line. That mapping is a named follow-up in claim_batch's own lane (sunny-bear,
+// on gunbc#14539's axis); this PR deliberately does not touch the harness. Until that follow-up lands, a
+// refused census still PRINTS as a FAIL row and is separated from a real finding only by its reason and
+// its exit code -- so the honest scope is "a refused census REFUSES with its cause and exit code 2, and is
+// distinguished from a finding by both," NOT "never FAIL." That is why the reason carries the whole cause:
+// it is the only thing distinguishing the two arms while the harness still collapses them to FAIL.
 fn census_exit(verdict: CensusVerdict) -> ProcessExit {
   match verdict {
     CensusHeld {} => ExitSuccess
