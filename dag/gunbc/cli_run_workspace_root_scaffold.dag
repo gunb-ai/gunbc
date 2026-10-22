@@ -1,4 +1,5 @@
 module gunbc.cli_run_workspace_root_scaffold
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import std.disposition { Disposition }
 import std.types { String, Int }

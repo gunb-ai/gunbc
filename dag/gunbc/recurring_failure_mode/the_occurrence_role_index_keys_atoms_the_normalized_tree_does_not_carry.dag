@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.the_occurrence_role_index_keys_atoms_the_nor
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data the_occurrence_role_index_keys_atoms_the_normalized_tree_does_not_carry: RecurringFailureMode = RecurringFailureMode {
   identity: "the_occurrence_role_index_keys_atoms_the_normalized_tree_does_not_carry" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: v2.compiler.occurrence_role's role index cannot answer declaration-vs-reference for ANY site the front-end collectors record, so any consumer that gates on the role axis silently gates on nothing. The index is built over a tree and keyed by ids, and the atoms the collectors actually carry answer -- through the one keying rule -- to ids the index does not hold. A consumer that reads the absence as `not a declaration` gets the WRONG ANSWER FOR EVERY BINDER, and a consumer that reads it as `not a reference` gets the wrong answer for every free name. Either reading is a decoration, not a check.",
