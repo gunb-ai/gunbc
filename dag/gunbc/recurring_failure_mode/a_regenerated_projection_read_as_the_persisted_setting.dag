@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_regenerated_projection_read_as_the_persisted_setting
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data a_regenerated_projection_read_as_the_persisted_setting: RecurringFailureMode = RecurringFailureMode {
   identity: "a_regenerated_projection_read_as_the_persisted_setting" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a regenerated projection read as the persisted setting** (on Ubuntu the NetworkManager profile nmcli reads is a keyfile under /run that netplan regenerates from the MERGE of every netplan layer under /lib, /etc and /run/netplan, of which /etc/netplan/90-NM-<uuid>.yaml is one input, so a converge that reads back only through nmcli -- or only that one file -- confirms something other than what the next `netplan generate` renders).",

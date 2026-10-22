@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.trigger_satisfied_before_the_row_was_written
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data trigger_satisfied_before_the_row_was_written: RecurringFailureMode = RecurringFailureMode {
   identity: "trigger_satisfied_before_the_row_was_written" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "**a next-rung trigger naming a capability that had ALREADY SHIPPED when the row was written, so the class is born retired and its stall is permanent and invisible** (INVALID STATE: a class below its ceiling names a restoration or next-rung trigger, as section 4b(2) obliges it to, and the named capability was ALREADY PRESENT IN THE TREE AT FILING TIME. The trigger is therefore not a transition: there is no future event at which it becomes true, because it was never false. The row reads as tracked debt with a named exit and is in fact untracked -- nobody will retire it, because retiring it requires observing a change that already happened before anyone was watching. HARM: this is worse than an untriggered stall, because an untriggered stall at least presents as unfinished. A row with a satisfied trigger presents as COMPLETE WORK AWAITING AN EVENT, so it is skipped by exactly the audits that exist to find stalls, and the class it describes stays at its found rung indefinitely while the roster reports it as governed. THE GAP THAT ADMITS IT IS IN THE OBLIGATION ITSELF: section 4b(2) requires a class below ceiling to NAME its next-rung trigger and says nothing about that trigger being UNSATISFIED AT FILING TIME. Naming is checked by review and by the reader; satisfiability is checked by nobody.",
