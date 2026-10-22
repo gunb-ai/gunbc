@@ -19,16 +19,17 @@ data emitted_registry_path: String = concat(
 // in `v2.workflow.outside_discovery_roots_census`, which made a production module carry test data (review
 // 83368), and it now does not.
 //
-// WHAT EACH LIST IS GROUNDED ON, since a fixture with no stated authority is just an assertion:
-//   - `subject_population_expected` is held against the emitted population registry in BOTH directions
-//     (v2.test.claim.outside_discovery_roots_census_witness), so it is a closed universe checked at identity,
-//     not a snapshot: adding a path the emitter never named fails, and DROPPING one the emitter did name fails.
+// WHAT EACH LIST IS: HERMETIC FIXTURE INPUT ONLY. None of these lists is compared with the live tree or the live
+// registry. The live pairing derives its expected population from the emitted population registry
+// (v2.test.claim.outside_discovery_roots_census_real_execution `derived_subject_population`), because a
+// hand-kept copy of the tree's file list is a change detector (DESIGN 5) that went red when a file was added.
+//   - `subject_population_expected` is a fixture shaped like the subject's claim-bearing files; it is injected
+//     into the pure census so the witness can exercise its classification on a controlled population.
 //   - `subject_helpers_declare_nothing` and `prose_mentioning_paths` are the two failure modes the marker read
-//     must tell apart: a tracked file under the subject that declares NO claim (so it is correctly NOT a
-//     finding), and a file that merely MENTIONS the declaration shape in prose (so the anchored pattern must
-//     not report it). Both are verified against the marker read by their own claims.
-// No count is written down anywhere in this census (DESIGN 5): these are path sets, and the population is
-// asserted by identity.
+//     must tell apart: a file under the subject that declares NO claim (so it is correctly NOT a finding),
+//     and a file that merely MENTIONS the declaration shape in prose (so the anchored pattern must not report
+//     it). Both are verified against the marker read by their own claims.
+// No count is written down anywhere in this census (DESIGN 5): these are path sets.
 
 // THE EXPECTED SUBJECT POPULATION, at file grain -- and what it is NOT: it is not what the NOTE declares.
 //
@@ -49,8 +50,8 @@ data emitted_registry_path: String = concat(
 // declares claims would not make the census quieter -- it is reported either way -- it would only make the
 // claim that pairs the registry against the tree lie. Discrepancies are reported upward, not absorbed. The
 // `*_census.dag` files in the same directory that declare NOTHING are a different case; they have their own
-// standing, claimed below. When main adds or removes a subject claim file, this list is the carrier that
-// must follow it: the pairing claim goes red on the difference, in either direction.
+// standing, claimed below. This list is a fixture and does not follow the tree; the live pairing
+// derives its own population.
 data subject_population_expected: List<String> = [
   "src/v1/tests/claim/annotation_gap_round_trip_test.dag",
   "src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag",

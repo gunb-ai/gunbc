@@ -37,7 +37,7 @@ module v2.test.claim.outside_discovery_roots_census_real_execution
 // the pure file's fixtures either, because those inject listings rather than performing reads.
 
 import std.types { String, Bool, List }
-import std.algebra { is_empty, length }
+import std.algebra { is_empty, length, list_map }
 
 import std.decl_ref { decl_ref }
 import v2.std.decl_ref_resolution_host { declaration_ref_resolution_census_live }
@@ -45,6 +45,11 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 
 import v2.workflow.outside_discovery_roots_census {
   CensusObserved,
+  OutsideRootsStanding,
+  InsideGovernedTree,
+  OutsideDiscoveryRoots,
+  NotAClaimFile,
+  path_is_under_note_subject,
   emitted_entry_for_module,
   subject_path_is_emitted,
   outside_roots_citations,
@@ -61,38 +66,86 @@ import v2.workflow.outside_discovery_roots_census_live {
 // THE EXPECTATION, imported rather than restated: the same list the hermetic witness holds its injected
 // listings against. Two copies of a population, in two files, is the second-implementation defect this repo
 // calls §3's fork; one list, read by both the hermetic and the wet observer, is one fact with two readers.
-import v2.test.claim.outside_discovery_roots_census_helpers {
-  subject_population_expected,
-  subject_helpers_declare_nothing,
-  emitted_registry_path
-}
+import v2.test.claim.outside_discovery_roots_census_helpers { emitted_registry_path }
 import gunbc.stage0.stage0_rust_host_observation { emitted_population_repo_paths }
-import v2.lens.module_graph { module_declaration_facts_live }
+import v2.lens.module_graph { module_declaration_facts_live, ModuleDeclarationFact }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 fn is_in(listing: List<String>, path: String) -> Bool {
   any(xs: listing, predicate: fn(candidate) { candidate == path })
 }
 
-// THE PAIRING, and why it is not `measure() == measure()`. Three facts, two instruments, one list in the
-// middle: the INDEX answers which paths are tracked (this claim, live), the EMITTED POPULATION REGISTRY
-// answers which paths an emitter named (the hermetic join
-// `every_expected_subject_path_is_named_by_the_emitter`, over a `.rs` file that `git ls-files` and `git grep`
-// never touch), and `subject_population_expected` sits between them. Containment runs both ways, so the list
-// cannot GAIN a path without the registry claim failing, and cannot LOSE a tracked claiming path without this
-// claim failing. A count is never copied from an instrument run (§5/§6: identity, not a number).
-//
-// The note is NOT one of these authorities. It declares a SUBJECT -- `src/v1/tests/claim` has no executing
-// consumer -- and names no file, so it cannot ground a per-path expectation; it is cited for the standing and
-// the receipt says "within the subject <note> declares", never that it declared a path.
+fn standing_path(row: OutsideRootsStanding) -> String {
+  match row {
+    InsideGovernedTree { path: path, tree_directory: _ } => path
+    OutsideDiscoveryRoots { path: path, cause: _ } => path
+    NotAClaimFile { path: path } => path
+  }
+}
+
+// THE EXPECTED SUBJECT POPULATION IS DERIVED, NOT WRITTEN. The registry names emitted Rust targets, so a
+// subject .dag path is in it when the module that path DECLARES (the host's own scan, `module_declaration_facts_live`)
+// composes to an entry the registry names -- the same composition the emitter performs. Neither `git ls-files`
+// nor the marker grep ever touches either input. A hand-kept copy of the file list was a change detector (DESIGN 5): it went red when #14522
+// added a file, and a tool that updates it would collapse the claim to `measure() == measure()`.
+fn derived_subject_population(registry_content: String, facts: List<ModuleDeclarationFact>) -> List<String> {
+  let emitted = emitted_population_repo_paths(content: registry_content)
+  filter(
+    xs: list_map(xs: facts, f: fn(fact) { fact.path }),
+    predicate: fn(path) {
+      path_is_under_note_subject(path: path) && subject_path_is_emitted(path: path, emitted: emitted, facts: facts)
+    }
+  )
+}
+
+// THE PAIRING, over two instruments and no literal. The CENSUS (index listing + marker answer) and the
+// REGISTRY (emitter) must agree on the subject at identity: every registry-named subject path is a row the
+// census classified (so a path the emitter names that the index does not track reds, by name), and every
+// finding the census reports is a path the emitter named (so a claim file the emitter never produced reds).
+// Which of the named paths declare a claim is the marker's verdict and is exercised hermetically by the
+// witness file; it is not re-asserted against a list here, because that list was the change detector.
+fn subject_agrees_with_registry(derived: List<String>, rows: List<OutsideRootsStanding>, findings: List<String>) -> Bool {
+  !(is_empty(derived))
+    && all(xs: derived, predicate: fn(path) { is_in(listing: list_map(xs: rows, f: fn(row) { standing_path(row: row) }), path: path) })
+    && all(xs: findings, predicate: fn(path) { is_in(listing: derived, path: path) })
+}
+
 test fn the_live_index_agrees_with_the_emitted_subject_population_by_real_execution() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
   let out = outside_roots_census(
     listing: tracked_claim_listing(),
     bearers: tracked_claim_bearers()
   )
-  (match out.outcome { CensusObserved { rows: _ } => true _ => false })
-    && all(xs: subject_population_expected, predicate: fn(path) { is_in(listing: out.findings, path: path) })
-    && all(xs: out.findings, predicate: fn(path) { is_in(listing: subject_population_expected, path: path) })
+  read.success
+    && match out.outcome {
+      CensusObserved { rows: rows } => subject_agrees_with_registry(
+        derived: derived_subject_population(registry_content: read.content, facts: module_declaration_facts_live(pool_roots: ["src/v1"])),
+        rows: rows,
+        findings: out.findings
+      )
+      _ => false
+    }
+}
+
+// THE RED for the pairing above, on the same predicate: a registry that names a subject path the census has
+// no row for must refuse, and the live claim above is its positive control. Without this the claim could be
+// satisfied by a predicate that never answers false.
+test fn a_registry_path_the_census_has_no_row_for_is_a_disagreement_by_real_execution() -> Bool {
+  let read = Filesystem.Read(path: emitted_registry_path)
+  let out = outside_roots_census(
+    listing: tracked_claim_listing(),
+    bearers: tracked_claim_bearers()
+  )
+  let derived = derived_subject_population(registry_content: read.content, facts: module_declaration_facts_live(pool_roots: ["src/v1"]))
+  read.success
+    && match out.outcome {
+      CensusObserved { rows: rows } => !(subject_agrees_with_registry(
+        derived: concat(derived, ["src/v1/tests/claim/a_path_the_index_never_tracked_xyz.dag"]),
+        rows: rows,
+        findings: out.findings
+      ))
+      _ => false
+    }
 }
 
 // THE POSITIVE CONTROL, and the reason the claim above is not a tautology that passes when nothing is
@@ -123,36 +176,10 @@ test fn the_scan_dir_gap_is_observed_on_the_real_route_by_real_execution() -> Bo
     && all(xs: out.scan_dir_gap, predicate: fn(path) { is_in(listing: out.findings, path: path) == false })
 }
 
-// THE JOIN, ON FACTS THE HOST SUPPLIES (review 83368).
-//
-// The hermetic witness can prove the census's SHAPE but not this, and the reason is the difference between
-// the two: a hermetic claim that checked "every subject path is emitted" would have to supply the declared
-// module name itself, and then it would be comparing a fixture against a fixture -- the join would pass no
-// matter what the tree said. Here the facts come from `module_declaration_facts_live`, the host's own scan of
-// `src/v1`: it parses each file and returns the module its `module` header DECLARES. Nothing in this file
-// names a module.
-//
-// What each half contributes, and why both are needed:
-//   - the EMITTED side is the artifact read through its modeled reader
-//     (`emitted_population_repo_paths`), not grepped;
-//   - the DECLARATIVE side is what the source files actually declare, from the host.
-// Joining them through `module_to_filename` is the same composition the emitter performs, so a mismatch is a
-// real disagreement between the tree and the registry rather than between two strings I wrote.
-//
-// Containment runs one way here (every expected subject path must be emitted, by identity, path by path); the
-// other way is the index pairing above, which compares the live `git ls-files` population against the same
-// list. A path the registry has never seen fails this claim by NAME, which is the RED the reviewer asked for
-// the registry join to be able to produce.
-test fn every_expected_subject_path_is_emitted_by_its_declared_module_by_real_execution() -> Bool {
-  let read = Filesystem.Read(path: emitted_registry_path)
-  let emitted = emitted_population_repo_paths(content: read.content)
-  let facts = module_declaration_facts_live(pool_roots: ["src/v1"])
-  let population = concat(subject_population_expected, subject_helpers_declare_nothing)
-  read.success && !(is_empty(emitted))
-    && all(xs: population, predicate: fn(path) {
-      subject_path_is_emitted(path: path, emitted: emitted, facts: facts)
-    })
-}
+// THE JOIN ON FACTS THE HOST SUPPLIES is the derivation above: the host's own scan declares each module, the
+// registry names what the emitter produced, and the expected population is their composition. The claim that
+// once asserted a hand-kept list against that join is dissolved with the list; its shape stays proven by
+// `the_join_requires_the_fact_to_name_the_path_and_the_module_to_be_emitted` in the witness file.
 
 // ---------------------------------------------------------------------------
 // THE CITATIONS RESOLVE. Review 83419: the census used to name its authorities as free strings -- a note
