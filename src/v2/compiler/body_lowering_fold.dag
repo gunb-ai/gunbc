@@ -7188,15 +7188,15 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
 // of one concept in two pipelines. V is the arm's SOURCE SPELLING, so the variant pattern IS the authored
 // atom at its own occurrence: infer's Match path reads x's roster and a misspelt or foreign V refuses
 // (infer_match_pattern_variant_not_declared) located at V, inside the `is` expression. The synthesized
-// `true`, `false` and `_` take V's occurrence for their locus; no node of the `is` is a position of its own.
+// `true`, `false` and `_` are synthetic nodes, each its own occurrence: sharing V's occurrence id would put four nodes on one identity.
 fn body_lower_is_node(operand: Node, arm: Node) -> Node {
   lower_match(
     scrutinee: operand,
     arms: [
-      body_lower_match_arm_wire(pat_node: arm, body: body_lower_param_ref_atom(source: arm, identity: ^dag_token_kw_true)),
+      body_lower_match_arm_wire(pat_node: arm, body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } }, children: [])),
       body_lower_match_arm_wire(
-        pat_node: body_lower_param_ref_atom(source: arm, identity: wildcard_pattern_identity()),
-        body: body_lower_param_ref_atom(source: arm, identity: ^dag_token_kw_false)
+        pat_node: node_synthetic(kind: TypeNode { connective: Atom { identity: wildcard_pattern_identity() } }, children: []),
+        body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_false } }, children: [])
       )
     ]
   )

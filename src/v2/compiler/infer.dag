@@ -3023,8 +3023,8 @@ type InferCoproductArmPattern
 
 fn infer_coproduct_arm_pattern(pat: Node) -> InferCoproductArmPattern {
   match pat.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == pattern_wildcard_name() { ArmPatternWildcard } else { ArmPatternUnread }
+    TypeNode { connective: Atom { identity: _ } } =>
+      if is_wildcard_pattern(pattern: pat) { ArmPatternWildcard } else { ArmPatternUnread }
     TypeNode { connective: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
     ComputationNode { behavior: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
   }
