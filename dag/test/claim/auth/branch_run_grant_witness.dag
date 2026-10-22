@@ -325,6 +325,7 @@ test fn the_run_key_parses_only_its_own_shape() -> Bool {
     && match parse_branch_run_key(key: "37879231670") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "a-1") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "7-0") { Present { value: _ } => false  Absent => true }
+    && match parse_branch_run_key(key: "0-1") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "7-1-2") { Present { value: _ } => false  Absent => true }
 }
 
