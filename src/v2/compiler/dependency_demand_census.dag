@@ -267,6 +267,7 @@ type FactCallSite {
   callee: QualifiedName
   enter: Int
   exit: Int
+  operands: List<Optional<OccurrenceId>>
 }
 
 type FactBodySites {
@@ -322,7 +323,7 @@ fn demand_fact_note_site(before: DemandFactWalk, node: Node, after: DemandFactWa
         Present { value: callee } =>
           DemandFactWalk {
             functions: after.functions, operations: after.operations, audited: after.audited, current: after.current, value_call: after.value_call,
-            sites: list_snoc_item(xs: after.sites, item: FactCallSite { occurrence: node_occurrence_id_optional(node: node), callee: callee, enter: before.tick, exit: after.tick }),
+            sites: list_snoc_item(xs: after.sites, item: FactCallSite { occurrence: node_occurrence_id_optional(node: node), callee: callee, enter: before.tick, exit: after.tick, operands: fold_list(xs: node.children, empty: Empty, cons: fn(acc, c) { list_snoc_item(xs: acc, item: node_occurrence_id_optional(node: c.target)) }) }),
             bodies: after.bodies, tick: after.tick + 1
           }
         Absent => after

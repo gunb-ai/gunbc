@@ -6,6 +6,8 @@ import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
+import std.occurrence_identity { OccurrenceId }
+import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites }
 
 // THE EFFECT-PAIR CENSUS (DESIGN D16 TRIGGER, gunbc.plans.demand_engine_program): per function body,
 // every pair of effect-reaching call occurrences that no derived relation orders. It is MEASUREMENT
@@ -155,4 +157,98 @@ fn body_effect_pairs(facts: BodyEffectFacts) -> BodyPairs {
       }
     })
   })
+}
+
+// A value-use relation reduced to the two occurrences a body can join on: the bound value node's and
+// the reference's. An endpoint with no occurrence cannot be joined and so orders nothing.
+type UseEdge {
+  source: Optional<OccurrenceId>
+  dependent: Optional<OccurrenceId>
+}
+
+fn extract_occurrence_key(o: Optional<OccurrenceId>) -> Optional<Int> {
+  match o {
+    Present { value: id } => Present { value: id.value }
+    Absent => Absent
+  }
+}
+
+// site-by-occurrence index; a duplicated occurrence is ambiguous and is dropped, never guessed.
+fn extract_site_index(sites: List<FactCallSite>) -> Map<Int, Optional<FactCallSite>> {
+  fold_list(xs: sites, empty: empty_map(), cons: fn(m, site) {
+    match extract_occurrence_key(o: site.occurrence) {
+      Absent => m
+      Present { value: k } =>
+        match map_lookup(m: m, key: k) {
+          Present { value: _ } => map_insert(m: m, key: k, value: Absent)
+          Absent => map_insert(m: m, key: k, value: Present { value: site })
+        }
+    }
+  })
+}
+
+fn extract_site_at(index: Map<Int, Optional<FactCallSite>>, o: Optional<OccurrenceId>) -> Optional<FactCallSite> {
+  match extract_occurrence_key(o: o) {
+    Absent => Absent
+    Present { value: k } =>
+      match map_lookup(m: index, key: k) {
+        Present { value: slot } => slot
+        Absent => Absent
+      }
+  }
+}
+
+// ORDER EDGES of one body, keyed by a site's `enter`: (a) an operand that is itself a call orders
+// before its consumer; (b) a value-use whose dependent is an operand of the consumer orders the
+// site that IS the bound value before the consumer. A bound value that merely CONTAINS a call, or an
+// ambiguous endpoint, orders nothing: that direction over-counts.
+fn extract_order_edges(sites: List<FactCallSite>, uses: List<UseEdge>) -> List<OrderEdge> {
+  let index = extract_site_index(sites: sites)
+  fold_list(xs: sites, empty: Empty, cons: fn(acc, consumer) {
+    fold_list(xs: consumer.operands, empty: acc, cons: fn(a, operand) {
+      let direct = match extract_site_at(index: index, o: operand) {
+        Present { value: x } => list_snoc_item(xs: a, item: OrderEdge { from: x.enter, to: consumer.enter })
+        Absent => a
+      }
+      fold_list(xs: uses, empty: direct, cons: fn(b, u) {
+        if extract_same_occurrence(left: u.dependent, right: operand) {
+          match extract_site_at(index: index, o: u.source) {
+            Present { value: x } => list_snoc_item(xs: b, item: OrderEdge { from: x.enter, to: consumer.enter })
+            Absent => b
+          }
+        } else {
+          b
+        }
+      })
+    })
+  })
+}
+
+fn extract_same_occurrence(left: Optional<OccurrenceId>, right: Optional<OccurrenceId>) -> Bool {
+  match extract_occurrence_key(o: left) {
+    Present { value: l } =>
+      match extract_occurrence_key(o: right) {
+        Present { value: r } => l == r
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// The body's facts. `reason_of` says whether a callee reaches an effect and why; only reaching
+// sites are the pair population, but the order graph keeps every site so a chain through a pure
+// call still orders its ends.
+fn body_effect_facts(module: QualifiedName, body: FactBodySites, uses: List<UseEdge>, reason_of: fn(QualifiedName) -> Optional<ReachReason>) -> BodyEffectFacts {
+  BodyEffectFacts {
+    module: module,
+    function: body.function,
+    sites: fold_list(xs: body.sites, empty: Empty, cons: fn(acc, s) {
+      match reason_of(s.callee) {
+        Present { value: r } => list_snoc_item(xs: acc, item: EffectSite { occurrence: s.enter, callee: s.callee, reason: r })
+        Absent => acc
+      }
+    }),
+    orders: extract_order_edges(sites: body.sites, uses: uses),
+    exclusive: Empty
+  }
 }
