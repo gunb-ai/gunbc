@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.rung_drop_amendment {
   RungDropAmendment, rung_drop_amendment_message, every_amendment_names_a_rostered_drop,
 }
-import gunbc.rung_drop { Standing, Retired, AuthoredProse, EndedAuthoredProse, FloorCutFalsifierCadence, RungDropStanding }
+import gunbc.rung_drop { Standing, Retired, AuthoredProse, RetiredAuthoredProse, FloorCutFalsifierCadence, RungDropStanding }
 import gunbc.rung_drop_amendment.roster { rung_drop_amendment_roster, amendments_for_drop }
 import gunbc.rung_drop_amendment.namespace_wave_admission_carrier_redesign {
   namespace_wave_admission_carrier_redesign,
@@ -71,7 +71,7 @@ test fn the_closing_sentence_is_derived_from_the_rows_standing() -> Bool {
     a: namespace_wave_admission_carrier_redesign,
     standing: Retired {
       trigger_fired: "control trigger fired" as NonEmptyStr,
-      declaration: EndedAuthoredProse { legacy: FloorCutFalsifierCadence, authored: "control" }
+      declaration: RetiredAuthoredProse { legacy: FloorCutFalsifierCadence, authored: "control" }
     }
   )
   contains_text(haystack: standing, needle: "The restoration trigger above stands whole.")

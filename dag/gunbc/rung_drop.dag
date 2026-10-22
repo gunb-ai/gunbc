@@ -222,15 +222,16 @@ import gunbc.guarantee_rung {
 //
 // THE DECLARATION IS CARRIED BY THE STANDING, BECAUSE WHETHER A POPULATION EXISTS IS A FACT OF THE
 // STANDING. A Standing or Superseded drop still has a population its loss covers, so it carries the
-// RungDropDeclaration whose typed arm names one. A Retired drop's population emptied because the
-// trigger fired and a Dissolved drop's members were deleted, so neither carries a population field:
-// they carry EndedDeclaration, which has none, and a population written on such a row is a
+// RungDropDeclaration whose typed arm names one. A Retired drop keeps the members its loss covered
+// as population_at_retirement, evidence and no longer a standing loss. A Dissolved drop's members
+// were deleted, so it carries EndedDeclaration, which has no population field, and a population
+// written on such a row is a
 // compile refusal rather than a pairing a check must catch. Dissolved carries its RemovalTombstone
 // (the modules gone, the commit they are gone from, and the ruling and decision record) in place of
 // the prose that used to say so.
 type RungDropStanding
   = Standing { declaration: RungDropDeclaration }
-  | Retired { trigger_fired: NonEmptyStr, declaration: EndedDeclaration }
+  | Retired { trigger_fired: NonEmptyStr, declaration: RetiredDeclaration }
   | Superseded { ruling: NonEmptyStr, decision_record: NonEmptyStr, loss_holder: NonEmptyStr, declaration: RungDropDeclaration }
   | Dissolved { removal: RemovalTombstone, declaration: EndedDeclaration }
 
@@ -330,6 +331,7 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
 type UncountedCause
   = NoInstrumentObservesTheZero
   | DerivedEnumerationYieldedNoMember
+  | MembersNeverEnumeratedBeforeRetirement
 
 type RungDropPopulation
   = Enumerated { members: FreeSemigroup<String> }
@@ -362,7 +364,23 @@ type RungDrop {
   standing: RungDropStanding
 }
 
-// THE POPULATION-FREE FORM OF THE DECLARATION, carried by Retired and Dissolved. It is the same
+// THE DECLARATION A RETIRED DROP KEEPS: the same two-armed axis as RungDropDeclaration, with the
+// population renamed for what it now is. The members a retired drop covered are evidence of what the
+// loss was and what its trigger restored, so they stay on the row verbatim; they are no longer a
+// standing loss, which is why the field is named for the moment of retirement and
+// `rung_drop_population` answers Absent for it. A row that recorded no members at retirement says so
+// with NotYetCounted MembersNeverEnumeratedBeforeRetirement, never an invented enumeration.
+type RetiredDeclaration
+  = RetiredTypedDeclaration {
+      previous: GuaranteeRung
+      temporary: GuaranteeRung
+      reason: RungDropReason
+      population_at_retirement: RungDropPopulation
+      restoration_trigger: String
+    }
+  | RetiredAuthoredProse { legacy: LegacyProseIdentity, authored: String }
+
+// THE POPULATION-FREE FORM OF THE DECLARATION, carried by Dissolved. It is the same
 // two-armed axis as RungDropDeclaration (typed fields, or the authored paragraph) without the one
 // field that only a live loss has.
 type EndedDeclaration
@@ -396,10 +414,18 @@ fn ended_declaration_terms(d: EndedDeclaration) -> DropTerms {
   }
 }
 
+fn retired_declaration_terms(d: RetiredDeclaration) -> DropTerms {
+  match d {
+    RetiredTypedDeclaration { previous: p, temporary: t, reason: r, population_at_retirement: _, restoration_trigger: rt } =>
+      TypedTerms { previous: p, temporary: t, reason: r, restoration_trigger: rt }
+    RetiredAuthoredProse { legacy: l, authored: a } => ProseTerms { legacy: l, authored: a }
+  }
+}
+
 fn rung_drop_terms(d: RungDrop) -> DropTerms {
   match d.standing {
     Standing { declaration: x } => live_declaration_terms(d: x)
-    Retired { trigger_fired: _, declaration: x } => ended_declaration_terms(d: x)
+    Retired { trigger_fired: _, declaration: x } => retired_declaration_terms(d: x)
     Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: x } => live_declaration_terms(d: x)
     Dissolved { removal: _, declaration: x } => ended_declaration_terms(d: x)
   }
@@ -422,6 +448,20 @@ fn declaration_population(d: RungDropDeclaration) -> Optional<RungDropPopulation
   }
 }
 
+// THE POPULATION A RETIRED DROP RECORDED WHEN ITS TRIGGER FIRED: evidence of the loss it covered,
+// read by the projection beside the standing, never counted as a standing loss.
+fn rung_drop_population_at_retirement(d: RungDrop) -> Optional<RungDropPopulation> {
+  match d.standing {
+    Retired { trigger_fired: _, declaration: x } => match x {
+      RetiredTypedDeclaration { previous: _, temporary: _, reason: _, population_at_retirement: p, restoration_trigger: _ } => Present { value: p }
+      RetiredAuthoredProse { legacy: _, authored: _ } => Absent
+    }
+    Standing { declaration: _ } => Absent
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => Absent
+    Dissolved { removal: _, declaration: _ } => Absent
+  }
+}
+
 // THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its
 // own message would be a second authority for the same fact (DESIGN section 3), and the two would
 // drift in the ordinary way: someone updates the row and the refusal keeps telling the reader
@@ -434,7 +474,7 @@ fn rung_drop_declaration_message(d: RungDrop) -> String {
       concat(
         concat(" -> ", concat(guarantee_rung_label(r: t), concat(" (", rung_drop_reason_label(r: rs)))),
         concat(
-          concat(")", population_clause(p: rung_drop_population(d: d))),
+          concat(")", population_clause(p: match rung_drop_population(d: d) { Present { value: v } => Present { value: v }  Absent => rung_drop_population_at_retirement(d: d) })),
           concat(". Restored when: ", sentence_terminated(s: rt))
         )
       )

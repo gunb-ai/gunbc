@@ -4,7 +4,7 @@ import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { FreeSemigroup }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 import gunbc.rung_drop {
-  RungDrop, EndedTypedDeclaration, TypedDeclaration, Enumerated, AuthoredProse, FloorCutFalsifierCadence,
+  RungDrop, RetiredTypedDeclaration, TypedDeclaration, Enumerated, AuthoredProse, FloorCutFalsifierCadence,
   DeletedWithoutReplacement, Standing, Retired,
 }
 import gunbc.rung_drop.roster { rung_drop_roster }
@@ -24,10 +24,11 @@ fn fixture_drop(id: String, retired: Bool, trigger: String) -> RungDrop {
     standing: if retired {
       Retired {
         trigger_fired: "fixture fired" as NonEmptyStr,
-        declaration: EndedTypedDeclaration {
+        declaration: RetiredTypedDeclaration {
           previous: Mitigatable,
           temporary: OutsideTheLadder,
           reason: DeletedWithoutReplacement,
+          population_at_retirement: Enumerated { members: FreeSemigroup { head: "fixture.population", tail: [] } },
           restoration_trigger: trigger
         }
       }

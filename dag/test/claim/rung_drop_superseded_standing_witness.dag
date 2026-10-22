@@ -10,7 +10,7 @@ import v2.lens.module_impact_query { ModuleIdentity }
 import gunbc.source_layout { layout_module_storage_path }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import gunbc.compile_census_probe { total_blocking_count_for }
-import gunbc.rung_drop { rung_drop_population, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, EndedTypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.rung_drop { rung_drop_population, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, EndedTypedDeclaration, RetiredTypedDeclaration, NotYetCounted, MembersNeverEnumeratedBeforeRetirement, rung_drop_population_at_retirement, rung_drop_population_label, rung_drop_declaration_message, RungDropPopulation, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.standing { standing_rung_drops_of, superseded_loss_holders_stand }
@@ -35,6 +35,14 @@ data fixture_live: TypedDeclaration = TypedDeclaration {
   restoration_trigger: "fixture trigger"
 }
 
+data fixture_retired: RetiredTypedDeclaration = RetiredTypedDeclaration {
+  previous: MechanicallyPreventable,
+  temporary: Mitigatable,
+  reason: DeletedWithoutReplacement,
+  population_at_retirement: Enumerated { members: FreeSemigroup { head: "fixture.retired.member", tail: [] } },
+  restoration_trigger: "fixture trigger"
+}
+
 data fixture_ended: EndedTypedDeclaration = EndedTypedDeclaration {
   previous: MechanicallyPreventable,
   temporary: Mitigatable,
@@ -56,7 +64,7 @@ fn superseded_fixture() -> RungDropStanding {
 }
 
 fn retired_fixture() -> RungDropStanding {
-  Retired { trigger_fired: supersession_fixture as NonEmptyStr, declaration: fixture_ended }
+  Retired { trigger_fired: supersession_fixture as NonEmptyStr, declaration: fixture_retired }
 }
 
 // A SUPERSEDED ROW KEEPS ITS LIVE DECLARATION: it is still a loss somebody holds, so its population
@@ -177,11 +185,26 @@ test fn a_dissolved_row_renders_as_not_fired_and_needs_no_loss_holder() -> Bool 
 // THE POPULATION EXISTS ONLY WHERE A LOSS IS STILL HELD. Positive: a Standing and a Superseded row
 // read their population; RED: a Retired and a Dissolved row have none to read, so the accessor
 // answers Absent for them and a consumer cannot mistake a deleted population for an empty one.
+fn at_retirement_is_kept(d: RungDrop) -> Bool {
+  match rung_drop_population_at_retirement(d: d) {
+    Present { value: p } => rung_drop_population_label(p: p) == "fixture.retired.member"
+    Absent => false
+  }
+}
+
+// THE RETIRED ARM KEEPS WHAT IT RECORDED: its members are readable at retirement and the one
+// rendering shows them, where a Retired row used to print nothing after this rework dropped them.
+test fn a_retired_row_keeps_its_population_at_retirement() -> Bool {
+  rung_drop_declaration_message(d: holder_fixture(id: "fixture.retired", standing: retired_fixture())).contains("Population: fixture.retired.member")
+}
+
 test fn only_a_standing_or_superseded_row_has_a_population() -> Bool {
   let has = (d => match rung_drop_population(d: d) { Present { value: _ } => true  Absent => false })
   has(standing_holder(id: "fixture.standing"))
     && has(superseded_fixture_naming(holder: "fixture.holder"))
     && (has(holder_fixture(id: "fixture.retired", standing: retired_fixture())) == false)
+    && at_retirement_is_kept(d: holder_fixture(id: "fixture.retired", standing: retired_fixture()))
+    && (at_retirement_is_kept(d: standing_holder(id: "fixture.standing")) == false)
     && (has(holder_fixture(id: "fixture.dissolved", standing: Dissolved { removal: fixture_tombstone(), declaration: fixture_ended })) == false)
 }
 
