@@ -1,0 +1,14 @@
+module test.claim.zz_host_sites_dump
+
+import std.types { Bool, Int, String, List }
+import std.process { ProcessExit, ExitFailure }
+import std.algebra { length }
+import v2.lens.fallback_arm_census { fallback_arm_census_facts_live, FallbackArmCensusFact }
+
+fn host_site_line(f: FallbackArmCensusFact) -> String {
+  concat("HOSTSITE ", concat(f.rel_path, concat("::", concat(f.fn_name, concat(" closed=", concat(to_string(f.closed_coproduct_scrutinee), concat(" class=", f.class)))))))
+}
+
+test fn dump() -> ProcessExit {
+  ExitFailure { code: 1, reason: fold_list(xs: fallback_arm_census_facts_live(), empty: "", cons: fn(acc, f) { concat(acc, concat("\n", host_site_line(f: f))) }) }
+}
