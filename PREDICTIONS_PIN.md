@@ -1121,3 +1121,9 @@ DECISION RUN (Z): claims+probe+seedgen MUST run on regen'd (fold-realized) head;
 - REGEN COMPLETE (round 1, no env overrides, ~25 min): 3 mirrors modified (v1_compiler_infer.rs +1063, v1_compiler_infer_types.rs +519, v1_tests_claim_generic_identity_census.rs +19) = THE FOLD REALIZATION (43x UnifyGenericsAcc in mirror; fold diagnostic strings present). cgroup peak 24 GiB, oom_kill=0, memory.events max=719 throttles. GUNBC_MEMORY_BUDGET_BYTES=10GiB = footgun (budget-below-demand refusal at compile.emit) — do NOT set it for regen locally; CI parity = no overrides.
 - Census mirror gained 19 lines from regen = seed artifact regenerated at claim corpus (probe file untracked => NOT in regen'd census; safe).
 - Battery /tmp/lr_battery.sh staged (3 applied + 28 arity + 2 probe + seedgen; results /tmp/lr_results.txt; probe file untracked; row patch uncommitted (Charter 3 owns); regen commit will stage ONLY src/v1/stage0/src + instruments if instruments change (none so far)).
+
+## OWN-FORM + LEAF-IDENTITY FIX PREDICTIONS (2026-10-22, manager re-ruling msg_3090d917 + landing msg msg_d91101d5: leaf-identity LANDS as #14056 against main ahead of PR-2; own-form stays inside PR-2)
+PRED-OF1: own-form guard fix (call-site app nodes: bound node whose leaves are the callee's own params treated as unsettled -> REPLACE arm) => census 13->11, leaving only sites 3,4 gone (both dag/std/algebra.dag:1412:56); all other 11 sites byte-identical; applied_constructor 3/3 PASS; arity 28/28 PASS.
+PRED-OF2: leaf-identity by declaration ref (NOT text) => census 11->9, leaving sites 2,12 (remote_shell_command.dag:106, integer.dag:425); no site joins.
+PRED-OF3: sites 7-10 survive both fixes (their classes differ); if any leave too, the fold-defect-suspect re-measurement caught a misclassification (that is the point).
+PRED-OF4: alias-shadow 1,13, wrapper 6,11, kernel-Int 5 unchanged by these two fixes (distinct classes; eager-cat #14632 not merged).
