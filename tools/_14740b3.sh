@@ -16,7 +16,7 @@ cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -1
 GB=$REPO/.t740/release/gunbc
 echo "BUILD_COMMIT=$HEADSHA GB_SHA=$(sha256sum $GB|cut -c1-12) $(date -u +%H:%M:%SZ)"
 S=/tmp/synth740; rm -rf $S; mkdir -p $S; cd $S
-git init -q .; git remote add origin $REPO
+git init -q .; git remote add origin https://github.com/gunb-ai/gunbc
 git fetch -q --depth 1 origin $HEADSHA 2>&1 | tail -1
 git checkout -q FETCH_HEAD; git checkout -q -b main
 git config user.email v@v.io; git config user.name verifier
