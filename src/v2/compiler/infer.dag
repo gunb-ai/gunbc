@@ -29,8 +29,8 @@ import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal,
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.arm_resolution { ArmDecided, ArmTestDecision, ArmUndecided, ResolvedArm, node_is_arm_test, infer_match_variant_payload, resolve_is_arm }
-import v2.compiler.inferred_tree { ArmResolutions, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, EqualityNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding, constructed_root_arm_resolutions }
-import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
+import v2.compiler.inferred_tree { ArmResolutions, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, ComparisonNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding, constructed_root_arm_resolutions }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration, ordering_predicate_signature_node }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
@@ -3538,9 +3538,11 @@ fn infer_loop_iteration(
 // lowered operator is a canonical-operation wire (v2.std.compilers.target_model canonical_operation_from_wire_node)
 // whose AlgebraPrimitive carries the signature field -- ^ring_field_add for `+`, ^lattice_field_join for `||`,
 // ^lattice_field_meet for `&&` -- and whose EqualityComparison carries ^equivalence_field_eq for `==` and `!=`
-// (the predicate only negates the answer; the field, and so the operand judgment and the result type, are one).
-// The bare `+` token is the add field's surface spelling (canonical_operation_op_add). Ordering comparisons and
-// inverse-compose operators (`-`) stay out of this arm until the structure reading names their fields
+// (the predicate only negates the answer; the field, and so the operand judgment and the result type, are one),
+// and whose OrderingComparison carries ^ordered_ring_field_compare for `<`, `<=`, `>`, `>=` (its answer is an
+// Ordering, which the predicate signature reads to Bool: infer_operation_result_signature). The bare `+` token
+// is the add field's surface spelling (canonical_operation_op_add). Inverse-compose operators (`-`) stay out of
+// this arm until the structure reading names their fields
 // (gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer).
 fn infer_binary_algebra_field(op_node: Node) -> Optional<Symbol> {
   if infer_operator_is_plus_token(op_node: op_node) {
@@ -3568,7 +3570,7 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
   match operation {
     AlgebraPrimitive { algebra_field: field } => optional_present(value: field)
     AlgebraInverseCompose { binary_field: _, inverse_field: _ } => optional_absent()
-    OrderingComparison { compare_field: _, predicate: _ } => optional_absent()
+    OrderingComparison { compare_field: field, predicate: _ } => optional_present(value: field)
     EqualityComparison { eq_field: field, predicate: _ } => optional_present(value: field)
     CoercionCrossing { homomorphism_rule: _ } => optional_absent()
   }
@@ -3715,12 +3717,89 @@ fn infer_operand_literal_elaborates_at(literal_node: Node, expected: Node, resol
   }
 }
 
-// AN EQUALITY THAT IS NOT DERIVED stays on the counted frontier, as every comparison did before `==` was judged.
-fn infer_equality_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFacts> {
+// A COMPARISON THAT IS NOT DERIVED stays on the counted frontier, as every comparison did before it was judged:
+// an equality or ordering whose carrier has no row stating that structure is unmodelled, not incomparable.
+fn infer_comparison_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: node) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Holds { value: descent_proof } =>
-      bind_outcome_accepted(od: od, inner: inferred_facts_not_derived(site: EqualityNotDerived, node: node, descent: Holds { value: descent_proof }))
+      bind_outcome_accepted(od: od, inner: inferred_facts_not_derived(site: ComparisonNotDerived, node: node, descent: Holds { value: descent_proof }))
+  }
+}
+
+fn infer_field_is_comparison(field: Symbol) -> Bool {
+  (field == ^equivalence_field_eq) || (field == ^ordered_ring_field_compare)
+}
+
+// THE VALUE AN OPERATION TAKES FROM ITS FIELD'S ANSWER. An ordering comparison's value is its predicate over
+// the compare field's Ordering, typed by v2.std.algebra_structure_signature ordering_predicate_signature_node;
+// every other operation's value is the field's answer itself.
+fn infer_operation_result_signature(op_node: Node) -> Optional<Node> {
+  if infer_operator_is_plus_token(op_node: op_node) {
+    optional_absent()
+  } else {
+    match canonical_operation_from_wire_node(wire: op_node) {
+      Rejected { diagnostics: _ } => optional_absent()
+      Accepted { value: decoded, diagnostics: _ } =>
+        match decoded {
+          OrderingComparison { compare_field: _, predicate: _ } => optional_present(value: ordering_predicate_signature_node())
+          AlgebraPrimitive { algebra_field: _ } => optional_absent()
+          AlgebraInverseCompose { binary_field: _, inverse_field: _ } => optional_absent()
+          EqualityComparison { eq_field: _, predicate: _ } => optional_absent()
+          CoercionCrossing { homomorphism_rule: _ } => optional_absent()
+        }
+    }
+  }
+}
+
+// THE SIGNATURE APPLIED TO THE FIELD'S ANSWER: its one formal must be the answer's type, and the value is its
+// codomain. A structure whose field answers something else refuses with that cause; no Bool is assumed.
+fn infer_operation_value_type(op_node: Node, answer: Node) -> Outcome<Node> {
+  match infer_operation_result_signature(op_node: op_node) {
+    Absent => outcome_accepted(value: answer)
+    Present { value: signature } => infer_apply_result_signature(signature: signature, answer: answer)
+  }
+}
+
+fn infer_apply_result_signature(signature: Node, answer: Node) -> Outcome<Node> {
+  let malformed = outcome_rejected(Diagnostic {
+    reason: ^infer_operation_result_signature_malformed,
+    at: node_locus(node: signature),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  })
+  match infer_operator_arrow(operator: signature) {
+    Absent => malformed
+    Present { value: arrow } =>
+      let targets = positional_child_target_nodes(node: arrow)
+      match list_at_optional(xs: targets, index: 0) {
+        Absent => malformed
+        Present { value: domain } =>
+          match list_at_optional(xs: targets, index: 1) {
+            Absent => malformed
+            Present { value: codomain } =>
+              match infer_formals_from_domain(domain: domain) {
+                Absent => malformed
+                Present { value: formals } =>
+                  match list_at_optional(xs: formals, index: 0) {
+                    Absent => malformed
+                    Present { value: formal } =>
+                      if length(xs: formals) != 1 {
+                        malformed
+                      } else {
+                        if infer_branch_type_atoms_equal(a: formal.declared, b: answer) {
+                          outcome_accepted(value: codomain)
+                        } else {
+                          outcome_rejected(Diagnostic {
+                            reason: ^infer_operation_result_signature_domain_mismatch,
+                            at: node_locus(node: signature),
+                            correction: Unavailable { reason: CorrectionNotModeled }
+                          })
+                        }
+                      }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -5425,7 +5504,7 @@ fn infer_transform_binary_infix(
                               ) {
                                 OperandsDisagree { diagnostic: d } => outcome_rejected(d)
                                 OperandsNotJudged { diagnostic: d } =>
-                                  if field == ^equivalence_field_eq { infer_equality_not_derived(node: node, od: cd) } else { outcome_rejected(d) }
+                                  if infer_field_is_comparison(field: field) { infer_comparison_not_derived(node: node, od: cd) } else { outcome_rejected(d) }
                                 OperandsOneType { operand_type: unified_type } =>
                                   match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: unified_type, field: field) {
                                     // NO ROW IS NOT "NOT COMPARABLE". The operands are already judged one type; a
@@ -5434,8 +5513,8 @@ fn infer_transform_binary_infix(
                                     // counted not-derived frontier as it did before this arm judged it. An operation
                                     // field with no row (`true + false`) is a refusal: the carrier has no such operation.
                                     AlgebraFieldNotCarried =>
-                                      if field == ^equivalence_field_eq {
-                                        infer_equality_not_derived(node: node, od: cd)
+                                      if infer_field_is_comparison(field: field) {
+                                        infer_comparison_not_derived(node: node, od: cd)
                                       } else {
                                         outcome_rejected(
                                           infer_transform_operand_type_mismatch_diagnostic(node: node)
@@ -5447,24 +5526,28 @@ fn infer_transform_binary_infix(
                                         at: node_locus(node: node),
                                         correction: Unavailable { reason: CorrectionNotModeled }
                                       })
-                                    AlgebraFieldResultType { result: result_type } =>
-                                    match infer_descent_witness_for_node(n: node) {
-                                      Violates { diagnostic: d } =>
-                                        Rejected { diagnostics: diagnostics_singleton(d: d) }
-                                      Holds { value: descent_proof } =>
-                                        bind_outcome(
-                                          o: inferred_facts_from_derived_type(
-                                            node: node,
-                                            derived_type: result_type,
-                                            descent: Holds { value: descent_proof }
-                                          ),
-                                          f: fn(facts) {
-                                            Accepted {
-                                              value: facts,
-                                              diagnostics: cd
+                                    AlgebraFieldResultType { result: answer } =>
+                                    match infer_operation_value_type(op_node: op_target, answer: answer) {
+                                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                      Accepted { value: result_type, diagnostics: _ } =>
+                                      match infer_descent_witness_for_node(n: node) {
+                                        Violates { diagnostic: d } =>
+                                          Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                        Holds { value: descent_proof } =>
+                                          bind_outcome(
+                                            o: inferred_facts_from_derived_type(
+                                              node: node,
+                                              derived_type: result_type,
+                                              descent: Holds { value: descent_proof }
+                                            ),
+                                            f: fn(facts) {
+                                              Accepted {
+                                                value: facts,
+                                                diagnostics: cd
+                                              }
                                             }
-                                          }
-                                        )
+                                          )
+                                      }
                                     }
                                   }
                               }
