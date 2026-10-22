@@ -1643,8 +1643,7 @@ pub(crate) fn typed_module_content_key(
 /// host-wide `MemAvailable`/`MemTotal` last resort, or no budget was found at
 /// all and the ceiling was used). Pure and side-effect-free: callers decide
 /// how often to invoke it and whether to log the degraded case.
-pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool), HostBudgetRefusal>
-{
+pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool), String> {
     if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
         if let Ok(n) = raw.trim().parse::<usize>() {
             if n > 0 {
@@ -1658,15 +1657,7 @@ pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool
         }
         // Malformed override — fall through to derived cap (fail-closed).
     }
-    typed_module_cache_cap_from_resolution(crate::memory_governor::read_host_budget_resolution())
-}
-
-/// The cap a host-budget resolution admits, or the typed refusal when it names no bound. The
-/// resolution is a function INPUT so the refusal arm is exercised without a host that lacks a
-/// limit; `typed_module_cache_cap_derivation` is its only production caller.
-pub(crate) fn typed_module_cache_cap_from_resolution(
-    resolution: crate::memory_governor::HostBudgetResolution,
-) -> Result<(usize, String, bool), HostBudgetRefusal> {
+    let resolution = crate::memory_governor::read_host_budget_resolution();
     let source_label = resolution.label();
     // GROUNDED ON THE DISCRIMINANT, not on the rendering. This read
     // `!(source_label.contains("memory.max") || source_label.contains("memory.high"))` and the
@@ -1700,8 +1691,8 @@ pub(crate) fn typed_module_cache_cap_from_resolution(
             return Ok((TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR, label, false));
         }
         crate::memory_governor::HostBudgetResolution::Unreadable { reason } => {
-            return Err(HostBudgetRefusal::new(format!(
-                "no modeled host memory source answered ({reason}). \
+            return Err(format!(
+                "HostBudgetUnreadable: no modeled host memory source answered ({reason}). \
                  The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
                  unknown budget cannot be defaulted — the previous default was the ceiling, which \
                  OOM-killed this process rather than refusing, and the MemAvailable arm that \
@@ -1709,60 +1700,23 @@ pub(crate) fn typed_module_cache_cap_from_resolution(
                  at rc=137 instead. Configure the executor to expose a cgroup memory limit; \
                  GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling \
                  (dag/gunbc/host/host_budget_source.dag)."
-            )));
+            ));
         }
         _ => {}
     }
     let degraded = resolution.degraded_source().unwrap_or(true);
     let Some(budget_bytes) = resolution.bytes() else {
-        return Err(HostBudgetRefusal::new(format!(
-            "no modeled host memory source answered ({source_label}). \
+        return Err(format!(
+            "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
              Configure the executor to expose a cgroup memory limit \
              (dag/gunbc/host/host_budget_source.dag)."
-        )));
+        ));
     };
     let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
         TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
         TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
     );
     Ok((cap, source_label, degraded))
-}
-
-/// A run that cannot name a memory bound for itself. Typed so an edge can map it to no
-/// observation (`cause=HostBudgetUnreadable`) rather than parse a message; every consumer still
-/// on a `String` error converts through `From`, keeping the cause prefix.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HostBudgetRefusal {
-    detail: String,
-}
-
-impl HostBudgetRefusal {
-    pub(crate) fn new(detail: String) -> Self {
-        Self { detail }
-    }
-
-    pub fn detail(&self) -> &str {
-        &self.detail
-    }
-}
-
-impl std::fmt::Display for HostBudgetRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "HostBudgetUnreadable: {}", self.detail)
-    }
-}
-
-impl From<HostBudgetRefusal> for String {
-    fn from(refusal: HostBudgetRefusal) -> Self {
-        refusal.to_string()
-    }
-}
-
-/// The host budget a resolve needs, asked once at the edge ahead of every consumer. The same
-/// derivation the typed-module cache samples, so a refusal here is the refusal the resolve would
-/// have raised deep inside a `String` chain.
-pub fn host_budget_preflight() -> Result<(), HostBudgetRefusal> {
-    typed_module_cache_cap_derivation().map(|_| ())
 }
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
@@ -4001,27 +3955,6 @@ mod entry_resolve_refusal_tests {
             )),
             EntryResolveRefusal::ClosureDiagnostics { .. }
         ));
-    }
-
-    /// An unbounded host (no limit, no executor standing) is a typed refusal carrying the
-    /// `HostBudgetUnreadable` cause, never a panic and never a cap; a resolution that names a
-    /// bound derives one. The resolution is injected as a value, so no host input is faked.
-    #[test]
-    fn an_unreadable_host_budget_is_a_typed_refusal_and_a_bound_derives_a_cap() {
-        use super::typed_module_cache_cap_from_resolution as derive;
-        use crate::memory_governor::HostBudgetResolution;
-        let refusal = derive(HostBudgetResolution::Unreadable {
-            reason: "memory.max=max".to_string(),
-        })
-        .expect_err("no bound must refuse");
-        assert!(refusal.to_string().starts_with("HostBudgetUnreadable: "));
-        assert!(refusal.detail().contains("memory.max=max"));
-        let (cap, _, _) = derive(HostBudgetResolution::DeclaredUnverified {
-            requested_bytes: 3145728 * 500,
-            reason: "control".to_string(),
-        })
-        .expect("a named bound derives a cap");
-        assert_eq!(cap, 500);
     }
 
     /// An entry that is not a file never reached its subject (`EntryMissing`); an entry that
