@@ -8,7 +8,8 @@ import extdeps.apple.apns { ApnsDevelopment, ApnsProduction }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, proposed_decision_name }
 import gunbc.auth.approval_device_wire {
   MobileIos, MobileAndroid, platform_wire, enrolment_refusal_kinds, enrolment_refusal_wire_label,
-  EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire, apns_environment_wire,
+  wire_admission_platform, wire_admission_apns_environment, wire_admission_decision, wire_admission_signature_suite,
+  wire_admission_public_key_encoding, wire_admission_signature_encoding, EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire, apns_environment_wire,
 }
 
 // INJECTIVITY OF THE MULTI-ARM NULLARY SPELLING FNS: platform, enrolment refusal, standing, APNs
@@ -35,7 +36,7 @@ fn first_repeated_spelling(spellings: List<String>) -> Optional<String> {
   }).repeated
 }
 fn platform_spellings() -> List<String> {
-  map([MobileIos, MobileAndroid], p => platform_wire(p: p) as String)
+  wire_admission_platform.declared
 }
 
 fn refusal_spellings() -> List<String> {
@@ -47,11 +48,11 @@ fn standing_spellings() -> List<String> {
 }
 
 fn apns_spellings() -> List<String> {
-  map([ApnsDevelopment, ApnsProduction], e => apns_environment_wire(e: e) as String)
+  wire_admission_apns_environment.declared
 }
 
 fn decision_spellings() -> List<String> {
-  map([ProposeApprove, ProposeDeny], d => proposed_decision_name(d: d) as String)
+  wire_admission_decision.declared
 }
 
 fn no_repeat(xs: List<String>) -> Bool {
@@ -81,6 +82,9 @@ test fn supplied_arm_lists_cover_the_declared_arms() -> Bool {
     && covers(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentStandingWire", spellings: standing_spellings())
     && covers(facts: facts, name: "extdeps.apple.apns.ApnsEnvironment", spellings: apns_spellings())
     && covers(facts: facts, name: "gunbc.auth.approval_capability.ProposedDecision", spellings: decision_spellings())
+    && covers(facts: facts, name: "extdeps.crypto.signature.SignatureSuite", spellings: wire_admission_signature_suite.declared)
+    && covers(facts: facts, name: "extdeps.crypto.signature.PublicKeyEncoding", spellings: wire_admission_public_key_encoding.declared)
+    && covers(facts: facts, name: "extdeps.crypto.signature.SignatureEncoding", spellings: wire_admission_signature_encoding.declared)
 }
 
 // RED: the same comparison refuses a list one arm short, a list one arm long, and an undeclared name.
