@@ -3,7 +3,7 @@ REPO=/root/workspace/repo-root
 HEADSHA=f6030923ad79163132a78a45cc18d0d05875bbd7  # gh pr view 14613 headRefOid (manager-confirmed final)
 WIT=dag/test/claim/instruments/instrument_dispatch_workflow_witness.dag
 GATE=dag/gunbc/instruments/generated_artifact_gate.dag
-YML=.github/workflows/instrument_dispatch.yml
+YML=.github/workflows/instrument-dispatch.yml
 cd $REPO
 git fetch --force origin $HEADSHA 2>&1 | tail -1
 git worktree add -f /tmp/wt613j $HEADSHA 2>&1 | tail -1
