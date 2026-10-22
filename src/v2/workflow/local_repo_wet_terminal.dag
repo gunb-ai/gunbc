@@ -320,6 +320,17 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // with the attempt's CaptureWork and without a git commit; a clean checkout of a different commit
 // refuses as CaptureAbsent; valid bytes claiming this HEAD stored under another basename also
 // refuse as CaptureAbsent. Hermetic claims supply porcelain, standing, and SubmissionCaptureObservation.
+// TWO CLAIM-BATCH PARSE-GATE MEMBERS (test.claim.claim_batch_parse_gate_witness, Charter 4). They
+// plant a module pair under a mktemp directory in target/, run the already-built seed claim_batch
+// over it with gunbc.WitnessBin.Run, and remove the directory: the admitted effect is a temp
+// directory plus ONE CHILD PROCESS OF THE SEED BINARY the floor already built, and that child is a
+// read-only walk. That child is the one thing this lane's membership property does not already
+// state, so it is stated here as a distinct effect rather than folded into the sentences above: a
+// member whose verdict depends on target/release/claim_batch existing reaches no verdict where the
+// binary is absent, which is the reachability risk every member carries. The refusal row passes only
+// the planted root; the control must also walk the dag root so gunbc.output_policy resolves, which
+// is irreducible while a verdict needs that module and puts the control over the per-row wall budget
+// that nothing on this lane arms (gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall).
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -3414,6 +3425,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line" },
+      entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
+      function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "a_parseable_imported_module_reaches_a_real_pass_verdict" },
+      entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
+      function: "a_parseable_imported_module_reaches_a_real_pass_verdict",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line" },
       entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
       function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line",
@@ -3423,6 +3446,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "a_nonexistent_entry_exits_2_with_a_located_refusal" },
       entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
       function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_a_coproduct_and_a_record_is_refused" },
+      entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
+      function: "w_an_equality_between_a_coproduct_and_a_record_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_unrelated_records_is_refused" },
+      entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
+      function: "w_an_equality_between_unrelated_records_is_refused",
       expectation: ExpectedToHold {}
     }
   ]
