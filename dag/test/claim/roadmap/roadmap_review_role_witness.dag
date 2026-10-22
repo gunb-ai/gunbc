@@ -12,11 +12,11 @@ import gunbc.roadmap.roadmap_review_role {
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text, conformance_criterion_from_domain }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key, decl_ref }
+import std.decl_ref { DeclarationRef, DeclarationSymbol, declaration_ref_display_key, decl_ref }
 import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomeGroup, conformance_domain_homes }
 import gunbc.design_document { expected_design_md, conformance_domain_section }
 import extdeps.languages.markdown { serialize_markdown_source }
-import std.markdown { MarkdownDocument }
+import std.markdown { MarkdownDocument, cited_symbol_spelling }
 import gunbc.plans.md_helpers { tx }
 import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
@@ -211,7 +211,7 @@ test fn production_conformance_domains_appear_in_generated_design() -> Bool {
   string_contains(s: md, pattern: "3b. Conformance")
     && all(conformance_domains, d =>
       string_contains(s: md, pattern: concat("### ", d.label))
-        && all(conformance_domain_homes(d: d), h => string_contains(s: md, pattern: concat("`", concat(review_home_text(h: h), "`"))))
+        && all(conformance_domain_homes(d: d), h => string_contains(s: md, pattern: concat("`", concat(cited_symbol_spelling(symbol: DeclarationSymbol { reference: h }), "`"))))
     )
 }
 
