@@ -15,7 +15,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // a control that imports the same names, builds the same rows correctly and reads zero at the key.
 // CensusNotRunnable reads negative from refusals(), so an unrunnable census fails the claim.
 //
-// The subjects are MEASURED on the real compile path, not guessed (see the PR body for the run).
+// The subjects are MEASURED on the real compile path (claim_batch over each probe prints the located
+// diagnostic whose class and subject are keyed below).
 
 data probe_dir: String = "dag/test/probe/"
 
@@ -79,10 +80,10 @@ test fn a_rule_id_carrier_where_a_run_id_belongs_is_refused_at_the_field() -> Bo
 test fn a_rule_id_carrier_where_a_run_id_belongs_is_refused_at_the_call() -> Bool {
   refusals(
     c: census_of(name: "workflow_run_id_axis_call_arg"),
-    class: "TypeMismatch",
-    subject: "Product(GitHubDeploymentProtectionRuleId)",
+    class: "DeclaredTypeNotInhabited",
+    subject: "direct call argument for parameter 'run_id'",
   ) >= 1
-    && refusals(c: control_census(), class: "TypeMismatch", subject: "Product(GitHubDeploymentProtectionRuleId)") == 0
+    && refusals(c: control_census(), class: "DeclaredTypeNotInhabited", subject: "direct call argument for parameter 'run_id'") == 0
 }
 
 // (5) THE PREMISE, EXECUTED: a position declared Int accepts the carrier by reference, so the census
