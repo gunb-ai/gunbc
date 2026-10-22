@@ -214,9 +214,15 @@ fn unobserved_layout(tp: Nat, dp: Nat, ep: Bool) -> LayoutMeasurementStanding {
   LayoutUnobserved { topology: ServingTopology { tensor_parallel: tp, data_parallel: dp, expert_parallel: ep }, trigger: layout_rental_trigger }
 }
 
+fn observed_layout(tp: Nat, dp: Nat) -> LayoutMeasurementStanding {
+  LayoutObserved { topology: ServingTopology { tensor_parallel: tp, data_parallel: dp, expert_parallel: false } }
+}
+
+// Observed on the production fork: gunbc.serving.flash_next_maxq_fork_measurements. The four-card host never came up.
 data flash_next_maxq_layout_plan: List<LayoutMeasurementStanding> = [
-  unobserved_layout(tp: 1, dp: 2, ep: false),
-  unobserved_layout(tp: 2, dp: 1, ep: false),
+  observed_layout(tp: 1, dp: 1),
+  observed_layout(tp: 1, dp: 2),
+  observed_layout(tp: 2, dp: 1),
   unobserved_layout(tp: 2, dp: 1, ep: true),
   unobserved_layout(tp: 1, dp: 4, ep: false),
   unobserved_layout(tp: 2, dp: 2, ep: false),

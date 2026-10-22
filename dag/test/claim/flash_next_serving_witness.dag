@@ -25,6 +25,11 @@ import gunbc.serving.flash_next_quant_matrix {
   flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_centi_gib,
   WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
+import gunbc.serving.flash_next_maxq_fork_measurements {
+  ForkMaxQ300, ForkServer600, fork_kv_pool, pool_ratio_milli, fork_level_aggregate, fork_levels, ForkLevelDoesNotFit,
+  collapse_capture_size_hypothesis, fork_open_loop_rows, oversubscribed_rows, tp2_175k_seat_bracket, tp2_unmeasured_seats,
+  two_card_pcie_interconnect, fork_unobserved_layouts, fork_prefill_readings, layout, flash_next_maxq_fork_measurements_frontier,
+}
 import gunbc.serving.flash_next_buying_model {
   PurchasableUnit, UnitB200, UnitRtxPro6000MaxQ, ShipsAsStandardNode, ExistenceIsAQuoteFact, purchasable_unit,
   flash_next_candidate_units, scale_out, ScaleOutPrediction, flash_next_measured_knees, rho_milli, duty_mean_basis_points,
@@ -522,6 +527,42 @@ test fn w_price_ratio_threshold_is_a_function_not_a_claim() -> Bool {
     && price_ratio_threshold_milli(slots_b: 16, slots_r: 0) == none
     && b_is_cheaper_per_slot(tco_b: 1900, slots_b: 16, tco_r: 1000, slots_r: 8)
     && !b_is_cheaper_per_slot(tco_b: 2100, slots_b: 16, tco_r: 1000, slots_r: 8)
-    && count(flash_next_maxq_layout_plan) == 6
+    && count(flash_next_maxq_layout_plan) == 7
     && match rental_power_cap_sweep { PowerCapSweepUnobserved { cause: _ } => true }
+}
+
+test fn w_fork_pools_ratio() -> Bool {
+  let one = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1))
+  let two = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 2, dp: 1))
+  let ratio = match one {
+    Present { value: a } => match two { Present { value: b } => pool_ratio_milli(pool: b, single: a), none => none }
+    none => none
+  }
+  match ratio { Present { value: r } => r > 6600 && r < 6700, none => false }
+}
+
+test fn w_fork_pool_lookup() -> Bool {
+  fork_kv_pool(card: ForkServer600, topology: layout(tp: 1, dp: 1)) == Present { value: 734135 }
+    && fork_kv_pool(card: ForkServer600, topology: layout(tp: 2, dp: 1)) == none
+}
+
+test fn w_fork_levels() -> Bool {
+  let no_b8 = count(fork_levels |> filter(l => match l.outcome { ForkLevelDoesNotFit { cause: _ } => true, _ => false })) == 1
+  let collapse = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1), context: 16384, concurrency: 16) == Present { value: 363 }
+  let unmeasured_b8 = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1), context: 131072, concurrency: 8) == none
+  let no_gain = fork_level_aggregate(card: ForkServer600, topology: layout(tp: 1, dp: 1), context: 175000, concurrency: 3) == Present { value: 365 }
+  no_b8 && collapse && unmeasured_b8 && no_gain
+}
+
+test fn w_fork_rows_counts() -> Bool {
+  let falsified = match collapse_capture_size_hypothesis { HypothesisFalsified { evidence: _ } => true, _ => false }
+  falsified
+    && oversubscribed_rows(rows: fork_open_loop_rows) == 2
+    && count(fork_open_loop_rows) == 7
+    && tp2_175k_seat_bracket.measured_sustainable == 12 && tp2_175k_seat_bracket.upper_estimate == 20
+    && count(tp2_unmeasured_seats) == 2
+    && two_card_pcie_interconnect.allreduce_floor_nanoseconds == 8800
+    && count(fork_unobserved_layouts) == 2
+    && count(fork_prefill_readings) == 4
+    && !dissolution_is_bound(condition: flash_next_maxq_fork_measurements_frontier)
 }
