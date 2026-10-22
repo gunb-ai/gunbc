@@ -52,6 +52,12 @@ data gan_ctl_lookup_source: String = "module arity_probe_mod\n\nimport std.algeb
 data gan_ctl_insert_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>, k: String, v: String) -> Map<String, String> \{\n  map_insert(m: m, key: k, value: v)\n\}\n"
 
 data gan_ctl_pair_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(i: Int, t: String) -> Int \{\n  ap_int(x: ap_mk_pair(a: i, b: t).first)\n\}\n\nfn ap_g(i: Int, t: String) -> String \{\n  ap_str(x: ap_mk_pair(a: i, b: t).second)\n\}\n"
+data gan_red_pair_projection_wrong_position_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(i: Int, t: String) -> Int \{\n  ap_int(x: ap_mk_pair(a: i, b: t).second)\n\}\n"
+
+data gan_red_pair_projection_renamed_params_source: String = "module arity_probe_mod\n\ntype ApPair<A, B> \{ first: A second: B \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_mk<X, Y>(a: X, b: Y) -> ApPair<X, Y> \{ ApPair \{ first: a, second: b \} \}\nfn ap_f(i: Int, t: String) -> Int \{\n  ap_int(x: ap_mk(a: i, b: t).second)\n\}\n"
+data gan_red_pair_projection_permuted_source: String = "module arity_probe_mod\n\ntype ApPair<A, B> \{ first: A second: B \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_mk<B, A>(a: A, b: B) -> ApPair<B, A> \{ ApPair \{ first: b, second: a \} \}\nfn ap_f(i: Int, t: String) -> Int \{\n  ap_int(x: ap_mk(a: i, b: t).first)\n\}\n"
+data gan_red_alias_type_argument_actual_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_snoc_item \}\nimport std.types \{ List \}\n\ntype IntSeq = FreeMonoid<Int>\n\nfn ap_f(xs: List<IntSeq>, m: FreeMonoid<Int>) -> List<IntSeq> \{\n  if true \{ xs \} else \{ list_snoc_item(xs: xs, item: m) \}\n\}\n"
+data gan_red_alias_applied_args_dropped_source: String = "module arity_probe_mod\n\ntype ApBox<T> \{ v: T \}\ntype IntBox = ApBox<Int>\n\nfn ap_f(b: IntBox<String>) -> Int \{\n  b.v\n\}\n"
 
 data gan_ctl_user_map_source: String = "module arity_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head, FinitelySupportedFunction, map_lookup, map_insert \}\nimport std.optional \{ Optional \}\nimport std.types \{ NonEmptyStr \}\n\ntype ApBrand = NonEmptyStr where brand(\"ApBrand\")\ntype ApPair<A, B> \{ first: A second: B \}\ntype ApMapBox<K, V> \{ m: Map<K, V> \}\ntype ApFsfBox<K, V> \{ f: FinitelySupportedFunction<K, V> \}\ntype ApSlot<T> \{ generation: Int value: T \}\n\nfn ap_int(x: Int) -> Int \{ x \}\nfn ap_str(x: String) -> String \{ x \}\nfn ap_mk_pair<A, B>(a: A, b: B) -> ApPair<A, B> \{ ApPair \{ first: a, second: b \} \}\nfn ap_mk_map_box<K, V>(m: Map<K, V>) -> ApMapBox<K, V> \{ ApMapBox \{ m: m \} \}\nfn ap_mk_fsf_box<K, V>(f: FinitelySupportedFunction<K, V>) -> ApFsfBox<K, V> \{ ApFsfBox \{ f: f \} \}\nfn ap_mk_slot<T>(v: T) -> ApSlot<T> \{ ApSlot \{ generation: 1, value: v \} \}\n\nfn ap_f(m: Map<String, String>) -> Map<String, String> \{\n  ap_mk_map_box(m: m).m\n\}\n"
 
@@ -96,6 +102,31 @@ test fn arity_n_ctl_lookup() -> Bool {
 
 test fn arity_n_ctl_insert() -> Bool {
   gan_blocking_count(source: gan_ctl_insert_source) == 0
+}
+
+// WRONG POSITION: .second of ApPair<Int, String> is String, declared Int at ap_int. Accepted while the projection kept the bare B.
+test fn arity_n_red_pair_projection_wrong_position() -> Bool {
+  gan_blocking_count(source: gan_red_pair_projection_wrong_position_source) > 0
+}
+
+// CALLEE NAMES: the callee spells its parameters X, Y, not the declaration's A, B; the projection must still be String at ap_int.
+test fn arity_n_red_pair_projection_renamed_params() -> Bool {
+  gan_blocking_count(source: gan_red_pair_projection_renamed_params_source) > 0
+}
+
+// NAME CAPTURE: the callee returns ApPair<B, A> over its own A, B, so .first is the callee B (String) and must refuse at ap_int.
+test fn arity_n_red_pair_projection_permuted() -> Bool {
+  gan_blocking_count(source: gan_red_pair_projection_permuted_source) > 0
+}
+
+// CENSUS:1087 SHAPE: a valid program; the alias sits only in the type argument of the ACTUAL xs, compared at an if/else join. Refused while T binds the alias expansion with its arguments lost.
+test fn arity_n_red_alias_type_argument_actual() -> Bool {
+  gan_blocking_count(source: gan_red_alias_type_argument_actual_source) == 0
+}
+
+// DROPPED ALIAS ARGS: IntBox takes no parameters, so IntBox<String> must refuse; the applied arguments must not be dropped silently.
+test fn arity_n_red_alias_applied_args_dropped() -> Bool {
+  gan_blocking_count(source: gan_red_alias_applied_args_dropped_source) > 0
 }
 
 test fn arity_n_ctl_pair() -> Bool {
