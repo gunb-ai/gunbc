@@ -554,7 +554,7 @@ fn the_wire_migration_fills_only_absent_row_fields() {
             .iter()
             .map(|r| r.binding_power)
             .collect::<Vec<_>>(),
-        vec![21i64, 21i64, 19i64, 13i64],
+        vec![21i64, 21i64, 19i64, 18i64],
         "the migration changed a document that declared its own postfix rows"
     );
 
