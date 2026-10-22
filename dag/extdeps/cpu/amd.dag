@@ -116,11 +116,20 @@ data amd_zen2_l3_cache_citations: List<FactCitation> = [
 // lists beside them could name no declaration — which is how a citation ends up keyed by a field
 // SPELLING ("package", a name CpuSocket has not carried since termination and attachment were
 // split) instead of by the declaration the containment tree already names.
+data amd_socket_am4_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read AM4's termination (PGA) and contact count (1331) from an AMD platform document or the AM4 socket vendor datasheet; en.wikipedia.org/wiki/Socket_AM4 is secondary." as NonEmptyStr
+}
+
+data amd_socket_am5_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read AM5's termination (LGA) and contact count (1718) from an AMD platform document or the AM5 socket vendor datasheet; en.wikipedia.org/wiki/Socket_AM5 is secondary." as NonEmptyStr
+}
+
 data amd_socket_am4: CpuSocket = CpuSocket {
   platform_owner: amd,
   termination: SocketedPinGrid,
   contact_count: 1331,
   cooling_mount: amd_am4_cooling_mount,
+  figure_standing: amd_socket_am4_standing,
 }
 
 data amd_socket_am5: CpuSocket = CpuSocket {
@@ -128,6 +137,7 @@ data amd_socket_am5: CpuSocket = CpuSocket {
   termination: SocketedLandGrid,
   contact_count: 1718,
   cooling_mount: amd_am4_cooling_mount,
+  figure_standing: amd_socket_am5_standing,
 }
 
 data socket_am4_citations: List<FactCitation> = [
@@ -364,6 +374,7 @@ data amd_socket_sp3: CpuSocket = CpuSocket {
   termination: SocketedLandGrid,
   contact_count: 4094,
   cooling_mount: amd_sp3_cooling_mount,
+  figure_standing: socket_sp3_standing,
 }
 
 data socket_sp3_citations: List<FactCitation> = []

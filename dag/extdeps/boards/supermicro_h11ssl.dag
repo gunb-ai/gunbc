@@ -117,7 +117,7 @@ data supermicro_h11ssl_board_soc_edge: BoardSocEdge = BoardSocEdge {
 }
 
 data supermicro_h11ssl_socket_contact_count_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "The manual states the socket as 'SP3' and never its contact count or termination, so no CpuSocket is minted. Ground against AMD's SP3 socket documentation (4094-contact LGA is NOT read from this manual) before extdeps.cpu gains an SP3 row.",
+  read_obligation: "The manual states the socket as 'SP3' and never its contact count or termination, so nothing about the socket's figures is read from this manual. The SP3 CpuSocket lives in extdeps.cpu.amd (amd_socket_sp3) carrying socket_sp3_standing, TranscribedUncited until AMD's or the socket vendor's SP3 documentation grounds it.",
 }
 
 data supermicro_h11ssl_epyc_7702p_standing: CitedFigureStanding = TranscribedUncited {
