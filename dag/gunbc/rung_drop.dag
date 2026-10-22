@@ -266,11 +266,9 @@ type LegacyProseIdentity
   | NamespaceAdmissionConsumedRowDeletion
   | SparkServingLocalArtifactNotReproducible
   | DashboardMergeReadySemanticAdmissibility
-  | FloorCutRegenSecondGenerationAgreement
   | FloorCutReceiptDiscriminatingArms
   | FloorCutBehaviouralRegressionDifferential
   | RustUnitTestsOffTheMergePath
-  | FloorCostHighCpuWithheld
 
 fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
   match l {
@@ -284,7 +282,6 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     TextBoundaryIdentityWall => "text_boundary_identity_wall"
     FabricEvidenceGating => "fabric_evidence_gating"
     RustUnitTestsOffTheMergePath => "rust_unit_tests_off_the_merge_path"
-    FloorCostHighCpuWithheld => "floor_cost_high_cpu_withheld"
     EmittedBytesWitnessRequiredLane => "emitted_bytes_witness_required_lane"
     DirectCallArgSeamV2Exemption => "direct_call_arg_seam_v2_exemption"
     DirectCallUnboundCarriedGenericCompat => "direct_call_unbound_carried_generic_compat"
@@ -298,7 +295,6 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     NamespaceAdmissionConsumedRowDeletion => "namespace_admission_consumed_row_deletion"
     SparkServingLocalArtifactNotReproducible => "spark_serving_local_artifact_not_reproducible"
     DashboardMergeReadySemanticAdmissibility => "dashboard_merge_ready_semantic_admissibility"
-    FloorCutRegenSecondGenerationAgreement => "floor_cut_regen_second_generation_agreement"
     FloorCutReceiptDiscriminatingArms => "floor_cut_receipt_discriminating_arms"
     FloorCutBehaviouralRegressionDifferential => "floor_cut_behavioural_regression_differential"
   }
@@ -319,9 +315,17 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
 // for what they are. `NotYetCounted` is a population nobody counts yet, with a typed cause;
 // `PopulationDeleted` is the form of a loss whose members no longer exist, the only form a
 // Dissolved row is admitted over. Neither is readable for a Standing drop.
+// EACH ARM NAMES THE MISSING CAPABILITY, NOT THE ROW THAT LACKS IT, so two rows sharing a gap share an arm.
 type UncountedCause
   = NoInstrumentObservesTheZero
   | DerivedEnumerationYieldedNoMember
+
+fn uncounted_cause_label(c: UncountedCause) -> String {
+  match c {
+    NoInstrumentObservesTheZero => "no instrument observes the zero"
+    DerivedEnumerationYieldedNoMember => "a derived enumeration yielded no member"
+  }
+}
 
 type RungDropPopulation
   = Enumerated { members: FreeSemigroup<String> }
@@ -382,7 +386,7 @@ fn rung_drop_declaration_message(d: RungDrop) -> String {
 fn rung_drop_population_label(p: RungDropPopulation) -> String {
   match p {
     Enumerated { members: ms } => join(non_empty_to_list(xs: ms), ", ")
-    NotYetCounted { cause: _ } => "not yet counted"
+    NotYetCounted { cause: c } => concat("not yet counted (", concat(uncounted_cause_label(c: c), ")"))
     PopulationDeleted => "deleted"
     DerivedBy { label: l } => concat("derived by `gunbc test ", concat(render_label(l: l), "`"))
   }
@@ -486,7 +490,6 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   TextBoundaryIdentityWall,
   FabricEvidenceGating,
   RustUnitTestsOffTheMergePath,
-  FloorCostHighCpuWithheld,
   EmittedBytesWitnessRequiredLane,
   DirectCallArgSeamV2Exemption,
   DirectCallUnboundCarriedGenericCompat,
@@ -502,7 +505,6 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   DashboardMergeReadySemanticAdmissibility,
   FloorCutBehaviouralRegressionDifferential,
   FloorCutReceiptDiscriminatingArms,
-  FloorCutRegenSecondGenerationAgreement,
 ]
 
 // EVERY PROSE ROW NAMES ITS OWN IDENTITY. Set equality between the arms and the rows would pass on

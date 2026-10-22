@@ -1,5 +1,6 @@
 module gunbc.public_workload_census
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_of_wire }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import extdeps.external_authority { CitedFigureStanding }
 import std.measure { HardwareThreadCount, hardware_thread_count }
@@ -361,7 +362,7 @@ fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
 type BaselineAdmission
   = BaselineAdmitted {
       job_id: Int
-      run_id: Int
+      run_id: GitHubWorkflowRunId
       run_attempt: Int
       head_sha: CommitSha
       test_step: NonEmptyStr
@@ -912,7 +913,7 @@ fn baseline_from_observed_correctness(c: WorkloadCandidate) -> BaselineAdmission
             TestsExecuted { step } => match observed_label_standing(o: c.observed) {
               ObservedLabel { label } => BaselineAdmitted {
                 job_id: job.id,
-                run_id: job.run_id,
+                run_id: github_workflow_run_id_of_wire(n: job.run_id),
                 run_attempt: observed_job_run_attempt(job: job),
                 head_sha: head_sha,
                 test_step: step,

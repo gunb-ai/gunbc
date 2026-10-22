@@ -37,6 +37,7 @@ import gunbc.auth.gcp_iam_converge {
 }
 import gunbc.auth.gcp_iam_converge_run { observe_token, iam_converge_token_env }
 import gunbc.auth.approval_run_identity { run_attempt }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_of_wire }
 import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
 import gunbc.auth.approval_gate {
   approval_refusal_text, GateAdmitted, GateRefused, approval_gate_from_poll,
@@ -65,7 +66,7 @@ data branch_run_grant_window: Second = second(count: 3600)
 // ── the branch run, as GitHub records it ─────────────────────────────────────────────────────
 
 type BranchRunFacts {
-  run_id: Int
+  run_id: GitHubWorkflowRunId
   run_attempt: Int
   mode: String
   branch: String
@@ -81,10 +82,10 @@ type BranchRunReading
 // THE RUN MUST BE A LIVE DISPATCH OF THE FLEET-CONVERGE WORKFLOW, AT THE ATTEMPT ASKED ABOUT: another
 // workflow, another event, a finished run, or a run GitHub has since re-run is refused, so an approval
 // can only ever reach the one attempt of the file this grant is for.
-fn judge_branch_run(run_id: Int, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
+fn judge_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
   let path = match run.path { Present { value: p } => p  Absent => "" }
-  if run.id != run_id {
-    BranchRunRefused { reason: concat("GitHub answered about another run: ", to_string(run.id)) as NonEmptyStr }
+  if github_workflow_run_id_of_wire(n: run.id) != run_id {
+    BranchRunRefused { reason: concat("GitHub answered about another run: ", run.id as String) as NonEmptyStr }
   } else if run.run_attempt != run_attempt {
     BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
   } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
@@ -106,8 +107,8 @@ fn judge_branch_run(run_id: Int, run_attempt: Int, run: WorkflowRun) -> BranchRu
   }
 }
 
-fn read_branch_run(run_id: Int, run_attempt: Int) -> BranchRunReading {
-  match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: to_string(run_id)) {
+fn read_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int) -> BranchRunReading {
+  match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: github_workflow_run_id_wire_text(id: run_id)) {
     RestRefused { refusal } => BranchRunRefused { reason: concat("the run could not be read: ", rest_refusal_text(o: refusal)) as NonEmptyStr }
     RestAnswered { answer: got } => judge_branch_run(run_id: run_id, run_attempt: run_attempt, run: got.run)
   }
@@ -243,7 +244,7 @@ data branch_run_grant_scope: AuthorizationScope = AuthorizationScope {
 // the title); what bounds the approval is the account main maps it to and what that account holds.
 fn branch_run_grant_purpose(g: BranchRunGrant) -> NonEmptyStr {
   join([
-    "Branch run ", to_string(g.run.run_id), " attempt ", to_string(g.run.run_attempt), " of fleet-converge (mode ", g.run.mode, ") on ", g.run.branch,
+    "Branch run ", github_workflow_run_id_wire_text(id: g.run.run_id), " attempt ", to_string(g.run.run_attempt), " of fleet-converge (mode ", g.run.mode, ") on ", g.run.branch,
     " at ", g.run.head_sha as String, " (dispatched by ", g.run.dispatched_by, ") asks to act as ",
     g.account as String, " for ", to_string(second_count(s: branch_run_grant_window)), "s from its start.",
     " Approving lets that attempt, and only that attempt, read what that account holds; it runs the branch's code.",
