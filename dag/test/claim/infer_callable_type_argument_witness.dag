@@ -1,7 +1,7 @@
 module test.claim.infer_callable_type_argument_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import std.process { ProcessExit }
 
 // EXECUTING EVIDENCE FOR THE TYPE-ARGUMENT RESIDUE OF gunbc.recurring_failure_mode
@@ -49,7 +49,7 @@ test fn match_arm_calls_a_callable_element() -> ProcessExit {
 }
 
 test fn unbound_callee_in_the_same_lambda_still_refuses() -> ProcessExit {
-  census_verdict(census: blocking_subject_census(source: unbound_callee_source, wanted_class: "InternalError", wanted_subject: "function:unbound_callee_zzz"), holds: fn(n) { n > 0 })
+  census_exit(census_verdict(census: blocking_subject_census(source: unbound_callee_source, wanted_class: "InternalError", wanted_subject: "function:unbound_callee_zzz"), holds: fn(n) { n > 0 }))
 }
 
 // KEEPING THE ARROW MUST NOT LOSE A REFUSAL THE ERASURE HAD. While child_type_node erased an Arrow
@@ -70,19 +70,19 @@ data arity_mismatch_source: String = "module test.claim.tmp_callable_type_argume
 data same_signature_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn keep(xs: List<fn(Int) -> Int>) -> List<fn(Int) -> Int> { xs }\n"
 
 test fn element_codomain_mismatch_refuses_at_the_declared_return() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: codomain_mismatch_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 })
+  census_exit(census_verdict(census: blocking_class_census(source: codomain_mismatch_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 }))
 }
 
 test fn element_parameter_mismatch_refuses_at_the_declared_return() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: parameter_mismatch_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 })
+  census_exit(census_verdict(census: blocking_class_census(source: parameter_mismatch_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 }))
 }
 
 test fn element_arity_mismatch_refuses_at_the_declared_return() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: arity_mismatch_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 })
+  census_exit(census_verdict(census: blocking_class_census(source: arity_mismatch_source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 }))
 }
 
 test fn element_same_signature_is_accepted_at_the_declared_return() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: same_signature_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: same_signature_source), holds: fn(n) { n == 0 }))
 }
 
 // THE COMMON-FIELD CONSUMER. v1.compiler.infer_emit_info enum_field_type_consistent decides whether

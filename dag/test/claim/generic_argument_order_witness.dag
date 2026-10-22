@@ -1,7 +1,7 @@
 module test.claim.generic_argument_order_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import std.process { ProcessExit }
 
 // WHAT A GENERIC CALL MUST ACCEPT, AND WHAT IT MUST REFUSE, ACROSS ARGUMENT ORDER.
@@ -43,15 +43,15 @@ data inner_generic_settled_by_later_argument_source: String = "module test.claim
 data inner_generic_compatible_control_source: String = "module test.claim.gar_inner_later_ok\nimport std.types { Bool, Int }\nfn gar_id<U>(x: U) -> U { x }\nfn gar_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { gar_ap(f: fn(v) { gar_id(x: v) }, x: true, r: true) }\n"
 
 test fn a_lambda_after_the_argument_that_binds_its_parameter_is_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: left_bound_lambda_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: left_bound_lambda_source), holds: fn(n) { n == 0 }))
 }
 
 test fn a_lambda_before_the_argument_that_binds_its_parameter_is_accepted_under_the_final_context() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: right_bound_lambda_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: right_bound_lambda_source), holds: fn(n) { n == 0 }))
 }
 
 test fn a_nested_left_bound_bind_chain_is_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: nested_left_bound_chain_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: nested_left_bound_chain_source), holds: fn(n) { n == 0 }))
 }
 
 test fn an_inner_generic_settled_only_by_a_later_argument_refuses() -> ProcessExit {
@@ -62,5 +62,5 @@ test fn an_inner_generic_settled_only_by_a_later_argument_refuses() -> ProcessEx
 }
 
 test fn an_inner_generic_settled_by_a_later_argument_stays_accepted_when_consistent() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: inner_generic_compatible_control_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: inner_generic_compatible_control_source), holds: fn(n) { n == 0 }))
 }

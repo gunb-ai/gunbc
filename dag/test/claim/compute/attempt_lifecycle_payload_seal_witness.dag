@@ -1,7 +1,7 @@
 module test.claim.compute.attempt_lifecycle_payload_seal_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, CensusVerdict, census_exit}
 import std.process { ProcessExit }
 
 data probe_hdr: String = "module probe_begin_launch_arg\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptTransition, attempt_begin_launch }\n"
@@ -27,7 +27,7 @@ data lawful_credential_open_source: String = "module probe_lawful_credential_ope
 // guards as a number, and the pair's refusal surfaced as `0 - 1000` -- indistinguishable from a real
 // delta of -1000 that some future hostile source might genuinely produce. The typed pair refuses with
 // EACH census's own cause when either never ran, and only judges a delta when BOTH did.
-fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> ProcessExit {
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
   census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
 }
 
@@ -39,21 +39,21 @@ test fn handing_a_payload_to_begin_launch_is_refused_at_compile() -> ProcessExit
 }
 
 test fn a_begin_launch_that_names_only_the_slot_is_not_refused() -> ProcessExit {
-  census_verdict(census: blocking_subject_census(source: lawful_begin_launch_source, wanted_class: "CallArgumentNameUnknown", wanted_subject: "record"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: blocking_subject_census(source: lawful_begin_launch_source, wanted_class: "CallArgumentNameUnknown", wanted_subject: "record"), holds: fn(n) { n == 0 }))
 }
 
 test fn a_module_outside_attempt_lifecycle_cannot_call_attempt_commit_bytes() -> ProcessExit {
-  census_verdict(census: blocking_subject_census(source: unadmitted_commit_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes"), holds: fn(n) { n >= 1 })
+  census_exit(census_verdict(census: blocking_subject_census(source: unadmitted_commit_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes"), holds: fn(n) { n >= 1 }))
 }
 
 test fn an_admitted_open_is_not_refused_as_an_unadmitted_commit() -> ProcessExit {
-  census_verdict(census: blocking_subject_census(source: lawful_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: blocking_subject_census(source: lawful_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes"), holds: fn(n) { n == 0 }))
 }
 
 test fn a_foreign_codec_cannot_open_a_credential_payload() -> ProcessExit {
-  census_verdict(census: blocking_subject_census(source: foreign_codec_rewrites_snapshot_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload"), holds: fn(n) { n >= 1 })
+  census_exit(census_verdict(census: blocking_subject_census(source: foreign_codec_rewrites_snapshot_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload"), holds: fn(n) { n >= 1 }))
 }
 
 test fn a_credential_open_wrapper_is_not_an_unadmitted_payload_call() -> ProcessExit {
-  census_verdict(census: blocking_subject_census(source: lawful_credential_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: blocking_subject_census(source: lawful_credential_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_open_payload"), holds: fn(n) { n == 0 }))
 }

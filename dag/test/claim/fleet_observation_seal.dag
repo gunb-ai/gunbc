@@ -1,6 +1,6 @@
 module test.claim.fleet_observation_seal
 
-import gunbc.compile_census_probe { blocking_subject_census, census_ran, census_verdict, census_verdict_all }
+import gunbc.compile_census_probe { blocking_subject_census, census_ran, census_verdict, census_verdict_all, CensusVerdict, census_exit}
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import std.process { ProcessExit }
 import std.types { String, Bool, Int }
@@ -56,7 +56,7 @@ fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
 // sound only while the home returned -1 for a census that did not run and 0 for one that ran empty;
 // with a non-negative Int the comparison would be vacuously true, which is why the ran-check moved
 // onto the union itself.
-fn arm_ran(source: String) -> ProcessExit {
+fn arm_ran(source: String) -> CensusVerdict {
   census_ran(census: seal_violations(source: source, subject: "SoleConstructorViolation"))
 }
 
@@ -65,7 +65,7 @@ fn arm_ran(source: String) -> ProcessExit {
 data forged_commit_proof_source: String = "module probe_fleet_obs_forged_commit\nimport std.durable_transfer { LocalCommitStanding, LocallyCommitted }\nimport gunbc.fleet_observation.capture_chunk { DurableCommitProof, CapturePersistenceRefusal }\nimport std.content_hash { ContentHash, content_hash_of_value }\nfn forged() -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {\n  LocallyCommitted { proof: DurableCommitProof { committed_content: content_hash_of_value(value: \"nothing-was-ever-stored\") } }\n}\n"
 
 test fn a_forged_durable_commit_proof_is_refused_at_compile() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_commit_proof_source, subject: "DurableCommitProof"), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: seal_violations(source: forged_commit_proof_source, subject: "DurableCommitProof"), holds: fn(n) { n == 1 }))
 }
 
 // ── RED 2: the continuity reach ────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ test fn a_forged_durable_commit_proof_is_refused_at_compile() -> ProcessExit {
 data forged_continuity_reach_source: String = "module probe_fleet_obs_forged_reach\nimport gunbc.fleet_observation.capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityReach, SourceStreamId, stream_position }\nimport std.measure { byte_size }\nfn forged() -> StreamContinuity {\n  ContinuityEstablished { reach: ContinuityReach { verified_through: stream_position(stream: SourceStreamId { enrolled_machine: \"m\", source_identity: \"s\" }, since_stream_origin: byte_size(count: 999999)) } }\n}\n"
 
 test fn a_forged_continuity_reach_is_refused_at_compile() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_continuity_reach_source, subject: "ContinuityReach"), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: seal_violations(source: forged_continuity_reach_source, subject: "ContinuityReach"), holds: fn(n) { n == 1 }))
 }
 
 // ── RED 3: the committed chunk ─────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ test fn a_forged_continuity_reach_is_refused_at_compile() -> ProcessExit {
 data forged_committed_chunk_source: String = "module probe_fleet_obs_forged_chunk\nimport gunbc.fleet_observation.capture_chunk { CommittedChunk, CaptureChunk }\nfn forged(c: CaptureChunk) -> CommittedChunk {\n  CommittedChunk { chunk: c, committed_content: c.payload_digest }\n}\n"
 
 test fn a_forged_committed_chunk_is_refused_at_compile() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_committed_chunk_source, subject: "CommittedChunk"), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: seal_violations(source: forged_committed_chunk_source, subject: "CommittedChunk"), holds: fn(n) { n == 1 }))
 }
 
 // ── RED 4: the silence proof, and this is the one the lane exists for ───────────────────────────
@@ -92,7 +92,7 @@ test fn a_forged_committed_chunk_is_refused_at_compile() -> ProcessExit {
 data forged_silence_source: String = "module probe_fleet_obs_forged_silence\nimport gunbc.fleet_observation.capture_chunk { SourceStreamRange, SourceStreamId, stream_position }\nimport gunbc.fleet_observation.observation_envelope { SourceByteFact, SourceProducedNoBytesInRange, SilenceProof }\nimport std.measure { byte_size }\nfn forged() -> SourceByteFact {\n  SourceProducedNoBytesInRange { proof: SilenceProof { range: SourceStreamRange { first: stream_position(stream: SourceStreamId { enrolled_machine: \"m\", source_identity: \"s\" }, since_stream_origin: byte_size(count: 0)), length: byte_size(count: 100) } } }\n}\n"
 
 test fn a_forged_silence_proof_is_refused_at_compile() -> ProcessExit {
-  census_verdict(census: seal_violations(source: forged_silence_source, subject: "SilenceProof"), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: seal_violations(source: forged_silence_source, subject: "SilenceProof"), holds: fn(n) { n == 1 }))
 }
 
 // ── THE GREEN CONTROLS ─────────────────────────────────────────────────────────────────────────
@@ -104,13 +104,13 @@ test fn a_forged_silence_proof_is_refused_at_compile() -> ProcessExit {
 data sanctioned_commit_source: String = "module probe_fleet_obs_sanctioned_commit\nimport std.durable_transfer { LocalCommitStanding }\nimport gunbc.fleet_observation.capture_chunk { DurableCommitProof, CapturePersistenceRefusal, local_commit_from_cas }\nimport std.durable_compare_and_set { CasOutcome }\nimport std.types { NonEmptyStr }\nfn sanctioned(o: CasOutcome<NonEmptyStr>) -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {\n  local_commit_from_cas(outcome: o)\n}\n"
 
 test fn the_sanctioned_commit_route_draws_no_violation() -> ProcessExit {
-  census_verdict(census: seal_violations(source: sanctioned_commit_source, subject: "DurableCommitProof"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: seal_violations(source: sanctioned_commit_source, subject: "DurableCommitProof"), holds: fn(n) { n == 0 }))
 }
 
 data sanctioned_chunk_source: String = "module probe_fleet_obs_sanctioned_chunk\nimport std.durable_transfer { LocalCommitStanding }\nimport gunbc.fleet_observation.capture_chunk { CommittedChunk, CaptureChunk, DurableCommitProof, CapturePersistenceRefusal, committed_chunk }\nfn sanctioned(c: CaptureChunk, s: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> CommittedChunk? {\n  committed_chunk(chunk: c, standing: s)\n}\n"
 
 test fn the_sanctioned_chunk_route_draws_no_violation() -> ProcessExit {
-  census_verdict(census: seal_violations(source: sanctioned_chunk_source, subject: "CommittedChunk"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: seal_violations(source: sanctioned_chunk_source, subject: "CommittedChunk"), holds: fn(n) { n == 0 }))
 }
 
 // GREEN CONTROLS FOR THE TWO SUBJECTS THAT LACKED ONE, and their absence is why two stale fixtures
@@ -123,13 +123,13 @@ test fn the_sanctioned_chunk_route_draws_no_violation() -> ProcessExit {
 data sanctioned_reach_source: String = "module probe_fleet_obs_sanctioned_reach\nimport gunbc.fleet_observation.capture_chunk { ContinuityDerivation, CommittedChunk, SourceStreamId, StreamPosition, continuity_from_committed_chunks }\nimport std.types { List }\nfn sanctioned(cs: List<CommittedChunk>, subj: SourceStreamId, from: StreamPosition) -> ContinuityDerivation {\n  continuity_from_committed_chunks(committed: cs, subject: subj, from: from)\n}\n"
 
 test fn the_sanctioned_continuity_route_draws_no_violation() -> ProcessExit {
-  census_verdict(census: seal_violations(source: sanctioned_reach_source, subject: "ContinuityReach"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: seal_violations(source: sanctioned_reach_source, subject: "ContinuityReach"), holds: fn(n) { n == 0 }))
 }
 
 data sanctioned_silence_source: String = "module probe_fleet_obs_sanctioned_silence\nimport gunbc.fleet_observation.capture_chunk { SourceStreamRange }\nimport gunbc.fleet_observation.observation_envelope { SourceByteFact, ObservationEnvelope, source_byte_fact }\nfn sanctioned(e: ObservationEnvelope, r: SourceStreamRange) -> SourceByteFact {\n  source_byte_fact(envelope: e, requested: r)\n}\n"
 
 test fn the_sanctioned_silence_route_draws_no_violation() -> ProcessExit {
-  census_verdict(census: seal_violations(source: sanctioned_silence_source, subject: "SilenceProof"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: seal_violations(source: sanctioned_silence_source, subject: "SilenceProof"), holds: fn(n) { n == 0 }))
 }
 
 // BOTH ARMS MUST ACTUALLY HAVE COMPILED. Under the home's OLD Int contract a census that never ran

@@ -1,7 +1,7 @@
 module test.claim.infer_function_value_argument_arrow_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { any_class_census, census_verdict, total_blocking_census }
+import gunbc.compile_census_probe { any_class_census, census_verdict, total_blocking_census, census_exit}
 import std.process { ProcessExit }
 
 // THE EXECUTING EVIDENCE FOR gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted,
@@ -84,7 +84,7 @@ data map_named_function_wrong_elements_source: String = "module test.claim.tmp_f
 data generic_formal_non_function_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn apply<T>(f: fn(T) -> T) -> Int { 0 }\nfn host() -> Int { apply(f: 7) }\n"
 
 fn refuses_as_type_mismatch(source: String) -> ProcessExit {
-  census_verdict(census: any_class_census(source: source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 })
+  census_exit(census_verdict(census: any_class_census(source: source, wanted_class: "TypeMismatch"), holds: fn(n) { n > 0 }))
 }
 
 test fn mismatched_parameter_refuses() -> ProcessExit {
@@ -132,27 +132,27 @@ test fn deep_nested_ground_mismatch_refuses() -> ProcessExit {
 }
 
 test fn matching_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: matching_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: matching_source), holds: fn(n) { n == 0 }))
 }
 
 test fn nullary_matching_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: nullary_matching_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: nullary_matching_source), holds: fn(n) { n == 0 }))
 }
 
 test fn polymorphic_identity_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: polymorphic_identity_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: polymorphic_identity_source), holds: fn(n) { n == 0 }))
 }
 
 test fn polymorphic_two_variables_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: polymorphic_two_variables_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: polymorphic_two_variables_source), holds: fn(n) { n == 0 }))
 }
 
 test fn lambda_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: lambda_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: lambda_source), holds: fn(n) { n == 0 }))
 }
 
 test fn deep_nested_matching_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: deep_nested_matching_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: deep_nested_matching_source), holds: fn(n) { n == 0 }))
 }
 
 test fn local_lambda_at_kernel_formal_refuses() -> ProcessExit {
@@ -168,19 +168,19 @@ test fn map_named_function_wrong_elements_refuses() -> ProcessExit {
 }
 
 test fn local_lambda_matching_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: local_lambda_matching_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: local_lambda_matching_source), holds: fn(n) { n == 0 }))
 }
 
 test fn local_lambda_called_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: local_lambda_called_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: local_lambda_called_source), holds: fn(n) { n == 0 }))
 }
 
 test fn map_named_function_elements_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: map_named_function_elements_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: map_named_function_elements_source), holds: fn(n) { n == 0 }))
 }
 
 test fn map_local_lambda_elements_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: map_local_lambda_elements_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: map_local_lambda_elements_source), holds: fn(n) { n == 0 }))
 }
 
 test fn generic_formal_non_function_refuses() -> ProcessExit {
@@ -188,7 +188,7 @@ test fn generic_formal_non_function_refuses() -> ProcessExit {
 }
 
 test fn qualified_matching_accepted() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: qualified_matching_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: qualified_matching_source), holds: fn(n) { n == 0 }))
 }
 
 test fn qualified_mismatched_parameter_refuses() -> ProcessExit {

@@ -1,6 +1,6 @@
 module test.claim.record_literal_names_a_union_type_witness
 
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import std.process { ProcessExit }
 import std.types { Bool, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -75,19 +75,19 @@ data zz_union_named_class: String = "TypeNameCarriesNoRecordConstructor"
 
 // THE RED: each position refused, exactly once, at the name the author wrote.
 test fn a_record_literal_naming_a_union_refuses_at_a_data_binding() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: zz_union_named_at_data, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_data, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
 test fn a_record_literal_naming_a_union_refuses_at_a_return() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: zz_union_named_at_return, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_return, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
 test fn a_record_literal_naming_a_union_refuses_at_a_list_element() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: zz_union_named_at_list_element, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_list_element, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
 test fn a_record_literal_naming_a_union_refuses_at_a_call_argument() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: zz_union_named_at_call_argument, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_at_call_argument, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
 // THE ONE REFUSAL, NOT A CASCADE. The constructor question is asked before the field walk, so a
@@ -102,7 +102,7 @@ test fn the_constructor_question_is_asked_before_the_fields() -> ProcessExit {
 }
 
 test fn a_record_literal_naming_an_alias_of_a_union_refuses() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: zz_union_named_through_alias, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: blocking_class_census(source: zz_union_named_through_alias, wanted_class: zz_union_named_class), holds: fn(n) { n == 1 }))
 }
 
 // THE CONTROLS, EACH BY THE DIFFERENCE AGAINST THE RED IT IS THE FIX OF: the accepted arm compiles

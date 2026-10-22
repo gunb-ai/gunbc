@@ -4,7 +4,7 @@ import std.types { Bool, Int, String, List }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_int_text }
+import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved}
 
 // These are deliberately source fixtures: the alias spelling is expected to
 // refuse until owner identity is carried to variant_reference_inferred_node.
@@ -16,25 +16,25 @@ data alias_field_source: String = "module alias_field\nimport std.types { Int, L
 data alias_initializer_source: String = "module alias_initializer\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { let initial: FreeMonoid<Int> = Empty; [1, 2] |> fold(init: initial, f: fn(acc, value) { acc |> list_push(value) }) }\n"
 
 test fn nominal_return_is_an_acceptance_fixture() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: nominal_return_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: nominal_return_source), holds: fn(n) { n == 0 }))
 }
 
 test fn alias_return_is_a_refusal_fixture() -> ProcessExit {
-  census_verdict(
+  census_exit(census_verdict(
     census: blocking_subject_census(source: alias_return_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"),
     holds: fn(n) { n >= 1 }
-  )
+  ))
 }
 
 test fn alias_field_is_a_refusal_fixture() -> ProcessExit {
-  census_verdict(
+  census_exit(census_verdict(
     census: blocking_subject_census(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"),
     holds: fn(n) { n >= 1 }
-  )
+  ))
 }
 
 test fn explicit_initializer_is_an_acceptance_fixture() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: alias_initializer_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: alias_initializer_source), holds: fn(n) { n == 0 }))
 }
 
 // THE NO-OBSERVATION CONTRACT, ASSERTED AS A CLAIM. Two cells of this witness answer the census
@@ -52,14 +52,20 @@ test fn explicit_initializer_is_an_acceptance_fixture() -> ProcessExit {
 // claim re-tuned. The harness text of this claim's red is "FAIL"; once #14539 lands it prints
 // UNOBSERVED, which is the same exit code this claim asserts.
 test fn alias_field_refusal_is_a_no_observation_with_its_own_cause() -> ProcessExit {
+  // THE VERDICT IS READ AS ITS TYPE, not as a rendered exit code. An Unobserved carries the builtin's
+  // cause; the claim checks the cause names the real refusal ("render selection refused") rather than
+  // matching on the integer 2 -- the code is `census_exit`'s business at the boundary, not a claim's.
   let verdict = census_verdict(census: blocking_subject_census(source: alias_field_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"), holds: fn(n) { n >= 1 })
   match verdict {
-    ExitFailure { code: code, reason: reason } =>
-      if code == 2 && string_contains(s: reason, pattern: "not evaluated: census not runnable:") && string_contains(s: reason, pattern: "render selection refused") {
+    CensusUnobserved { cause: cause } =>
+      if string_contains(s: cause, pattern: "render selection refused") {
         ExitSuccess
       } else {
-        ExitFailure { code: 1, reason: concat("refused with code ", concat(census_int_text(n: code), " but not in the no-observation shape; reason carried: ", reason)) }
+        ExitFailure { code: 1, reason: concat("refused as no-observation but the cause does not name the expected refusal; cause carried: ", cause) }
       }
-    ExitSuccess => ExitFailure { code: 1, reason: "alias_field OBSERVED a refusal diagnostic where this tree's census route is known not to be runnable; the seam has been armed and the two cells here must be re-read" }
+    CensusDisagreed { reason: reason } =>
+      ExitFailure { code: 1, reason: concat("alias_field OBSERVED a refusal diagnostic where this tree's census route is known not to be runnable; the seam has been armed and the two cells here must be re-read; disagreement carried: ", reason) }
+    CensusHeld {} =>
+      ExitFailure { code: 1, reason: "alias_field held where this tree's census route is known not to be runnable; the seam has been armed and the two cells here must be re-read" }
   }
 }

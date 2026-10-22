@@ -123,8 +123,71 @@ fn not_runnable_cause(census: CompileDiagnosticCensus) -> String? {
 // maps a claim's ExitFailure code 2 onto the UNOBSERVED verdict line (fleet follow-up on gunbc#14539's
 // axis, in claim_batch's own lane; this PR deliberately does not touch the harness). Until that
 // lands the row still prints FAIL, and only the reason separates "the census refused to run" from
-// "the census saw something the claim got wrong" -- which is why the reason carries the whole cause.
-fn census_verdict(census: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> ProcessExit {
+// "the census saw something the claim got wrong" -- which is why the reason carries the whole cause.// THE VERDICT A CLAIM RETURNS. `holds` is the comparison the claim means -- a caller writes
+// `census_verdict(c, fn(n) { n >= 1 })` or `fn(n) { n == 0 }` and cannot write a verdict for a count it
+// never observed: the predicate is only ever handed an observed number. The verdict is a SUM, not a
+// rendered exit code -- CensusHeld, CensusDisagreed (an observation ran and the comparison did not hold,
+// a finding), or CensusUnobserved (the census refused to run, carrying the builtin's cause verbatim). The
+// three states are what a claim actually distinguishes; writing them as ProcessExit { code: 1 | 2 } made
+// the distinction a hand-typed integer that `census_verdict_all` then had to RE-DERIVE by reading codes
+// back off (review 84025: "census_verdict_all ranks integers"). The integer is a rendering of the verdict
+// for the process boundary, produced in exactly one place by `census_exit`; it is not where the verdict
+// lives. A claim now matches on CensusDisagreed / CensusUnobserved by constructor, and adding a fourth
+// verdict state makes every consumer that inspects a verdict refuse to compile until it says what the new
+// state means -- which a code comparison never forced.
+type CensusVerdict
+  = CensusHeld {}
+  | CensusDisagreed { reason: String }
+  | CensusUnobserved { cause: String }
+
+// THE ORDERING LIVES ON THE TYPE, by constructor match -- false AND unknown = false (Kleene): a definite
+// observation that disagreed (CensusDisagreed) outranks a probe that could not run (CensusUnobserved), so
+// a probe failing to execute cannot bury a real finding; a claim where nothing definite was observed and
+// something could not run is unobserved. There is no integer here and no comparison of rendered labels:
+// each arm names itself, so the ranking cannot silently stop selecting an arm that gets renamed.
+fn census_verdict_worse(a: CensusVerdict, b: CensusVerdict) -> CensusVerdict {
+  match a {
+    CensusDisagreed { reason: _ } => a
+    CensusUnobserved { cause: _ } =>
+      match b {
+        CensusDisagreed { reason: _ } => b
+        CensusUnobserved { cause: _ } => a
+        CensusHeld {} => a
+      }
+    CensusHeld {} => b
+  }
+}
+
+// THE WORST OF SEVERAL VERDICTS, and the FIRST one of the winning class names itself -- so the result does
+// not depend on input order for which reason a reader sees, only for which of several same-class refusals
+// speaks. Folded with the constructor ordering above; no code is ever read.
+fn worst_census_verdict(verdicts: List<CensusVerdict>) -> CensusVerdict {
+  fold(
+    xs: verdicts,
+    init: CensusHeld {},
+    f: fn(acc, v) { census_verdict_worse(a: acc, b: v) }
+  )
+}
+
+
+// THE ONE PROCESS BOUNDARY. Held succeeds; a Disagreed finding is exit 1 naming its reason; an Unobserved
+// refusal is exit 2 with the builtin's cause worded `not evaluated: census not runnable: <cause>` -- Code
+// 2 is the label contract's "no observation" (DESIGN "Building & checks"). This is the sole place the
+// integer appears; the harness maps a claim's ExitFailure code 2 onto the UNOBSERVED verdict line (a
+// claim_batch follow-up on gunbc#14539's axis, in claim_batch's own lane; this PR deliberately does not
+// touch the harness). Until that lands the row still prints FAIL, and only the reason separates "the
+// census refused to run" from "the census saw something the claim got wrong" -- which is why the reason
+// carries the whole cause.
+fn census_exit(verdict: CensusVerdict) -> ProcessExit {
+  match verdict {
+    CensusHeld {} => ExitSuccess
+    CensusDisagreed { reason: reason } => ExitFailure { code: 1, reason: reason }
+    CensusUnobserved { cause: cause } =>
+      ExitFailure { code: 2, reason: concat("not evaluated: census not runnable: ", cause) }
+  }
+}
+
+fn census_verdict(census: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> CensusVerdict {
   match census {
     CensusObserved { rows: rows } => {
       let observed = census_total_count(rows: rows)
@@ -132,67 +195,30 @@ fn census_verdict(census: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> Pr
       // missing expression), so the sentence is built where it can be read whole.
       let reason = concat("census observed ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; the observation ran and disagreed, which is a finding, not a missing run"))
       if holds(observed) {
-        ExitSuccess
+        CensusHeld {}
       } else {
-        ExitFailure { code: 1, reason: reason }
+        CensusDisagreed { reason: reason }
       }
     }
-    CensusNotRunnable { cause: cause } =>
-      ExitFailure { code: 2, reason: concat("not evaluated: census not runnable: ", cause) }
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
   }
 }
 
-// SEVERAL PROBES AND PREMISES, ONE VERDICT, with the ranking a mixed run must obey: 1 > 2 > 0
-// (Kleene: false AND unknown = false). A definite observation that disagreed outranks a probe that
-// could not run, so a probe failing to execute cannot bury a real finding; a claim where nothing
-// definite was observed and something could not run is exit 2. `census_premise` carries the Bool
-// conjuncts a probe claim mixes in, each naming itself on failure: an unnamed `&&` term that stopped
-// holding tells a reader nothing about which premise to go look at, and a probe claim whose premise
-// silently vanished is the same missing-evidence class this module exists to close.
-fn census_verdict_all(verdicts: List<ProcessExit>) -> ProcessExit {
-  // 1 outranks 2 outranks 0, and the FIRST verdict of the winning class is the one reported, so the
-  // result does not depend on input order for which reason a reader sees -- only for which of
-  // several same-class refusals names itself.
-  if any_verdict_code(codes: verdict_codes(verdicts: verdicts), wanted: 1) {
-    first_verdict_with_code(verdicts: verdicts, wanted: 1)
-  } else if any_verdict_code(codes: verdict_codes(verdicts: verdicts), wanted: 2) {
-    first_verdict_with_code(verdicts: verdicts, wanted: 2)
-  } else {
-    ExitSuccess
-  }
+// SEVERAL PROBES AND PREMISES, ONE VERDICT, with the ranking a mixed run must obey -- now carried by the
+// type (census_verdict_worse / worst_census_verdict above), not by re-reading exit codes. A claim where
+// nothing definite was observed and something could not run is CensusUnobserved. `census_premise` carries
+// the Bool conjuncts a probe claim mixes in, each naming itself on failure: an unnamed `&&` term that
+// stopped holding tells a reader nothing about which premise to go look at, and a probe claim whose
+// premise silently vanished is the same missing-evidence class this module exists to close.
+fn census_verdict_all(verdicts: List<CensusVerdict>) -> ProcessExit {
+  census_exit(verdict: worst_census_verdict(verdicts: verdicts))
 }
 
-fn verdict_codes(verdicts: List<ProcessExit>) -> List<Int> {
-  fold(xs: verdicts, init: [], f: fn(acc, v) { concat(acc, [verdict_code(v: v)]) })
-}
-
-fn any_verdict_code(codes: List<Int>, wanted: Int) -> Bool {
-  fold(xs: codes, init: false, f: fn(acc, c) { acc || c == wanted })
-}
-
-// The seed is ExitSuccess, which is also a legal answer; `wanted` only ever selects a refusal (1 or
-// 2), so the slot is still open exactly while the accumulator is a success -- the first refusal of
-// the wanted class wins and later ones cannot overwrite it.
-fn first_verdict_with_code(verdicts: List<ProcessExit>, wanted: Int) -> ProcessExit {
-  fold(
-    xs: verdicts,
-    init: ExitSuccess,
-    f: fn(acc, v) { if verdict_code(v: v) == wanted && verdict_code(v: acc) == 0 { v } else { acc } }
-  )
-}
-
-fn census_premise(name: String, holds: Bool) -> ProcessExit {
+fn census_premise(name: String, holds: Bool) -> CensusVerdict {
   if holds {
-    ExitSuccess
+    CensusHeld {}
   } else {
-    ExitFailure { code: 1, reason: concat("premise did not hold: ", name) }
-  }
-}
-
-fn verdict_code(v: ProcessExit) -> Int {
-  match v {
-    ExitSuccess => 0
-    ExitFailure { code: code, reason: _ } => code
+    CensusDisagreed { reason: concat("premise did not hold: ", name) }
   }
 }
 
@@ -200,25 +226,26 @@ fn census_int_text(n: Int) -> String {
   to_string(n)
 }
 
+
 // A CLAIM WHOSE ORACLE IS THE SUM OF TWO CENSUSES. Used to be written as `probe(a) + probe(b) >= 1`,
 // which the sentinel made unsound in both directions: two refusals summed to a confident `-2`, and ONE
 // refusal plus one observed count answered as though the missing half had run. Both censuses must have
 // run for the sum to mean anything, so a refusal on EITHER is a refusal of the claim, naming itself --
 // not a smaller number.
-fn census_sum_verdict(first: CompileDiagnosticCensus, second: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> ProcessExit {
+fn census_sum_verdict(first: CompileDiagnosticCensus, second: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> CensusVerdict {
   match first {
-    CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
     CensusObserved { rows: first_rows } =>
       match second {
-        CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+        CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
         CensusObserved { rows: second_rows } => {
           // Both arms OBSERVED, so the counts here are counts; there is no sentinel to guard against,
           // which is the whole point of matching the union instead of subtracting Ints.
           let observed = census_total_count(rows: first_rows) + census_total_count(rows: second_rows)
           if holds(observed) {
-            ExitSuccess
+            CensusHeld {}
           } else {
-            ExitFailure { code: 1, reason: concat("census pair observed a total of ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; both censuses ran, so this is a finding, not a missing run")) }
+            CensusDisagreed { reason: concat("census pair observed a total of ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; both censuses ran, so this is a finding, not a missing run")) }
           }
         }
       }
@@ -230,18 +257,18 @@ fn census_sum_verdict(first: CompileDiagnosticCensus, second: CompileDiagnosticC
 // sentinel is a legal operand, so `-1 - 0` answered the delta question with an observation that
 // happened in only one of the two compiles. Both must have run; a refusal on either refuses the
 // claim with its own cause, so the pair is judged as a pair.
-fn census_delta_verdict(red: CompileDiagnosticCensus, control: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> ProcessExit {
+fn census_delta_verdict(red: CompileDiagnosticCensus, control: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> CensusVerdict {
   match red {
-    CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
     CensusObserved { rows: red_rows } =>
       match control {
-        CensusNotRunnable { cause: cause } => refusal_verdict(cause: cause)
+        CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
         CensusObserved { rows: control_rows } => {
           let observed = census_total_count(rows: red_rows) - census_total_count(rows: control_rows)
           if holds(observed) {
-            ExitSuccess
+            CensusHeld {}
           } else {
-            ExitFailure { code: 1, reason: concat("census pair observed a delta of ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; both censuses ran, so this is a finding, not a missing run")) }
+            CensusDisagreed { reason: concat("census pair observed a delta of ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; both censuses ran, so this is a finding, not a missing run")) }
           }
         }
       }
@@ -252,11 +279,9 @@ fn census_delta_verdict(red: CompileDiagnosticCensus, control: CompileDiagnostic
 // an assertion that the census did not return the sentinel. Under the typed probes there is no sentinel
 // to compare against, and the honest spelling of that conjunct is the one here: the census observed
 // something, whatever it was. Refusal still refuses, which is all the conjunct ever wanted to detect.
-fn census_ran(census: CompileDiagnosticCensus) -> ProcessExit {
+fn census_ran(census: CompileDiagnosticCensus) -> CensusVerdict {
   census_verdict(census: census, holds: fn(n) { true })
 }
 
-fn refusal_verdict(cause: String) -> ProcessExit {
-  ExitFailure { code: 2, reason: concat("not evaluated: census not runnable: ", cause) }
-}
+
 

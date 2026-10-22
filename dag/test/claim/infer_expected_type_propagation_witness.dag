@@ -1,6 +1,6 @@
 module test.claim.infer_expected_type_propagation_witness
 
-import gunbc.compile_census_probe { blocking_class_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { blocking_class_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import std.process { ProcessExit }
 import std.types { Bool, Int, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -91,7 +91,7 @@ test fn a_mistyped_value_under_an_expected_optional_is_refused() -> ProcessExit 
 data uninstantiated_owner_source: String = "module probe_expprop_uninstantiated_owner\ntype ExpPropRec { v: Int }\ntype ExpPropInner<S> { value: S }\ntype ExpPropOuter<S> { inner: ExpPropInner<S> }\nfn f() -> Int {\n  let o = ExpPropOuter { inner: ExpPropInner { value: ExpPropRec { v: 9 } } }\n  o.inner.value.v\n}\n"
 
 test fn an_uninstantiated_owner_passes_no_parameter_name_down() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: uninstantiated_owner_source, wanted_class: type_mismatch_class), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: blocking_class_census(source: uninstantiated_owner_source, wanted_class: type_mismatch_class), holds: fn(n) { n == 0 }))
 }
 
 // THE KNOWN POSITIONS OF A PARTIALLY DETERMINED APPLICATION STAY JUDGED (review 5338860646). The

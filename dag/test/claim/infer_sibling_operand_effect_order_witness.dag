@@ -1,6 +1,6 @@
 module test.claim.infer_sibling_operand_effect_order_witness
 
-import gunbc.compile_census_probe { blocking_class_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { blocking_class_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import std.process { ProcessExit }
 import std.types { Bool, Int, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -101,7 +101,7 @@ data sibling_effect_order_record_green_source: String = "module probe_sibling_ef
 data sibling_effect_order_class: String = "SiblingOperandEffectOrderUndetermined"
 
 test fn two_effect_reaching_arguments_refuse() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: sibling_effect_order_argument_red_source, wanted_class: sibling_effect_order_class), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: blocking_class_census(source: sibling_effect_order_argument_red_source, wanted_class: sibling_effect_order_class), holds: fn(n) { n == 1 }))
 }
 
 test fn the_let_rewritten_arguments_are_accepted() -> ProcessExit {
@@ -123,7 +123,7 @@ test fn one_effect_reaching_argument_is_accepted() -> ProcessExit {
 }
 
 test fn two_effect_reaching_record_fields_refuse() -> ProcessExit {
-  census_verdict(census: blocking_class_census(source: sibling_effect_order_record_red_source, wanted_class: sibling_effect_order_class), holds: fn(n) { n == 1 })
+  census_exit(census_verdict(census: blocking_class_census(source: sibling_effect_order_record_red_source, wanted_class: sibling_effect_order_class), holds: fn(n) { n == 1 }))
 }
 
 test fn the_let_rewritten_record_fields_are_accepted() -> ProcessExit {

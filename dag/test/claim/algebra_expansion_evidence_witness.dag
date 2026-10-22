@@ -1,7 +1,7 @@
 module test.claim.algebra_expansion_evidence_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { any_class_census, census_verdict }
+import gunbc.compile_census_probe { any_class_census, census_verdict, census_exit}
 import std.process { ProcessExit }
 
 // THE EXECUTING EVIDENCE for gunbc.guarantee_stall.algebra_expansion_positional_argument_stall.
@@ -33,7 +33,7 @@ data nominal_receiver_source: String = "module test.claim.nominal_receiver_probe
 // regression this stall exists to prevent -- including the regression of narrowing the wall's
 // predicate to dodge this shape.
 test fn expansion_receiver_raises_the_evidence_diagnostic() -> ProcessExit {
-  census_verdict(census: any_class_census(source: expansion_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n >= 1 })
+  census_exit(census_verdict(census: any_class_census(source: expansion_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n >= 1 }))
 }
 
 // ACCEPTED POSITIVE CONTROL, enrolled beside the red per DESIGN 4b(4). Same fold, same lambda,
@@ -43,5 +43,5 @@ test fn expansion_receiver_raises_the_evidence_diagnostic() -> ProcessExit {
 // the expansion rather than firing on every fold, which is what makes the cell above mean
 // "this construct" instead of "this compiler".
 test fn nominal_receiver_raises_no_evidence_diagnostic() -> ProcessExit {
-  census_verdict(census: any_class_census(source: nominal_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: any_class_census(source: nominal_receiver_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n == 0 }))
 }

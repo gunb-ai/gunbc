@@ -49,7 +49,7 @@ import gunbc.harness.harness_cli { harness_durable_worker_cli, harness_bind_belt
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
-import gunbc.compile_census_probe { blocking_subject_census, census_premise, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { blocking_subject_census, census_premise, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import gunbc.serving.caller_retry_contract {
   DurableRetryProperty, PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
   NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution, serving_route_caller_retry_rows, modeled_caller_retry_rows, modeled_caller_backlog,
@@ -479,11 +479,11 @@ test fn w_an_arbitrary_module_cannot_rebind_a_live_predecessor() -> ProcessExit 
 }
 
 test fn w_foreign_module_cannot_publish_a_derived_phase() -> ProcessExit {
-  census_verdict(census: blocking_subject_census(
+  census_exit(census_verdict(census: blocking_subject_census(
     source: derived_phase_bypass_source,
     wanted_class: "ConstructorCallAdmissionRefused",
     wanted_subject: "persist_derived_phase",
-  ), holds: fn(n) { n == 1 })
+  ), holds: fn(n) { n == 1 }))
 }
 
 test fn w_foreign_module_cannot_publish_an_initial_record() -> ProcessExit {

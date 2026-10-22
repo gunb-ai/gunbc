@@ -1,7 +1,7 @@
 module test.claim.infer_nullary_local_callable_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { any_class_census, blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census }
+import gunbc.compile_census_probe { any_class_census, blocking_subject_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import std.process { ProcessExit }
 
 // THE EXECUTING EVIDENCE FOR gunbc.recurring_failure_mode
@@ -54,7 +54,7 @@ test fn nullary_alias_typed_parameter_resolves() -> ProcessExit {
 }
 
 test fn nullary_global_still_resolves() -> ProcessExit {
-  census_verdict(census: total_blocking_census(source: nullary_global_source), holds: fn(n) { n == 0 })
+  census_exit(census_verdict(census: total_blocking_census(source: nullary_global_source), holds: fn(n) { n == 0 }))
 }
 
 test fn unary_local_still_resolves() -> ProcessExit {
