@@ -25,21 +25,23 @@ type CardBudget {
   utilization_basis_points: Nat
   weights_bytes: Nat
   overhead_bytes: Nat
-  kv_bytes_per_token: Nat
+  full_attention_bytes_per_token: Nat
+  remainder_bytes_per_token: Nat
 }
 
 fn gib_from_centi(centi: Nat) -> Nat {
   centi * 1073741824 / 100
 }
 
-fn card_budget_from_measured_cell(memory_bytes: Nat, cell: CellOutcome) -> CardBudget? {
+fn card_budget_from_measured_cell(memory_bytes: Nat, cell: CellOutcome, full_attention_bytes_per_token: Nat) -> CardBudget? {
   match cell {
     CellMeasured { weights_centi_gib: w, kv_centi_gib: k, kv_tokens: t, gpu_memory_utilization_basis_points: u, throughput: _ } => {
       let usable = memory_bytes * u / 10000
       let weights = gib_from_centi(centi: w)
       let kv = gib_from_centi(centi: k)
-      if usable >= weights + kv {
-        Present { value: CardBudget { memory_bytes: memory_bytes, utilization_basis_points: u, weights_bytes: weights, overhead_bytes: usable - weights - kv, kv_bytes_per_token: kv / t } }
+      let per_token = kv / t
+      if usable >= weights + kv && per_token >= full_attention_bytes_per_token {
+        Present { value: CardBudget { memory_bytes: memory_bytes, utilization_basis_points: u, weights_bytes: weights, overhead_bytes: usable - weights - kv, full_attention_bytes_per_token: full_attention_bytes_per_token, remainder_bytes_per_token: per_token - full_attention_bytes_per_token } }
       } else {
         none
       }
@@ -48,10 +50,20 @@ fn card_budget_from_measured_cell(memory_bytes: Nat, cell: CellOutcome) -> CardB
   }
 }
 
-// KV heads cannot be split below one per card: past tp > kv_heads each extra card holds a full copy of the KV, so the
-// per-replica KV pool grows by min(tp, kv_heads), not tp. kv_heads is the config's 2 (qwen3_8_flash_next_architecture).
-fn kv_pool_cards(tp: Nat, kv_heads: Nat) -> Nat {
-  if tp > kv_heads { kv_heads } else { tp }
+// PER-RANK KV BYTES PER TOKEN (ModelOutput until an 8-GPU run measures it). With 2 KV heads, full-attention KV per rank
+// stops shrinking at TP2 (each rank keeps >= 1 head: half the full KV per token) while the per-rank POOL keeps growing with TP
+// because weights shard 1/TP, so token capacity still rises past TP2 with the replication waste stated. The indexer cache
+// (1 kv head) replicates at every TP>1; the GDN state shards 1/TP. The measured bytes per token minus the derived
+// full-attention KV is the remainder holding indexer + GDN state (state is per sequence, amortized at the measured mix); how
+// that remainder splits is not in the config, so the indexer share is an input, not a constant.
+fn full_attention_rank_bytes(full: Nat, tp: Nat) -> Nat {
+  if tp > 1 { full / 2 } else { full }
+}
+
+fn rank_bytes_per_token(full: Nat, remainder: Nat, indexer_permille: Nat, tp: Nat) -> Nat {
+  let indexer = remainder * indexer_permille / 1000
+  let gdn = remainder - indexer
+  full_attention_rank_bytes(full: full, tp: tp) + indexer + gdn / tp
 }
 
 type TopologyCapacity
@@ -60,18 +72,16 @@ type TopologyCapacity
 
 data weights_do_not_fit_cause: NonEmptyStr = "per-card weight shard plus overhead exceeds the utilization-scaled card memory" as NonEmptyStr
 
-// Aggregate retained tokens of the topology under the cell's own utilization. Weights shard by TP and replicate by DP;
-// the KV pool of a replica is the cards' usable memory minus the replica's weights and per-card overhead, divided by the
-// measured bytes per token, with KV replication past kv_heads accounted by kv_pool_cards.
-fn topology_capacity(t: ServingTopology, b: CardBudget, kv_heads: Nat) -> TopologyCapacity {
+// Per-rank pool = utilization x memory - weights/TP - overhead; a replica's tokens = pool / per-rank bytes per token (every
+// rank holds the same tokens); aggregate = replicas x that.
+fn topology_capacity(t: ServingTopology, b: CardBudget, indexer_permille: Nat) -> TopologyCapacity {
   let usable = b.memory_bytes * b.utilization_basis_points / 10000
   let shard = b.weights_bytes / t.tensor_parallel
   if usable < shard + b.overhead_bytes {
     TopologyRefused { cause: weights_do_not_fit_cause }
   } else {
-    let free_per_card = usable - shard - b.overhead_bytes
-    let replica_kv = free_per_card * kv_pool_cards(tp: t.tensor_parallel, kv_heads: kv_heads)
-    let per_replica = replica_kv / b.kv_bytes_per_token
+    let pool = usable - shard - b.overhead_bytes
+    let per_replica = pool / rank_bytes_per_token(full: b.full_attention_bytes_per_token, remainder: b.remainder_bytes_per_token, indexer_permille: indexer_permille, tp: t.tensor_parallel)
     TopologyFits { retained_tokens: per_replica * t.data_parallel, per_replica_tokens: per_replica, weight_copies_bytes: b.weights_bytes * t.data_parallel }
   }
 }
@@ -82,5 +92,5 @@ fn topology_host_ngram_copies(t: ServingTopology, shared_copy: Bool) -> Nat {
 }
 
 data flash_next_topology_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: TP/EP collective-communication cost and the replica-to-card routing, CPU, NIC, thermal and NVSwitch effects are unmodeled until a multi-card run reports; the capacity here is KV arithmetic only, a first-order prediction and not a system result. EP weight placement (experts sharded separately from dense weights) is treated as TP sharding until measured." as NonEmptyStr
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the indexer/GDN split of the KV remainder, the per-rank formula (ModelOutput) and TP/EP collective-communication cost and the replica-to-card routing, CPU, NIC, thermal and NVSwitch effects are unmodeled until a multi-card run reports; the capacity here is KV arithmetic only, a first-order prediction and not a system result. EP weight placement (experts sharded separately from dense weights) is treated as TP sharding until measured." as NonEmptyStr
 )

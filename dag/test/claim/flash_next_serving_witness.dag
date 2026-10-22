@@ -362,21 +362,30 @@ test fn w_warm_throughput_scoreable_only_under_warm_valid() -> Bool {
     && throughput_scoreable(a: WarmAdmissionStanding { standing: WarmValid { working_set_tokens: token_count(count: 5), measured_kv_tokens: token_count(count: 10) } })
 }
 
-// DP8 holds eight weight copies and TP8 one; the KV pool saved by sharding is capped by the 2 KV heads, so TP past 2
-// stops adding KV. Eight B200s of DP1 reproduce the measured card eight times.
-test fn w_topology_dp_replicates_weights_and_tp_kv_pool_caps_at_kv_heads() -> Bool {
+// DP8 holds eight weight copies and TP8 one. Per-rank pool grows with TP (weights shard) while full-attention KV per
+// rank stops shrinking at TP2, so capacity still rises past TP2, less than proportionally; a larger indexer share
+// (replicated at every TP>1) lowers the gain.
+test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Bool {
   let cell = quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 })
   match cell {
-    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c) {
+    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1)) {
       Present { value: b } => {
-        let dp8 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, b: b, kv_heads: 2)
-        let tp2dp4 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 4, expert_parallel: false }, b: b, kv_heads: 2)
-        let tp8 = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b, kv_heads: 2)
-        match dp8 {
-          TopologyFits { retained_tokens: r8, per_replica_tokens: p8, weight_copies_bytes: w8 } => match tp8 {
-            TopologyFits { retained_tokens: r1, per_replica_tokens: _, weight_copies_bytes: w1 } => match tp2dp4 {
-              TopologyFits { retained_tokens: r24, per_replica_tokens: _, weight_copies_bytes: _ } =>
-                p8 > 5000000 && p8 < 5100000 && r8 == p8 * 8 && w8 == w1 * 8 && r1 > p8 && r1 < p8 * 8 + p8 && r24 > r8 && r24 > r1
+        let dp1 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 500)
+        let tp2 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 500)
+        let tp8 = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 500)
+        let tp8_idx = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 1000)
+        let dp8 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, b: b, indexer_permille: 500)
+        match dp1 {
+          TopologyFits { retained_tokens: r1, per_replica_tokens: p1, weight_copies_bytes: _ } => match tp2 {
+            TopologyFits { retained_tokens: r2, per_replica_tokens: _, weight_copies_bytes: _ } => match tp8 {
+              TopologyFits { retained_tokens: r8, per_replica_tokens: _, weight_copies_bytes: w8 } => match tp8_idx {
+                TopologyFits { retained_tokens: ri, per_replica_tokens: _, weight_copies_bytes: _ } => match dp8 {
+                  TopologyFits { retained_tokens: rd, per_replica_tokens: _, weight_copies_bytes: wd } =>
+                    r1 == p1 && r2 > r1 && r8 > r2 && r8 < r2 * 4 && ri < r8 && rd == p1 * 8 && wd == w8 * 8
+                  _ => false
+                }
+                _ => false
+              }
               _ => false
             }
             _ => false
