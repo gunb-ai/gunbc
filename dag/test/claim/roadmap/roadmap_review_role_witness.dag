@@ -126,7 +126,7 @@ test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -
 test fn every_conformance_domain_carries_a_label_owns_and_boundary() -> Bool {
   count(conformance_domains) > 0
     && all(conformance_domains, d => match review_criterion_by_key(key: d.key) {
-      Present { value: _ } => d.label != "" && d.owns != "" && count(d.boundaries) > 0 && all(d.boundaries, b => b != "")
+      Present { value: _ } => d.label != "" && count(d.owns) > 0 && count(d.boundaries) > 0 && all(d.boundaries, b => count(b) > 0)
       Absent => false
     })
 }
