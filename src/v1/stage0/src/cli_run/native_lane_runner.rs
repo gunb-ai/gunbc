@@ -5100,11 +5100,16 @@ fn run_census_scoped_with(
 /// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
 /// say which subjects reach each member. One run per subject re-resolved every shared member once per
 /// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
+///
+/// `base_probe` is handed the union run and may name a further `census-scoped` over the SAME prepared binary:
+/// the subjects to read and the source roots to read them from. The host uses it to read the modules the union
+/// run refused at the merge base, so head and base are read by one compiler and only the tree differs.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
-) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
+    base_probe: impl FnOnce(&CensusInferRun) -> Result<Option<(Vec<String>, Vec<String>)>, String>,
+) -> Result<(Vec<CensusInferRun>, CensusInferRun, Option<CensusInferRun>), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
@@ -5115,7 +5120,21 @@ pub fn run_census_controls_and_subjects(
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
     let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
-    Ok((controls, union))
+    let probe = match base_probe(&union)? {
+        Some((probe_subjects, probe_roots)) => {
+            let probe_labels: Vec<String> = probe_subjects
+                .iter()
+                .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+                .collect();
+            Some(run_census_scoped_with(
+                &preparation.binary_path,
+                &probe_labels,
+                &probe_roots,
+            )?)
+        }
+        None => None,
+    };
+    Ok((controls, union, probe))
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in

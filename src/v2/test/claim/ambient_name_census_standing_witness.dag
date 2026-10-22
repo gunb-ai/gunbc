@@ -1,0 +1,111 @@
+module v2.test.claim.ambient_name_census_standing_witness
+
+// THE AMBIENT-NAME CENSUS REFUSES A MODULE THE WAVE BROKE, NOT A MODULE ALREADY BROKEN. A rewritten module
+// the head run reached and refused at resolve is judged against the merge base read by the SAME compiler:
+// refused there too means the wave did not break it (printed, passes); resolved there, or not held there at
+// all, means the wave did (exit 1, named); a probed module the base run never reported is no observation
+// (exit 2). The comparison is `ambient_name_census_standing`'s; the host only gathers the base run.
+//
+// Every fixture is a pair of OPPOSITES in one claim set: the module the wave broke beside the module that
+// was already refused, so a standing that refused everything, or nothing, fails one half.
+
+import std.types { String, Bool, List }
+import std.algebra { string_contains }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.instruments.ambient_name_census_reading {
+  ambient_name_census_standing, ambient_census_probe_modules, ambient_census_fixture_expected
+}
+
+fn healthy_head() -> String {
+  "binding_module\thealthy\t1\t0\t0\t0\nbinding_unreached\tbroken_by_wave\tresolve\nbinding_unreached\talready_refused\tresolve\n"
+}
+
+fn both_rewritten() -> String {
+  "broken_by_wave\tpresent\nalready_refused\tpresent\n"
+}
+
+fn standing(base_stdout: String, base_probed: String) -> CliWireResponse {
+  ambient_name_census_standing(
+    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: healthy_head(),
+    tree_runs: "",
+    rewritten: both_rewritten(),
+    base_stdout: base_stdout,
+    base_probed: base_probed
+  )
+}
+
+test fn a_module_the_base_resolved_and_the_head_refuses_exits_one_and_is_named() -> Bool {
+  match standing(
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\n",
+    base_probed: "broken_by_wave\nalready_refused\n"
+  ) {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "broken_by_wave")
+        && !(string_contains(s: reason, pattern: "already_refused"))
+        && string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\tnewly_refused")
+        && string_contains(s: bytes, pattern: "refused_rewritten\talready_refused\tresolve\tpreviously_refused")
+    _ => false
+  }
+}
+
+test fn touching_only_an_already_refused_module_does_not_refuse() -> Bool {
+  match standing(
+    base_stdout: "binding_unreached\tbroken_by_wave\tresolve\nbinding_unreached\talready_refused\tresolve\n",
+    base_probed: "broken_by_wave\nalready_refused\n"
+  ) {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess } =>
+      string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\tpreviously_refused")
+        && string_contains(s: bytes, pattern: "refused_rewritten\talready_refused\tresolve\tpreviously_refused")
+    _ => false
+  }
+}
+
+test fn a_refused_module_the_base_does_not_hold_is_newly_refused() -> Bool {
+  match standing(
+    base_stdout: "binding_unreached\talready_refused\tresolve\n",
+    base_probed: "already_refused\n"
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1) && string_contains(s: reason, pattern: "broken_by_wave")
+    _ => false
+  }
+}
+
+test fn a_probed_module_the_base_run_never_reported_is_no_observation() -> Bool {
+  match standing(
+    base_stdout: "binding_unreached\talready_refused\tresolve\n",
+    base_probed: "broken_by_wave\nalready_refused\n"
+  ) {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 2)
+        && string_contains(s: reason, pattern: "merge-base probe did not observe")
+        && string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\tbase_unread")
+    _ => false
+  }
+}
+
+test fn a_finding_outranks_an_unread_base_module() -> Bool {
+  match ambient_name_census_standing(
+    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: healthy_head(),
+    tree_runs: "",
+    rewritten: both_rewritten(),
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\n",
+    base_probed: "broken_by_wave\nalready_refused\n"
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: _ } } => code == 1
+    _ => false
+  }
+}
+
+test fn the_probe_list_is_exactly_the_head_refused_rewritten_modules() -> Bool {
+  ambient_census_probe_modules(tree_stdout: healthy_head(), rewritten: both_rewritten() + "healthy\tpresent\n")
+    == ["broken_by_wave", "already_refused"]
+}

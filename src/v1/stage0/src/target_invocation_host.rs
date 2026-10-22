@@ -1779,6 +1779,74 @@ fn census_rewritten_modules(merge_base: &str, head: &str) -> Result<Vec<(String,
     Ok(modules)
 }
 
+/// The modules the reader names for the merge-base probe (`ambient_census_probe_modules`).
+fn ambient_probe_modules(
+    ctx: &crate::v1_interpreter::InterpContext,
+    tree_stdout: &str,
+    rewritten: &[(String, bool)],
+) -> Result<Vec<String>, String> {
+    let text = |s: &str| crate::v1_interpreter::Value::Str(s.to_string().into());
+    let rewritten_text: String = rewritten
+        .iter()
+        .map(|(m, present)| format!("{m}\t{}\n", if *present { "present" } else { "absent" }))
+        .collect();
+    let args = [
+        (Some("tree_stdout".to_string()), text(tree_stdout)),
+        (Some("rewritten".to_string()), text(&rewritten_text)),
+    ];
+    match crate::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "ambient_census_probe_modules",
+        &args,
+        true,
+    ) {
+        Ok(value) => match &value {
+            crate::v1_interpreter::Value::List(items) => items
+                .iter()
+                .map(|item| match item {
+                    crate::v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                    _ => Err("ambient_census_probe_modules holds a non-string".to_string()),
+                })
+                .collect(),
+            _ => Err("ambient_census_probe_modules did not return a list".to_string()),
+        },
+        Err(cause) => Err(format!("ambient_census_probe_modules failed: {cause}")),
+    }
+}
+
+/// The file a module is stored at under `tree`, by the storage rule (`v2.a.b` is `src/v2/a/b.dag`,
+/// `a.b` is `dag/a/b.dag`; DESIGN section 3) -- the inverse of `census_rewritten_modules`.
+fn census_module_path(tree: &std::path::Path, module: &str) -> std::path::PathBuf {
+    match module.strip_prefix("v2.") {
+        Some(rest) => tree
+            .join("src/v2")
+            .join(format!("{}.dag", rest.replace('.', "/"))),
+        None => tree
+            .join("dag")
+            .join(format!("{}.dag", module.replace('.', "/"))),
+    }
+}
+
+/// A detached worktree of `merge_base` at `tree`, replacing any left by an earlier run.
+fn add_census_base_tree(
+    scratch: &std::path::Path,
+    tree: &std::path::Path,
+    merge_base: &str,
+) -> Result<(), String> {
+    let tree_text = tree.to_string_lossy().into_owned();
+    let _ = git_text(&["worktree", "remove", "--force", &tree_text]);
+    let _ = std::fs::remove_dir_all(tree);
+    std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
+    git_text(&["worktree", "prune"])?;
+    git_text(&["worktree", "add", "--detach", &tree_text, merge_base]).map(|_| ())
+}
+
+/// Removes the worktree `add_census_base_tree` added; a tree that never existed is no failure.
+fn remove_census_base_tree(tree: &std::path::Path) {
+    let _ = git_text(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
+    let _ = std::fs::remove_dir_all(tree);
+}
+
 /// THE AMBIENT-NAME CENSUS PRODUCER. The census reads SCOPED closures, one subject at a time, because
 /// the whole-corpus walk does not fit a bounded runner (gunbc.recurring_failure_mode
 /// whole_corpus_census_exceeds_the_memory_bound). Its subjects are the reader's roster
@@ -1876,11 +1944,39 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
             subjects.push(module.clone());
         }
     }
-    let (controls, union) = match cli_run::run_census_controls_and_subjects(
+    // THE MERGE-BASE PROBE: the head-refused rewritten modules, named by the reader, are read again over the
+    // merge base's tree by the SAME binary. A module the base does not hold is not probed (the reader treats
+    // it as newly refused); the worktree is removed whatever the probe answered.
+    let base_tree = scratch.join("base_tree");
+    let mut base_probed: Vec<String> = Vec::new();
+    let probed = cli_run::run_census_controls_and_subjects(
         source_roots,
         &[vec![fixture_root], vec![unindexed_root]],
         &subjects,
-    ) {
+        |union| {
+            let refused = ambient_probe_modules(&ctx, &union.stdout, &rewritten)?;
+            if refused.is_empty() {
+                return Ok(None);
+            }
+            let head = census_head_commit()?;
+            let merge_base = census_merge_base(&head, &base_ref)?;
+            add_census_base_tree(&scratch, &base_tree, &merge_base)?;
+            base_probed = refused
+                .into_iter()
+                .filter(|module| census_module_path(&base_tree, module).exists())
+                .collect();
+            if base_probed.is_empty() {
+                return Ok(None);
+            }
+            let roots = source_roots
+                .iter()
+                .map(|root| base_tree.join(root).to_string_lossy().into_owned())
+                .collect();
+            Ok(Some((base_probed.clone(), roots)))
+        },
+    );
+    remove_census_base_tree(&base_tree);
+    let (controls, union, base_run) = match probed {
         Ok(runs) => runs,
         Err(cause) => return unreached(cause),
     };
@@ -1911,6 +2007,14 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
         (Some("tree_stdout".to_string()), text(&tree_stdout)),
         (Some("tree_runs".to_string()), text(&tree_runs)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
+        (
+            Some("base_stdout".to_string()),
+            text(base_run.as_ref().map_or("", |run| run.stdout.as_str())),
+        ),
+        (
+            Some("base_probed".to_string()),
+            text(&base_probed.join("\n")),
+        ),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
