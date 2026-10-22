@@ -173,7 +173,7 @@ test fn a_missing_or_foreign_current_boot_observation_refuses() -> Bool {
   }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: CurrentBootUnobserved { cause: "x" }) {
     LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
     LostBootCurrentPresent { host: _, boot: _ } => false
-  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: lost_boot_observe_current_boot(host: "mtcollins1", transport: none)) {
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: lost_boot_observe_current_boot(transport: none)) {
     LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
     LostBootCurrentPresent { host: _, boot: _ } => false
   })
@@ -573,7 +573,7 @@ test fn a_failed_refused_or_malformed_boot_id_read_establishes_no_boot() -> Bool
 
 // No transport is no observation: the production wet entry holds none today, so the sweep stays gated.
 test fn no_transport_leaves_the_current_boot_unobserved() -> Bool {
-  match lost_boot_observe_current_boot(host: "mtcollins1", transport: none) {
+  match lost_boot_observe_current_boot(transport: none) {
     CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "no host-authenticated transport")
     CurrentBootObserved { evidence: _ } => false
   }
