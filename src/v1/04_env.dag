@@ -6,7 +6,7 @@ import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVa
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
-import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
+import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NonEmptyCodePointSequence, NotText, TextRepresentationUnidentified }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
@@ -1861,6 +1861,7 @@ fn declaration_node_of_ref(d: DeclarationRef, env: TypeEnv) -> Node? {
 // (lookup_type_for / lookup_type_by_name in the caller's env) are deliberately NOT used: re-reading
 // a callee's bare `String` in a foreign caller's scope is the caller-re-resolution escape.
 fn text_identity_std_algebra_free_monoid() -> DeclarationRef { decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid") }
+fn text_identity_std_algebra_free_semigroup() -> DeclarationRef { decl_ref(module_path: "std.algebra", decl_name: "FreeSemigroup") }
 fn text_identity_std_types_char() -> DeclarationRef { decl_ref(module_path: "std.types", decl_name: "Char") }
 
 // A kernel mint that names no corpus declaration (Int, Bool, the seed's Hash, ...) is identified by
@@ -1953,6 +1954,16 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
       TypeReferenceNamesDeclaration { declaration: d } =>
         if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid()) {
           text_element_is_char(n: n, env: env)
+        } else if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_semigroup()) {
+          // The non-empty sequence over Char is the same text by identity (std.coercion
+          // NonEmptyCodePointSequence); over any other element it is no text, exactly as FreeMonoid.
+          match text_element_is_char(n: n, env: env) {
+            CodePointSequence => NonEmptyCodePointSequence
+            NonEmptyCodePointSequence => NonEmptyCodePointSequence
+            HostText => HostText
+            NotText => NotText
+            TextRepresentationUnidentified => TextRepresentationUnidentified
+          }
         } else {
           let key = declaration_ref_display_key(ref: d)
           if visited |> any(v => v == key) { TextRepresentationUnidentified }
@@ -1995,11 +2006,11 @@ fn is_where_refinement_node(n: Node) -> Bool {
 }
 
 fn text_representation_is_unidentified(r: TextRepresentation) -> Bool {
-  match r { TextRepresentationUnidentified => true  HostText => false  CodePointSequence => false  NotText => false }
+  match r { TextRepresentationUnidentified => true  HostText => false  CodePointSequence => false  NonEmptyCodePointSequence => false  NotText => false }
 }
 
 fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
-  match r { HostText => true  CodePointSequence => true  NotText => false  TextRepresentationUnidentified => false }
+  match r { HostText => true  CodePointSequence => true  NonEmptyCodePointSequence => true  NotText => false  TextRepresentationUnidentified => false }
 }
 
 // A CROSSING: both sides are identified, one as each representation. An UNIDENTIFIED side makes no
@@ -2025,6 +2036,7 @@ fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
 fn host_text_into_structural_sequence(formal: Node, actual: Node, unpeeled_actual: Node, env: TypeEnv) -> Bool {
   let unpeeled_is_structural = match text_representation_by_identity(n: unpeeled_actual, env: env) {
     CodePointSequence => true
+    NonEmptyCodePointSequence => true
     HostText => false
     NotText => false
     TextRepresentationUnidentified => false
@@ -2047,12 +2059,15 @@ fn text_crossing_by_identity(left: Node, right: Node, env: TypeEnv) -> Bool {
   text_representations_cross(a: text_representation_by_identity(n: left, env: env), b: text_representation_by_identity(n: right, env: env))
 }
 
-// THE ONE CROSSING RULE: host text against a code-point sequence, in either order. Every other pair,
-// including one with an unidentified side, is not a crossing.
+// THE ONE CROSSING RULE: host text against a structural code-point sequence -- the free monoid, or the
+// non-empty free semigroup -- in either order. Every other pair, including one with an unidentified side, is
+// not a crossing; in particular the non-empty sequence against the free monoid is not a TEXT crossing (both
+// are structural text) and base type compatibility judges it.
 fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> Bool {
   match a {
-    HostText => match b { CodePointSequence => true  TextRepresentationUnidentified => false  HostText => false  NotText => false }
-    CodePointSequence => match b { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NotText => false }
+    HostText => match b { CodePointSequence => true  NonEmptyCodePointSequence => true  TextRepresentationUnidentified => false  HostText => false  NotText => false }
+    CodePointSequence => match b { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NonEmptyCodePointSequence => false  NotText => false }
+    NonEmptyCodePointSequence => match b { HostText => true  TextRepresentationUnidentified => false  CodePointSequence => false  NonEmptyCodePointSequence => false  NotText => false }
     NotText => false
     TextRepresentationUnidentified => false
   }

@@ -3,7 +3,7 @@ module gunbc.structural_realization_bindings
 import std.optional { Present, Absent }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration, PeanoGroundingView, SignedGroundingView, KernelGroundingArm }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, NonEmptyUnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration, PeanoGroundingView, SignedGroundingView, KernelGroundingArm }
 import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
 import std.operator_realization { StructuralOrderingBinding }
 
@@ -60,7 +60,8 @@ fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, su
 // structure and must never acquire a row -- a native realization takes the kernel literal directly.
 data literal_homomorphism_rows: List<LiteralHomomorphism> = [
   peano_literal_homomorphism(module_path: "test.fixture.structural_peano_nat", nat: "StructuralNat", zero: "StructuralZero", succ: "StructuralSucc", prev_field: "prev"),
-  unicode_scalar_literal_homomorphism
+  unicode_scalar_literal_homomorphism,
+  nonempty_unicode_scalar_literal_homomorphism
 ]
 
 // The ONE declared Unicode scalar unfold row. literal_homomorphism_rows elaborates literals through it
@@ -71,6 +72,20 @@ data unicode_scalar_literal_homomorphism: LiteralHomomorphism = LiteralHomomorph
   destination: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
   element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
   producer: UnicodeScalarSequenceUnfold
+}
+
+// THE NON-EMPTY TEXT LITERAL ROW: a kernel string literal at a position whose structure is the free SEMIGROUP over
+// Char (std.algebra FreeSemigroup, the non-empty sequence std.types NonEmptyStr is) unfolds through the partial
+// NonEmptyUnicodeScalarSequenceUnfold, which proves a non-empty literal at compile time and refuses the empty one,
+// located (std.literal_elaboration literal_unfolding_refusal_for_scalar_count). There is no conversion PLAN for
+// host text into the semigroup: that direction is partial for a runtime value, so a value enters only through
+// the checked constructor; the read back out composes std.algebra's forget (FreeSemigroup -> FreeMonoid) with
+// this file's existing unicode_scalar_fold, never a second crossing route.
+data nonempty_unicode_scalar_literal_homomorphism: LiteralHomomorphism = LiteralHomomorphism {
+  source_kind: KernelStringLiteral,
+  destination: decl_ref(module_path: "std.algebra", decl_name: "FreeSemigroup"),
+  element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
+  producer: NonEmptyUnicodeScalarSequenceUnfold
 }
 
 // THE CORPUS'S NAMED CONVERSION PLANS (std.coercion ConversionPlan), beside the literal rows whose

@@ -125,7 +125,15 @@ type TypeDeclarationProvenance
 // value of one representation at a position of the other is therefore a crossing with no route,
 // and the type-compatibility relation refuses it rather than matching the two by spelling.
 // NotText is every other type: this classification says nothing about it.
-type TextRepresentation = HostText | CodePointSequence | NotText | TextRepresentationUnidentified
+// NonEmptyCodePointSequence: std.algebra FreeSemigroup over std.types Char, the non-empty sequence (std.types
+// NonEmptyStr). It is the SAME text, classified by identity like CodePointSequence; what differs is only which
+// way a value may cross. OUT: the declared forget (std.algebra non_empty_to_list, FreeSemigroup -> FreeMonoid;
+// total, exact, unique and pure, so implicit-safe by DESIGN section 4) and then the code-point-sequence plans
+// below -- one route, composed, never a second crossing table. IN: no plan, because host text into a non-empty
+// sequence is partial; a runtime value enters only through the checked constructor and a literal only through
+// the literal row's compile-time proof (gunbc.structural_realization_bindings
+// nonempty_unicode_scalar_literal_homomorphism).
+type TextRepresentation = HostText | CodePointSequence | NonEmptyCodePointSequence | NotText | TextRepresentationUnidentified
 
 // TextRepresentationUnidentified: the node's declaration could not be read by identity (no declaring
 // span in the global index, no resolvable qualified name, an alias chain that cycles or exceeds its
@@ -525,8 +533,32 @@ fn text_plan_endpoint(rep: TextRepresentation) -> TextPlanEndpoint {
   match rep {
     HostText => TextPlanEndpointKeyed { endpoint: host_text_endpoint() }
     CodePointSequence => TextPlanEndpointKeyed { endpoint: code_point_sequence_endpoint() }
+    NonEmptyCodePointSequence => TextPlanEndpointUnkeyed
     NotText => TextPlanEndpointUnkeyed
     TextRepresentationUnidentified => TextPlanEndpointUnkeyed
+  }
+}
+
+// A CROSSING'S SOURCE, READ AFTER THE DECLARED FORGET: a non-empty sequence leaving its position is first
+// forgotten to the code-point sequence (std.algebra non_empty_to_list), so it selects the same plans a
+// code-point sequence does. Every other source is read as itself.
+fn text_crossing_source_after_forget(rep: TextRepresentation) -> TextRepresentation {
+  match rep {
+    NonEmptyCodePointSequence => CodePointSequence
+    HostText => HostText
+    CodePointSequence => CodePointSequence
+    NotText => NotText
+    TextRepresentationUnidentified => TextRepresentationUnidentified
+  }
+}
+
+fn text_representation_is_non_empty_sequence(rep: TextRepresentation) -> Bool {
+  match rep {
+    NonEmptyCodePointSequence => true
+    HostText => false
+    CodePointSequence => false
+    NotText => false
+    TextRepresentationUnidentified => false
   }
 }
 
@@ -559,7 +591,10 @@ type CrossingPlanSelection
   | CrossingPlanSeveral { routes: List<DeclarationRef> }
 
 fn select_text_crossing_plan(rows: List<ConversionPlan>, source: TextRepresentation, target: TextRepresentation) -> CrossingPlanSelection {
-  match text_plan_endpoint(rep: source) {
+  if text_representation_is_non_empty_sequence(rep: target) {
+    CrossingPlanNone
+  } else {
+  match text_plan_endpoint(rep: text_crossing_source_after_forget(rep: source)) {
     TextPlanEndpointUnkeyed => CrossingPlanJudged { judgment: ConversionPlanEndpointNotText { source: source, target: target } }
     TextPlanEndpointKeyed { endpoint: se } =>
       match text_plan_endpoint(rep: target) {
@@ -576,6 +611,7 @@ fn select_text_crossing_plan(rows: List<ConversionPlan>, source: TextRepresentat
             }
           }
       }
+  }
   }
 }
 

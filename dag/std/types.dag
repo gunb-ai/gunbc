@@ -1,7 +1,7 @@
 module std.types
 import std.optional { Absent, Present, optional_absent, optional_present }
 
-import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape }
+import std.algebra { FreeSemigroup, FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape }
 import std.unicode.types { unicode_scalar }
 
 data kernel_type_set: Map<String, Bool> = {
@@ -253,7 +253,7 @@ type Secret       nominal_opaque = String
 type SecretValue  = Secret where string_non_empty
 
 type SemVer       = String
-type NonEmptyStr     = String where string_non_empty
+type NonEmptyStr     = FreeSemigroup<Char>
 
 // THE WHERE-PREDICATE `string_non_empty` IS THIS DECLARATION. The where atom binds to it by ordinary
 // name lookup in v2 resolve. It is NOT yet the only statement of the predicate's meaning: the v1

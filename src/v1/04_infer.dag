@@ -19,14 +19,15 @@ import std.literal_elaboration {
   GroundedDeclaredForm, DeclaredCoproduct, DeclaredNotACoproduct,
   SignedViewDisagreement, SignedViewAgrees, SignedViewDisagrees, signed_view_reading, signed_view_disagreement_message,
   declaration_is_grounded_natural,
-  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, NonEmptyUnicodeScalarSequenceUnfold,
+  LiteralElaborationRefusal, literal_unfolding_refusal_for_scalar_count,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import std.coercion { NonEmptyCodePointSequence, select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -1457,8 +1458,19 @@ fn text_crossing_or_type_mismatch_error(expected: Node, got: Node, env: TypeEnv,
   let plain = type_mismatch_error(expected: node_type_shape(n: expected, source_indices: si), got: node_type_shape(n: got, source_indices: si), span: span, module_name: module_name)
   if text_crossing_by_identity(left: expected, right: got, env: env) {
     match text_representation_by_identity(n: got, env: env) {
-      HostText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+      HostText =>
+        // Host text INTO the non-empty sequence has no total route: the unfold alone may yield the empty
+        // sequence, so the route a value takes is the checked constructor over the unfold, which answers
+        // Optional (std.coercion NonEmptyCodePointSequence; a literal is proved by its row instead).
+        match text_representation_by_identity(n: expected, env: env) {
+          NonEmptyCodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "the checked constructor over unicode_scalar_unfold (host text into a non-empty sequence is partial)", si: si, span: span, module_name: module_name)
+          HostText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+          CodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+          NotText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+          TextRepresentationUnidentified => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+        }
       CodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_fold", si: si, span: span, module_name: module_name)
+      NonEmptyCodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "std.algebra non_empty_to_list, then unicode_scalar_fold", si: si, span: span, module_name: module_name)
       NotText => plain
       TextRepresentationUnidentified => plain
     }
@@ -6861,6 +6873,7 @@ fn text_unjudged_advisories(a: TextRepresentation, b: TextRepresentation, positi
 fn text_representations_both_code_point(a: TextRepresentation, b: TextRepresentation) -> Bool {
   match a {
     CodePointSequence => match b { CodePointSequence => true  _ => false }
+    NonEmptyCodePointSequence => match b { NonEmptyCodePointSequence => true  _ => false }
     _ => false
   }
 }
@@ -6972,6 +6985,10 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
               CodePointSequence => [inference_error(
                 message: concat("text representation crossing: argument '", bound_name, "' of ", func_name,
                   " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence"),
+                span: value.span, module_name: scope.module_name)]
+              NonEmptyCodePointSequence => [inference_error(
+                message: concat("text representation crossing: argument '", bound_name, "' of ", func_name,
+                  " is host text, and the value passed is a non-empty code-point sequence (FreeSemigroup<Char>); its route out is std.algebra non_empty_to_list, then unicode_scalar_fold -- or use the structural operation on the sequence"),
                 span: value.span, module_name: scope.module_name)]
               HostText => []
               NotText => []
@@ -7370,6 +7387,39 @@ fn unresolved_method_frontier_trigger(module_name: String, method: String, recei
 
 fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
+}
+
+// A CAST INTO THE NON-EMPTY SEQUENCE (std.coercion NonEmptyCodePointSequence, by identity) is not a re-typing.
+// A string-literal operand is asked through the ONE literal-admission authority (literal_boundary_elaboration:
+// the row selects the unfold and std.literal_elaboration's own rule refuses the empty literal); a runtime host
+// text operand refuses, because host text into a non-empty sequence is partial and its only route is the checked
+// constructor. Every other cast is left to the checks beside it.
+fn non_empty_text_cast_diags(inner_typed: Node, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  match text_representation_by_identity(n: target_type, env: scope.type_env) {
+    NonEmptyCodePointSequence =>
+      match inner_typed.expr_data {
+        ExprLiteral { value: lit } =>
+          match literal_boundary_elaboration(lit: lit, expected: Present { value: target_type }, scope: scope) {
+            LiteralBoundaryRefused { message: m } => [inference_error(message: m, span: inner_typed.span, module_name: scope.module_name)]
+            LiteralBoundaryElaborated { elaboration: _, destination_type: _ } => []
+            LiteralBoundaryPlain => []
+          }
+        _ =>
+          match argument_text_representation(value: inner_typed, type_env: scope.type_env) {
+            HostText => [inference_error(
+              message: "text representation crossing: a runtime host-text value cast into a non-empty code-point sequence; host text into a non-empty sequence is partial, so its only route is the checked constructor over unicode_scalar_unfold (a string literal is proved by its row instead)",
+              span: span, module_name: scope.module_name)]
+            CodePointSequence => []
+            NonEmptyCodePointSequence => []
+            NotText => []
+            TextRepresentationUnidentified => []
+          }
+      }
+    CodePointSequence => []
+    HostText => []
+    NotText => []
+    TextRepresentationUnidentified => []
+  }
 }
 
 fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String) -> ErrorNode? {
@@ -8030,6 +8080,7 @@ fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node
             host_text_crossing_call(value: value, destination_type: destination_type, scope: scope)
           } else { ok_infer(texpr: value) }
         CodePointSequence => ok_infer(texpr: value)
+        NonEmptyCodePointSequence => ok_infer(texpr: value)
         NotText => ok_infer(texpr: value)
         TextRepresentationUnidentified => ok_infer(texpr: value)
       }
@@ -8401,6 +8452,24 @@ fn code_point_sequence_structure_ref() -> DeclarationRef {
   decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid")
 }
 
+// Only a string literal has a scalar sequence to ask about; any other literal kind never selects a string row,
+// so it has no refusal to read here.
+fn literal_unfolding_refusal_for_literal(row: LiteralHomomorphism, lit: LiteralValue) -> LiteralElaborationRefusal? {
+  match lit {
+    LitStr { value: v } => literal_unfolding_refusal_for_scalar_count(row: row, scalar_count: string_length(s: v))
+    LitInt { value: _ } => none
+    LitFloat { value: _ } => none
+    LitBool { value: _ } => none
+    LitSymbol { value: _ } => none
+    LitNull => none
+  }
+}
+
+fn non_empty_code_point_sequence_structure_ref() -> DeclarationRef {
+  decl_ref(module_path: "std.algebra", decl_name: "FreeSemigroup")
+}
+
+
 fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: InferScope) -> LiteralBoundary {
   match expected {
     Absent => LiteralBoundaryPlain
@@ -8408,13 +8477,24 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
       if exp.return_cardinality == CardOptional {
         LiteralBoundaryPlain
       } else {
-        let is_code_point_sequence = match text_representation_by_identity(n: exp, env: scope.type_env) {
-          CodePointSequence => true
+        let text_rep = text_representation_by_identity(n: exp, env: scope.type_env)
+        let is_non_empty_sequence = match text_rep {
+          NonEmptyCodePointSequence => true
+          CodePointSequence => false
           HostText => false
           NotText => false
           TextRepresentationUnidentified => false
         }
-        let identified = if is_code_point_sequence {
+        let is_code_point_sequence = match text_rep {
+          CodePointSequence => true
+          NonEmptyCodePointSequence => true
+          HostText => false
+          NotText => false
+          TextRepresentationUnidentified => false
+        }
+        let identified = if is_non_empty_sequence {
+          Present { value: non_empty_code_point_sequence_structure_ref() }
+        } else if is_code_point_sequence {
           Present { value: code_point_sequence_structure_ref() }
         } else {
           type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env)
@@ -8435,9 +8515,16 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
             match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, element: element, destination_realizes_natively: natively) {
               DirectLiteral => LiteralBoundaryPlain
               ViaHomomorphism { homomorphism: h } =>
-                LiteralBoundaryElaborated {
-                  elaboration: LiteralElaboration { source_kind: kind, destination: destination, homomorphism: h },
-                  destination_type: exp
+                // The row decides WHICH unfolding; the model's own rule decides whether it has an image for
+                // THIS literal (std.literal_elaboration literal_unfolding_refusal_for_scalar_count): the
+                // non-empty sequence unfold refuses the empty literal, located at the literal.
+                match literal_unfolding_refusal_for_literal(row: h, lit: lit) {
+                  Present { value: refusal } => LiteralBoundaryRefused { message: literal_elaboration_refusal_message(cause: refusal) }
+                  Absent =>
+                    LiteralBoundaryElaborated {
+                      elaboration: LiteralElaboration { source_kind: kind, destination: destination, homomorphism: h },
+                      destination_type: exp
+                    }
                 }
               LiteralElaborationRefused { cause: c } =>
                 LiteralBoundaryRefused { message: literal_elaboration_refusal_message(cause: c) }
@@ -8508,6 +8595,37 @@ fn unfold_scalar_sequence_image(s: String, destination_type: Node, span: SourceS
   )
 }
 
+// THE NON-EMPTY SEQUENCE'S IMAGE: the record std.algebra FreeSemigroup { head, tail } -- the first scalar as the
+// head, the rest as the tail's flat list introduction (the same canonical FreeMonoid introduction the
+// unbounded unfold uses). Only reached for a non-empty literal: the empty one was refused at the boundary
+// (std.literal_elaboration literal_unfolding_refusal_for_scalar_count), so the head always exists.
+// MEASUREMENT-BRANCH SCOPE: the tail node carries the destination type, not FreeMonoid<Char>; exact typing of the
+// tail for emission is the cut's realization step, not this measurement's.
+fn unfold_non_empty_scalar_sequence_image(s: String, destination_type: Node, span: SourceSpan) -> Node {
+  let scalar_nodes = unicode_scalar_unfold(s: s) |> map(cp =>
+    make_expr_node(
+      occurrence_identity: OccurrenceSynthetic,
+      expr_data: ExprLiteral { value: LitInt { value: cp } },
+      children: [],
+      inferred: Present { value: Resolved { node: int_type } },
+      span: span
+    ))
+  match scalar_nodes |> first {
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: the non-empty sequence unfold reached the empty literal, which its boundary refuses (std.literal_elaboration literal_unfolding_refusal_for_scalar_count)", span: span)
+    Present { value: head } =>
+      let tail = elaborated_expr_node(name: "<unicode-scalar-sequence>", expr_data: ExprListLit, children: scalar_nodes |> skip(1), destination_type: destination_type, span: span)
+      elaborated_expr_node(
+        name: "FreeSemigroup",
+        expr_data: ExprRecordLit { parent_enum: none },
+        children: [
+          make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "head", value: head, span: span, name_span: elaborated_span(name: "head")),
+          make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "tail", value: tail, span: span, name_span: elaborated_span(name: "tail"))
+        ],
+        destination_type: destination_type, span: span
+      )
+  }
+}
+
 fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, destination_type: Node, span: SourceSpan) -> Node {
   match elaboration.homomorphism.producer {
     UnicodeScalarSequenceUnfold =>
@@ -8515,6 +8633,12 @@ fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, dest
         LitStr { value: s } =>
           unfold_scalar_sequence_image(s: s, destination_type: destination_type, span: span)
         _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)", span: span)
+      }
+    NonEmptyUnicodeScalarSequenceUnfold =>
+      match lit {
+        LitStr { value: s } =>
+          unfold_non_empty_scalar_sequence_image(s: s, destination_type: destination_type, span: span)
+        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a non-empty Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)", span: span)
       }
     PeanoUnfold { zero: zero, succ: succ, prev_field: prev_field } =>
       match lit {
@@ -10371,10 +10495,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         module_name: scope.module_name,
         type_env: scope.type_env
       )
+      let cast_text_diags = non_empty_text_cast_diags(inner_typed: inner_typed, target_type: target_type, span: span, scope: scope)
       let cast_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        emissions: infer_emissions_concat(left: inner_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(cast_diags, cast_optional_diags, cast_sole_ctor_diags, cast_refinement_diags)))
+        emissions: infer_emissions_concat(left: inner_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(cast_diags, cast_optional_diags, cast_sole_ctor_diags, cast_refinement_diags, cast_text_diags)))
       }
 
     ExprForEach =>

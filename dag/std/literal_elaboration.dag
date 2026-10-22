@@ -94,9 +94,19 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 //                  SCALARS, NEVER BYTES: the element values are code points read at the character
 //                  grain, so a non-ASCII literal's length and elements observe scalar count and
 //                  scalar values, not its UTF-8 encoding.
+//   NonEmptyUnicodeScalarSequenceUnfold
+//                  the same unfold into the free SEMIGROUP over Char (std.algebra FreeSemigroup, the
+//                  non-empty sequence): a non-empty kernel string literal's scalars, the first as the
+//                  head and the rest as the tail's free-monoid introduction. It is PARTIAL: the empty
+//                  literal has no image, because a free semigroup has no empty element, so the empty
+//                  literal is refused at its location (literal_unfolding_refusal_for_scalar_count),
+//                  never admitted -- nonemptiness is constructed or proved (ruling
+//                  gunbc.design_ruling nonemptiness_is_constructed_or_proved), and for a literal it is
+//                  proved here, at compile time.
 type LiteralUnfolding
   = PeanoUnfold { zero: DeclarationRef, succ: DeclarationRef, prev_field: NonEmptyStr }
   | UnicodeScalarSequenceUnfold
+  | NonEmptyUnicodeScalarSequenceUnfold
 
 // THE DESTINATION KEY SURVIVES RESOLUTION. `destination` names the declaration the resolved
 // boundary type actually presents. For a nominal destination (v2.std.nat.Nat)
@@ -157,6 +167,7 @@ fn literal_homomorphism_for(
 
 type LiteralElaborationRefusal
   = HomomorphismDuplicated { source_kind: LiteralSourceKind, destination: DeclarationRef, row_count: Int }
+  | EmptyLiteralHasNoNonEmptyImage { destination: DeclarationRef }
 
 fn literal_elaboration_refusal_message(cause: LiteralElaborationRefusal) -> String {
   match cause {
@@ -166,6 +177,26 @@ fn literal_elaboration_refusal_message(cause: LiteralElaborationRefusal) -> Stri
         d.module_path as String, ".", d.decl_name as String,
         " has more than one declared homomorphism (gunbc.structural_realization_bindings authoring defect)"
       )
+    EmptyLiteralHasNoNonEmptyImage { destination: d } =>
+      concat(
+        "literal elaboration: the empty string literal has no image in ",
+        d.module_path as String, ".", d.decl_name as String,
+        " (a non-empty sequence: nonemptiness is constructed or proved, and an empty literal proves the opposite)"
+      )
+  }
+}
+
+// WHETHER A PRODUCER ADMITS A LITERAL OF THIS MANY SCALARS. The row decides WHICH unfolding a boundary takes
+// (elaborate_literal_at); this decides whether that unfolding has an image for the literal at hand. Only the
+// non-empty sequence unfold is partial, and only at zero scalars. A consumer asks this with the literal's
+// scalar count after the row is found -- the one admission authority beside the row, never a syntactic check
+// of its own.
+fn literal_unfolding_refusal_for_scalar_count(row: LiteralHomomorphism, scalar_count: Int) -> LiteralElaborationRefusal? {
+  match row.producer {
+    NonEmptyUnicodeScalarSequenceUnfold =>
+      if scalar_count == 0 { Present { value: EmptyLiteralHasNoNonEmptyImage { destination: row.destination } } } else { none }
+    UnicodeScalarSequenceUnfold => none
+    PeanoUnfold { zero: _, succ: _, prev_field: _ } => none
   }
 }
 
