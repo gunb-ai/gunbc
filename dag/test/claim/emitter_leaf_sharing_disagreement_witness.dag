@@ -7,6 +7,9 @@ module test.claim.emitter_leaf_sharing_disagreement_witness
 // disagree on sharing now refuse with a located compile_error! naming the leaf and every declaring
 // module; declarers that agree, and a single declarer, emit exactly as before.
 //
+// The refusal sits on the unsound side only: the heap (shared) declaration read through an unshared leaf.
+// The constant declaration reads correctly and emits unrefused (w_unshared_side_keeps_building).
+//
 // RED: a closure holding both Word64 declarations. CONTROLS: std.bit alone still emits its Word64
 // without the refusal, and an all-Copy record still derives Copy beside an Rc-field record.
 //
@@ -48,6 +51,15 @@ fn w_all_copy_record_still_derives_copy() -> Bool {
     copy_control_source(),
     "src/leaf_sharing_copy_control.rs",
     ["Copy, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct Flat {"],
+    ["leaf_sharing_disagreement"]
+  )
+}
+
+fn w_unshared_side_keeps_building() -> Bool {
+  compile_dag_rust_emit_check(
+    both_word64_source(),
+    "src/std_machine_word.rs",
+    ["pub struct Word64"],
     ["leaf_sharing_disagreement"]
   )
 }
