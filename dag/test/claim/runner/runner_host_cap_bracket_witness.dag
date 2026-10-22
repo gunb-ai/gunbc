@@ -2,17 +2,24 @@ module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.operation_argv { InputTextList, OperationInputBinding }
-import v2.std.operation_realization { OperationRealization, OperationBinding, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin }
+import std.operation_argv { InputTextList, OperationInputBinding, OperationRef }
+import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
+import gunbc.process_environment_model { ModeledVariable, environment_binding }
+import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
+import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
+import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
+import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
+import gunbc.runner.runner_host_cap_bracket { cap_write_gate_of, CapWriteGate, CapWriteAdmitted, CapWriteRefused, runner_host_cap_admission_closure, read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire, release_envelope_wire, listener_restart_residual, listener_reregistration_frontier, UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.measure { second, second_count }
@@ -25,6 +32,16 @@ import gunbc.runner.runner_host_cap_bracket {
   AdmissionOpen,
   RunStopped,
   RunListenerIdle,
+  RosterNotBusy,
+  RosterBusy,
+  RosterUnread,
+  RosterDisagrees,
+  ListenerRosterReading,
+  AdmissionMaskRosterAndNoWorker,
+  listener_roster_reading_of,
+  stop_admitted_listener_over,
+  ListenerStopped,
+  ListenerRestart,
   RunWorkerLive,
   RunUnobserved,
   BracketWaitStep,
@@ -84,14 +101,14 @@ import gunbc.runner.runner_host_cap_bracket {
 fn u(n: String) -> NonEmptyStr { concat("actions-runner@srv3-", n, ".service") as NonEmptyStr }
 fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunStopped } }
 fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunWorkerLive } }
-fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunListenerIdle } }
+fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunListenerIdle { roster: RosterNotBusy } } }
 fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
 fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionOpen, run: RunStopped } }
 
-fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained => false BracketAdmissionNotClosed { listeners: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls } => length(ls) == 1 BracketDrained => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _ } => false } }
+fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained { listeners: _ } => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained { listeners: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls, causes: _ } => length(ls) == 1 BracketDrained { listeners: _ } => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained { listeners: _ } => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false } }
 
 // the bound is a declared policy row that yields a positive tick count
 test fn the_declared_bound_yields_positive_ticks() -> Bool { host_cap_drain_ticks(policy: runner_host_cap_drain_policy) > 0 }
@@ -176,7 +193,7 @@ fn slot_read_outcome_of(unit: NonEmptyStr, show_stdout: String) -> SlotReadOutco
 
 fn projected(active: String, listing: String) -> SlotDrainReading {
   let read = slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: active))
-  slot_drain_reading_of(unit: u(n: "01"), read: read, worker: if slot_drain_needs_worker(read: read) { slot_activity_of_listing(listing: listing, unit: u(n: "01")) } else { SlotIdle })
+  slot_drain_reading_of(unit: u(n: "01"), read: read, worker: if slot_drain_needs_worker(read: read) { slot_activity_of_listing(listing: listing, unit: u(n: "01")) } else { SlotIdle }, roster: RosterNotBusy)
 }
 
 test fn a_deactivating_unit_with_a_live_worker_is_not_drained() -> Bool {
@@ -197,8 +214,8 @@ test fn a_stopped_masked_unit_is_drained_without_a_cgroup_reading() -> Bool {
 }
 
 test fn an_unknown_or_missing_active_state_is_unproven_never_idle() -> Bool {
-  let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle)
-  let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle)
+  let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle, roster: RosterNotBusy)
+  let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle, roster: RosterNotBusy)
   exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unknown], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
     && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [missing], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
 }
@@ -321,7 +338,7 @@ type Leg {
 }
 
 type BracketRun<T>
-  = BracketRunReturned { value: T, legs: List<String> }
+  = BracketRunReturned { value: T, legs: List<String>, calls: List<String> }
   | BracketRunEnded { cause: String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -359,16 +376,69 @@ fn remote_command_of_invocation(bindings: List<OperationInputBinding>) -> String
 
 fn remote_command_of(call: OperationCall) -> String { remote_command_of_invocation(bindings: call.invocation.bindings) }
 
-fn legs_of_route(route: List<DispatchRecord>) -> List<String> { map(route, r => remote_command_of_invocation(bindings: r.invocation.bindings)) }
+fn legs_of_route(route: List<DispatchRecord>) -> List<String> { map(filter(route, r => r.invocation.at.service == "ssh.Session"), r => remote_command_of_invocation(bindings: r.invocation.bindings)) }
+fn calls_of_route(route: List<DispatchRecord>) -> List<String> { map(route, r => concat(r.invocation.at.service, ".", r.invocation.at.operation)) }
+fn calls_of<T>(r: BracketRun<T>) -> List<String> { match r { BracketRunReturned { value: _, legs: _, calls: c } => c BracketRunEnded { cause: _ } => [] } }
 
 fn leg_at(legs: List<Leg>, n: Int) -> Leg? { list_head(xs: skip(xs: legs, n: n)) }
 
-fn bracket_realization(legs: List<Leg>) -> OperationRealization<Int> {
+// THE ROSTER ROUTE'S OWN HERMETIC FIXTURE, at the production boundary the reader already uses and nowhere
+// else: the gh operations the reader calls (organization_runner_roster_live_read), the two environment
+// reads and the gh presence probe its credential route makes, and the clock it stamps the roster with. The
+// reader gets no witness-only parameter; the answers are bound at the operations it dispatches. The answer
+// to a roster read may depend on how many host legs have run (the state), so a scenario can have the
+// roster change between the drain's reading and the restart's re-reading.
+type RosterAt {
+  from: Int
+  org_stdout: String
+  list_stdout: String
+}
+
+fn roster_answer_at(roster: List<RosterAt>, state: Int) -> RosterAt {
+  fold(roster, init: RosterAt { from: 0 - 1, org_stdout: "", list_stdout: "" }, f: fn(acc, r) { if r.from <= state && r.from >= acc.from { r } else { acc } })
+}
+
+data gh_list_runners_operation: OperationRef = OperationRef { path: "dag/extdeps/github/ci_runner.dag", service: "github.CliOrgSelfHostedRunners", operation: "ListOrgRunnersPage" }
+data gh_get_organization_operation: OperationRef = OperationRef { path: "dag/extdeps/github/organizations.dag", service: "github.CliOrganizations", operation: "GetOrganization" }
+data posix_command_check_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.PosixCommandV", operation: "Check" }
+
+fn observed_exit(state: Int, code: Int, stdout: String) -> OperationStep<Int> {
+  OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: code, stdout: stdout, stderr: "" } }, state: state, elapsed: second(count: 0) }
+}
+
+fn gh_included(status: String, body: String) -> String { concat("HTTP/2.0 ", status, "\n\n", body) }
+fn org_ok() -> String { gh_included(status: "200 OK", body: "{\"id\": 4242, \"login\": \"gunb-ai\"}") }
+fn runner_json(id: Int, name: String, busy: Bool) -> String {
+  concat("{\"id\": ", to_string(id), ", \"name\": \"", name, "\", \"status\": \"online\", \"busy\": ", if busy { "true" } else { "false" }, ", \"os\": \"Linux\", \"labels\": [{\"name\": \"self-hosted\"}]}")
+}
+fn roster_of(entries: List<String>) -> String {
+  gh_included(status: "200 OK", body: concat("{\"total_count\": ", to_string(length(entries)), ", \"runners\": [", join(entries, ", "), "]}"))
+}
+fn roster_constant(list_stdout: String) -> List<RosterAt> { [RosterAt { from: 0, org_stdout: org_ok(), list_stdout: list_stdout }] }
+
+// the registration name the unit pairing says a unit carries (the one inverse, runner_unit read_runner_unit_name)
+fn registration_of(n: String) -> String {
+  match read_runner_unit_name(observed: u(n: n)) {
+    RunnerUnitInstance { registration_name: r } => r as String
+    NotARunnerUnit { observed: _ } => ""
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => ""
+  }
+}
+fn registered(n: String, id: Int, busy: Bool) -> String { runner_json(id: id, name: registration_of(n: n), busy: busy) }
+
+// no unit of the scenario is on this roster: every listener reads as unread, never as idle
+fn roster_empty() -> List<RosterAt> { roster_constant(list_stdout: roster_of(entries: [])) }
+
+fn route_environment() -> List<ModeledVariable> {
+  [ModeledVariable { name: "GUNBC_ORG_ADMIN_TOKEN", value: "in-run-installation-token" }, ModeledVariable { name: "GH_TOKEN", value: "in-run-installation-token" }]
+}
+
+fn bracket_realization(legs: List<Leg>, roster: List<RosterAt>, environment: List<ModeledVariable>) -> OperationRealization<Int> {
   OperationRealization {
     identity: bracket_identity(),
     initial: 0,
     epoch: virtual_clock_origin(),
-    bindings: [
+    bindings: concat([
       OperationBinding {
         at: ssh_session_exec_portable_words_operation,
         handler: fn(state, call) {
@@ -383,38 +453,48 @@ fn bracket_realization(legs: List<Leg>) -> OperationRealization<Int> {
           OperationObserved { observation: ShellObserved { observation: answer }, state: state + 1, elapsed: second(count: 1) }
         },
       },
-    ],
+      OperationBinding { at: posix_command_check_operation, handler: fn(state, call) { observed_exit(state: state, code: 0, stdout: "/usr/bin/gh\n") } },
+      OperationBinding { at: gh_get_organization_operation, handler: fn(state, call) { observed_exit(state: state, code: 0, stdout: roster_answer_at(roster: roster, state: state).org_stdout) } },
+      OperationBinding { at: gh_list_runners_operation, handler: fn(state, call) { observed_exit(state: state, code: 0, stdout: roster_answer_at(roster: roster, state: state).list_stdout) } },
+      environment_binding(get: fn(state) { environment }),
+    ], wall_clock_bindings(get: fn(state) { ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] } })),
     advance: fn(state, _now) { state },
   }
 }
 
-fn bracket_grant(verb: std.effect_grant.Verb) -> Grant {
+data bracket_services: List<String> = ["ssh.Session", "shell.PosixCommandV", "shell.Env", "github.CliOrganizations", "github.CliOrgSelfHostedRunners", "Clock"]
+
+fn bracket_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
   Grant {
     verb: verb,
-    root: NamespacePosition { tree: ServiceOpTree { service: "ssh.Session" as NonEmptyStr }, path: [] },
+    root: NamespacePosition { tree: ServiceOpTree { service: service as NonEmptyStr }, path: [] },
     binding: ModeledRealization { realization: bracket_identity() as String },
     lifecycle: LifecycleByConstruction,
   }
 }
 
-fn bracket_frame(legs: List<Leg>) -> WitnessEvaluationFrame<Int> {
+fn bracket_frame(legs: List<Leg>, roster: List<RosterAt>, environment: List<ModeledVariable>) -> WitnessEvaluationFrame<Int> {
   WitnessEvaluationFrame {
     envelope: Envelope {
       frame: Frame { name: "cap-bracket" as NonEmptyStr, kind: SharedStateFrame }
-      grants: [bracket_grant(verb: Read), bracket_grant(verb: Write)]
+      grants: concat(map(bracket_services, sv => bracket_grant(service: sv, verb: Read)), map(bracket_services, sv => bracket_grant(service: sv, verb: Write)))
     }
     rest_fixtures: []
-    realization: Present { value: bracket_realization(legs: legs) }
+    realization: Present { value: bracket_realization(legs: legs, roster: roster, environment: environment) }
   }
 }
 
 fn bracket_run<T>(legs: List<Leg>, body: fn(SshTarget, FleetSshExecutionContext) -> T) -> BracketRun<T> {
+  bracket_run_over(legs: legs, roster: roster_empty(), environment: route_environment(), body: body)
+}
+
+fn bracket_run_over<T>(legs: List<Leg>, roster: List<RosterAt>, environment: List<ModeledVariable>, body: fn(SshTarget, FleetSshExecutionContext) -> T) -> BracketRun<T> {
   match runner_host_file_subject(host: "srv1" as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => BracketRunEnded { cause: "srv1 is not an admitted runner host subject" }
     RunnerHostFileSubjectAdmitted { subject: sj } => match bracket_context() {
       Absent => BracketRunEnded { cause: "the fleet witness context could not be sealed" }
-      Present { value: context } => match evaluate_in_witness_frame(frame: bracket_frame(legs: legs), subject: fn(_scope) { body(sj.target, context) }) {
-        WitnessReturned { value: v, route: route, state: _ } => BracketRunReturned { value: v, legs: legs_of_route(route: route) }
+      Present { value: context } => match evaluate_in_witness_frame(frame: bracket_frame(legs: legs, roster: roster, environment: environment), subject: fn(_scope) { body(sj.target, context) }) {
+        WitnessReturned { value: v, route: route, state: _ } => BracketRunReturned { value: v, legs: legs_of_route(route: route), calls: calls_of_route(route: route) }
         WitnessRefused { diagnostic: d, route: _, state: _ } => BracketRunEnded { cause: witness_diagnostic_rendered_reason(diagnostic: d) }
         WitnessInterrupted { at: _, route: _, state: _, now: _ } => BracketRunEnded { cause: "the bracket worker was interrupted" }
       }
@@ -429,8 +509,8 @@ fn show_leg(n: String, load: String, file: String, active: String) -> Leg { Leg 
 fn step_leg(verb: String) -> Leg { Leg { needle: concat(" ", verb, " "), answer: shell_ok(stdout: "") } }
 fn ps_leg(listing: String) -> Leg { Leg { needle: "ps -e", answer: shell_ok(stdout: listing) } }
 
-fn ledger_of<T>(r: BracketRun<T>) -> List<String> { match r { BracketRunReturned { value: _, legs: l } => l BracketRunEnded { cause: _ } => [] } }
-fn outcomes_of(r: BracketRun<List<SlotActuationOutcome>>) -> List<SlotActuationOutcome> { match r { BracketRunReturned { value: v, legs: _ } => v BracketRunEnded { cause: _ } => [] } }
+fn ledger_of<T>(r: BracketRun<T>) -> List<String> { match r { BracketRunReturned { value: _, legs: l, calls: _ } => l BracketRunEnded { cause: _ } => [] } }
+fn outcomes_of(r: BracketRun<List<SlotActuationOutcome>>) -> List<SlotActuationOutcome> { match r { BracketRunReturned { value: v, legs: _, calls: _ } => v BracketRunEnded { cause: _ } => [] } }
 fn all_settled(os: List<SlotActuationOutcome>) -> Bool { all(os, o => slot_actuation_settled(o: o)) }
 fn activated(o: SlotActuationOutcome) -> Bool { match o { SlotActivated { unit: _ } => true _ => false } }
 fn noop(o: SlotActuationOutcome) -> Bool { match o { SlotActuationNoop { unit: _, state: _ } => true _ => false } }
@@ -526,7 +606,7 @@ test fn a_foreign_masked_busy_unit_is_observed_never_masked_and_blocks_the_write
   let r = mixed_drain(ns: ["01", "02"])
   match r {
     BracketRunEnded { cause: _ } => false
-    BracketRunReturned { value: v, legs: l } =>
+    BracketRunReturned { value: v, legs: l, calls: _ } =>
       v.owned == [u(n: "02")]
         && exceeded(s: v.step, busy: 1, unproven: 0)
         && count_containing(legs: l, needle: concat(" mask ", u(n: "01") as String)) == 0
@@ -554,7 +634,7 @@ test fn a_foreign_masked_stopped_unit_does_not_block_and_is_never_masked() -> Bo
   })
   match r {
     BracketRunEnded { cause: _ } => false
-    BracketRunReturned { value: v, legs: l } => v.owned == [u(n: "02")] && is_drained(s: v.step) && count_containing(legs: l, needle: concat(" mask ", u(n: "01") as String)) == 0
+    BracketRunReturned { value: v, legs: l, calls: _ } => v.owned == [u(n: "02")] && is_drained(s: v.step) && count_containing(legs: l, needle: concat(" mask ", u(n: "01") as String)) == 0
   }
 }
 
@@ -574,4 +654,269 @@ test fn the_release_receipt_states_a_failed_release() -> Bool {
 
 test fn the_release_of_nothing_owed_is_settled() -> Bool {
   release_verdict_is_settled(v: release_verdict_of(decision: ReleaseNothingOwed, outcomes: []))
+}
+
+
+// ── RULING B: the three-reading admission of a running idle listener ──────────────────────────────────────
+// Every claim below drives the PRODUCTION pass reader (read_slot_drain_pass_over) or the production restart
+// (stop_admitted_listener_over) over the roster route's own hermetic fixture, and judges with the production
+// fold. The only supplied inputs are the ssh answers (ssh.Session ExecPortableWords, through the main hermetic
+// fixture) and the answers bound at the operations the roster reader itself dispatches.
+
+fn listener_legs(n: String) -> List<Leg> {
+  [show_leg(n: n, load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: n) as String, " Runner.Listener\n"))]
+}
+fn worker_legs(n: String) -> List<Leg> {
+  [show_leg(n: n, load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: n) as String, " Runner.Worker\n"))]
+}
+
+fn admission_pass(legs: List<Leg>, roster: List<RosterAt>, environment: List<ModeledVariable>) -> BracketRun<BracketWaitStep> {
+  bracket_run_over(legs: legs, roster: roster, environment: environment, body: fn(target, context) {
+    bracket_wait_step(closure: AdmissionMaskRosterAndNoWorker, readings: read_slot_drain_pass_over(target: target, context: context, units: [u(n: "01")]), ticks_left: 0, time_up: false)
+  })
+}
+
+fn step_word(r: BracketRun<BracketWaitStep>) -> String {
+  match r {
+    BracketRunEnded { cause: c } => concat("ended: ", c)
+    BracketRunReturned { value: v, legs: _, calls: _ } => match v {
+      BracketDrained { listeners: l } => concat("drained:", to_string(length(l)))
+      BracketWaiting { ticks_left: _ } => "waiting"
+      BracketAdmissionNotClosed { listeners: _, causes: cs } => concat("not-closed: ", join(cs, " | "))
+      BracketBoundExceeded { busy: b, unproven: p } => concat("exceeded:", to_string(length(b)), ":", to_string(length(p)))
+    }
+  }
+}
+
+fn call_count(r: BracketRun<BracketWaitStep>, call: String) -> Int { length(filter(calls_of(r: r), c => c == call)) }
+fn list_calls(r: BracketRun<BracketWaitStep>) -> Int { call_count(r: r, call: "github.CliOrgSelfHostedRunners.ListOrgRunnersPage") }
+
+fn admitted_roster() -> List<RosterAt> { roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: false)])) }
+
+// THE POSITIVE CONTROL: masked, roster busy=false, no Runner.Worker -> the listener is admitted.
+test fn a_masked_idle_listener_with_a_roster_not_busy_and_no_worker_is_admitted() -> Bool {
+  let r = admission_pass(legs: listener_legs(n: "01"), roster: admitted_roster(), environment: route_environment())
+  step_word(r: r) == "drained:1" && list_calls(r: r) == 1 && length(ledger_of(r: r)) == 2
+}
+
+// RED: the roster says busy while the cgroup holds no Runner.Worker -> the readings disagree, never admitted.
+test fn a_roster_busy_registration_refuses_admission_naming_the_disagreement() -> Bool {
+  let r = admission_pass(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: true)])), environment: route_environment())
+  string_contains(s: step_word(r: r), pattern: "not-closed: ") && string_contains(s: step_word(r: r), pattern: "the readings disagree")
+}
+
+// RED: a registration absent from the roster is not idle (could-not-tell).
+test fn a_registration_absent_from_the_roster_refuses_admission() -> Bool {
+  let r = admission_pass(legs: listener_legs(n: "01"), roster: roster_empty(), environment: route_environment())
+  string_contains(s: step_word(r: r), pattern: "no registration named")
+}
+
+// RED: a partially read roster cannot exclude an unread registration.
+test fn a_partially_read_roster_refuses_admission() -> Bool {
+  let partial = gh_included(status: "200 OK", body: concat("{\"total_count\": 2, \"runners\": [", registered(n: "01", id: 7, busy: false), "]}"))
+  let r = admission_pass(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: partial), environment: route_environment())
+  string_contains(s: step_word(r: r), pattern: "not-closed: ")
+}
+
+// RED: an unavailable roster (the authority refuses) is not idle.
+test fn an_unavailable_roster_refuses_admission() -> Bool {
+  let r = admission_pass(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: gh_included(status: "403 Forbidden", body: "{}")), environment: route_environment())
+  string_contains(s: step_word(r: r), pattern: "did not say whether the registration is busy")
+}
+
+// RED: with no in-run credential the reader refuses before any request and the listener is not admitted.
+test fn a_roster_read_with_no_credential_refuses_admission_and_issues_no_gh_request() -> Bool {
+  let r = admission_pass(legs: listener_legs(n: "01"), roster: admitted_roster(), environment: [])
+  string_contains(s: step_word(r: r), pattern: "GUNBC_ORG_ADMIN_TOKEN is absent") && list_calls(r: r) == 0
+}
+
+// RED: two registrations of one name that disagree on busy are a disagreement, not idleness.
+test fn registrations_of_one_name_that_disagree_on_busy_refuse_admission() -> Bool {
+  let r = admission_pass(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: false), registered(n: "01", id: 8, busy: true)])), environment: route_environment())
+  string_contains(s: step_word(r: r), pattern: "not-closed: ")
+}
+
+// A live Runner.Worker is the existing wait, whatever the roster says, and the roster is never consulted for it.
+test fn a_live_worker_is_waited_out_and_the_roster_is_not_read() -> Bool {
+  let r = admission_pass(legs: worker_legs(n: "01"), roster: admitted_roster(), environment: route_environment())
+  step_word(r: r) == "exceeded:1:0" && list_calls(r: r) == 0
+}
+
+// A stopped slot has no listener: nothing to admit, and no API call is spent.
+test fn a_stopped_slot_is_drained_without_a_roster_read() -> Bool {
+  let r = admission_pass(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive")], roster: admitted_roster(), environment: route_environment())
+  step_word(r: r) == "drained:0" && list_calls(r: r) == 0
+}
+
+// §3 PAIRING: the REAL roster reader, through the same hermetic route, yields the busy shape the controls
+// above supply -- the route is asserted (one organization read, one listing page), not only the answer.
+test fn the_production_roster_reader_reads_the_busy_registrations_the_controls_supply() -> Bool {
+  let r = bracket_run_over(
+    legs: [],
+    roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: false), registered(n: "02", id: 8, busy: true)])),
+    environment: route_environment(),
+    body: fn(target, context) { organization_runner_roster_live_read() }
+  )
+  match r {
+    BracketRunEnded { cause: _ } => false
+    BracketRunReturned { value: ev, legs: _, calls: cs } => match ev {
+      RosterObserved { observed_on: _, registrations: regs } =>
+        length(regs) == 2
+          && any(regs, g => (g.name as String) == registration_of(n: "01") && !g.busy)
+          && any(regs, g => (g.name as String) == registration_of(n: "02") && g.busy)
+          && length(filter(cs, c => c == "github.CliOrgSelfHostedRunners.ListOrgRunnersPage")) == 1
+          && length(filter(cs, c => c == "github.CliOrganizations.GetOrganization")) == 1
+      _ => false
+    }
+  }
+}
+
+// ── the restart, gated by a re-read of all three ──────────────────────────────────────────────────────────
+
+fn restart_run(legs: List<Leg>, roster: List<RosterAt>) -> BracketRun<ListenerRestart> {
+  bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) { stop_admitted_listener_over(target: target, context: context, unit: u(n: "01")) })
+}
+
+fn restart_word(r: BracketRun<ListenerRestart>) -> String {
+  match r {
+    BracketRunEnded { cause: c } => concat("ended: ", c)
+    BracketRunReturned { value: v, legs: _, calls: _ } => match v {
+      ListenerStopped { unit: _ } => "stopped"
+      ListenerNoLongerRunning { unit: _ } => "no-longer-running"
+      ListenerStopRefused { unit: _, cause: c } => concat("refused: ", c)
+    }
+  }
+}
+
+fn stops_in(r: BracketRun<ListenerRestart>) -> Int { count_containing(legs: ledger_of(r: r), needle: " stop ") }
+
+// POSITIVE: all three still agree at the re-read -> exactly one elevated stop.
+test fn a_listener_still_admitted_at_the_reread_is_stopped_exactly_once() -> Bool {
+  let r = restart_run(legs: concat(listener_legs(n: "01"), [step_leg(verb: "stop")]), roster: admitted_roster())
+  restart_word(r: r) == "stopped" && stops_in(r: r) == 1
+}
+
+// RED: the roster turned busy between the drain's reading and the restart's re-read -> no stop.
+test fn a_roster_that_turns_busy_before_the_restart_prevents_the_stop() -> Bool {
+  let r = restart_run(legs: concat(listener_legs(n: "01"), [step_leg(verb: "stop")]), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: true)])))
+  string_contains(s: restart_word(r: r), pattern: "refused: ") && stops_in(r: r) == 0
+}
+
+// RED: a Runner.Worker appeared in the cgroup before the restart -> no stop.
+test fn a_worker_that_appears_before_the_restart_prevents_the_stop() -> Bool {
+  let r = restart_run(legs: concat(worker_legs(n: "01"), [step_leg(verb: "stop")]), roster: admitted_roster())
+  string_contains(s: restart_word(r: r), pattern: "Runner.Worker is live") && stops_in(r: r) == 0
+}
+
+// RED: the mask was lifted before the restart -> no stop.
+test fn a_mask_lifted_before_the_restart_prevents_the_stop() -> Bool {
+  let r = restart_run(legs: [show_leg(n: "01", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Listener\n")), step_leg(verb: "stop")], roster: admitted_roster())
+  string_contains(s: restart_word(r: r), pattern: "no longer masked") && stops_in(r: r) == 0
+}
+
+// RED: an unread roster at the re-read -> no stop, with the cause and the declared residual named.
+test fn an_unread_roster_at_the_reread_prevents_the_stop() -> Bool {
+  let r = restart_run(legs: concat(listener_legs(n: "01"), [step_leg(verb: "stop")]), roster: roster_empty())
+  string_contains(s: restart_word(r: r), pattern: "refused: ") && stops_in(r: r) == 0
+}
+
+// The residual is declared in the refusal text itself: the window between the last reading and the stop.
+test fn the_declared_residual_and_frontier_are_typed_and_the_wire_renders_them() -> Bool {
+  let w = listener_restart_residual_wire()
+  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 3
+    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker)")
+    && any(listener_reregistration_frontier.triggers, t => match t { UpstreamAtomicBusyRefusingAdmissionClose => true LongLivedSlotReregistrationRoute => false })
+    && string_contains(s: w, pattern: "residual: ") && string_contains(s: w, pattern: "frontier: ")
+    && string_contains(s: w, pattern: "an upstream-documented atomic busy-refusing admission close AND a re-registration route for long-lived slots")
+}
+
+
+// the cancel-leaves-masked residual is typed AND carried on the wire with its bound and its restoration trigger
+test fn the_cancellation_residual_names_its_bound_and_its_restoration_trigger() -> Bool {
+  let w = release_envelope_wire(policy: runner_host_cap_drain_policy)
+  string_contains(s: w, pattern: "after 300s") && string_contains(s: w, pattern: "needs 1140s") && string_contains(s: w, pattern: "restoration trigger: the next bracket run reading a durable hold")
+}
+
+
+// ── the gate on the FIRST cap-applying effect ─────────────────────────────────────────────────────────────
+// The production gate (cap_write_gate_of) over the production pass reader, through the same hermetic route.
+// The gate is the only thing between the drain and the first cap write, so a refusal here means the issued
+// ledger holds reads only: no write, no daemon-reload, no stop, no start.
+
+fn gate_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<CapWriteGate> {
+  bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
+    cap_write_gate_of(closure: runner_host_cap_admission_closure, observed: [u(n: "01")], owned: owned, readings: read_slot_drain_pass_over(target: target, context: context, units: [u(n: "01")]))
+  })
+}
+
+fn gate_admitted(r: BracketRun<CapWriteGate>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapWriteAdmitted => true CapWriteRefused { causes: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn gate_causes(r: BracketRun<CapWriteGate>) -> String { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapWriteAdmitted => "" CapWriteRefused { causes: cs } => join(cs, " | ") } BracketRunEnded { cause: c } => c } }
+fn effects_in(r: BracketRun<CapWriteGate>) -> Int { count_containing(legs: ledger_of(r: r), needle: " stop ") + count_containing(legs: ledger_of(r: r), needle: " start ") + count_containing(legs: ledger_of(r: r), needle: "daemon-reload") + count_containing(legs: ledger_of(r: r), needle: "mv ") + count_containing(legs: ledger_of(r: r), needle: "tee") }
+
+// POSITIVE: an owned admitted listener still admitted at the re-read -> the write may proceed.
+test fn an_owned_listener_still_admitted_lets_the_first_cap_write_proceed() -> Bool {
+  gate_admitted(r: gate_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [u(n: "01")]))
+}
+
+// RED: the roster turned busy -> no write, no reload, no stop/start on the issued ledger.
+test fn a_roster_that_turns_busy_before_the_first_write_blocks_every_cap_effect() -> Bool {
+  let r = gate_run(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: true)])), owned: [u(n: "01")])
+  !gate_admitted(r: r) && effects_in(r: r) == 0
+}
+
+// RED: a Runner.Worker appeared -> blocked, zero effects.
+test fn a_worker_that_appears_before_the_first_write_blocks_every_cap_effect() -> Bool {
+  let r = gate_run(legs: worker_legs(n: "01"), roster: admitted_roster(), owned: [u(n: "01")])
+  !gate_admitted(r: r) && string_contains(s: gate_causes(r: r), pattern: "Runner.Worker is live") && effects_in(r: r) == 0
+}
+
+// RED: the mask was lifted -> blocked, zero effects.
+test fn a_mask_lifted_before_the_first_write_blocks_every_cap_effect() -> Bool {
+  let r = gate_run(legs: [show_leg(n: "01", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Listener\n"))], roster: admitted_roster(), owned: [u(n: "01")])
+  !gate_admitted(r: r) && string_contains(s: gate_causes(r: r), pattern: "no longer masked") && effects_in(r: r) == 0
+}
+
+// RED: a live listener masked by someone else (not owned) blocks the write: the reload would cap it unproven.
+test fn a_foreign_masked_live_listener_blocks_the_first_cap_write() -> Bool {
+  let r = gate_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [])
+  !gate_admitted(r: r) && string_contains(s: gate_causes(r: r), pattern: "masked by someone else") && effects_in(r: r) == 0
+}
+
+// a foreign unit that is not running is not a live listener: it does not block the write
+test fn a_foreign_masked_stopped_unit_does_not_block_the_first_cap_write() -> Bool {
+  gate_admitted(r: gate_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive")], roster: admitted_roster(), owned: []))
+}
+
+
+// ── the full flow: after the drain, through the production phase function ─────────────────────────────────
+// cap_phase_after_drain_over is the whole of run_runner_host_cap_bracket after BracketDrained, so this drives
+// the call-site ORDER: the fresh reading, then (only if it admits) the first cap-applying effect. The drain
+// said admitted; the re-read turns busy (or the unit is a foreign live listener). The issued-argv ledger must
+// hold no cap-file mention, no daemon-reload and no stop. (Release after the refusal does issue its own
+// unmask/start of the units this run owns; that restores service and applies no cap.)
+
+fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -> BracketRun<RunnerHostCapPhase> {
+  bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
+    cap_phase_after_drain_over(
+      subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
+      context: context, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
+      owned: owned, admitted: [u(n: "01")])
+  })
+}
+
+fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => false CapPhaseNotOwed => false CapPhaseObserved { readings: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn flow_cap_effects(r: BracketRun<RunnerHostCapPhase>) -> Int {
+  let legs = ledger_of(r: r)
+  count_containing(legs: legs, needle: "daemon-reload") + count_containing(legs: legs, needle: " stop ")
+    + length(filter(legs, c => any(runner_host_cap_files(), f => string_contains(s: c, pattern: f.path as String))))
+}
+
+test fn a_reread_that_turns_busy_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered(n: "01", id: 7, busy: true)])), owned: [u(n: "01")])
+  flow_withheld(r: r) && length(ledger_of(r: r)) >= 2 && flow_cap_effects(r: r) == 0
+}
+
+test fn a_foreign_live_listener_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [])
+  flow_withheld(r: r) && length(ledger_of(r: r)) >= 2 && flow_cap_effects(r: r) == 0
 }
