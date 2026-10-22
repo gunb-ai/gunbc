@@ -5,7 +5,7 @@ cd /root/workspace/repo-root 2>/dev/null || true
 # grain-phrased credit). Plants are staged bytes derived locally from the head blob; each replaces ONE
 # whole balanced expression (never a fragment), and each was pre-mapped to the claims that consume it by a
 # claim-body scan of the witness and wet entries. Restores are byte-compared against head.
-HEADSHA=69a41ee167cad3e5c0648b0b7484777817c55ad1  # expanded locally: git rev-parse 69a41ee167c
+HEADSHA=8f7af1271081476ec2c2019db4d2d448c481ea52  # gh pr view 14575 --json headRefOid (re-verify sweep)
 CEN=src/v2/workflow/outside_discovery_roots_census.dag
 WIT=src/v2/test/claim/outside_discovery_roots_census_witness.dag
 REX=src/v2/test/claim/outside_discovery_roots_census_real_execution.dag

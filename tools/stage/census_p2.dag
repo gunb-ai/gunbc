@@ -9,10 +9,14 @@ module v2.workflow.outside_discovery_roots_census
 // of its own, deliberately: it answers the same question as the existing
 // `gunbc test //gunbc/instruments:claim-coverage-census` -- which claims sit outside what is watched -- so
 // under the one-instrument ruling it enters that instrument as a SOURCE rather than becoming a second
-// label. The composition lands with that instrument's own PR (#14469); until it does, the consumers of
-// these builders are the claim files under src/v2/test/claim and the three enrollment rows that schedule
-// them. The receipt and header lines are therefore the shape the composed report will print, and they are
-// pinned by claims today and read by the label once the composition lands.
+// label. THE CONSUMER IS `gunbc.claim_coverage_census_live` `claim_coverage_census_exit`: it calls
+// `outside_roots_census` (live module) over the two tracked-claim captures, folds the census's
+// `OutsideRootsChannel` beside the wet schedule's standing and the S1 discovered universe's standing in
+// `claim_coverage_composed_standing`, and prints this module's receipt and header lines beside the other
+// two sources' lines. The executing route is the label itself -- `gunbc test
+// //gunbc/instruments:claim-coverage-census` -- and the fold is pinned per-channel by the composition
+// claims in `v2.test.claim.claim_coverage_census_s1_witness`; the per-source behaviour is pinned by the
+// claim files under src/v2/test/claim and scheduled by the three enrollment rows.
 //
 // WHY A STANDING AND NOT AN ENUMERATION OF ABSENT ANSWERS (warm-wolf-570's ruling). The repo already
 // declares this population: `v1_claim_scoped_witness_batch_deleted_note` in gunbc.ci.ci_layer_roots states
@@ -48,20 +52,35 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.rust_emitted_edge { module_to_filename }
 import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
 import v2.lens.module_graph { ModuleDeclarationFact }
-import gunbc.ci.ci_layer_roots { witness_discovery_scan_dirs }
+import gunbc.ci.ci_layer_roots {
+  witness_discovery_scan_dirs,
+  v1_claim_scoped_witness_batch_deleted_subject_directory
+}
 import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
 
-// THE STANDING. Four states, each a decision the census can actually make from its inputs:
+// THE STANDING. Three states, each a decision the census can actually make about ONE PATH from its inputs:
 //   InsideGovernedTree    -- the layout owns the path; a governed reader can acquire it. Not a finding.
 //   OutsideDiscoveryRoots -- tracked, a .dag, and the layout owns NO tree for it. THE FINDING.
 //   NotAClaimFile         -- outside the trees but not a claim file. Not a finding.
-//   ListingUnread         -- the enumeration itself could not be obtained. "Could not look" is not
-//                            "nothing to report": it refuses, and it outranks an empty census (§5).
+// An unread listing used to live HERE as a fourth arm, beside the per-path states -- review 84111: a fact
+// about the WHOLE census stored as a fact about one path, so a list could mix "unread" with observed rows,
+// a predicate (`listing_is_unread`) existed only to hunt the marker, and any fold forgetting that hunt
+// treated an unread listing as an empty, clean population -- the fail-open shape §5 refuses. "Could not
+// look" is now UNWRITABLE as a row (correctness by construction, §4b): it is an arm of the outcome sum
+// below, which cannot coexist with rows at all.
 type OutsideRootsStanding
   = InsideGovernedTree { path: String, tree_directory: String }
   | OutsideDiscoveryRoots { path: String, cause: OutsideRootsCause }
   | NotAClaimFile { path: String }
-  | ListingUnread { cause: String }
+
+// THE OUTCOME: what the census as a whole knows. Either it looked, and these are the rows -- or it could
+// not look, and this is why. Not both, ever: the fold that consumed the marker-hunting predicate is gone,
+// and the channel the composed census consumes is now DERIVED by matching this sum (review 84111 also
+// dissolves the Bool the derivation used to take: an unread census and a clean census were distinguishable
+// only because a Bool said so; now they are different arms).
+type OutsideRootsOutcome
+  = CensusUnread { cause: String }
+  | CensusObserved { rows: List<OutsideRootsStanding> }
 
 // THE CAUSE, AS CITATIONS AND NOT AS PROSE. A finding's cause used to be one sentence naming its three
 // authorities; a sentence cannot be checked, so a rename or deletion of any of them would have left every
@@ -91,7 +110,6 @@ data outside_roots_cause: OutsideRootsCause = OutsideRootsCause {
   emitted_by: decl_ref(module_path: "gunbc.stage0.stage0_rust_host_observation", decl_name: "emitted_population_repo_paths"),
   layout_authority: decl_ref(module_path: "v2.cli.repository_layout", decl_name: "repository_module_file_of_path")
 }
-data listing_unread_cause: String = "the tracked listing could not be obtained from the index"
 
 // HOW A CITATION IS PRINTED: `module:decl`, read off the carrier. Every printed citation in this module --
 // header and receipt alike -- goes through here, so the string a reader sees and the reference the witness
@@ -107,7 +125,13 @@ fn declaration_ref_display(ref: DeclarationRef) -> String {
 // subject of the note it cites -- not a list of the files found under it.
 // ONE fact, two spellings derived from it. The path prefix used for containment is the directory plus the
 // separator, so the two cannot drift apart -- a second literal would be a second source for one fact.
-data note_declared_subject_directory: String = "src/v1/tests/claim"
+// THE SUBJECT IS IMPORTED, NOT RESTATED (review 84153 #1): the note at
+// gunbc.ci.ci_layer_roots v1_claim_scoped_witness_batch_deleted_note owns this subject, and the typed
+// carrier beside it is the one place the directory is spelled (§3: one fact, one home). The witness claim
+// the_subject_carrier_and_the_note_prose_agree ties the carrier to the note's prose, so the census credits
+// the note for a population the note actually declares -- if the note is rewritten, the census's sorting
+// and its receipt's credit move together or a claim goes RED.
+data note_declared_subject_directory: String = v1_claim_scoped_witness_batch_deleted_subject_directory
 data note_declared_prefix: String = concat(note_declared_subject_directory, "/")
 
 // TWO TESTS, AND THE SECOND IS DOING THE REAL WORK.
@@ -120,8 +144,8 @@ data note_declared_prefix: String = concat(note_declared_subject_directory, "/")
 // `git grep -l`, the same rule the interpreter applies to a claim file's text.
 //
 // And a `.dag` under a fixtures directory is a parser INPUT even when its text carries the marker: the
-// fixture corpora deliberately contain claim-shaped text for parse tests. Without this test the listing's
-// 223 fixture files would be reported as uncovered claims. `fixtures` is a declared input medium
+// fixture corpora deliberately contain claim-shaped text for parse tests. Without this test the whole
+// fixture corpus would be reported as uncovered claims. `fixtures` is a declared input medium
 // (gunbc.floor.incremental_floor_authority FloorInputMedium::Fixtures), not a governed tree, so no layout
 // authority answers for it and the prefix is stated here, once, beside the predicate that uses it.
 data fixture_path_prefix: String = "fixtures/"
@@ -248,7 +272,6 @@ fn outside_roots_findings(rows: List<OutsideRootsStanding>) -> List<String> {
         OutsideDiscoveryRoots { path: path, cause: _ } => Cons { head: path, tail: acc }
         InsideGovernedTree { path: _, tree_directory: _ } => acc
         NotAClaimFile { path: _ } => acc
-        ListingUnread { cause: _ } => acc
       }
     }
   )
@@ -267,22 +290,6 @@ fn findings_under_note_subject(findings: List<String>) -> List<String> {
   findings |> filter(fn(path) { path_is_under_note_subject(path: path) })
 }
 
-// THE REFUSAL. An unreadable listing is not an empty one; it outranks a clean census and reports its cause.
-fn listing_unread_row() -> OutsideRootsStanding {
-  ListingUnread { cause: listing_unread_cause }
-}
-
-fn listing_is_unread(rows: List<OutsideRootsStanding>) -> Bool {
-  any(xs: rows, predicate: fn(row) {
-    match row {
-      ListingUnread { cause: _ } => true
-      InsideGovernedTree { path: _, tree_directory: _ } => false
-      OutsideDiscoveryRoots { path: _, cause: _ } => false
-      NotAClaimFile { path: _ } => false
-    }
-  })
-}
-
 // THE RECEIPT. One line per finding, at the grain the note names. No count is transcribed: the line count
 // IS the population, produced by the fold over the listing handed in.
 //
@@ -295,8 +302,9 @@ fn listing_is_unread(rows: List<OutsideRootsStanding>) -> Bool {
 //
 // AND THE MARKER ANSWER IS TYPED ON EVERY LINE, because it is not the marker authority. `acquisition_test_
 // markers` is the authority on "declares a test fn" and it is a PARSE; what the census was handed is a
-// pattern match over text, produced by `git grep -E -l` with a caller-supplied regex. The two agree on this
-// population -- the same 13 paths under the note's subject -- and the line says which one spoke. Printing a
+// pattern match over text, produced by `git grep -E -l` with a caller-supplied regex. The two are held to
+// agree on the census's own reported population, by the witness claims over that population; the line says
+// which one spoke. Printing a
 // pattern-grain observation with the authority's name on it is the transcribed standing DESIGN §6 forbids: a
 // reader would take a text match for the parser's verdict, and a pattern that drifts (prose `test fn`,
 // fixture text) would then be invisible behind an authority it never consulted.
@@ -352,8 +360,7 @@ data outside_roots_citations: List<DeclarationRef> = [
   outside_roots_cause.tracked_by,
   outside_roots_cause.note_subject,
   outside_roots_cause.emitted_by,
-  outside_roots_cause.layout_authority
-]
+  outside_roots_cause.layout_authority,]
 
 // The gap is reported at PATH grain because that is the grain the marker read answers at: `git grep -l`
 // prints a path, not a number of claims. Printing a claim count here would transcribe a figure this
@@ -368,15 +375,6 @@ fn path_is_in_a_scan_lane(path: String) -> Bool {
   })
 }
 
-// Census-visible means the layout authority answers for the path; the src/v1 population does not qualify and
-// keeps its own standing instead of appearing here too.
-fn is_census_visible(path: String) -> Bool {
-  match repository_module_file_of_path(path: path) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 // THE GAP POPULATION, computed from the marker answer the census was already handed. Nothing new is read and
 // nothing is excluded by name.
 fn scan_dir_gap_population(claim_bearers: List<String>) -> List<String> {
@@ -384,7 +382,10 @@ fn scan_dir_gap_population(claim_bearers: List<String>) -> List<String> {
     xs: claim_bearers,
     predicate: fn(path) {
       !(path.starts_with(prefix: fixture_path_prefix))
-        && is_census_visible(path: path)
+        && (match repository_module_file_of_path(path: path) {
+             Present { value: _ } => true
+             Absent => false
+           })
         && !(path_is_in_a_scan_lane(path: path))
     }
   )
