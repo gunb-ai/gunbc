@@ -3348,6 +3348,34 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does",
       expectation: ExpectedToHold {}
     },
+    // THE THREE WET ROUTES FOR THE BUILD-OUTPUT CAPTURE (Charter 2, review 82782). WITHOUT THESE
+    // ROWS NOTHING EXECUTES THE FILE: this schedule IS the route, and a wet witness that is written
+    // but not scheduled is a declaration no consumer runs -- DESIGN 3c's dangling row, and the
+    // exact incomplete triple chunk_06's header says nothing will refuse. Each row EXECUTES
+    // production's compute_return_outputs wet against a real temp checkout and the real
+    // /usr/bin/git, so the effects are shell.Mktemp.DirWithTemplate, shell.Remove.RecursiveForce, the Filesystem
+    // list/read/write verbs, and -- through production's own compute_exec --
+    // gunbc.WitnessBin.Run. Triple enrollment as for host_capacity_wet_witness: these rows,
+    // the gunbc.ci.ci_layer_roots row for output_capture_absence_wet_witness.dag, and the
+    // v2.workflow.floor_route_gap rows.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_returns_the_blob_git_hash_object_itself_printed" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_returns_the_blob_git_hash_object_itself_printed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line" },
       entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
