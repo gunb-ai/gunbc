@@ -7411,7 +7411,17 @@ fn non_empty_text_cast_diags(inner_typed: Node, target_type: Node, span: SourceS
               span: span, module_name: scope.module_name)]
             CodePointSequence => []
             NonEmptyCodePointSequence => []
-            NotText => []
+            // A non-text operand has no route into a code-point sequence. Base cast legality admits it
+            // (probe_a4_nontext: Int, Bool and Unit as NonEmptyStr compile clean), so this rule refuses it
+            // itself rather than relying on a guard it does not own. An operand already typed as a
+            // compiler error was refused where it arose and stays silent here.
+            NotText =>
+              match expression_value_type(e: inner_typed).inferred {
+                Present { value: CompilerError { message: _, span: _ } } => []
+                _ => [inference_error(
+                  message: "invalid cast: a non-text value cast into a non-empty code-point sequence; only text has a route into it (host text through the checked constructor over unicode_scalar_unfold, a string literal through its row)",
+                  span: span, module_name: scope.module_name)]
+              }
             // UNJUDGED, NEVER SILENT: an operand whose type reads no declaration identity is the text wall's
             // unidentified population (gunbc.rung_drop text_boundary_identity_wall), counted and located like
             // every other unidentified text boundary rather than admitted with no trace.
