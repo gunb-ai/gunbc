@@ -95,3 +95,21 @@ fn features_labelled(features: List<FeaturePlacement>, label: NonEmptyStr) -> Li
 fn features_of_kind(features: List<FeaturePlacement>, kind: FeatureKind) -> List<FeaturePlacement> {
   filter(features, f => f.kind == kind)
 }
+
+fn dimm_short_names(placements: List<DimmSlotPlacement>) -> List<NonEmptyStr> {
+  fold(placements, init: [], f: (acc, p) => concat(acc, [p.short_name]))
+}
+
+fn labels_of_kind(features: List<FeaturePlacement>, kind: FeatureKind) -> List<NonEmptyStr> {
+  fold(features_of_kind(features: features, kind: kind), init: [], f: (acc, f) => concat(acc, [f.label]))
+}
+
+// Labels of the features on one board edge, in authored order, which is left to right (or top
+// to bottom) in the manual's figure.
+fn labels_on_edge(features: List<FeaturePlacement>, edge: BoardEdge) -> List<NonEmptyStr> {
+  fold(features, init: [], f: (acc, f) =>
+    match f.on_edge {
+      Absent => acc
+      Present { value: e } => if e == edge { concat(acc, [f.label]) } else { acc }
+    })
+}

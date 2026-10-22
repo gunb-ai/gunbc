@@ -16,6 +16,7 @@ import extdeps.external_authority {
   CitedFigureStanding, TranscribedUncited, CitedToAuthority,
 }
 import extdeps.boards.physical_layout {
+  dimm_short_names, labels_of_kind,
   BoardEdge, EdgeTop, EdgeBottom, EdgeLeft, EdgeRight, ManualCite, BoardFrame,
   SocketSide, LeftOfSocket, RightOfSocket, LayoutNeighbour, NeighbourBoardEdge, NeighbourFeature,
   DimmSlotPlacement, FeatureKind, FeaturePlacement, FrameRow, FrameColumn,
@@ -110,7 +111,7 @@ data supermicro_h11ssl_epyc_7702p_standing: CitedFigureStanding = TranscribedUnc
 }
 
 // ---- Memory (p.15, pp.32-34).
-data supermicro_h11ssl_dimm_slots: List<NonEmptyStr> = ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"]
+data supermicro_h11ssl_dimm_slots: List<NonEmptyStr> = dimm_short_names(placements: supermicro_h11ssl_dimm_placements)
 
 type H11sslDimmModule = Rdimm1R | Rdimm2R | Rdimm2Dr | Lrdimm3ds4R | Lrdimm3ds8R | Rdimm3ds2R2H | Lrdimm3ds2S2R | Lrdimm3ds2S4R | Rdimm3ds2S2R | Rdimm3ds2S4R
 
@@ -281,7 +282,7 @@ type H11sslLanLinkSpeedLed = LinkLedOff10M | LinkLedGreen100M | LinkLedAmber1G
 data supermicro_h11ssl_lan_link_leds: List<H11sslLanLinkSpeedLed> = [LinkLedOff10M, LinkLedGreen100M, LinkLedAmber1G]
 
 // ---- Fans (p.39): seven 4-pin headers; pin 1 GND, 2 +12V, 3 tach, 4 PWM.
-data supermicro_h11ssl_fan_headers: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4", "FAN5", "FANA", "FANB"]
+data supermicro_h11ssl_fan_headers: List<NonEmptyStr> = labels_of_kind(features: supermicro_h11ssl_features, kind: KindFanHeader)
 type H11sslFanPin = FanGnd | Fan12V | FanTach | FanPwm
 fn supermicro_h11ssl_fan_pin(pin: Nat) -> H11sslFanPin? {
   match pin {
@@ -519,13 +520,13 @@ data supermicro_h11ssl_features: List<FeaturePlacement> = [
   h11ssl_feature(label: "L-SAS0~7", kind: KindSasConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 40),
   h11ssl_feature(label: "JNVME0", kind: KindNvmeConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 40),
   h11ssl_feature(label: "JNVME1", kind: KindNvmeConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 40),
-  h11ssl_feature(label: "FAN1", kind: KindFanHeader, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeBottom }, page: 39),
-  h11ssl_feature(label: "FAN2", kind: KindFanHeader, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeBottom }, page: 39),
-  h11ssl_feature(label: "FAN3", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
-  h11ssl_feature(label: "FAN4", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
-  h11ssl_feature(label: "FAN5", kind: KindFanHeader, row: RowTop, column: ColumnRight, edge: Present { value: EdgeRight }, page: 39),
-  h11ssl_feature(label: "FANA", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
   h11ssl_feature(label: "FANB", kind: KindFanHeader, row: RowBottom, column: ColumnLeft, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FANA", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN4", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN3", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN5", kind: KindFanHeader, row: RowTop, column: ColumnRight, edge: Present { value: EdgeRight }, page: 39),
+  h11ssl_feature(label: "FAN2", kind: KindFanHeader, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN1", kind: KindFanHeader, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeBottom }, page: 39),
   h11ssl_feature(label: "JPWR2", kind: KindPowerConnector, row: RowBottom, column: ColumnRight, edge: Absent, page: 44),
   h11ssl_feature(label: "JPWR1", kind: KindPowerConnector, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeRight }, page: 45),
   h11ssl_feature(label: "JPW1", kind: KindPowerConnector, row: RowTop, column: ColumnRight, edge: Present { value: EdgeRight }, page: 45),
@@ -544,13 +545,13 @@ data supermicro_h11ssl_features: List<FeaturePlacement> = [
   h11ssl_feature(label: "LE3", kind: KindLed, row: RowMiddle, column: ColumnCentre, edge: Absent, page: 49),
   h11ssl_feature(label: "LEDSAS", kind: KindLed, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 50),
   h11ssl_feature(label: "JOH1", kind: KindHeader, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 43),
-  h11ssl_feature(label: "COM1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
-  h11ssl_feature(label: "IPMI_LAN", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
-  h11ssl_feature(label: "USB0/1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
-  h11ssl_feature(label: "USB4/5", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
-  h11ssl_feature(label: "LAN1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
-  h11ssl_feature(label: "LAN2", kind: KindRearPort, row: RowTop, column: ColumnCentre, edge: Present { value: EdgeTop }, page: 36),
   h11ssl_feature(label: "VGA", kind: KindRearPort, row: RowTop, column: ColumnCentre, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "LAN2", kind: KindRearPort, row: RowTop, column: ColumnCentre, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "LAN1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "USB4/5", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "USB0/1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "IPMI_LAN", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "COM1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
 ]
 
 // Known-unplaced features: they exist on the board (named on the p.11 callouts) but no cell is
@@ -593,13 +594,5 @@ fn supermicro_h11ssl_feature_knowledge(label: NonEmptyStr) -> H11sslFeatureKnowl
   else { FeatureNotKnown }
 }
 
-// Order along the I/O shield edge (top edge, figure left to right), Figure 1-2 p.10 and the
-// Quick Reference p.11. Positional, so a witness can ask what lies between two ports.
-data supermicro_h11ssl_io_edge_left_to_right: List<NonEmptyStr> = [
-  "UID-LED", "VGA", "LAN2", "LAN1", "USB4/5", "USB0/1", "IPMI_LAN", "COM1",
-]
-
-// Order along the bottom edge among the fan headers, left to right (p.11).
-data supermicro_h11ssl_fan_headers_bottom_edge_left_to_right: List<NonEmptyStr> = [
-  "FANB", "FANA", "FAN4", "FAN3", "FAN2", "FAN1",
-]
+// Authored row order within one board edge is left to right in the figure (p.10, p.11), so
+// labels_on_edge reads the order from supermicro_h11ssl_features itself; no second list.
