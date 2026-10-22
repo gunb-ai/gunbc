@@ -1,6 +1,6 @@
 module test.claim.deployment_gate_answer_witness
 
-// WITNESS FOR THE STAGE-2 ROUTE gunbc.fleet.deployment_gate_answer::answer_pending_environment_gate.
+// WITNESS FOR THE STAGE-2 ROUTE gunbc.fleet.deployment_gate_answer (the phase chain, ending in review_phase).
 //
 // WHAT THESE CLAIMS ARE OVER, STATED PLAINLY (DESIGN §3, "a witness discriminates at one interface").
 // Every input below is a SUPPLIED WIRE FACT at the route's interface: the responses GitHub would return,
@@ -11,11 +11,12 @@ module test.claim.deployment_gate_answer_witness
 // executable on the real I/O path when it lands.
 //
 // WHAT EACH CLAIM STILL EXECUTES: the REAL route. The honest-path claims drive the real confined mints
-// (observe_gate_installation, observe_rule_ownership, mint_accepted_rule_review) through the route, and
+// (observe_gate_installation, observe_rule_ownership, admit_broker_answer, clear_review, review_request_of, mint_accepted_rule_review) through the chain, and
 // the receipts they assert on can only have been built by the mint, so deleting the route's integration
 // of the mints makes the inhabitance claims go red.
 //
-// THE FIVE REDS: forged binding, crossed run id, crossed environment, broker denied, dark state.
+// THE REDS: forged binding, crossed run id, crossed environment, broker denied, dark state, and the two
+// body-binding reds (a sent body for the sibling environment; a DENY proposal sent as Approved).
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Int, Bool, List, NonEmptyStr, HttpStatus, Timestamp, String }
 import std.measure { minute }
@@ -52,6 +53,7 @@ import extdeps.github.deployment_protection_rule {
   InstallationWireFields,
   Approved,
   Rejected,
+  ReviewState,
   DeploymentProtectionRuleReview,
 }
 import gunbc.repository { gunbc_repository }
@@ -81,6 +83,8 @@ import gunbc.auth.deployment_gate_authorization {
   admit_reviewer_removal,
   ProtectionResponseNamedAnotherEnvironment,
   WaitNamesAnotherEnvironment,
+  ProtectionStillRequiresReviewers,
+  BrokerAdmission,
 }
 import gunbc.fleet.deployment_gate_answer {
   SentRequest,
@@ -97,16 +101,32 @@ import gunbc.fleet.deployment_gate_answer {
   Waiting,
   BrokerDeclined,
   GateWaitReason,
-  RequiredReviewersStand,
+  ReviewNotCleared,
+  ReviewBodyWasNotTheRequest,
+  SentReview,
+  BeginStopped,
+  Begun,
+  InstallationStopped,
+  InstallationEstablished,
+  OwnershipStopped,
+  OwnershipEstablished,
+  BrokerStopped,
+  BrokerAdmittedTo,
+  ProtectionStopped,
+  ProtectionCleared,
+  begin_phase,
+  installation_phase,
+  ownership_phase,
+  broker_phase,
+  protection_phase,
+  review_phase,
   ReadWasNotTheRoute,
   InstallationRoute,
   EnabledRuleRoute,
   ReviewRoute,
-  review_body_for,
   InstallationNotObserved,
   RuleOwnershipNotObserved,
   ReviewNotAccepted,
-  answer_pending_environment_gate,
 }
 
 data gated_env: NonEmptyStr = srv1_production_environment_name
@@ -244,22 +264,109 @@ fn honest_rule_read() -> RuleReadResponse {
   rule_read_with(rule_row_id: 900000001, row_app: app_id)
 }
 
-fn review_response_for(run_id: GitHubWorkflowRunId, status: HttpStatus) -> ReviewResponse {
-  ReviewResponse {
-    sent: SentRequest {
-      method: POST,
-      path: if run_id.value == 35447067113 {
-        "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule"
-      } else {
-        "/repos/gunb-ai/gunbc/actions/runs/35447067114/deployment_protection_rule"
-      },
-    },
-    status: status,
+fn review_path_for(run_id: GitHubWorkflowRunId) -> NonEmptyStr {
+  if run_id.value == 35447067113 {
+    "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule"
+  } else {
+    "/repos/gunb-ai/gunbc/actions/runs/35447067114/deployment_protection_rule"
   }
 }
 
-// THE ROUTE UNDER TEST, every input a supplied fact. No mint is called from this file: the route is the
-// only caller, which is what the confinement admits.
+fn review_sent(
+  path: NonEmptyStr,
+  environment_name: NonEmptyStr,
+  state: ReviewState
+) -> SentReview {
+  SentReview {
+    method: POST,
+    path: path,
+    body: DeploymentProtectionRuleReview { environment_name: environment_name, state: state, comment: Absent },
+  }
+}
+
+// THE CHAIN UNDER TEST, every input a supplied fact. No mint is called from this file: the phases are the
+// only callers, which is what the confinement admits. The simulated transport sends exactly the request the
+// protection phase produced unless `sent_override` is Present, in which case it sends THAT (the hostile
+// transport of the two body-binding reds and the crossed-path red).
+type Through
+  = ChainStopped { outcome: GateAnswerOutcome }
+  | ChainAdmitted { admission: BrokerAdmission, next: SentRequest }
+
+fn through_broker(
+  boundary: DeploymentGateBoundary,
+  claim: GateRequestClaim,
+  run: WorkflowRunRecord,
+  wait: PendingDeploymentWait,
+  decision: ProposedDecision,
+  installation_read: InstallationReadResponse,
+  rule_read: RuleReadResponse
+) -> Through {
+  match begin_phase(boundary: boundary, claim: claim) {
+    BeginStopped { outcome: o } => ChainStopped { outcome: o }
+    Begun { next: _ } =>
+      match installation_phase(boundary: boundary, response: installation_read, claim: installation_claim) {
+        InstallationStopped { outcome: o } => ChainStopped { outcome: o }
+        InstallationEstablished { observed: observed, next: _ } =>
+          match ownership_phase(boundary: boundary, response: rule_read, observed: observed) {
+            OwnershipStopped { outcome: o } => ChainStopped { outcome: o }
+            OwnershipEstablished { ownership: ownership } =>
+              match broker_phase(
+                boundary: boundary,
+                claim: claim,
+                wait: wait,
+                run: run,
+                capability: capability_for(decision: decision),
+                ownership: ownership
+              ) {
+                BrokerStopped { outcome: o } => ChainStopped { outcome: o }
+                BrokerAdmittedTo { admission: a, next: n } => ChainAdmitted { admission: a, next: n }
+              }
+          }
+      }
+  }
+}
+
+fn drive(
+  boundary: DeploymentGateBoundary,
+  protection_read: ProtectionReadResponse,
+  claim: GateRequestClaim,
+  run: WorkflowRunRecord,
+  wait: PendingDeploymentWait,
+  decision: ProposedDecision,
+  installation_read: InstallationReadResponse,
+  rule_read: RuleReadResponse,
+  sent_override: SentReview?,
+  status: HttpStatus
+) -> GateAnswerOutcome {
+  match through_broker(
+    boundary: boundary,
+    claim: claim,
+    run: run,
+    wait: wait,
+    decision: decision,
+    installation_read: installation_read,
+    rule_read: rule_read
+  ) {
+    ChainStopped { outcome: o } => o
+    ChainAdmitted { admission: a, next: _ } =>
+      match protection_phase(boundary: boundary, response: protection_read, admission: a) {
+        ProtectionStopped { outcome: o } => o
+        ProtectionCleared { request: request } =>
+          review_phase(
+            request: request,
+            response: ReviewResponse {
+              sent: match sent_override {
+                Present { value: v } => v
+                Absent => SentReview { method: request.method, path: request.path, body: request.body }
+              },
+              status: status,
+            },
+            requested_rule_id: rule_id
+          )
+      }
+  }
+}
+
 fn route(
   boundary: DeploymentGateBoundary,
   protection_read: ProtectionReadResponse,
@@ -269,20 +376,19 @@ fn route(
   decision: ProposedDecision,
   installation_read: InstallationReadResponse,
   rule_read: RuleReadResponse,
-  review_response: ReviewResponse
+  sent_override: SentReview?
 ) -> GateAnswerOutcome {
-  answer_pending_environment_gate(
+  drive(
     boundary: boundary,
     protection_read: protection_read,
     claim: claim,
-    installation_claim: installation_claim,
-    requested_rule_id: rule_id,
-    wait: wait,
     run: run,
-    capability: capability_for(decision: decision),
+    wait: wait,
+    decision: decision,
     installation_read: installation_read,
     rule_read: rule_read,
-    review_response: review_response
+    sent_override: sent_override,
+    status: 204
   )
 }
 
@@ -296,7 +402,7 @@ fn honest_route(run_id: GitHubWorkflowRunId, decision: ProposedDecision) -> Gate
     decision: decision,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_id, status: 204)
+    sent_override: Absent
   )
 }
 
@@ -342,7 +448,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
        },
      },
      rule_read: honest_rule_read(),
-     review_response: review_response_for(run_id: run_a, status: 204)
+     sent_override: Absent
    ) {
      Waiting { reason: InstallationNotObserved { because: _ } } => true
      Waiting { reason: _ } => false
@@ -359,7 +465,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
         decision: ProposeApprove,
         installation_read: honest_installation_read,
         rule_read: rule_read_with(rule_row_id: 900000001, row_app: GitHubAppId { value: 2222222222 }),
-        review_response: review_response_for(run_id: run_a, status: 204)
+        sent_override: Absent
       ) {
         Waiting { reason: RuleOwnershipNotObserved { because: _ } } => true
         Waiting { reason: _ } => false
@@ -376,7 +482,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
         decision: ProposeApprove,
         installation_read: honest_installation_read,
         rule_read: rule_read_with(rule_row_id: 900000042, row_app: app_id),
-        review_response: review_response_for(run_id: run_a, status: 204)
+        sent_override: Absent
       ) {
         Waiting { reason: ReviewNotAccepted { because: _ } } => true
         Waiting { reason: _ } => false
@@ -397,7 +503,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
           wire: honest_installation_read.wire,
         },
         rule_read: honest_rule_read(),
-        review_response: review_response_for(run_id: run_a, status: 204)
+        sent_override: Absent
       ) {
         Waiting { reason: ReadWasNotTheRoute { route: InstallationRoute, expected: _, sent: _ } } => true
         Waiting { reason: _ } => false
@@ -418,7 +524,7 @@ test fn a_run_record_for_another_run_is_refused_before_the_mint() -> Bool {
     decision: ProposeApprove,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_a, status: 204)
+    sent_override: Absent
   ) {
     BrokerDeclined { because: RecordRunIdIsNotTheFiledRun { record_run_id: _, filed_run_id: _ } } => true
     BrokerDeclined { because: _ } => false
@@ -441,7 +547,7 @@ test fn a_crossed_environment_is_refused_by_the_mint_and_by_the_admission() -> B
      decision: ProposeApprove,
      installation_read: honest_installation_read,
      rule_read: honest_rule_read(),
-     review_response: review_response_for(run_id: run_a, status: 204)
+     sent_override: Absent
    ) {
      Waiting { reason: ClaimNamesAnotherEnvironment { claimed: c, boundary: b } } => c == sibling_env && b == gated_env
      Waiting { reason: _ } => false
@@ -483,7 +589,7 @@ test fn a_wait_naming_another_environment_is_declined_by_the_broker_with_its_typ
     decision: ProposeApprove,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_a, status: 204)
+    sent_override: Absent
   ) {
     BrokerDeclined {
       because: WaitNamesAnotherEnvironment { waiting_environment: w, filed_environment: f },
@@ -503,10 +609,6 @@ test fn an_operator_denial_is_answered_with_a_rejected_receipt_and_a_rejected_re
      Waiting { reason: _ } => false
      BrokerDeclined { because: _ } => false
    })
-  && (match review_body_for(boundary: srv1_deployment_gate_boundary, capability: capability_for(decision: ProposeDeny)) {
-        DeploymentProtectionRuleReview { environment_name: e, state: Rejected, comment: Absent } => e == gated_env
-        DeploymentProtectionRuleReview { environment_name: _, state: _, comment: _ } => false
-      })
 }
 
 // ROUTE BINDING, enabled-rule read: a rule read sent to another environment's path is not the route.
@@ -524,7 +626,7 @@ test fn a_rule_read_sent_to_another_environment_is_not_the_route() -> Bool {
       rule_row_id: 900000001,
       row_app: app_id
     ),
-    review_response: review_response_for(run_id: run_a, status: 204)
+    sent_override: Absent
   ) {
     Waiting { reason: ReadWasNotTheRoute { route: EnabledRuleRoute, expected: _, sent: _ } } => true
     Waiting { reason: _ } => false
@@ -545,7 +647,7 @@ test fn a_review_response_recorded_against_another_runs_path_is_not_the_route() 
     decision: ProposeApprove,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_b, status: 204)
+    sent_override: Present { value: review_sent(path: review_path_for(run_id: run_b), environment_name: gated_env, state: Approved) }
   ) {
     Waiting { reason: ReadWasNotTheRoute { route: ReviewRoute, expected: _, sent: _ } } => true
     Waiting { reason: _ } => false
@@ -554,11 +656,12 @@ test fn a_review_response_recorded_against_another_runs_path_is_not_the_route() 
   }
 }
 
-// RED 5, DARK: with required reviewers present the result is Waiting{RequiredReviewersStand} even though
-// every other fact is honest, and a 204 is never even considered. The control above (reviewers gone) is
-// Answered on the same facts, so the only thing this red varies is the reviewer requirement.
+// RED 5, DARK: with required reviewers present the protection phase yields the stop, ReviewNotCleared, and NO
+// ReviewRequest value exists, so no transport response can be considered. The control above (reviewers gone)
+// is Answered on the same facts, so the only thing this red varies is the reviewer requirement. The second
+// half calls the protection phase itself, so the stop is the phase's yield and not the driver's.
 test fn while_required_reviewers_stand_the_route_only_waits() -> Bool {
-  match route(
+  (match route(
     boundary: srv1_deployment_gate_boundary,
     protection_read: protection_with(reviewers: true),
     claim: claim_for(run_id: run_a, environment: gated_env),
@@ -567,9 +670,72 @@ test fn while_required_reviewers_stand_the_route_only_waits() -> Bool {
     decision: ProposeApprove,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_a, status: 204)
+    sent_override: Absent
   ) {
-    Waiting { reason: RequiredReviewersStand } => true
+    Waiting { reason: ReviewNotCleared { because: ProtectionStillRequiresReviewers } } => true
+    Waiting { reason: _ } => false
+    Answered { receipt: _ } => false
+    BrokerDeclined { because: _ } => false
+  })
+  && (match through_broker(
+        boundary: srv1_deployment_gate_boundary,
+        claim: claim_for(run_id: run_a, environment: gated_env),
+        run: in_flight_run(run_id: run_a),
+        wait: wait_for_environment(environment_name: gated_env),
+        decision: ProposeApprove,
+        installation_read: honest_installation_read,
+        rule_read: honest_rule_read()
+      ) {
+        ChainStopped { outcome: _ } => false
+        ChainAdmitted { admission: a, next: _ } =>
+          match protection_phase(
+            boundary: srv1_deployment_gate_boundary,
+            response: protection_with(reviewers: true),
+            admission: a
+          ) {
+            ProtectionStopped { outcome: Waiting { reason: ReviewNotCleared { because: ProtectionStillRequiresReviewers } } } => true
+            ProtectionStopped { outcome: _ } => false
+            ProtectionCleared { request: _ } => false
+          }
+      })
+}
+
+// BODY BINDING (a): boundary, claim and capability all name srv1, the route and status are correct, and the
+// SENT BODY names the sibling environment. No receipt of either state.
+test fn a_sent_body_naming_the_sibling_environment_is_not_the_request() -> Bool {
+  (match route(
+     boundary: srv1_deployment_gate_boundary,
+     protection_read: protection_with(reviewers: false),
+     claim: claim_for(run_id: run_a, environment: gated_env),
+     run: in_flight_run(run_id: run_a),
+     wait: wait_for_environment(environment_name: gated_env),
+     decision: ProposeApprove,
+     installation_read: honest_installation_read,
+     rule_read: honest_rule_read(),
+     sent_override: Present { value: review_sent(path: review_path_for(run_id: run_a), environment_name: sibling_env, state: Approved) }
+   ) {
+     Waiting { reason: ReviewBodyWasNotTheRequest { expected: _, sent: _ } } => true
+     Waiting { reason: _ } => false
+     Answered { receipt: _ } => false
+     BrokerDeclined { because: _ } => false
+   })
+}
+
+// BODY BINDING (b): the operator proposed DENY; the transport sent state Approved and got a 204. No receipt
+// of either state.
+test fn a_deny_proposal_sent_as_approved_yields_no_receipt() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection_read: protection_with(reviewers: false),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeDeny,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    sent_override: Present { value: review_sent(path: review_path_for(run_id: run_a), environment_name: gated_env, state: Approved) }
+  ) {
+    Waiting { reason: ReviewBodyWasNotTheRequest { expected: _, sent: _ } } => true
     Waiting { reason: _ } => false
     Answered { receipt: _ } => false
     BrokerDeclined { because: _ } => false
@@ -593,7 +759,7 @@ test fn a_protection_response_naming_another_environment_waits_with_its_own_refu
     decision: ProposeApprove,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_a, status: 204)
+    sent_override: Absent
   ) {
     Waiting {
       reason: ProtectionNotEstablished {
@@ -623,7 +789,7 @@ test fn a_protection_read_from_another_route_is_not_the_route() -> Bool {
     decision: ProposeApprove,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_a, status: 204)
+    sent_override: Absent
   ) {
     Waiting { reason: ReadWasNotTheRoute { route: EnvironmentRoute, expected: _, sent: _ } } => true
     Waiting { reason: _ } => false
@@ -648,7 +814,7 @@ test fn a_protection_read_that_did_not_answer_waits() -> Bool {
     decision: ProposeApprove,
     installation_read: honest_installation_read,
     rule_read: honest_rule_read(),
-    review_response: review_response_for(run_id: run_a, status: 204)
+    sent_override: Absent
   ) {
     Waiting { reason: EnvironmentReadDidNotAnswer { status: 404 } } => true
     Waiting { reason: _ } => false

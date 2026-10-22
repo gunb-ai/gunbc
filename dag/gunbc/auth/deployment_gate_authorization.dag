@@ -85,6 +85,7 @@ import extdeps.github.deployment_protection_rule {
   wait_timer_maximum,
   rule_delivery_documented_guarantee,
   review_endpoint_path_built_for,
+  review_call,
   RoutePathBuildRefusal,
   BuiltRoutePath,
   BuiltRoutePathOk,
@@ -119,6 +120,7 @@ import extdeps.github.actions_runs {
   WorkflowRunRecord,
   workflow_run_settlement,
 }
+import extdeps.ietf.http_semantics { HttpMethod }
 import extdeps.github.github { Repository }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import gunbc.repository { gunbc_repository }
@@ -1119,7 +1121,7 @@ fn mint_accepted_rule_review(
   admit_callers: [
     decl_ref(
       module_path: "gunbc.fleet.deployment_gate_answer",
-      decl_name: "answer_pending_environment_gate"
+      decl_name: "review_phase"
     ),
     decl_ref(
       module_path: "test.claim.deployment_gate_authorization_witness",
@@ -1239,6 +1241,161 @@ fn mint_accepted_rule_review(
         }
     }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5c. THE ORDER OF THE ANSWER IS CONSTRUCTED, NOT TRUSTED
+// ---------------------------------------------------------------------------
+//
+// Every authority-bearing token between the route's phases is sealed, so a phase's only input is the
+// previous phase's output and no module can enter the chain in the middle: ObservedGateInstallation and
+// ObservedRuleOwnership (above), then BrokerAdmission, ReviewClearance and ReviewRequest (here). A review
+// request is the only thing a transport may POST, and one can exist only if the broker admitted the
+// answer AND the protection read, taken last, showed no required reviewer. With a reviewer standing there
+// is no value to POST, so no actuator built on the route can answer the gate, whatever it is handed.
+
+// WHAT broker_answer_decision ADMITTED, as a value. The decision is derived from the ApprovalCapability
+// INSIDE the mint below, so no later phase takes a free ReviewState: the state a review carries is the
+// state the redeemed tap proposed.
+type BrokerAdmission sole_constructor {
+  run_id: GitHubWorkflowRunId,
+  ownership: ObservedRuleOwnership,
+  decision: ReviewState,
+}
+
+type BrokerAdmissionOutcome
+  = BrokerAdmitted { admission: BrokerAdmission }
+  | BrokerAdmissionRefused { because: BrokerAnswerRefusal }
+
+// THE ONLY MINT OF AN ADMISSION. It runs broker_answer_decision and nothing else decides.
+fn admit_broker_answer(
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  claim: GateRequestClaim,
+  capability: ApprovalCapability,
+  ownership: EnvironmentRuleOwnership
+) -> BrokerAdmissionOutcome
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "broker_phase"
+    ),
+  ]
+{
+  match broker_answer_decision(wait: wait, run: run, claim: claim, capability: capability, ownership: ownership) {
+    BrokerRefused { because: b } => BrokerAdmissionRefused { because: b }
+    BrokerMayAnswer => match ownership {
+      NotOwnedByGateApp { because: b } =>
+        BrokerAdmissionRefused { because: RuleOwnershipNotEstablished { because: b } }
+      OwnedByGateApp { observation: o } =>
+        BrokerAdmitted {
+          admission: BrokerAdmission {
+            run_id: claim.run_id,
+            ownership: o,
+            decision: match capability_decision(capability: capability) {
+              ProposeApprove => Approved
+              ProposeDeny => Rejected
+            },
+          },
+        }
+    }
+  }
+}
+
+// WHY A CLEARANCE REFUSES, each carrying the comparison's own SubjectDifference rather than a re-spelled
+// triple (the one comparison above, subject_comparison).
+type ClearanceRefusal
+  = ProtectionStillRequiresReviewers
+  | ProtectionIsAboutAnotherBoundary { because: SubjectDifference }
+  | OwnershipIsAboutAnotherBoundary { because: SubjectDifference }
+
+type ReviewClearance sole_constructor {
+  boundary: DeploymentGateBoundary,
+  admission: BrokerAdmission,
+  protection: EnvironmentProtectionObservation,
+}
+
+type ReviewClearanceOutcome
+  = Cleared { clearance: ReviewClearance }
+  | ClearanceRefused { because: ClearanceRefusal }
+
+// THE ONLY MINT OF A CLEARANCE. It takes the sealed admission and the sealed protection observation and
+// no free decision. Both reads must be about the boundary (one comparison, subject_comparison) and the
+// environment must require no human reviewer: while one stands there is no clearance, hence no request.
+fn clear_review(
+  boundary: DeploymentGateBoundary,
+  admission: BrokerAdmission,
+  protection: EnvironmentProtectionObservation
+) -> ReviewClearanceOutcome
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "protection_phase"
+    ),
+  ]
+{
+  match subject_comparison(
+    observed: subject_of_the_protection_read(protection: protection),
+    other: subject_of_the_boundary(boundary: boundary)
+  ) {
+    SubjectsDiffer { because: d } => ClearanceRefused { because: ProtectionIsAboutAnotherBoundary { because: d } }
+    SubjectsAgree => match subject_comparison(
+      observed: subject_of_the_ownership_read(observation: admission.ownership),
+      other: subject_of_the_boundary(boundary: boundary)
+    ) {
+      SubjectsDiffer { because: d } => ClearanceRefused { because: OwnershipIsAboutAnotherBoundary { because: d } }
+      SubjectsAgree =>
+        if environment_protection_requires_reviewers(settings: protection.protection) {
+          ClearanceRefused { because: ProtectionStillRequiresReviewers }
+        } else {
+          Cleared {
+            clearance: ReviewClearance { boundary: boundary, admission: admission, protection: protection },
+          }
+        }
+    }
+  }
+}
+
+// THE REVIEW REQUEST: the complete POST (method, path AND body) the transport may make, constructible
+// only from a clearance. THE COMMENT IS ABSENT, ON PURPOSE: ApprovalCapabilityClaims carries a
+// ProposedDecision and no reason, so no typed denial reason exists upstream of the broker and none is
+// invented here.
+type ReviewRequest sole_constructor {
+  method: HttpMethod,
+  path: NonEmptyStr,
+  body: DeploymentProtectionRuleReview,
+  clearance: ReviewClearance,
+}
+
+type ReviewRequestOutcome
+  = ReviewRequestBuilt { request: ReviewRequest }
+  | ReviewRequestRefused { refusal: RoutePathBuildRefusal, hostile_segment: RoutePathSegment }
+
+fn review_request_of(clearance: ReviewClearance) -> ReviewRequestOutcome
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "protection_phase"
+    ),
+  ]
+{
+  let subject = subject_of_the_boundary(boundary: clearance.boundary)
+  match review_endpoint_path_built_for(owner: subject.owner, repo: subject.repo, run_id: clearance.admission.run_id) {
+    BuiltRoutePathRefused { refusal: r, hostile_segment: h } => ReviewRequestRefused { refusal: r, hostile_segment: h }
+    BuiltRoutePathOk { path: p } =>
+      ReviewRequestBuilt {
+        request: ReviewRequest {
+          method: review_call.method,
+          path: p,
+          body: DeploymentProtectionRuleReview {
+            environment_name: subject.environment_name,
+            state: clearance.admission.decision,
+            comment: Absent,
+          },
+          clearance: clearance,
+        },
+      }
   }
 }
 
@@ -2305,9 +2462,9 @@ type ReviewerRemovalAdmission
 // made anywhere in this file, and the next rung (a run-id carrier that carries inequality in its own
 // construction) is not available in this corpus yet.
 //
-// THE ADMITTED CALLER OF THE RECEIPT MINT. gunbc.fleet.deployment_gate_answer::answer_pending_environment_gate
+// THE ADMITTED CALLER OF THE RECEIPT MINT. gunbc.fleet.deployment_gate_answer::review_phase
 // is the mint's only admitted production caller and is named in its admit_callers. The route's consumer
-// (the actuator that performs the three calls and hands the route their responses) is the declared
+// (the actuator that performs the calls and hands each phase its response) is the declared
 // frontier recorded in gunbc.plans.ntfy_deployment_gate_approval, with its trigger and success condition.
 
 fn admit_reviewer_removal(
