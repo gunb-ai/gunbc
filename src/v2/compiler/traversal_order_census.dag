@@ -555,14 +555,18 @@ fn trav_key_text(key: TraversalSiteKey) -> String {
   concat("function=", concat(key.function, concat(" path=", concat(trav_path_text(path: key.path), concat(" kind=", concat(trav_kind_word(k: key.kind), concat(" callee=", key.callee)))))))
 }
 
+fn trav_total_line(stage: String, module: String, results: List<TraversalSiteResult>) -> String {
+  let structural = to_string(trav_count(results: results, module: module, word: "structural"))
+  let recurrence = to_string(trav_count(results: results, module: module, word: "recurrence"))
+  let fused = to_string(trav_count(results: results, module: module, word: "fused"))
+  let unresolved = to_string(trav_count(results: results, module: module, word: "unresolved"))
+  concat("[traversal-order-census] total stage=", concat(stage, concat(" module=", concat(module, concat(" structural=", concat(structural, concat(" recurrence=", concat(recurrence, concat(" fused=", concat(fused, concat(" unresolved=", unresolved))))))))))) 
+}
+
 fn traversal_census_lines(stages: List<TraversalStage>, report: TraversalCensusReport) -> List<String> {
   let totals = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
     fold_list(xs: s.modules, empty: acc, cons: fn(a, mod) {
-      list_snoc_item(xs: a, item: concat("[traversal-order-census] total stage=", concat(s.stage, concat(" module=", concat(mod,
-        concat(" structural=", concat(to_string(trav_count(results: report.results, module: mod, word: "structural")),
-        concat(" recurrence=", concat(to_string(trav_count(results: report.results, module: mod, word: "recurrence")),
-        concat(" fused=", concat(to_string(trav_count(results: report.results, module: mod, word: "fused")),
-        concat(" unresolved=", to_string(trav_count(results: report.results, module: mod, word: "unresolved")))))))))))))
+      list_snoc_item(xs: a, item: trav_total_line(stage: s.stage, module: mod, results: report.results))
     })
   })
   let unresolved = fold_list(xs: report.results, empty: [], cons: fn(acc, r) {
