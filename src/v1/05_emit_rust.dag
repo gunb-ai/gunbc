@@ -59,7 +59,7 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   is_error_diagnostic,
-  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, LeafSharingDisagreement, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -3476,13 +3476,16 @@ fn leaf_sharing_disagreement_declarers(type_summaries: TypeSummaryIndex, name: S
   if this_shared && copy_over_non_copy && (verdicts |> any(v => !v)) { keys } else { [] }
 }
 
-fn leaf_sharing_disagreement_refusal(name: String, identity: String, emit_info: EmitGraphInfo) -> String {
-  let declarers = leaf_sharing_disagreement_declarers(type_summaries: emit_info.type_summaries, name: name, identity: identity, recursive_type_set: emit_info.recursive_type_set, target_needs_sharing: sharing_for_target(target: Rust).needs_sharing)
-  if (declarers |> count) == 0 {
-    ""
-  } else {
-    concat("compile_error!(\"leaf_sharing_disagreement: type '", name, "' (", identity, ") is heap-shared but its leaf is declared by ", declarers |> join(separator: ", "), " and those declarations disagree on heap sharing; the shared set is keyed by leaf, so this declaration would be emitted unshared (Copy roster over Rc fields). Rename one declaration or key sharing by declaration identity.\");\n")
-  }
+fn leaf_sharing_disagreement_diagnostics(tm: TypedModule, emit_info: EmitGraphInfo) -> List<ErrorNode> {
+  let si = tm.type_env.source_indices
+  let module_name = authored_name_at(source_indices: si, node: tm.module)
+  tm.items |> filter(item => item.module_item_kind == ModuleItemTypeDeclaration) |> flat_map(item =>
+    let name = authored_name_at(source_indices: si, node: item)
+    let identity = type_decl_identity(owner_module: module_name, decl_name: name)
+    let declarers = leaf_sharing_disagreement_declarers(type_summaries: emit_info.type_summaries, name: name, identity: identity, recursive_type_set: emit_info.recursive_type_set, target_needs_sharing: sharing_for_target(target: Rust).needs_sharing)
+    if (declarers |> count) == 0 { [] }
+    else { [make_error_node(diagnostic: LeafSharingDisagreement { name: name, declarers: declarers, span: item.span }, module_name: module_name)] }
+  )
 }
 
 fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
@@ -3669,6 +3672,7 @@ type EmitRustContext {
   data_items: Map<String, Node>
   anonymous_record_diags: List<ErrorNode>
   effectful_recursion_diags: List<ErrorNode>
+  leaf_sharing_diags: List<ErrorNode>
   svc_module_map: Map<String, String>
   test_projections: List<TestProjection>
   export_sets: Map<String, Map<String, Bool>>
@@ -3731,6 +3735,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let registry = typed.item_registry
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
   let effectful_recursion_diags = typed.modules |> flat_map(tm => effectful_self_recursion_diagnostics(tm: tm, registry: registry))
+  let leaf_sharing_diags = typed.modules |> flat_map(tm => leaf_sharing_disagreement_diagnostics(tm: tm, emit_info: emit_info))
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     let svc_items = tm.items |> filter(item => item.module_item_kind == ModuleItemService)
     let mod_filename = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
@@ -3747,6 +3752,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     data_items: data_items,
     anonymous_record_diags: anonymous_record_diags,
     effectful_recursion_diags: effectful_recursion_diags,
+    leaf_sharing_diags: leaf_sharing_diags,
     svc_module_map: svc_module_map,
     test_projections: test_projections,
     export_sets: export_sets,
@@ -3830,6 +3836,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let effectful_recursion_diags = ctx.effectful_recursion_diags
   if effectful_recursion_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: effectful_recursion_diags, emitted_edges: [], rust_crates: [] }
+  }
+  let leaf_sharing_diags = ctx.leaf_sharing_diags
+  if leaf_sharing_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: leaf_sharing_diags, emitted_edges: [], rust_crates: [] }
   }
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
@@ -8232,8 +8242,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
     let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
-    let guarded_struct = concat(leaf_sharing_disagreement_refusal(name: item_text, identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text), emit_info: emit_info), struct_text)
-    if clone_bound_refusal == "" { guarded_struct } else { concat(clone_bound_refusal, "\n", guarded_struct) }
+    if clone_bound_refusal == "" { struct_text } else { concat(clone_bound_refusal, "\n", struct_text) }
   } else if declaration_owns_host_option(module_path: env.module_path, decl_name: item_text) {
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
@@ -8279,7 +8288,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
       source_indices: env.source_indices
     )
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let enum_text = concat(leaf_sharing_disagreement_refusal(name: item_text, identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text), emit_info: emit_info), emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
+    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
     let validations = if clone_bound_refusal == "" {
       validations
     } else if validations == "" {

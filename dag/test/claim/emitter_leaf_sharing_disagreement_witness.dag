@@ -1,17 +1,22 @@
 module test.claim.emitter_leaf_sharing_disagreement_witness
 
+import std.types { String, Bool, Int }
+import std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
 // Permanent regression control for the leaf-sharing disagreement refusal. THE DEFECT: the emitter's
 // shared set is keyed by type LEAF, so `Word64` declared as a constant record in std.machine_word
 // ({ hi: Int, lo: Int }) and as a heap record in std.bit ({ bytes: List<Byte> }) read as unshared,
 // and std.bit's Word64 took the Copy roster over an Rc-realized field (rustc E0204). Declarers that
-// disagree on sharing now refuse with a located compile_error! naming the leaf and every declaring
-// module; declarers that agree, and a single declarer, emit exactly as before.
+// disagree on sharing now stop emission with a typed LeafSharingDisagreement diagnostic located at
+// the unsound declaration and naming the leaf and every declaring identity; no crate is written for
+// it. Declarers that agree, and a single declarer, emit exactly as before.
 //
 // The refusal sits on the unsound side only: the heap (shared) declaration read through an unshared leaf.
-// The constant declaration reads correctly and emits unrefused (w_unshared_side_keeps_building).
 //
 // RED: a closure holding both Word64 declarations. CONTROLS: std.bit alone still emits its Word64
-// without the refusal, and an all-Copy record still derives Copy beside an Rc-field record.
+// with no diagnostic, and an all-Copy record still derives Copy beside an Rc-field record.
 //
 // dissolve-on: sharing keyed on declaration identity (gunbc.recurring_failure_mode
 // emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer); the RED then flips to emitting both.
@@ -28,38 +33,29 @@ fn copy_control_source() -> String {
   "module leaf_sharing_copy_control\n\nimport std.types { List }\n\ntype Flat { a: Int }\n\ntype Boxed { items: List<Int> }\n\nfn marker() -> Int {\n  1\n}\n"
 }
 
+// NOT-RUNNABLE IS NOT ZERO: -1 satisfies neither the == 0 control nor the >= 1 refusal.
+fn lsd_disagreement_count(source: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "LeafSharingDisagreement") {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
 fn w_disagreeing_declarers_refuse_in_std_bit() -> Bool {
-  compile_dag_rust_emit_check(
-    both_word64_source(),
-    "src/std_bit.rs",
-    ["compile_error!(\"leaf_sharing_disagreement: type 'Word64'"],
-    []
-  )
+  lsd_disagreement_count(source: both_word64_source()) >= 1
 }
 
 fn w_single_declarer_has_no_refusal() -> Bool {
-  compile_dag_rust_emit_check(
-    bit_only_source(),
-    "src/std_bit.rs",
-    ["pub struct Word64"],
-    ["leaf_sharing_disagreement"]
-  )
+  lsd_disagreement_count(source: bit_only_source()) == 0
+    && compile_dag_rust_emit_check(bit_only_source(), "src/std_bit.rs", ["pub struct Word64"], [])
 }
 
 fn w_all_copy_record_still_derives_copy() -> Bool {
-  compile_dag_rust_emit_check(
-    copy_control_source(),
-    "src/leaf_sharing_copy_control.rs",
-    ["Copy, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct Flat {"],
-    ["leaf_sharing_disagreement"]
-  )
-}
-
-fn w_unshared_side_keeps_building() -> Bool {
-  compile_dag_rust_emit_check(
-    both_word64_source(),
-    "src/std_machine_word.rs",
-    ["pub struct Word64"],
-    ["leaf_sharing_disagreement"]
-  )
+  lsd_disagreement_count(source: copy_control_source()) == 0
+    && compile_dag_rust_emit_check(
+      copy_control_source(),
+      "src/leaf_sharing_copy_control.rs",
+      ["Copy, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct Flat {"],
+      []
+    )
 }

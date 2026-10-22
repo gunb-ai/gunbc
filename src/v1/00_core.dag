@@ -427,6 +427,7 @@ type CompilerDiagnostic
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
   | EffectfulSelfRecursionUnrealized { name: String, span: SourceSpan }
+  | LeafSharingDisagreement { name: String, declarers: List<String>, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | EmittedSymbolCollision { symbol: String, identities: List<String>, span: SourceSpan }
   | NativeEffectRealizationRefused { entry: String, refusals: List<String>, span: SourceSpan }
@@ -675,6 +676,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AmbiguousReference { name: _, candidates: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
     EffectfulSelfRecursionUnrealized { name: _, span: s } => s
+    LeafSharingDisagreement { name: _, declarers: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     EmittedSymbolCollision { symbol: _, identities: _, span: s } => s
     NativeEffectRealizationRefused { entry: _, refusals: _, span: s } => s
@@ -784,6 +786,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     EffectfulSelfRecursionUnrealized { name: n, span: _ } => concat("effectful declaration '", n, "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.")
+    LeafSharingDisagreement { name: n, declarers: ds, span: _ } => concat("leaf sharing disagreement: type '", n, "' is heap-shared but its leaf is declared by ", join(ds, separator: ", "), " and those declarations disagree on heap sharing. The shared set is keyed by leaf, so this declaration would be emitted unshared with a Copy roster over Rc-realized fields (rustc E0204). Rename one declaration or key sharing by declaration identity (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer).")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     EmittedSymbolCollision { symbol: s, identities: ids, span: _ } => concat("emitted symbol collision: ", to_string(value: ids |> count), " authored identities render one emitted symbol '", s, "': ", join(ids, separator: ", "), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one")
     NativeEffectRealizationRefused { entry: e, refusals: rs, span: _ } => concat("native effect realization refused for entry '", e, "': ", join(rs, separator: "; "), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)")
@@ -930,6 +933,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     AmbiguousReference { name: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectfulSelfRecursionUnrealized { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    LeafSharingDisagreement { name: _, declarers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EmittedSymbolCollision { symbol: _, identities: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     NativeEffectRealizationRefused { entry: _, refusals: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
