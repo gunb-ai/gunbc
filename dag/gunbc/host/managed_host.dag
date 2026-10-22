@@ -15,7 +15,7 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations, allocated_canonical_hostname }
-import gunbc.rung_drop { RungDrop, Standing, Retired, dissolved_is_admissible }
+import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
@@ -194,10 +194,10 @@ data mtcollins1_bmc_secure_standing_drop_ref: DeclarationRef = decl_ref(
 // join only checks that cited identity is standing in the drop list.
 fn drop_is_standing_citation(drop: RungDrop, cited: DeclarationRef) -> Bool {
   match drop.standing {
-    Retired { trigger_fired: _ } => false
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: drop) == false && (drop.identity as String) == (cited.decl_name as String)
-    Standing => (drop.identity as String) == (cited.decl_name as String)
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    Dissolved { removal: _, declaration: _ } => false
+    Standing { declaration: _ } => (drop.identity as String) == (cited.decl_name as String)
   }
 }
 

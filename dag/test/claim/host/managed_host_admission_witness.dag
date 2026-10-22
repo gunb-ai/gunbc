@@ -8,7 +8,7 @@ import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
 import gunbc.rung_drop {
   AuthoredProse,
   RungDrop,
-  Standing,
+  Standing, Retired, Superseded, Dissolved,
   TypedDeclaration, population_from_list,
 }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
@@ -215,22 +215,26 @@ test fn w_mtjade1_has_no_record_and_is_not_managed() -> Bool {
 
 fn drop_with_identity_and_population(identity: NonEmptyStr, population: List<String>) -> RungDrop {
   let base = mtcollins1_bmc_secure_standing_predates_reflash
-  match base.declaration {
-    AuthoredProse { legacy: _, authored: _ } => base
-    TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } =>
+  match base.standing {
+    Standing { declaration: TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } } =>
       RungDrop {
         identity: identity,
         subject: base.subject,
         declared: base.declared,
-        standing: Standing,
-        declaration: TypedDeclaration {
-          previous: p,
-          temporary: t,
-          reason: r,
-          population: population_from_list(xs: population),
-          restoration_trigger: rt,
+        standing: Standing {
+          declaration: TypedDeclaration {
+            previous: p,
+            temporary: t,
+            reason: r,
+            population: population_from_list(xs: population),
+            restoration_trigger: rt,
+          },
         },
       }
+    Standing { declaration: AuthoredProse { legacy: _, authored: _ } } => base
+    Retired { trigger_fired: _, declaration: _ } => base
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => base
+    Dissolved { removal: _, declaration: _ } => base
   }
 }
 
