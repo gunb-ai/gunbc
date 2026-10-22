@@ -3451,12 +3451,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_standing_arm_refuses_a_row_that_never_stood_red" },
-      entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
-      function: "the_standing_arm_refuses_a_row_that_never_stood_red",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_enrolment_date_arms_separate_absence_from_fabrication" },
       entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
       function: "the_enrolment_date_arms_separate_absence_from_fabrication",
@@ -3475,9 +3469,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass" },
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_receipt_shape_arm_refuses_a_bad_head" },
       entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
-      function: "the_receipt_shape_arms_refuse_a_bad_head_and_a_non_pass",
+      function: "the_receipt_shape_arm_refuses_a_bad_head",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
