@@ -14,6 +14,11 @@ import v2.compiler.value_use_dependency {
   NotDerivedReason, NotDerivedStanding, RecordAbsent, ValuedBinderNotLocated, ValuedBinderSiteUnkeyed,
   ValuedUseNotLocated, ValueUseDependencies, ValueUseNotDerived, ValueUseRelation
 }
+import v2.compiler.effect_demand {
+  ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, Pure, PrimitiveExecutionSemantics, ReadsBoundInput,
+  effect_demand_operation_classifications
+}
+import std.primitive_projection { primitive_projection_roster }
 import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites, FactGroup, FactSpan }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure, DemandDerived, DemandDidNotSettle, DemandUndecided, DependencyDemandRow, FunctionFact,
@@ -266,6 +271,12 @@ type BodyOrdered {
   orders: List<OrderEdge>
   exclusive: List<OrderEdge>
   not_derived: List<NotDerivedKey>
+  repeated: List<RepeatedOccurrence>
+}
+
+type RepeatedOccurrence {
+  occurrence: Int
+  source: String
 }
 
 // A value-use row the derivation could NOT produce, keyed by the occurrence it was asked about.
@@ -293,6 +304,9 @@ type ActivationEdges {
 
 fn activation_edges(sites: List<FactCallSite>, groups: List<FactGroup>) -> ActivationEdges {
   fold_list(xs: groups, empty: ActivationEdges { orders: Empty, exclusive: Empty }, cons: fn(acc, g) {
+   match g.repetition {
+    Present { value: _ } => acc
+    Absent => {
     let spans = fold_list(xs: g.children, empty: Empty, cons: fn(a, sp) { list_snoc_item(xs: a, item: activation_arm_sites(sites: sites, span: sp)) })
     let selector = match list_head(xs: spans) {
       Present { value: x } => x
@@ -304,6 +318,8 @@ fn activation_edges(sites: List<FactCallSite>, groups: List<FactGroup>) -> Activ
     })
     let alt = activation_exclusive(arms: arms, acc: acc.exclusive)
     ActivationEdges { orders: ordered, exclusive: alt }
+    }
+   }
   })
 }
 
@@ -352,12 +368,25 @@ fn body_not_derived(sites: List<FactCallSite>, index: Map<Int, List<String>>) ->
   })
 }
 
+// Occurrences inside a Loop or lambda-template extent run more than once; one entry per (site, source).
+fn repeated_occurrences(sites: List<FactCallSite>, groups: List<FactGroup>) -> List<RepeatedOccurrence> {
+  fold_list(xs: groups, empty: Empty, cons: fn(acc, g) {
+    match g.repetition {
+      Absent => acc
+      Present { value: source } =>
+        fold_list(xs: g.children, empty: acc, cons: fn(a, sp) {
+          fold_list(xs: activation_arm_sites(sites: sites, span: sp), empty: a, cons: fn(a2, o) { list_snoc_item(xs: a2, item: RepeatedOccurrence { occurrence: o, source: source }) })
+        })
+    }
+  })
+}
+
 fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, uses: List<UseEdge>, not_derived: List<NotDerivedKey>) -> List<BodyOrdered> {
   let use_index = extract_use_index(uses: uses)
   let nd_index = not_derived_index(rows: not_derived)
   fold_list(xs: bodies, empty: Empty, cons: fn(acc, body) {
     let act = activation_edges(sites: body.sites, groups: body.groups)
-    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive, not_derived: body_not_derived(sites: body.sites, index: nd_index) })
+    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive, not_derived: body_not_derived(sites: body.sites, index: nd_index), repeated: repeated_occurrences(sites: body.sites, groups: body.groups) })
   })
 }
 
@@ -390,7 +419,19 @@ type ModuleEffectPairCensus {
   not_derived: List<BodyNotDerived>
   pairs: List<EffectPairRow>
   exclusive_pairs: List<ExclusivePairRow>
+  repeated: List<RepeatedEffectSite>
   totals: ModuleEffectPairTotals
+}
+
+// One row per reaching site that sits in a repetition extent: the site runs more than once, so it
+// conflicts with its own other iterations, a pair the single-occurrence reducer cannot see.
+fn body_repeated_sites(body: BodyOrdered, table: EffectReachTable) -> List<RepeatedEffectSite> {
+  let facts = body_effect_facts(body: body, table: table)
+  fold_list(xs: body.repeated, empty: Empty, cons: fn(acc, r) {
+    fold_list(xs: facts.sites, empty: acc, cons: fn(a, s) {
+      if s.occurrence == r.occurrence { list_snoc_item(xs: a, item: RepeatedEffectSite { module: body.module, function: body.function, site: s, repetition_source: r.source }) } else { a }
+    })
+  })
 }
 
 fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>, table: EffectReachTable) -> ModuleEffectPairCensus {
@@ -398,6 +439,7 @@ fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>
     not_derived: Empty,
     pairs: Empty,
     exclusive_pairs: Empty,
+    repeated: Empty,
     totals: ModuleEffectPairTotals { module: module, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }
   }
   fold_list(xs: bodies, empty: seed, cons: fn(acc, body) {
@@ -407,6 +449,7 @@ fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>
       not_derived: if n > 0 { list_snoc_item(xs: acc.not_derived, item: BodyNotDerived { module: module, function: body.function, rows: body.not_derived }) } else { acc.not_derived },
       pairs: fold_list(xs: found.pairs, empty: acc.pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
       exclusive_pairs: fold_list(xs: found.exclusive_pairs, empty: acc.exclusive_pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
+      repeated: fold_list(xs: body_repeated_sites(body: body, table: table), empty: acc.repeated, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }),
       totals: ModuleEffectPairTotals {
         module: module,
         bodies_scanned: acc.totals.bodies_scanned + 1,
@@ -419,23 +462,77 @@ fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>
 }
 
 // WHICH CALLEES REACH AN EFFECT, by reusing D13's reducer unchanged over a TRANSFORMED operation
-// table: every operation that is not declared RequiresNone becomes RequiresOpaque, so a function's
-// demand is Undecided exactly when some call chain from it reaches an operation, an opaque or
-// undeclared one, a function value or a callee outside the closure. No second call graph.
-// An operation declared RequiresNone is the one thing that does not reach; whether its execution
-// semantics row says otherwise is reported by the census, never promoted here.
+// table: every operation that reaches becomes RequiresOpaque, so a function's demand is Undecided
+// exactly when some call chain from it reaches one, an opaque or undeclared operation, a function
+// value or a callee outside the closure. No second call graph.
+// An operation reaches when D13 does not declare it RequiresNone, OR when it is RequiresNone but its
+// PrimitiveExecutionSemantics (v2.compiler.effect_demand) is ObservesHost, ActuatesHost or Unknown. An
+// operation with no semantics row is Unknown and reaches: it is also COUNTED (`unclassified`), because
+// treating it as pure would be the under-count D16 forbids and treating it as reaching silently would
+// hide how much of the population is unclassified.
 type EffectReachTable {
   reasons: Map<QualifiedName, ReachReason>
   known: Map<QualifiedName, Bool>
+  unclassified: List<QualifiedName>
 }
 
-fn reach_operation_table(operations: List<OperationFact>) -> List<OperationFact> {
+// The semantics join: operation declaration -> primitive slug (std.primitive_projection roster) ->
+// semantics (effect_demand classifications). Both maps are built once per table, never per operation.
+type OperationSemanticsIndex {
+  slug_of_declaration: Map<String, String>
+  semantics_of_slug: Map<String, PrimitiveExecutionSemantics>
+}
+
+fn operation_semantics_index() -> OperationSemanticsIndex {
+  OperationSemanticsIndex {
+    slug_of_declaration: fold_list(xs: primitive_projection_roster(), empty: empty_map(), cons: fn(m, row) {
+      map_insert(m: m, key: concat(row.declaration.module_path as String, ".", row.declaration.decl_name as String), value: row.primitive.slug as String)
+    }),
+    semantics_of_slug: fold_list(xs: effect_demand_operation_classifications, empty: empty_map(), cons: fn(m, c) {
+      map_insert(m: m, key: c.operation.slug as String, value: c.semantics)
+    })
+  }
+}
+
+fn operation_semantics(index: OperationSemanticsIndex, path: QualifiedName) -> Optional<PrimitiveExecutionSemantics> {
+  match map_lookup(m: index.slug_of_declaration, key: qualified_name_to_dotted_string(qn: path)) {
+    Absent => Absent
+    Present { value: slug } => map_lookup(m: index.semantics_of_slug, key: slug)
+  }
+}
+
+fn reach_reason_of_semantics(s: PrimitiveExecutionSemantics) -> Optional<ReachReason> {
+  match s {
+    Pure => Absent
+    ReadsBoundInput { input_identity: _ } => Absent
+    ObservesHost { operation_identity: _ } => Present { value: ReachesHostObservation }
+    ActuatesHost { operation_identity: _ } => Present { value: ReachesHostActuation }
+    ExecutionSemanticsUnknown => Present { value: ReachesExecutionSemanticsUnknown }
+  }
+}
+
+fn reach_operation_reason(index: OperationSemanticsIndex, op: OperationFact) -> Optional<ReachReason> {
+  match op.requirement {
+    RequiresNone =>
+      match operation_semantics(index: index, path: op.path) {
+        Present { value: s } => reach_reason_of_semantics(s: s)
+        Absent => Present { value: ReachesExecutionSemanticsUnknown }
+      }
+    RequiresResources { resources: _ } => Present { value: ReachesDeclaredResource { operation: op.path } }
+    RequiresOpaque => Present { value: ReachesOpaqueOperation { operation: op.path } }
+    RequiresUndeclared => Present { value: ReachesUndeclaredOperation { operation: op.path } }
+  }
+}
+
+fn reach_operation_table(index: OperationSemanticsIndex, operations: List<OperationFact>) -> List<OperationFact> {
   fold_list(xs: operations, empty: Empty, cons: fn(acc, op) {
-    match op.requirement {
-      RequiresNone => list_snoc_item(xs: acc, item: op)
-      RequiresResources { resources: _ } => list_snoc_item(xs: acc, item: OperationFact { path: op.path, requirement: RequiresOpaque })
-      RequiresOpaque => list_snoc_item(xs: acc, item: op)
-      RequiresUndeclared => list_snoc_item(xs: acc, item: OperationFact { path: op.path, requirement: RequiresOpaque })
+    match reach_operation_reason(index: index, op: op) {
+      Absent => list_snoc_item(xs: acc, item: op)
+      Present { value: _ } =>
+        match op.requirement {
+          RequiresOpaque => list_snoc_item(xs: acc, item: op)
+          _ => list_snoc_item(xs: acc, item: OperationFact { path: op.path, requirement: RequiresOpaque })
+        }
     }
   })
 }
@@ -450,17 +547,9 @@ fn reach_reason_of_cause(cause: UndecidedCause) -> ReachReason {
   }
 }
 
-fn reach_operation_reason(op: OperationFact) -> Optional<ReachReason> {
-  match op.requirement {
-    RequiresNone => Absent
-    RequiresResources { resources: _ } => Present { value: ReachesDeclaredResource { operation: op.path } }
-    RequiresOpaque => Present { value: ReachesOpaqueOperation { operation: op.path } }
-    RequiresUndeclared => Present { value: ReachesUndeclaredOperation { operation: op.path } }
-  }
-}
-
 fn effect_reach_table(functions: List<FunctionFact>, operations: List<OperationFact>) -> EffectReachTable {
-  let rows = dependency_demand_of(functions: functions, operations: reach_operation_table(operations: operations))
+  let index = operation_semantics_index()
+  let rows = dependency_demand_of(functions: functions, operations: reach_operation_table(index: index, operations: operations))
   let from_functions = fold_list(xs: rows, empty: empty_map(), cons: fn(m, r) {
     match r.demand {
       DemandDerived { resources: _ } => m
@@ -468,14 +557,20 @@ fn effect_reach_table(functions: List<FunctionFact>, operations: List<OperationF
     }
   })
   let with_ops = fold_list(xs: operations, empty: from_functions, cons: fn(m, op) {
-    match reach_operation_reason(op: op) {
+    match reach_operation_reason(index: index, op: op) {
       Present { value: r } => map_insert(m: m, key: op.path, value: r)
       Absent => m
     }
   })
   let known_fns = fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.path, value: true) })
   let known = fold_list(xs: operations, empty: known_fns, cons: fn(m, op) { map_insert(m: m, key: op.path, value: true) })
-  EffectReachTable { reasons: with_ops, known: known }
+  let unclassified = fold_list(xs: operations, empty: Empty, cons: fn(acc, op) {
+    match operation_semantics(index: index, path: op.path) {
+      Present { value: _ } => acc
+      Absent => list_snoc_item(xs: acc, item: op.path)
+    }
+  })
+  EffectReachTable { reasons: with_ops, known: known, unclassified: unclassified }
 }
 
 // A callee with no fact row at all is outside the closure and reaches by definition.
@@ -544,6 +639,7 @@ type EffectPairCensusReport {
   modules: List<ModuleEffectPairCensus>
   roots: List<UnobservedRoot>
   unobserved_modules: Int
+  unclassified_operations: Int
   file_refusals: Int
   unreadable_files: Int
 }
@@ -601,24 +697,39 @@ fn epc_totals(r: EffectPairCensusReport) -> ModuleEffectPairTotals {
   })
 }
 
+fn epc_repeated_count(r: EffectPairCensusReport) -> Int {
+  fold_list(xs: r.modules, empty: 0, cons: fn(n, m) { n + length(xs: m.repeated) })
+}
+
+fn epc_repeated_line(p: RepeatedEffectSite) -> String {
+  epc_text(parts: [
+    "[effect-pair-repeated] module=", qualified_name_to_dotted_string(qn: p.module),
+    " function=", qualified_name_to_dotted_string(qn: p.function),
+    " site=", epc_site_text(s: p.site), " repetition_source=", p.repetition_source,
+    " resource_standing=alias_unknown"
+  ])
+}
+
 fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
   let t = epc_totals(r: r)
   let head = [epc_text(parts: [
     "[effect-pair-census] OVER-COUNTS: resource identity is not modelled (D16 part 3), so every pair of effect-reaching sites with no derived order counts as a possible conflict; absent is not independent.",
     " modules_observed=", to_string(length(xs: r.modules)),
     " modules_unobserved=", to_string(r.unobserved_modules),
+    " unclassified_operations=", to_string(r.unclassified_operations),
     " file_refusals=", to_string(r.file_refusals),
     " unreadable_files=", to_string(r.unreadable_files),
     " bodies_scanned=", to_string(t.bodies_scanned),
     " bodies_with_pairs=", to_string(t.bodies_with_pairs),
     " pairs=", to_string(t.pairs),
-    " exclusive_pairs=", to_string(t.exclusive_pairs)
+    " exclusive_pairs=", to_string(t.exclusive_pairs),
+    " repeated_sites=", to_string(epc_repeated_count(r: r))
   ])]
   let roots = fold_list(xs: r.roots, empty: head, cons: fn(acc, x) {
     list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-root] root=", x.root, " cause=", x.cause, " modules=", to_string(x.modules), " example=", qualified_name_to_dotted_string(qn: x.example)]))
   })
   fold_list(xs: r.modules, empty: roots, cons: fn(acc, m) {
-    let with_pairs = fold_list(xs: m.pairs, empty: acc, cons: fn(a, p) { list_snoc_item(xs: a, item: epc_pair_line(p: p)) })
+    let with_pairs = fold_list(xs: m.repeated, empty: fold_list(xs: m.pairs, empty: acc, cons: fn(a, p) { list_snoc_item(xs: a, item: epc_pair_line(p: p)) }), cons: fn(a, p) { list_snoc_item(xs: a, item: epc_repeated_line(p: p)) })
     fold_list(xs: m.not_derived, empty: with_pairs, cons: fn(a, b) {
       fold_list(xs: epc_not_derived_lines(b: b), empty: a, cons: fn(a2, l) { list_snoc_item(xs: a2, item: l) })
     })

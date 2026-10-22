@@ -1,11 +1,20 @@
 module v2.test.claim.compiler.effect_pair_census
 
-import std.algebra { Cons, Empty, length, list_snoc_item }
+import std.algebra { Cons, Empty, length, list_snoc_item, map_lookup }
 import std.types { Bool, List }
 import v2.std.integer { Int }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import std.optional { Absent, Present }
+import v2.compiler.dependency_demand { FunctionFact, OperationFact, RequiresNone, RequiresOpaque }
+import v2.compiler.dependency_demand_census { FactCallSite }
+import v2.compiler.effect_demand { Pure, ReadsBoundInput }
 import v2.compiler.effect_pair_census {
   BodyEffectFacts,
+  BodyOrdered,
+  RepeatedOccurrence,
+  effect_pair_census_of_module,
+  effect_reach_table,
+  reach_reason_of_semantics,
   EffectSite,
   OrderEdge,
   ReachesHostActuation,
@@ -18,14 +27,26 @@ fn epc_site(occurrence: Int) -> EffectSite {
   EffectSite { occurrence: occurrence, callee: qualified_name_from_dotted_string(dotted: "t.shell"), reason: ReachesHostActuation }
 }
 
-fn epc_facts(orders: List<OrderEdge>) -> BodyEffectFacts {
+fn epc_facts_with(sites: List<EffectSite>, orders: List<OrderEdge>, exclusive: List<OrderEdge>) -> BodyEffectFacts {
   BodyEffectFacts {
     module: qualified_name_from_dotted_string(dotted: "t"),
     function: qualified_name_from_dotted_string(dotted: "t.f"),
-    sites: list_snoc_item(xs: list_snoc_item(xs: Empty, item: epc_site(occurrence: 1)), item: epc_site(occurrence: 2)),
+    sites: sites,
     orders: orders,
-    exclusive: Empty
+    exclusive: exclusive
   }
+}
+
+fn epc_two_sites() -> List<EffectSite> {
+  list_snoc_item(xs: list_snoc_item(xs: Empty, item: epc_site(occurrence: 1)), item: epc_site(occurrence: 2))
+}
+
+fn epc_three_sites() -> List<EffectSite> {
+  list_snoc_item(xs: epc_two_sites(), item: epc_site(occurrence: 3))
+}
+
+fn epc_facts(orders: List<OrderEdge>) -> BodyEffectFacts {
+  epc_facts_with(sites: epc_two_sites(), orders: orders, exclusive: Empty)
 }
 
 // POSITIVE CONTROL: two effects nothing orders are listed.
@@ -36,4 +57,104 @@ test fn two_unrelated_effects_are_one_pair_holds() -> Bool {
 // NEGATIVE CONTROL: the second effect depends on the first, so the pair is not listed.
 test fn a_second_effect_using_the_first_is_not_a_pair_holds() -> Bool {
   length(xs: body_effect_pairs(facts: epc_facts(orders: list_snoc_item(xs: Empty, item: OrderEdge { from: 1, to: 2 }))).pairs) == 0
+}
+
+
+// ORDER IS TRANSITIVE: 1 before 2 and 2 before 3 order 1 and 3 with no direct edge, so no pair is listed.
+test fn a_chain_of_orders_leaves_no_pair_holds() -> Bool {
+  length(xs: body_effect_pairs(facts: epc_facts_with(
+    sites: epc_three_sites(),
+    orders: list_snoc_item(xs: list_snoc_item(xs: Empty, item: OrderEdge { from: 1, to: 2 }), item: OrderEdge { from: 2, to: 3 }),
+    exclusive: Empty
+  )).pairs) == 0
+}
+
+// ONE ORDERED PAIR DOES NOT HIDE ITS NEIGHBOURS: 1 before 2 leaves (1,3) and (2,3) unordered.
+test fn one_order_among_three_leaves_two_pairs_holds() -> Bool {
+  length(xs: body_effect_pairs(facts: epc_facts_with(
+    sites: epc_three_sites(),
+    orders: list_snoc_item(xs: Empty, item: OrderEdge { from: 1, to: 2 }),
+    exclusive: Empty
+  )).pairs) == 2
+}
+
+// EXCLUSIVE ARMS ARE NOT A PAIR but are reported apart, so the absence is not silent.
+test fn sites_in_exclusive_arms_are_reported_apart_holds() -> Bool {
+  let r = body_effect_pairs(facts: epc_facts_with(
+    sites: epc_two_sites(),
+    orders: Empty,
+    exclusive: list_snoc_item(xs: Empty, item: OrderEdge { from: 1, to: 2 })
+  ))
+  (length(xs: r.pairs) == 0) && (length(xs: r.exclusive_pairs) == 1)
+}
+
+fn epc_caller_of(callee: String) -> FunctionFact {
+  FunctionFact {
+    path: qualified_name_from_dotted_string(dotted: "t.caller"),
+    callees: list_snoc_item(xs: Empty, item: qualified_name_from_dotted_string(dotted: callee)),
+    calls_function_value: false
+  }
+}
+
+fn epc_none_operation(path: String) -> OperationFact {
+  OperationFact { path: qualified_name_from_dotted_string(dotted: path), requirement: RequiresNone }
+}
+
+fn epc_caller_reaches(callee: String) -> Bool {
+  let table = effect_reach_table(
+    functions: list_snoc_item(xs: Empty, item: epc_caller_of(callee: callee)),
+    operations: list_snoc_item(xs: Empty, item: epc_none_operation(path: callee))
+  )
+  match map_lookup(m: table.reasons, key: qualified_name_from_dotted_string(dotted: "t.caller")) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A RequiresNone operation whose rostered primitive ObservesHost makes its caller reach.
+test fn a_requires_none_operation_with_host_semantics_makes_its_caller_reach_holds() -> Bool {
+  epc_caller_reaches(callee: "v2.std.decl_index.decl_facts")
+}
+
+// An operation with no semantics row is Unknown: counted unclassified AND reaching.
+test fn an_operation_with_no_semantics_row_is_unclassified_and_reaches_holds() -> Bool {
+  let table = effect_reach_table(
+    functions: list_snoc_item(xs: Empty, item: epc_caller_of(callee: "t.unrowed")),
+    operations: list_snoc_item(xs: Empty, item: epc_none_operation(path: "t.unrowed"))
+  )
+  length(xs: table.unclassified) == 1 && epc_caller_reaches(callee: "t.unrowed")
+}
+
+// Pure and ReadsBoundInput semantics do not reach.
+test fn pure_and_bound_input_semantics_do_not_reach_holds() -> Bool {
+  match reach_reason_of_semantics(s: Pure) {
+    Absent =>
+      match reach_reason_of_semantics(s: ReadsBoundInput { input_identity: ^x }) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+fn epc_repeat_body() -> BodyOrdered {
+  BodyOrdered {
+    module: qualified_name_from_dotted_string(dotted: "t"),
+    function: qualified_name_from_dotted_string(dotted: "t.f"),
+    sites: list_snoc_item(xs: Empty, item: FactCallSite { occurrence: Absent, callee: qualified_name_from_dotted_string(dotted: "t.shell"), enter: 1, exit: 2, operands: Empty }),
+    orders: Empty,
+    exclusive: Empty,
+    not_derived: Empty,
+    repeated: list_snoc_item(xs: Empty, item: RepeatedOccurrence { occurrence: 1, source: "loop" })
+  }
+}
+
+// One effect site inside a Loop extent runs repeatedly: one repeated row, and no pair.
+test fn a_site_in_a_loop_extent_gives_one_repeated_row_holds() -> Bool {
+  let table = effect_reach_table(
+    functions: Empty,
+    operations: list_snoc_item(xs: Empty, item: OperationFact { path: qualified_name_from_dotted_string(dotted: "t.shell"), requirement: RequiresOpaque })
+  )
+  let r = effect_pair_census_of_module(module: qualified_name_from_dotted_string(dotted: "t"), bodies: list_snoc_item(xs: Empty, item: epc_repeat_body()), table: table)
+  length(xs: r.repeated) == 1 && length(xs: r.pairs) == 0
 }

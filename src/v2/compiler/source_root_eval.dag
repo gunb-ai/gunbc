@@ -5826,6 +5826,7 @@ fn native_effect_pair_census_report(ingest: SourceRootIngest) -> Outcome<EffectP
         modules: fold_list(xs: walked.modules, empty: Empty, cons: fn(acc, m) { list_snoc_item(xs: acc, item: effect_pair_census_of_module(module: m.module, bodies: m.bodies, table: table)) }),
         roots: walked.roots,
         unobserved_modules: walked.unobserved_modules,
+        unclassified_operations: length(xs: table.unclassified),
         file_refusals: length(xs: folded.context.file_refusals),
         unreadable_files: length(xs: folded.unreadable)
       })

@@ -280,6 +280,7 @@ type FactSpan {
 
 type FactGroup {
   children: List<FactSpan>
+  repetition: Optional<String>
 }
 
 type FactBodySites {
@@ -342,10 +343,38 @@ fn demand_fact_walk_children(w: DemandFactWalk, position: QualifiedName, node: N
     DemandFactWalk {
       functions: scan.walk.functions, operations: scan.walk.operations, audited: scan.walk.audited, current: scan.walk.current, value_call: scan.walk.value_call,
       sites: scan.walk.sites, bodies: scan.walk.bodies, tick: scan.walk.tick,
-      groups: list_snoc_item(xs: scan.walk.groups, item: FactGroup { children: scan.spans })
+      groups: list_snoc_item(xs: scan.walk.groups, item: FactGroup { children: scan.spans, repetition: Absent })
     }
   } else {
-    fold(demand_fact_children(node: node), init: w, f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+    match demand_fact_repetition(node: node) {
+      Absent => fold(demand_fact_children(node: node), init: w, f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+      Present { value: source } => {
+        let enter = w.tick
+        let next = fold(demand_fact_children(node: node), init: w, f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+        DemandFactWalk {
+          functions: next.functions, operations: next.operations, audited: next.audited, current: next.current, value_call: next.value_call,
+          sites: next.sites, bodies: next.bodies, tick: next.tick,
+          groups: list_snoc_item(xs: next.groups, item: FactGroup { children: list_snoc_item(xs: Empty, item: FactSpan { enter: enter, exit: next.tick }), repetition: Present { value: source } })
+        }
+      }
+    }
+  }
+}
+
+// A node whose extent runs its sites more than once: a Loop, or an inline lambda (Arrow), whose
+// template is executed once per element the callee feeds it. ADDITIVE; D13 ignores it.
+fn demand_fact_repetition(node: Node) -> Optional<String> {
+  match node.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Arrow => Present { value: "lambda_template" }
+        _ => Absent
+      }
+    ComputationNode { behavior: b } =>
+      match b {
+        Loop => Present { value: "loop" }
+        _ => Absent
+      }
   }
 }
 
