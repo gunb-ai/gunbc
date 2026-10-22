@@ -204,11 +204,26 @@ fn extract_site_at(index: Map<Int, Optional<FactCallSite>>, o: Optional<Occurren
   }
 }
 
+// The module's value-use relations indexed once by the DEPENDENT occurrence, so a body joins each
+// operand in one lookup rather than scanning every relation.
+fn extract_use_index(uses: List<UseEdge>) -> Map<Int, List<Optional<OccurrenceId>>> {
+  fold_list(xs: uses, empty: empty_map(), cons: fn(m, u) {
+    match extract_occurrence_key(o: u.dependent) {
+      Absent => m
+      Present { value: k } =>
+        match map_lookup(m: m, key: k) {
+          Present { value: sources } => map_insert(m: m, key: k, value: list_snoc_item(xs: sources, item: u.source))
+          Absent => map_insert(m: m, key: k, value: list_snoc_item(xs: Empty, item: u.source))
+        }
+    }
+  })
+}
+
 // ORDER EDGES of one body, keyed by a site's `enter`: (a) an operand that is itself a call orders
 // before its consumer; (b) a value-use whose dependent is an operand of the consumer orders the
 // site that IS the bound value before the consumer. A bound value that merely CONTAINS a call, or an
 // ambiguous endpoint, orders nothing: that direction over-counts.
-fn extract_order_edges(sites: List<FactCallSite>, uses: List<UseEdge>) -> List<OrderEdge> {
+fn extract_order_edges(sites: List<FactCallSite>, use_index: Map<Int, List<Optional<OccurrenceId>>>) -> List<OrderEdge> {
   let index = extract_site_index(sites: sites)
   fold_list(xs: sites, empty: Empty, cons: fn(acc, consumer) {
     fold_list(xs: consumer.operands, empty: acc, cons: fn(a, operand) {
@@ -216,47 +231,87 @@ fn extract_order_edges(sites: List<FactCallSite>, uses: List<UseEdge>) -> List<O
         Present { value: x } => list_snoc_item(xs: a, item: OrderEdge { from: x.enter, to: consumer.enter })
         Absent => a
       }
-      fold_list(xs: uses, empty: direct, cons: fn(b, u) {
-        if extract_same_occurrence(left: u.dependent, right: operand) {
-          match extract_site_at(index: index, o: u.source) {
-            Present { value: x } => list_snoc_item(xs: b, item: OrderEdge { from: x.enter, to: consumer.enter })
-            Absent => b
+      match extract_occurrence_key(o: operand) {
+        Absent => direct
+        Present { value: k } =>
+          match map_lookup(m: use_index, key: k) {
+            Absent => direct
+            Present { value: sources } =>
+              fold_list(xs: sources, empty: direct, cons: fn(b, src) {
+                match extract_site_at(index: index, o: src) {
+                  Present { value: x } => list_snoc_item(xs: b, item: OrderEdge { from: x.enter, to: consumer.enter })
+                  Absent => b
+                }
+              })
           }
-        } else {
-          b
-        }
-      })
+      }
     })
   })
 }
 
-fn extract_same_occurrence(left: Optional<OccurrenceId>, right: Optional<OccurrenceId>) -> Bool {
-  match extract_occurrence_key(o: left) {
-    Present { value: l } =>
-      match extract_occurrence_key(o: right) {
-        Present { value: r } => l == r
-        Absent => false
-      }
-    Absent => false
-  }
+// One body with its order edges already derived. The edges are module-local (value use never crosses
+// a module), so they are computed in the streaming per-module step and the tree is dropped; the reach
+// table needs the WHOLE closure's facts, so reach is applied once at the end.
+type BodyOrdered {
+  module: QualifiedName
+  function: QualifiedName
+  sites: List<FactCallSite>
+  orders: List<OrderEdge>
 }
 
-// The body's facts. `reason_of` says whether a callee reaches an effect and why; only reaching
-// sites are the pair population, but the order graph keeps every site so a chain through a pure
-// call still orders its ends.
-fn body_effect_facts(module: QualifiedName, body: FactBodySites, uses: List<UseEdge>, reason_of: fn(QualifiedName) -> Optional<ReachReason>) -> BodyEffectFacts {
+fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, uses: List<UseEdge>) -> List<BodyOrdered> {
+  let use_index = extract_use_index(uses: uses)
+  fold_list(xs: bodies, empty: Empty, cons: fn(acc, body) {
+    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: extract_order_edges(sites: body.sites, use_index: use_index) })
+  })
+}
+
+// The body's facts under a reach table: only reaching sites are the pair population, but the order
+// graph keeps every site so a chain through a pure call still orders its ends.
+fn body_effect_facts(body: BodyOrdered, table: EffectReachTable) -> BodyEffectFacts {
   BodyEffectFacts {
-    module: module,
+    module: body.module,
     function: body.function,
     sites: fold_list(xs: body.sites, empty: Empty, cons: fn(acc, s) {
-      match reason_of(s.callee) {
+      match effect_reach_reason(table: table, callee: s.callee) {
         Present { value: r } => list_snoc_item(xs: acc, item: EffectSite { occurrence: s.enter, callee: s.callee, reason: r })
         Absent => acc
       }
     }),
-    orders: extract_order_edges(sites: body.sites, uses: uses),
+    orders: body.orders,
     exclusive: Empty
   }
+}
+
+// ONE MODULE'S result, run at the end over the closure-wide reach table; the caller concatenates modules,
+// so no list is searched per body.
+type ModuleEffectPairCensus {
+  pairs: List<EffectPairRow>
+  exclusive_pairs: List<ExclusivePairRow>
+  totals: ModuleEffectPairTotals
+}
+
+fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>, table: EffectReachTable) -> ModuleEffectPairCensus {
+  let seed = ModuleEffectPairCensus {
+    pairs: Empty,
+    exclusive_pairs: Empty,
+    totals: ModuleEffectPairTotals { module: module, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }
+  }
+  fold_list(xs: bodies, empty: seed, cons: fn(acc, body) {
+    let found = body_effect_pairs(facts: body_effect_facts(body: body, table: table))
+    let n = length(xs: found.pairs)
+    ModuleEffectPairCensus {
+      pairs: fold_list(xs: found.pairs, empty: acc.pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
+      exclusive_pairs: fold_list(xs: found.exclusive_pairs, empty: acc.exclusive_pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
+      totals: ModuleEffectPairTotals {
+        module: module,
+        bodies_scanned: acc.totals.bodies_scanned + 1,
+        bodies_with_pairs: acc.totals.bodies_with_pairs + (if n > 0 { 1 } else { 0 }),
+        pairs: acc.totals.pairs + n,
+        exclusive_pairs: acc.totals.exclusive_pairs + length(xs: found.exclusive_pairs)
+      }
+    }
+  })
 }
 
 // WHICH CALLEES REACH AN EFFECT, by reusing D13's reducer unchanged over a TRANSFORMED operation
