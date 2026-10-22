@@ -1294,10 +1294,8 @@ test fn the_posture_observer_refuses_a_present_but_unreadable_repository_naming_
           && !string_contains(s: cause, pattern: "timer unit:")
       _ => false
     }
-    let refused = match wre3_plan_labels(d: wre3_posture_plan(root: source, obs: obs)) {
-      [only] => only == "REFUSED"
-      _ => false
-    }
+    let labels2 = wre3_plan_labels(d: wre3_posture_plan(root: source, obs: obs))
+    let refused = length(xs: labels2) == 1 && string_contains(s: join(labels2, ","), pattern: "REFUSED")
     let untouched = wet_ok(command: rm_recursive_force_command(path: root))
     planted && named && refused && untouched
   }

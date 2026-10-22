@@ -9,7 +9,8 @@ import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.uuid { uuid_of }
 import extdeps.filesystem.filesystem_io
-import gunbc.host.managed_host { ManagedHost, managed_hosts, managed_host_binding }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host, NoOutOfBandRoute }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
 import gunbc.runner.runner_slot_allocation { RunnerWidthDerived }
@@ -44,7 +45,7 @@ data labels: RunnerRegistrationLabelsResolution = RegistrationLabelsResolved { l
 
 fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
-fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(standing: managed_host_binding(host: m)) }
+fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(host: m.host, standing: bmc_control_binding(observed: m.access, secured: m.secure)) }
 
 fn boot_of(id: String) -> ServiceBootId? {
   match uuid_of(text: id) {
