@@ -1,0 +1,165 @@
+module v2.test.claim.manual.unary_prefix_v2_canon_lib
+
+// v2 SIDE of the unary-prefix agreement (v2.test.claim.manual.unary_prefix_v1_v2_agreement).
+// Split into its own module for the same reason as the v1 side: one file importing BOTH
+// v1.std.core and v2.std.node collides on the bare names Node and Symbol.
+//
+// THE CLAIM'S CANONICAL SHAPE (contract with the v1 lib, and see canon_shape_v2 for the full
+// table): I(a,b) infix, P(x) prefix, C(x) cast, F(x) field access, M(x) pipe, l a leaf. Body
+// lowering reads an operator expression as a Transform application whose FIRST CHILD is the
+// operator token (v2.std.compilers.body_lowering lower_binary_infix / lower_unary_prefix), so the
+// kind is read from that head's atom identity -- arity alone conflates a cast with an infix and a
+// pipe with an infix -- and a field access lowers to a CONJ spine. Only nesting of the PRINCIPAL
+// operands is compared -- the defect IS nesting; cast targets, field names and pipe right-sides are
+// identifiers the two representations carry differently and are excluded on both sides.
+
+import std.algebra { list_at_optional }
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { ComputationNode, Conj, Edge, Transform, TypeNode, Node }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node_query { find_arrow_body_child }
+
+fn canon_v2_source(body: String) -> String {
+  let sig = match body {
+    "!a && b" => "a: Bool, b: Bool"
+    "!a || b" => "a: Bool, b: Bool"
+    "!a * b" => "a: Bool, b: Bool"
+    "!a |> f" => "a: Bool, b: Bool"
+    "!a.b" => "a: Bool, b: Bool"
+    _ => "a: Int, b: Int"
+  }
+  concat("module probe.unary_prefix.canon\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
+}
+
+// t3 idiom (block_expr_as_binary_operand_parse.dag arrow_body_kind): find_arrow_body_child answers
+// only at an Arrow root, so a module-rooted tree is walked through its children until one is found.
+fn canon_arrow_body(root: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => canon_arrow_body(root: e.target)
+        }
+      })
+  }
+}
+
+fn v2_canon(body: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "<v2-grammar-refused>"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: canon_v2_source(body: body), file: ^probe_unary_prefix_canon, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "<v2-lex-refused>"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "<v2-parse-refused>"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => "<v2-norm-refused>"
+                Accepted { value: normalized, diagnostics: _ } =>
+                  match canon_arrow_body(root: normalized.root) {
+                    Absent => "<v2-nobody>"
+                    Present { value: lowered } => canon_shape_v2(node: lowered)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE CANONICAL SHAPE, keyed on node kind and -- for Transforms -- the HEAD ATOM'S IDENTITY, so
+// `as`, `|>` and `.` are not collapsed to a leaf (arity alone conflates a cast and an infix, and a
+// pipe and an infix, and a dot with a prefix; a walker that did so let the two parsers "agree" on a
+// wrong tree). Contract with the v1 lib (both sides MEASURED at this head by the shape probes):
+//   I(a,b) infix (Transform arity 3, head not `as`/`|>`; operands after the head)
+//   P(x)   prefix (Transform arity 2, minus/bang head; the operand after the head)
+//   C(x)   cast  (Transform arity 3, head `as`; ONLY the value operand -- the target type is an
+//                 identifier atom v1 carries in variant data, so comparing it would compare spellings)
+//   F(x)   field access (a CONJ spine; the first child is the object, the rest is the field-name spine)
+//   M(x)   pipe (Transform arity 3, head `|>`; ONLY the receiver -- the right side is a name)
+//   l      a leaf
+// An unexpected shape is "?", never a silent leaf.
+fn canon_shape_v2(node: Node) -> String {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      match canon_head_label(node: node) {
+        "as" => if node.children |> length == 3 { concat("C(", canon_operand_at_v2(children: node.children, index: 1), ")") } else { "?" }
+        "pipe" => if node.children |> length == 3 { concat("M(", canon_operand_at_v2(children: node.children, index: 1), ")") } else { "?" }
+        "dot" => "?"
+        // MINUS AND BANG ARE NOT UNARY BY HEADING ALONE: 'a - b' lowers to an infix Transform whose
+        // head is the minus token (subtraction and negation share the glyph on both sides), so the
+        // arity decides -- 2 is prefix, 3 is infix -- exactly as 'a * b' does for an unshared glyph.
+        "minus" => if node.children |> length == 2 { concat("P(", canon_operand_at_v2(children: node.children, index: 1), ")") } else if node.children |> length == 3 { concat("I(", canon_operands_v2(children: node.children) |> join(separator: ","), ")") } else { "?" }
+        "bang" => if node.children |> length == 2 { concat("P(", canon_operand_at_v2(children: node.children, index: 1), ")") } else { "?" }
+        _ => if node.children |> length == 3 {
+          concat("I(", canon_operands_v2(children: node.children) |> join(separator: ","), ")")
+        } else {
+          "?"
+        }
+      }
+    // The dot: body lowering gives a CONJ spine (measured: `a.b` lowers to CONJ(a, CONJ(b, CONJ()));
+    // `(-a).b` to CONJ(P(-a), b)). The first child is the principal operand; the rest is the
+    // field-name spine, which v1 carries in variant data -- dropped for the same reason C drops the
+    // cast target. No expression Transform in this claim's arms lowers to a CONJ, so CONJ means dot.
+    TypeNode { connective: Conj } =>
+      if node.children |> length == 2 {
+        concat("F(", canon_first_child_v2(node: node), ")")
+      } else {
+        "?"
+      }
+    _ => "l"
+  }
+}
+
+fn canon_head_label(node: Node) -> String {
+  match node.children |> first {
+    Absent => "?"
+    Present { value: head } =>
+      match node_atom_identity_optional(node: head.target) {
+        Absent => "?"
+        Present { value: id } =>
+          if id == ^dag_token_kw_as { "as" }
+          else if id == ^dag_token_pipe_gt { "pipe" }
+          else if id == ^dag_token_dot { "dot" }
+          else if id == ^dag_token_minus { "minus" }
+          else if id == ^dag_token_bang { "bang" }
+          else { "infix" }
+      }
+  }
+}
+
+fn canon_first_child_v2(node: Node) -> String {
+  match node.children |> first {
+    Present { value: c } => canon_shape_v2(node: c.target)
+    Absent => "?"
+  }
+}
+
+fn canon_operand_at_v2(children: List<Edge>, index: Int) -> String {
+  match list_at_optional(xs: children, index: index) {
+    Present { value: e } => canon_shape_v2(node: e.target)
+    Absent => "?"
+  }
+}
+
+// Shapes of every child except the head (the operator token), by fold: a [first, ...rest] list
+// pattern is not admitted here (v2.lens.fn_index_depth_agreement records the same).
+type CanonV2Acc { skipped: Bool, parts: List<String> }
+
+fn canon_operands_v2(children: List<Edge>) -> List<String> {
+  fold(children, init: CanonV2Acc { skipped: false, parts: [] }, f: fn(step, e) {
+    if step.skipped {
+      CanonV2Acc { skipped: true, parts: list_append(left: step.parts, right: [canon_shape_v2(node: e.target)]) }
+    } else {
+      CanonV2Acc { skipped: true, parts: [] }
+    }
+  }).parts
+}
