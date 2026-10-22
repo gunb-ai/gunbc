@@ -14980,7 +14980,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
     // parameter names, which the callee's names are not: rewriting it captures them (a permuting
     // return -> Pair<B, A>) or leaves a stale body. The substituted children carry the instantiation,
     // so the cache is dropped and the reader settles through them.
-    let new_inferred = if n.connective == Arrow { substitute_generics_arrow_return(n: n, subst: subst, source_indices: source_indices) } else { generics_substituted_cache_dropped(inferred: n.inferred) }
+    let new_inferred = if (n.connective == Arrow) { substitute_generics_arrow_return(n: n, subst: subst, source_indices: source_indices) } else { generics_substituted_cache_dropped(inferred: n.inferred) }
     if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
       n
     } else {
