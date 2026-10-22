@@ -61,11 +61,14 @@ import gunbc.typed_remote_file_write {
 }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
+  CapPhaseObserved,
+  runner_host_cap_phase_not_owed,
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
@@ -73,8 +76,12 @@ import gunbc.runner.runner_host_file_converge {
   RunnerHostFileWithheld,
   runner_host_file_desired_population_from_uid_reading,
   runner_host_files_deliver_fragment,
+  runner_host_slot_role_files,
+  runner_host_slot_role_withheld_files,
   RunnerSlotExpectation,
   runner_slot_expectation,
+  SlotReloadNotPending,
+  ReachesLiveCgroup,
   SlotAllocationNotEffective,
   RetiredResidueObservation,
   ResidueAbsent,
@@ -212,6 +219,22 @@ fn fixture_unread_job_user_uid() -> RunnerJobUserUidReading {
   JobUserUidUnobserved { cause: "fixture: getent passwd was not answered" as NonEmptyStr }
 }
 
+// THE PER-SLOT ROLE DROP-INS ARE A FOURTH POPULATION THE HOST-WIDE COUNTS DO NOT OWN. Their number is the
+// deploy-slot population of the host, so the host-wide literals above count the files with the role
+// subject removed, and the role population is judged against its own authority.
+fn not_role_files(fs: List<RunnerHostFileDesired>) -> List<RunnerHostFileDesired> {
+  filter(fs, f => (f.subject as String) != "runner-slot-role-dropin")
+}
+
+fn not_role_withheld(w: List<RunnerHostFileWithheld>) -> List<RunnerHostFileWithheld> {
+  filter(w, x => (x.subject as String) != "runner-slot-role-dropin")
+}
+
+fn role_population_agrees(files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>, host: HostIdentity) -> Bool {
+  length(filter(files, f => (f.subject as String) == "runner-slot-role-dropin")) == length(runner_host_slot_role_files(host: host))
+    && length(filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin")) == length(runner_host_slot_role_withheld_files(host: host))
+}
+
 fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
   runner_host_file_desired_population_from_uid_reading(
     host: "srv1" as HostIdentity,
@@ -279,8 +302,9 @@ test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> 
   match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid()) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 4
-        && length(w) == 2
+      length(not_role_files(fs)) == 4
+        && length(not_role_withheld(w)) == 2
+        && role_population_agrees(files: fs, withheld: w, host: "srv1" as HostIdentity)
         && !runner_host_files_deliver_fragment(files: fs)
         && any(fs, f => (f.subject as String) == "runner-cpu-dropin")
         && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "was not read"))
@@ -297,9 +321,10 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 6
+      length(not_role_files(fs)) == 6
         && any(fs, f => (f.subject as String) == "runner-host-sudoers")
-        && length(w) == 0
+        && length(not_role_withheld(w)) == 0
+        && role_population_agrees(files: fs, withheld: w, host: "srv1" as HostIdentity)
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-cpu-dropin") == "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf"
         && starts_with(s: desired_content(subject: "runner-cpu-dropin"), prefix: "[Service]\nCPUQuota=")
@@ -707,7 +732,7 @@ test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> 
 }
 
 fn population_of(standings: List<RunnerSlotUnitStanding>) -> RunnerSlotPopulation {
-  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st }) }
+  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }) }
 }
 
 // THE HOST-WIDE VERDICT IS OVER EVERY UNIT. One not-effective, not-loaded, pending or unread unit among
@@ -774,6 +799,15 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             residue: ResidueAlreadyAbsent,
             reload: reload,
             slots: slots,
+            // The observe arm now has to CONSUME the cap phase (manager ruling, review 5588645431):
+            // production's observe mode can only ever answer CapPhaseObserved since P4, so this
+            // fixture carries the fully-read observed arm for observe (a hand-fabricated NotOwed --
+            // the base's two-valued answer -- would now refuse, and this claim would be lying about
+            // what production produces). Apply still accepts a settled NotOwed phase (unchanged path).
+            cap_phase: match mode {
+              RunnerHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
+              RunnerHostFilesApply => runner_host_cap_phase_not_owed
+            },
           })
       }
   }
@@ -1375,6 +1409,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
   }
 }
@@ -1532,6 +1567,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
@@ -1545,6 +1581,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
   }
 }

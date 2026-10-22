@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.host_text { chars }
 
 // needrestart (Thomas Liske) runs after every dpkg transaction on Ubuntu, finds daemons still mapping
 // replaced libraries, and restarts them. Ubuntu wires it into apt through a dpkg hook, so an
@@ -110,7 +111,7 @@ fn needrestart_unit_name_char_allowed(cp: Int) -> Bool {
 fn needrestart_unit_name_prefix(raw: String) -> NeedrestartUnitNamePrefixAdmission {
   if raw == "" {
     NeedrestartUnitNamePrefixRefused { cause: "needrestart unit-name prefix is empty, which would match every service" as NonEmptyStr }
-  } else if fold(chars(s: raw), init: true, f: (ok, cp) => ok && needrestart_unit_name_char_allowed(cp: cp)) {
+  } else if fold(chars(text: raw), init: true, f: (ok, cp) => ok && needrestart_unit_name_char_allowed(cp: cp)) {
     NeedrestartUnitNamePrefixAdmitted { prefix: NeedrestartUnitNamePrefix { prefix: raw as NonEmptyStr } }
   } else {
     NeedrestartUnitNamePrefixRefused {
@@ -129,7 +130,7 @@ fn needrestart_perl_quotemeta_code_point(cp: Int, spelled: String) -> String {
 }
 
 fn needrestart_unit_name_prefix_regex(prefix: NeedrestartUnitNamePrefix) -> String {
-  join(["qr(^", join(map(enumerate(chars(s: prefix.prefix as String)), pair => needrestart_perl_quotemeta_code_point(cp: pair.second, spelled: substring(s: prefix.prefix as String, start: pair.first, end: pair.first + 1))), ""), ")"], "")
+  join(["qr(^", join(map(enumerate(chars(text: prefix.prefix as String)), pair => needrestart_perl_quotemeta_code_point(cp: pair.second, spelled: substring(s: prefix.prefix as String, start: pair.first, end: pair.first + 1))), ""), ")"], "")
 }
 
 type NeedrestartServiceSelectionOverride {

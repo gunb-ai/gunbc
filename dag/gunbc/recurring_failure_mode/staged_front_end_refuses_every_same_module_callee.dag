@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.staged_front_end_refuses_every_same_module_callee
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data staged_front_end_refuses_every_same_module_callee: RecurringFailureMode = RecurringFailureMode {
   identity: "staged_front_end_refuses_every_same_module_callee" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**v2.compiler.staged_front_end refuses EVERY call to a same-module fn as unbound AT THE CALLEE, so a specimen run through it cannot discriminate an argument refusal** (INVALID STATE: `fn zero() -> Int { 0 }` with a body calling `zero()` in the same module is refused by run_front_end as an unbound symbol located at `zero`; measured on the gunbc#12108 head and on main, pre-existing and not introduced there).",

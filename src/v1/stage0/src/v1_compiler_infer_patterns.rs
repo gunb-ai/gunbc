@@ -85,6 +85,67 @@ pub fn generic_use_slot_bindings(
     }
 }
 
+pub fn instantiate_scrutinee_expansion(
+    use_site: Rc<Node>,
+    expanded: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    {
+        let is_generic_coproduct_use = (((use_site.connective.clone()
+            == Connective::NoConnective)
+            && ((use_site.children.clone().len() as i64) > 0))
+            && (expanded.connective.clone() == Connective::Disj));
+        if is_generic_coproduct_use.clone() {
+            {
+                let decl = crate::v1_compiler_infer_resolve::resolve_generic_use_decl(
+                    env.clone(),
+                    use_site.clone(),
+                );
+                let decl_is_generic_coproduct = ((decl.connective.clone() == Connective::Disj)
+                    && ((decl.params.clone().len() as i64) > 0));
+                if decl_is_generic_coproduct.clone() {
+                    {
+                        let resolved_args = Rc::new({
+                            let mut __result = Vec::new();
+                            for arg in use_site.children.clone().iter().cloned() {
+                                __result.push(match arg.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: target, .. }) => {
+                                        if (((arg.children.clone().len() as i64) == 0)
+                                            && (arg.connective.clone() == Connective::NoConnective))
+                                        {
+                                            target.clone()
+                                        } else {
+                                            arg.clone()
+                                        }
+                                    }
+                                    _ => arg.clone(),
+                                });
+                            }
+                            __result
+                        });
+                        expand_scrut_from_decl(
+                            decl.clone(),
+                            crate::v1_compiler_infer_env::node_with_children(
+                                use_site.clone(),
+                                resolved_args.clone(),
+                            ),
+                            crate::v1_std_core::authored_name_at(
+                                env.source_indices.clone(),
+                                decl.clone(),
+                            ),
+                            env.clone(),
+                        )
+                    }
+                } else {
+                    expanded
+                }
+            }
+        } else {
+            expanded
+        }
+    }
+}
+
 pub fn expand_scrut_from_decl(
     decl: Rc<Node>,
     scrut_node: Rc<Node>,

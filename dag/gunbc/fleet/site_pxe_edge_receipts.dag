@@ -1,0 +1,448 @@
+module gunbc.fleet.site_pxe_edge_receipts
+
+import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr }
+import std.content_hash {
+  ContentHash,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  compare_content_hash
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.network.mac { Eui48Address }
+import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.provisioning.network_boot { DhcpBootDirection }
+import extdeps.provisioning.dhcp_client_arch {
+  DhcpProcessorArchitecture,
+  dhcp_processor_architecture_from_code
+}
+import product.placement_supply { SiteIdentity }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc2131#section-4.3.1"
+  }
+}
+
+// THESE ARE SUPPLIED BINDING HYPOTHESES, NOT RECEIPTS. Every observation union below is openly
+// constructible and `source` is a caller-named declaration, not producer-minted occurrence
+// evidence, so a successful binding here proves only that the supplied readings agree with each
+// other: it does not prove an edge offered anything, a unit asked for anything, or a boot happened.
+// SuppliedNetbootExchange is the strongest conclusion the pair can reach (an edge offered a
+// filename and digest; a client-side reading reports accepting the same filename from the expected
+// server with an equal digest). It carries no authorization identity, no boot-run identity, no
+// evidence the chainloader executed and no Secure Boot verdict; those belong to the S6 attempt.
+// The wet producer promotes a successful supplied binding into a separately sealed receipt, each
+// producer minting its own occurrence evidence; the two producers are separate frontier rows at the
+// foot of this module because an edge offer observed first cannot discharge the client's
+// acceptance and fetch.
+//
+// NO `data` ROW IS A SUPPLIED BINDING EITHER: the repository has observed no boot through the site
+// edge, so any authored row would be invented fleet history a later reader could not tell from a
+// measured one. The witness builds synthetic observations only inside test functions.
+
+// RFC 2131 xid: the 32-bit value a client picks for one exchange and the server echoes in every
+// reply. It is the one identifier both views of an exchange carry, so it is the join key; the
+// range is the wire field's width, not a convention.
+type DhcpTransactionId = Int where range(min: 0, max: 4294967295)
+
+// THE ARCHITECTURE A CLIENT'S REQUEST SAID IT HAS, kept as an observation about the request. A
+// code outside RFC 4578's recognized set is carried as read and refused by the binder; it is never
+// coerced onto a recognized architecture and never looked up by machine name.
+type ClientArchitectureClaim
+  = ClientArchitectureRecognized { architecture: DhcpProcessorArchitecture }
+  | ClientArchitectureUnrecognized { code: Int }
+
+fn client_architecture_claim(code: Int) -> ClientArchitectureClaim {
+  match dhcp_processor_architecture_from_code(code: code) {
+    Present { value: a } => ClientArchitectureRecognized { architecture: a }
+    Absent => ClientArchitectureUnrecognized { code: code }
+  }
+}
+
+// ---- Raw observations (supplied inputs; nothing here is evidence) ----------------------------
+
+// `source` is the declaration the caller says the reading came from. Absent means the reading
+// arrived with no named source, which is its own refusal rather than an accepted anonymous reading;
+// Present names code, not an occurrence, so it never upgrades a supplied reading to evidence.
+// `chainloader_digest` is Absent when the edge did not hash what it served; that is a missing
+// reading, not a mismatch.
+type EdgeOfferObservation
+  = EdgeOfferObserved {
+      site: SiteIdentity
+      serving_address: Ipv4Address
+      client_mac: Eui48Address
+      transaction: DhcpTransactionId
+      direction: DhcpBootDirection
+      offered_filename: NonEmptyStr
+      next_server: Ipv4Address
+      chainloader_digest: ContentHash?
+      offered_at: EpochMs
+      source: DeclarationRef?
+    }
+  | EdgeOfferUnobserved
+
+type ClientResponseObservation
+  = ClientResponseAccepted {
+      accepted_filename: NonEmptyStr
+      accepted_from: Ipv4Address
+      fetched_digest: ContentHash?
+      accepted_at: EpochMs
+    }
+  | ClientNoResponseAccepted
+
+type ClientRequestObservation
+  = ClientRequestObserved {
+      client_mac: Eui48Address
+      transaction: DhcpTransactionId
+      architecture_code: Int
+      requested_at: EpochMs
+      response: ClientResponseObservation
+      source: DeclarationRef?
+    }
+  | ClientRequestUnobserved
+
+// ---- Supplied bindings -------------------------------------------------------------------
+// sole_constructor: a binding exists only through its binder below, so no hand-built value can
+// skip a named source, a recognized architecture or an accepted response. That bounds how a value
+// is shaped, not who may supply the readings.
+
+type SuppliedEdgeOffer sole_constructor {
+  site: SiteIdentity
+  serving_address: Ipv4Address
+  client_mac: Eui48Address
+  transaction: DhcpTransactionId
+  direction: DhcpBootDirection
+  offered_filename: NonEmptyStr
+  next_server: Ipv4Address
+  chainloader_digest: ContentHash?
+  offered_at: EpochMs
+  source: DeclarationRef
+}
+
+type SuppliedClientExchange sole_constructor {
+  client_mac: Eui48Address
+  transaction: DhcpTransactionId
+  architecture: DhcpProcessorArchitecture
+  requested_at: EpochMs
+  accepted_filename: NonEmptyStr
+  accepted_from: Ipv4Address
+  fetched_digest: ContentHash?
+  accepted_at: EpochMs
+  source: DeclarationRef
+}
+
+// Both supplied views of one exchange, joined. Constructible only by bind_supplied_netboot_exchange.
+type SuppliedNetbootExchange sole_constructor {
+  edge: SuppliedEdgeOffer
+  client: SuppliedClientExchange
+}
+
+// ---- Binder 1: supplied edge observation -> SuppliedEdgeOffer ---------------------------------------
+
+type EdgeBindingRefusal
+  = EdgeOfferNotObserved
+  | EdgeOfferWithoutAuthority
+
+type SuppliedEdgeBinding
+  = SuppliedEdgeBound { supplied: SuppliedEdgeOffer }
+  | SuppliedEdgeBindingRefused { refusal: EdgeBindingRefusal }
+
+fn bind_supplied_edge_offer(observation: EdgeOfferObservation) -> SuppliedEdgeBinding {
+  match observation {
+    EdgeOfferUnobserved => SuppliedEdgeBindingRefused { refusal: EdgeOfferNotObserved }
+    EdgeOfferObserved { site: s, serving_address: a, client_mac: m, transaction: x, direction: d, offered_filename: f, next_server: n, chainloader_digest: h, offered_at: t, source: src } =>
+      match src {
+        Absent => SuppliedEdgeBindingRefused { refusal: EdgeOfferWithoutAuthority }
+        Present { value: authority } =>
+          SuppliedEdgeBound {
+            supplied: SuppliedEdgeOffer { site: s, serving_address: a, client_mac: m, transaction: x, direction: d, offered_filename: f, next_server: n, chainloader_digest: h, offered_at: t, source: authority }
+          }
+      }
+  }
+}
+
+// ---- Binder 2: client observation -> SuppliedClientExchange --------------------------------
+// A request nobody answered is the outage, so it is named apart from every other refusal and
+// carries the identifiers a responder would be sought by.
+
+type ClientBindingRefusal
+  = ClientRequestNotObserved
+  | ClientRequestWithoutAuthority
+  | ClientRequestUnanswered { client_mac: Eui48Address, transaction: DhcpTransactionId, requested_at: EpochMs }
+  | ClientArchitectureNotRecognized { code: Int }
+
+type SuppliedClientBinding
+  = SuppliedClientBound { supplied: SuppliedClientExchange }
+  | SuppliedClientBindingRefused { refusal: ClientBindingRefusal }
+
+fn bind_supplied_client_exchange(observation: ClientRequestObservation) -> SuppliedClientBinding {
+  match observation {
+    ClientRequestUnobserved => SuppliedClientBindingRefused { refusal: ClientRequestNotObserved }
+    ClientRequestObserved { client_mac: m, transaction: x, architecture_code: code, requested_at: rt, response: resp, source: src } =>
+      match src {
+        Absent => SuppliedClientBindingRefused { refusal: ClientRequestWithoutAuthority }
+        Present { value: authority } =>
+          match resp {
+            ClientNoResponseAccepted => SuppliedClientBindingRefused { refusal: ClientRequestUnanswered { client_mac: m, transaction: x, requested_at: rt } }
+            ClientResponseAccepted { accepted_filename: f, accepted_from: from, fetched_digest: h, accepted_at: at } =>
+              match client_architecture_claim(code: code) {
+                ClientArchitectureUnrecognized { code: c } => SuppliedClientBindingRefused { refusal: ClientArchitectureNotRecognized { code: c } }
+                ClientArchitectureRecognized { architecture: arch } =>
+                  SuppliedClientBound {
+                    supplied: SuppliedClientExchange { client_mac: m, transaction: x, architecture: arch, requested_at: rt, accepted_filename: f, accepted_from: from, fetched_digest: h, accepted_at: at, source: authority }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ---- Binder 3: the two views of one exchange -> SuppliedNetbootExchange -----------------------
+// A client that accepted an answer the edge has no record of, and an edge offer no client took,
+// are different facts: the first is an unexplained boot, the second is ordinary traffic and is
+// reported by untaken_offers rather than refused.
+
+type SuppliedExchangeRefusal
+  = AcceptedResponseHasNoEdgeOffer { client_mac: Eui48Address, transaction: DhcpTransactionId }
+  | NoCandidateOfferMatchesAcceptance { candidates: Int }
+  | AmbiguousOfferCandidates { candidates: Int }
+  | EdgeDigestUnobserved
+  | ClientDigestUnobserved
+  | DigestFamiliesIncomparable
+  | DigestDisagrees { edge: ContentHash, client: ContentHash }
+  | AcceptedFilenameDisagrees { offered: NonEmptyStr, accepted: NonEmptyStr }
+  | AcceptedFromNotNextServer { next_server: Ipv4Address, accepted_from: Ipv4Address }
+  | OfferPrecedesRequest { requested_at: EpochMs, offered_at: EpochMs }
+  | AcceptancePrecedesOffer { offered_at: EpochMs, accepted_at: EpochMs }
+
+type SuppliedExchangeBinding
+  = SuppliedExchangeBound { supplied: SuppliedNetbootExchange }
+  | SuppliedExchangeRefused { refusal: SuppliedExchangeRefusal }
+
+// An offer is a CANDIDATE for a client when it names the same client and exchange (MAC + xid; the
+// ExchangeKey); it is TAKEN when the client's accepted answer also names that offer's server and
+// filename (the AcceptanceKey). Both are derived from the client's own reading, never from list position.
+
+// THE ONE SELECTION OUTCOME PER CLIENT. Both the binder and untaken_offers read it, so the two
+// cannot disagree about which offer a client chose: a second selection rule beside this one would
+// be the fork. A lone candidate is carried to the binder whether or not the client accepted it
+// (UniqueCandidate), so the binder reports its specific field disagreement (wrong server, wrong
+// filename) instead of a bare "no match"; only UniqueAccepted means the client's answer names the
+// offer, and only that counts as taken. Several accepted is an ambiguity and selects NOTHING:
+// marking every duplicate taken would hide offers the client may not have chosen.
+type OfferSelection
+  = NoCandidateOffers
+  | NoOfferNamedByAcceptance { candidates: Int }
+  | UniqueCandidate { edge: SuppliedEdgeOffer }
+  | UniqueAccepted { edge: SuppliedEdgeOffer }
+  | AmbiguousSelected { candidates: Int }
+
+// The exchange an offer or a request belongs to: the RFC 2131 xid plus the client hardware address.
+type ExchangeKey {
+  client_mac: Eui48Address
+  transaction: DhcpTransactionId
+}
+
+fn exchange_key_of_offer(edge: SuppliedEdgeOffer) -> ExchangeKey {
+  ExchangeKey { client_mac: edge.client_mac, transaction: edge.transaction }
+}
+
+fn exchange_key_of_client(client: SuppliedClientExchange) -> ExchangeKey {
+  ExchangeKey { client_mac: client.client_mac, transaction: client.transaction }
+}
+
+// What the client's acceptance names: its exchange plus the server and filename it took. An offer
+// with the same key is one the client's answer names.
+type AcceptanceKey {
+  exchange: ExchangeKey
+  server: Ipv4Address
+  filename: NonEmptyStr
+}
+
+fn acceptance_key_of_offer(edge: SuppliedEdgeOffer) -> AcceptanceKey {
+  AcceptanceKey { exchange: exchange_key_of_offer(edge: edge), server: edge.next_server, filename: edge.offered_filename }
+}
+
+fn acceptance_key_of_client(client: SuppliedClientExchange) -> AcceptanceKey {
+  AcceptanceKey { exchange: exchange_key_of_client(client: client), server: client.accepted_from, filename: client.accepted_filename }
+}
+
+// How many offers share a key, and one of them. A selection only ever needs "none, exactly this
+// one, or several", so a count replaces a growing bucket: no append copies a list, and a client
+// reads its answer in a constant number of indexed reads, independent of how many same-key offers or same-key clients the batch holds.
+type OfferTally {
+  first: SuppliedEdgeOffer
+  count: Int
+}
+
+type OfferIndex {
+  candidates: Map<ExchangeKey, OfferTally>
+  named: Map<AcceptanceKey, OfferTally>
+}
+
+fn tally_bump(prior: OfferTally?, edge: SuppliedEdgeOffer) -> OfferTally {
+  match prior {
+    Present { value: t } => OfferTally { first: t.first, count: t.count + 1 }
+    Absent => OfferTally { first: edge, count: 1 }
+  }
+}
+
+// Indexed once: a batch of n offers and m clients is O(n + m) indexed map operations, O((n + m) log(n + m)) total under the persistent map, not n * m.
+fn index_offers(edges: List<SuppliedEdgeOffer>) -> OfferIndex {
+  edges |> fold(init: OfferIndex { candidates: empty_map(), named: empty_map() }, f: (ix, e) =>
+    OfferIndex {
+      candidates: map_insert(ix.candidates, exchange_key_of_offer(edge: e), tally_bump(prior: map_get(ix.candidates, exchange_key_of_offer(edge: e)), edge: e))
+      named: map_insert(ix.named, acceptance_key_of_offer(edge: e), tally_bump(prior: map_get(ix.named, acceptance_key_of_offer(edge: e)), edge: e))
+    }
+  )
+}
+
+fn select_offer(client: SuppliedClientExchange, edges: List<SuppliedEdgeOffer>) -> OfferSelection {
+  select_indexed(client: client, index: index_offers(edges: edges))
+}
+
+fn select_indexed(client: SuppliedClientExchange, index: OfferIndex) -> OfferSelection {
+  match map_get(index.candidates, exchange_key_of_client(client: client)) {
+    Absent => NoCandidateOffers
+    Present { value: seen } =>
+      match map_get(index.named, acceptance_key_of_client(client: client)) {
+        Present { value: named } =>
+          if named.count == 1 {
+            UniqueAccepted { edge: named.first }
+          } else {
+            AmbiguousSelected { candidates: named.count }
+          }
+        Absent =>
+          if seen.count == 1 {
+            UniqueCandidate { edge: seen.first }
+          } else {
+            NoOfferNamedByAcceptance { candidates: seen.count }
+          }
+      }
+  }
+}
+
+// The joined hypothesis is minted only through this entry. bind_matched_attempt and
+// bind_matched_digests are admit_callers-sealed down the chain, because an open
+// bind_matched_digests would report agreement for two views it never compared on MAC, xid,
+// server or ordering. Reversing `edges` cannot change the outcome. Ordering uses the two sides' own
+// clocks; cross-host skew is not modeled, so an exchange whose stamps straddle a skew larger than
+// the exchange refuses instead of passing. A tolerance would be an added field on the binder, not a
+// loosened comparison.
+fn bind_supplied_netboot_exchange(client: SuppliedClientExchange, edges: List<SuppliedEdgeOffer>) -> SuppliedExchangeBinding {
+  match select_offer(client: client, edges: edges) {
+    NoCandidateOffers => SuppliedExchangeRefused { refusal: AcceptedResponseHasNoEdgeOffer { client_mac: client.client_mac, transaction: client.transaction } }
+    NoOfferNamedByAcceptance { candidates: n } => SuppliedExchangeRefused { refusal: NoCandidateOfferMatchesAcceptance { candidates: n } }
+    AmbiguousSelected { candidates: n } => SuppliedExchangeRefused { refusal: AmbiguousOfferCandidates { candidates: n } }
+    UniqueCandidate { edge: edge } => bind_matched_attempt(edge: edge, client: client)
+    UniqueAccepted { edge: edge } => bind_matched_attempt(edge: edge, client: client)
+  }
+}
+
+fn bind_matched_attempt(edge: SuppliedEdgeOffer, client: SuppliedClientExchange) -> SuppliedExchangeBinding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.site_pxe_edge_receipts", decl_name: "bind_supplied_netboot_exchange"),
+  ]
+  = if edge.offered_at < client.requested_at {
+    SuppliedExchangeRefused { refusal: OfferPrecedesRequest { requested_at: client.requested_at, offered_at: edge.offered_at } }
+  } else {
+    if client.accepted_at < edge.offered_at {
+      SuppliedExchangeRefused { refusal: AcceptancePrecedesOffer { offered_at: edge.offered_at, accepted_at: client.accepted_at } }
+    } else {
+      if edge.offered_filename != client.accepted_filename {
+        SuppliedExchangeRefused { refusal: AcceptedFilenameDisagrees { offered: edge.offered_filename, accepted: client.accepted_filename } }
+      } else {
+        if edge.next_server != client.accepted_from {
+          SuppliedExchangeRefused { refusal: AcceptedFromNotNextServer { next_server: edge.next_server, accepted_from: client.accepted_from } }
+        } else {
+          bind_matched_digests(edge: edge, client: client)
+        }
+      }
+    }
+  }
+
+fn bind_matched_digests(edge: SuppliedEdgeOffer, client: SuppliedClientExchange) -> SuppliedExchangeBinding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.site_pxe_edge_receipts", decl_name: "bind_matched_attempt"),
+  ]
+  = match edge.chainloader_digest {
+    Absent => SuppliedExchangeRefused { refusal: EdgeDigestUnobserved }
+    Present { value: eh } =>
+      match client.fetched_digest {
+        Absent => SuppliedExchangeRefused { refusal: ClientDigestUnobserved }
+        Present { value: ch } =>
+          match compare_content_hash(left: eh, right: ch) {
+            ContentHashEqual => SuppliedExchangeBound { supplied: SuppliedNetbootExchange { edge: edge, client: client } }
+            ContentHashDifferent => SuppliedExchangeRefused { refusal: DigestDisagrees { edge: eh, client: ch } }
+            ContentHashCrossFamilyIncomparable => SuppliedExchangeRefused { refusal: DigestFamiliesIncomparable }
+          }
+      }
+  }
+
+// The offers the clients' selections accepted, computed ONCE from one shared index; only
+// UniqueAccepted contributes, so an ambiguity marks none of its duplicates and a lone candidate the
+// client did not accept stays untaken.
+fn selected_offers(edges: List<SuppliedEdgeOffer>, clients: List<SuppliedClientExchange>) -> List<SuppliedEdgeOffer> {
+  selected_in(index: index_offers(edges: edges), clients: clients)
+}
+
+fn selected_in(index: OfferIndex, clients: List<SuppliedClientExchange>) -> List<SuppliedEdgeOffer> {
+  clients |> flat_map(c =>
+    match select_indexed(client: c, index: index) {
+      UniqueAccepted { edge: e } => [e]
+      _ => []
+    }
+  )
+}
+
+// Offers no client accepted: ordinary traffic (a machine that was offered and did not boot, a
+// competing server's offer it passed over, a lone offer whose server or filename the client did not
+// take, or one of several indistinguishable duplicates), reported as a list, never as a refusal.
+// Membership is a keyed lookup (offer -> its exchange) over the accepted offers, so the pass is O(n + m) indexed map operations, O((n + m) log(n + m)) total under the persistent map.
+fn untaken_offers(edges: List<SuppliedEdgeOffer>, clients: List<SuppliedClientExchange>) -> List<SuppliedEdgeOffer> {
+  untaken_given(edges: edges, chosen: selected_offers(edges: edges, clients: clients) |> fold(init: empty_map(), f: (m, e) => map_insert(m, e, exchange_key_of_offer(edge: e))))
+}
+
+fn untaken_given(edges: List<SuppliedEdgeOffer>, chosen: Map<SuppliedEdgeOffer, ExchangeKey>) -> List<SuppliedEdgeOffer> {
+  edges |> filter(e => map_contains_key(chosen, e) == false)
+}
+
+// ---- Frontier: what promotes these shapes, as typed rows --------------------------------
+// Each producer is its own row: the first real edge offer cannot discharge the client's
+// acceptance and fetch, and neither promotes a binding alone.
+data site_pxe_edge_receipts_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_receipts", decl_name: "bind_supplied_edge_offer"),
+    reason: "no edge-side producer mints occurrence evidence for an offer; EdgeOfferObserved is openly constructible and source is a caller-named declaration, so SuppliedEdgeOffer is a hypothesis",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a producer reading the converged srv4 edge's own DHCP log mints the offer occurrence (endpoint, run, raw bytes, timestamp, served digest) and a separately sealed edge receipt is built from it on a real boot attempt; a witness over supplied offers does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_receipts", decl_name: "bind_supplied_client_exchange"),
+    reason: "no client-side producer mints occurrence evidence for the request or for the accepted response and fetch; one caller-named source covers facts that have separate producers",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a producer reading the unit's firmware or serial output mints the request and the acceptance/fetch as separate occurrences and a separately sealed client receipt is built from them on a real S6 attempt; the edge producer firing does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_receipts", decl_name: "bind_supplied_netboot_exchange"),
+    reason: "no declared consumer promotes a SuppliedNetbootExchange into evidence for the S6/S7 wet attempt; today only the witness reads it, and its binding says only that two supplied views agree",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the declaration the cut-6 S6/S7 wet children add under gunbc.plans.physical_machine_boot_program physical_machine_boot_program_plan (the tracking home; its consuming declaration does not exist yet, so none can be named today) consumes a binding whose edge and client halves came from sealed producers (the two rows above); until then no fold reads this and it is not evidence of any boot"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.provisioning.dhcp_client_arch", decl_name: "dhcp_processor_architecture_members"),
+    reason: "the member list is authored beside the DhcpProcessorArchitecture union and nothing forces it to cover the union; the witness covers the five current members by explicit arm, so a sixth member is caught only if that witness is extended",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the language can enumerate a closed union's variants, or when the forward code table and this inverse derive from one mapping row set; a longer list or a larger witness does not fire this"
+    )
+  ),
+]

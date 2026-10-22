@@ -1,7 +1,7 @@
 module v2.cli.parse_verdict_reuse
 
 import std.types { Bool, Char, Int, List, Map, String }
-import std.algebra { FreeMonoid, Empty, FreeSemigroup, empty_map, fold_list, list_head, map_insert }
+import std.algebra { FreeMonoid, Empty, FreeSemigroup, empty_map, fold_list, list_head, list_map, map_insert }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
@@ -24,6 +24,7 @@ import gunbc.parse_verdict_schema {
   parse_verdict_restore_identity_basename,
   parse_verdict_restore_receipts_basename,
   parse_verdict_restore_ancestors_basename,
+  parse_verdict_reuse_counts_prefix,
 }
 
 // THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_schema owns the standing;
@@ -195,17 +196,84 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
   }
 }
 
+// -------------------------------------------------------------------------------- THE COUNTS LINE, PRINTED ONCE
+//
+// THE FIELD SEQUENCE IS DECLARED HERE AND NOWHERE ELSE. The seven labels were also written as a list in
+// gunbc.parse_verdict_schema, and the contract stamp hashed THAT list -- so what the stamp certified was
+// a transcription of the print rather than the print. Renaming or dropping a field here could leave the
+// stamped contract looking whole, which is a silent-green of the kind
+// gunbc.recurring_failure_mode.instruction_and_subject_resolved_from_different_revisions records: the
+// recorded runs printed an OLD counts shape under a NEW workflow and exited green, because nothing
+// compared the shape the walk was believed to produce with the shape it produced. So the rows are the
+// formatter's own, the print renders from them, and the stamp reads the same rows. There is no second
+// list to drift, and a field added here is stamped automatically.
+type ParseVerdictReuseCountsField {
+  label: String
+  value: String
+}
+
+// THE FIELDS IN PRINT ORDER. The label half is what the contract covers; the value half is here because
+// only the verb holds it. Order is contract: the guard's readers key on the labels, and the stamp moves
+// if the order moves.
+fn parse_verdict_reuse_counts_fields(counts: ParseVerdictReuseCounts) -> List<ParseVerdictReuseCountsField> {
+  [
+    ParseVerdictReuseCountsField { label: "ancestor", value: counts.ancestor },
+    ParseVerdictReuseCountsField { label: "reused", value: int_to_decimal_string(value: counts.reused) },
+    ParseVerdictReuseCountsField { label: "miss_identity_absent", value: int_to_decimal_string(value: counts.miss_identity_absent) },
+    ParseVerdictReuseCountsField { label: "miss_identity_mismatch", value: int_to_decimal_string(value: counts.miss_identity_mismatch) },
+    ParseVerdictReuseCountsField { label: "miss_entry_absent", value: int_to_decimal_string(value: counts.miss_entry_absent) },
+    ParseVerdictReuseCountsField { label: "miss_digest_unseen", value: int_to_decimal_string(value: counts.miss_digest_unseen) },
+    ParseVerdictReuseCountsField { label: "miss_declared_refused", value: int_to_decimal_string(value: counts.miss_declared_refused) }
+  ]
+}
+
+// THE FIELD NAMES AS DATA, read from the rows the formatter prints. This is what the contract stamp
+// covers, so "the output fields are bound to the actual formatter" is literally true: the names come out
+// of the same declaration that produces the line, not from a list maintained beside it.
+fn parse_verdict_reuse_counts_field_names() -> List<String> {
+  list_map(xs: parse_verdict_reuse_counts_probe_fields(), f: fn(field) { field.label })
+}
+
+// THE ROWS FOR VALUES THAT ONLY EXIST TO MAKE THE ROWS TOTAL. The names are read without walking
+// anything, so generation can ask what the verb prints; these zeros are never printed and never reach a
+// runner. Same device parse_verdict_invocation_verb_args uses for the option sequence.
+fn parse_verdict_reuse_counts_probe_fields() -> List<ParseVerdictReuseCountsField> {
+  parse_verdict_reuse_counts_fields(counts: parse_verdict_reuse_counts_zero(ancestor: Absent))
+}
+
+// THE PRINTED LINE FOR THE PROBE, AND THE FIELD TEXTS IT IS BUILT FROM. Two different productions over
+// the same declaration: this one goes through the RENDERER, the rows go through the row builders. The
+// contract-stamp gate compares them, so the gate is asking "does the renderer honour the rows?" -- which
+// is a question that can be answered falsely. If counts_text were ever re-hardcoded to print six fields
+// while seven are declared, the rows would say seven, the line would carry six, and the gate goes false.
+// That is the recorded silent-green itself (four runs printed the six-field shape under a seven-field
+// contract and exited green), checked at the point where an artifact can still be refused.
+fn parse_verdict_reuse_counts_probe_text() -> String {
+  parse_verdict_reuse_counts_text(counts: parse_verdict_reuse_counts_zero(ancestor: Absent))
+}
+
+fn parse_verdict_reuse_counts_probe_field_texts() -> List<String> {
+  parse_verdict_reuse_counts_field_texts(counts: parse_verdict_reuse_counts_zero(ancestor: Absent))
+}
+
+// THE PRINTED LINE: the schema's prefix, one space, then every declared field joined by one space. The
+// rendering is byte-identical to the line this verb has always printed -- the seven labels, in order,
+// each after its separator -- which src/v2/test/claim/cli/population_verbs.dag binds byte-wise, so
+// moving the rows here could not silently change what the walk prints.
 fn parse_verdict_reuse_counts_text(counts: ParseVerdictReuseCounts) -> String {
   join(
     [
-      "parse-verdict reuse: ancestor=", counts.ancestor,
-      " reused=", int_to_decimal_string(value: counts.reused),
-      " miss_identity_absent=", int_to_decimal_string(value: counts.miss_identity_absent),
-      " miss_identity_mismatch=", int_to_decimal_string(value: counts.miss_identity_mismatch),
-      " miss_entry_absent=", int_to_decimal_string(value: counts.miss_entry_absent),
-      " miss_digest_unseen=", int_to_decimal_string(value: counts.miss_digest_unseen),
-      " miss_declared_refused=", int_to_decimal_string(value: counts.miss_declared_refused)
+      parse_verdict_reuse_counts_prefix,
+      " ",
+      join(parse_verdict_reuse_counts_field_texts(counts: counts), " ")
     ],
     ""
+  )
+}
+
+fn parse_verdict_reuse_counts_field_texts(counts: ParseVerdictReuseCounts) -> List<String> {
+  list_map(
+    xs: parse_verdict_reuse_counts_fields(counts: counts),
+    f: fn(field) { join([field.label, "=", field.value], "") }
   )
 }

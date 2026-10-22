@@ -546,47 +546,77 @@ fn program_assembly_ingest_scope(ingest: SourceRootIngest) -> SourceRefListDiges
   ))
 }
 
+// THE PREPARED LANGUAGE: A MODEL AND THE PREPARATION OF THAT SAME MODEL, ONE VALUE. A claim frame that
+// assembles many sources under one language model builds the model and prepares its grammar and lex
+// rules once, here, and carries the value as an ordinary argument to every assembly (DESIGN section 2,
+// step 1: a shared-state ancestor carries the first value; no cache, no served value).
+// THE PAIRING HOLDS BY CONVENTION, NOT BY CONSTRUCTION: the record has public fields, so a mismatched
+// model and preparation is still writable by hand; `prepare_language` is the only constructor this
+// corpus uses. What the assembly guarantees is that it reads ONLY the carried preparation and `model`
+// (never a fixed dag model), which prepared_language_identity executes. Making the record opaque is
+// the next rung and waits on an opaque-constructor capability.
+type PreparedLanguage {
+  model: LanguageModel,
+  grammar: PreparedGrammar,
+  lex: PreparedLexRules
+}
+
+fn prepare_language(lm: LanguageModel) -> Outcome<PreparedLanguage> {
+  match prepare_grammar(grammar: lm.grammar) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: dg } =>
+      Accepted {
+        value: PreparedLanguage { model: lm, grammar: prepared, lex: prepare_lex_rules(rules: lm.lex) },
+        diagnostics: dg
+      }
+  }
+}
+
 fn program_assembly_fold_ingest_located(
   ingest: SourceRootIngest,
   lm: LanguageModel
 ) -> ProgramAssemblyLocatedFoldState {
   match ingest {
     Empty =>
-      ProgramAssemblyLocatedFoldOk {
-        located: program_assembly_empty_located_roots(),
-        index: source_root_index_empty(),
-        alloc: occurrence_id_allocator_initial(),
-        spans: span_index_empty(),
-        advisories: None
-      }
+      program_assembly_fold_ingest_prepared_empty()
     _ =>
-      match prepare_grammar(grammar: lm.grammar) {
+      match prepare_language(lm: lm) {
         Rejected { diagnostics: d } =>
           ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
-        Accepted { value: prepared, diagnostics: _ } =>
-          let lex = prepare_lex_rules(rules: lm.lex)
-          match program_assembly_ingest_scope(ingest: ingest) {
-            SourceRefListDigestNonStructuralRefused { path: _ } =>
-              ProgramAssemblyLocatedFoldFailed {
-                diagnostics: diagnostics_singleton(d: source_authority_diagnostic(reason: ^program_assembly_ingest_scope_non_structural)),
-                spans: span_index_empty()
-              }
-            SourceRefListDigestOk { digest: scope } =>
-              fold_list(
-                xs: ingest,
-                empty: ProgramAssemblyLocatedFoldOk {
-                  located: program_assembly_empty_located_roots(),
-                  index: source_root_index_empty(),
-                  alloc: occurrence_id_allocator_initial(),
-                  spans: span_index_empty(),
-                  advisories: None
-                },
-                cons: fn(state, read) {
-                  program_assembly_fold_step(state: state, read: read, lex: lex, prepared: prepared, scope: scope)
-                }
-              )
-          }
+        Accepted { value: prep, diagnostics: _ } =>
+          program_assembly_fold_ingest_prepared(ingest: ingest, prep: prep)
       }
+  }
+}
+
+fn program_assembly_fold_ingest_prepared_empty() -> ProgramAssemblyLocatedFoldState {
+  ProgramAssemblyLocatedFoldOk {
+    located: program_assembly_empty_located_roots(),
+    index: source_root_index_empty(),
+    alloc: occurrence_id_allocator_initial(),
+    spans: span_index_empty(),
+    advisories: None
+  }
+}
+
+fn program_assembly_fold_ingest_prepared(
+  ingest: SourceRootIngest,
+  prep: PreparedLanguage
+) -> ProgramAssemblyLocatedFoldState {
+  match program_assembly_ingest_scope(ingest: ingest) {
+    SourceRefListDigestNonStructuralRefused { path: _ } =>
+      ProgramAssemblyLocatedFoldFailed {
+        diagnostics: diagnostics_singleton(d: source_authority_diagnostic(reason: ^program_assembly_ingest_scope_non_structural)),
+        spans: span_index_empty()
+      }
+    SourceRefListDigestOk { digest: scope } =>
+      fold_list(
+        xs: ingest,
+        empty: program_assembly_fold_ingest_prepared_empty(),
+        cons: fn(state, read) {
+          program_assembly_fold_step(state: state, read: read, lex: prep.lex, prepared: prep.grammar, scope: scope)
+        }
+      )
   }
 }
 
@@ -683,7 +713,47 @@ fn assemble_program_from_ingest_located(
   admission: Admission,
   lm: LanguageModel
 ) -> IngestAssembly {
-  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+  program_assembly_resolve_folded(
+    folded: program_assembly_fold_ingest_located(ingest: ingest, lm: lm),
+    ingest: ingest,
+    admission: admission,
+    lm: lm
+  )
+}
+
+// THE SAME ASSEMBLY OVER A LANGUAGE PREPARED ONCE BY THE CALLER. The model the resolve reads is
+// `prep.model`, the one the preparation was derived from, so there is no second `lm` to disagree with it.
+fn assemble_program_from_prepared_ingest_located(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  prep: PreparedLanguage
+) -> IngestAssembly {
+  program_assembly_resolve_folded(
+    folded: match ingest {
+      Empty => program_assembly_fold_ingest_prepared_empty()
+      _ => program_assembly_fold_ingest_prepared(ingest: ingest, prep: prep)
+    },
+    ingest: ingest,
+    admission: admission,
+    lm: prep.model
+  )
+}
+
+fn assemble_program_from_prepared_ingest(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  prep: PreparedLanguage
+) -> Outcome<ResolvedTree> {
+  assemble_program_from_prepared_ingest_located(ingest: ingest, admission: admission, prep: prep).program
+}
+
+fn program_assembly_resolve_folded(
+  folded: ProgramAssemblyLocatedFoldState,
+  ingest: SourceRootIngest,
+  admission: Admission,
+  lm: LanguageModel
+) -> IngestAssembly {
+  match folded {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
       IngestAssembly { spans: spans, program: Rejected { diagnostics: d } }
     ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans, advisories: advised } =>

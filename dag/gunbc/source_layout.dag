@@ -1,5 +1,6 @@
 module gunbc.source_layout
 
+import std.optional { Optional }
 import std.types { Bool, List, String }
 
 // THE REPOSITORY'S STORAGE POLICY (gunbc.plans.source_layout_authority, R5). Module `a.b.c` lives
@@ -41,6 +42,36 @@ fn layout_namespace_roots() -> List<LayoutNamespaceRoot> {
   [
     LayoutNamespaceRoot { namespace: "v2", tree: LayoutTreeV2 {}, elides_namespace: true }
   ]
+}
+
+// THE NAME-TO-PATH MAPPING, written once: module `a.b.c` is stored at `<root(a)>/b/c.dag`, where
+// the namespace row names the tree and whether the namespace itself is elided from the relative
+// path. A module in no listed namespace lives in the default tree with its full name.
+fn layout_module_storage_path(module: String) -> Optional<String> {
+  let namespaces = layout_namespace_roots() |> map(r => r.namespace)
+  // A bare namespace, or a bare top-level name, has no file: refuse, never fabricate a path.
+  if !contains(module, ".") || namespaces |> any(n => n == module) {
+    Absent
+  } else {
+    let owning = filter(layout_namespace_roots(), r => starts_with(s: module, prefix: concat(r.namespace, ".")))
+    match owning.first() {
+      Absent => Present { value: concat(layout_tree_directory(tree: layout_default_tree()), concat("/", concat(replace(s: module, from: ".", to: "/"), ".dag"))) }
+      Present { value: r } => Present { value: concat(
+        layout_tree_directory(tree: r.tree),
+        concat(
+          "/",
+          concat(
+            replace(
+              s: if r.elides_namespace { substring(s: module, start: string_length(s: r.namespace) + 1, end: string_length(s: module)) } else { module },
+              from: ".",
+              to: "/"
+            ),
+            ".dag"
+          )
+        )
+      ) }
+    }
+  }
 }
 
 // THE GOVERNED ROOTS, written down: the layout check enumerates exactly these two tree

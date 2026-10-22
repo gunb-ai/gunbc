@@ -104,7 +104,6 @@ import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_elevated }
 import gunbc.live_deploy.operations {
   install_directory_command,
   rm_force_command,
-  rm_empty_directory_command,
   rm_force_recursive_command,
   systemctl_disable_now_command,
   systemctl_user_daemon_reload_command,
@@ -130,15 +129,24 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
-import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
+import gunbc.live_deploy.spec { deployment_directory_demands }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary }
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
-import gunbc.live_deploy.emit { live_deploy_belt_credential_recovery_timer_unit_file }
+import gunbc.membership_reconcile { EffectRemove }
+import gunbc.live_deploy.retract_legs {
+  DeployRetractLeg, deploy_retract_effect_plan, retract_leftover_timer_legs, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs,
+  RetractServeOff, RetractDisableIfLoaded, RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, RetractDaemonReload, RetractUnitGoneReadback,
+}
+import extdeps.tailscale.serve { tailscale_serve_off_argv }
+import std.algebra { non_empty_to_list }
+import gunbc.live_deploy.emit {
+  leftover_systemd_timer_retire_steps,
+  leftover_systemd_timer_retire_dissolution, live_deploy_belt_credential_recovery_timer_unit_file }
 import gunbc.live_deploy.emit {
   composed_artifact_upsert,
   deploy_retract_stage_cleanup_frame_script,
   deploy_apply_stage_cleanup_frame_script,
   deploy_two_dir_trap_one_var_mutant_script,
-  retract_intent_fragments_for,
   approval_broker_tree_copy_steps,
   owned_directory_install_steps,
   owned_directory_apply_steps,
@@ -146,18 +154,17 @@ import gunbc.live_deploy.emit {
   approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
+  live_deploy_belt_service_unit_file,
+  live_deploy_publication_service_unit_file,
   deployment_serve_route_command,
   emit_release_member_effects,
-  deploy_retract_frame_comments,
   deploy_apply_receipt_steps,
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
   live_deploy_systemd_unit_for,
-  emit_deploy_teardown_dependency_refusal,
   live_deploy_wholesale_refused_poison,
   live_deploy_apply_script_for,
-  live_deploy_retract_script_for,
   deploy_apply_preamble_steps,
   apply_intent_from_effects,
   apply_intent_fragments,
@@ -180,8 +187,6 @@ import gunbc.live_deploy.emit {
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
-  leftover_systemd_timer_retire_steps,
-  leftover_systemd_timer_retire_dissolution,
   live_deploy_publication_path_unit_file,
   deploy_memory_cap_apply_steps,
   apply_slice_control_converge_steps,
@@ -196,6 +201,10 @@ import gunbc.live_deploy.release_locus {
   release_locus_binary_path,
   RevisionBoundAtEmission,
 }
+import gunbc.host.host_effect { HostEffectIntent, HostOs, LocalShell, LiveDeployRetract, host_effect_identity_evidence }
+import gunbc.host.host_effect_realize { realize_live_deploy_retract_on_host }
+import gunbc.fleet.fleet_intent { srv1_host }
+import std.realization_reconcile { Converged, NotConverged }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoVisudo, fleet_posix_ci_runner_principal }
 import gunbc.host.host_axis_caps {
@@ -238,6 +247,7 @@ import gunbc.roadmap.roadmap_static_site {
 }
 import extdeps.package_managers.apt { package_tailscale, package_tmux }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.host_text { chars }
 
 data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE GONE, SO THESE WITNESSES CALL THE EMITTER DIRECTLY. Nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh — the real deploy runs live_deploy_apply_prod_role_wet through gunbc run — and their registry rows named a HostReconciler consumer that does not exist. A committed artifact nobody reads is not coverage; it is a false architectural claim that happened to be convenient as a byte oracle.\\n\\nThe coverage did not need the artifact. A fixture sha is forbidden in a committed PRODUCTION artifact, never in a witness, so these call live_deploy_apply_script_for with RevisionBoundAtEmission at the fixture revision and assert the same bytes the golden used to pin — with the ExecStart line now pinned EXACTLY, which the golden never did."
 
@@ -263,14 +273,32 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
 
 data witness_apply_script_text: String = live_deploy_apply_script_for(access: ci_deploy_srv1_access, spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now(), object_source_serve: apply_complete_object_source_serve())
 
-data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
 
 fn witness_apply_script() -> String {
   witness_apply_script_text
 }
 
+fn retract_leg_text(leg: DeployRetractLeg) -> String {
+  match leg {
+    RetractServeOff { endpoint: e } => join(["serve-off ", join(tailscale_serve_off_argv(endpoint: e), " ")], "")
+    RetractDisableIfLoaded { unit: u } => join(["disable-if-loaded ", u as String], "")
+    RetractRemoveForce { paths: ps } => join(["remove-files ", join(non_empty_to_list(xs: ps) |> map(p => p as String), " ")], "")
+    RetractRemoveEmptyDirectory { path: p } => join(["remove-empty-directory ", p as String], "")
+    RetractRemoveRecursive { path: p } => join(["remove-tree ", p as String], "")
+    RetractDaemonReload => "daemon-reload"
+    RetractUnitGoneReadback { unit: u } => join(["unit-gone-readback ", u as String], "")
+  }
+}
+
+fn retract_plan_text(spec: DeploymentSpec) -> String {
+  match deploy_retract_plan_legs(spec: spec) {
+    RetractPlanRefused { step: st, reason: r } => join(["REFUSED ", st, ": ", r], "")
+    RetractPlanReady { legs: ls } => join(ls |> map(l => retract_leg_text(leg: l)), "\n")
+  }
+}
+
 fn witness_retract_script() -> String {
-  witness_retract_script_text
+  retract_plan_text(spec: deployment_spec_srv1())
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -368,8 +396,8 @@ test fn witness_attempt_state_mode_derives_to_owner_only() -> Bool {
 test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
   let script = witness_retract_script()
   let path = srv1_dispatch_attempt_state_root as String
-  let empty_dir_removal = string_contains(s: script, pattern: rm_empty_directory_command(path: path))
-  let recursive_removal = string_contains(s: script, pattern: rm_force_recursive_command(path: path))
+  let empty_dir_removal = string_contains(s: script, pattern: join(["remove-empty-directory ", path], ""))
+  let recursive_removal = string_contains(s: script, pattern: join(["remove-tree ", path], ""))
   empty_dir_removal && !recursive_removal
 }
 
@@ -473,16 +501,6 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     + host_script_trace_steps(kind: "Mutate", member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps()).length()
   let traced_pre = host_script_trace_steps(kind: "Mutate", member: "preamble" as NonEmptyStr, steps: pre)
   pipeline_steps_text(steps: p.steps.skip(n: offset).take(n: traced_pre.length())) == pipeline_steps_text(steps: traced_pre)
-}
-
-// THE RETRACT FRAME ACKNOWLEDGES THE SHARED SUDOERS INSTALL. `live_deploy_retract_intent`
-// concatenates `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so the facts
-// about that preamble are owned once, by witness_apply_preamble_has_no_embedded_preflight and
-// witness_apply_preamble_installs_only_the_deploy_sudoers; this claim keeps only the retract
-// frame's own comment.
-test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
-  let frame = pipeline_steps_text(steps: deploy_retract_frame_comments(spec: deployment_spec_srv1()))
-  string_contains(s: frame, pattern: "first retract-after-flip may be the dropin install")
 }
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
@@ -796,18 +814,15 @@ test fn witness_retract_script_owned_only() -> Bool {
   let sh = witness_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && !string_contains(s: sh, pattern: "tailscale serve reset")
-    && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: sh, pattern: concat("then ", concat(systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true), "; fi")))
-    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/opt/gunbc/bin/gunbc"]))
-    && string_contains(s: sh, pattern: rm_empty_directory_command(path: "/opt/gunbc/dispatch-worktrees"))
-    && string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/gunbc"))
-    && !string_contains(s: sh, pattern: rm_force_recursive_command(path: "/opt/gunbc/dispatch-worktrees"))
-    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: [
-      "/etc/systemd/system/gunbc-tree-sync.service",
-      "/etc/gunbc-tree-sync.env",
-    ]))
-    && string_contains(s: sh, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
-    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
+    && string_contains(s: sh, pattern: retract_leg_text(leg: RetractServeOff { endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint }))
+    && string_contains(s: sh, pattern: join(["disable-if-loaded ", gunbc_roadmap_unit_name as String], ""))
+    && string_contains(s: sh, pattern: "remove-files /opt/gunbc/bin/gunbc")
+    && string_contains(s: sh, pattern: "remove-empty-directory /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: "remove-tree /opt/gunbc/gunbc")
+    && !string_contains(s: sh, pattern: "remove-tree /opt/gunbc/dispatch-worktrees")
+    && string_contains(s: sh, pattern: "remove-files /etc/systemd/system/gunbc-tree-sync.service")
+    && string_contains(s: sh, pattern: "/etc/gunbc-tree-sync.env")
+    && string_contains(s: sh, pattern: "/etc/systemd/system/gunbc-roadmap.service")
     && !string_contains(s: sh, pattern: "apt-get remove")
     && !string_contains(s: sh, pattern: "apt-get purge")
 }
@@ -841,12 +856,8 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
   string_contains(s: sh, pattern: "/opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
     && !string_contains(s: sh, pattern: "tailscale serve reset")
-    && string_contains(s: sh, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: sh, pattern: "_gunbc_load_state=$('systemctl' 'show' 'gunbc-roadmap.service' '--property=LoadState' '--value')")
-    && string_contains(s: sh, pattern: "if '[' \"$_gunbc_load_state\" '!=' 'not-found' ']'; then '/usr/bin/sudo' '-n' 'systemctl' 'disable' '--now' 'gunbc-roadmap.service'; fi")
-    && !string_contains(s: sh, pattern: "_gunbc_load_state=$(systemctl")
-    && !string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service 2>/dev/null || true")
-    && string_contains(s: sh, pattern: deploy_receipt_command(host: deployment_plan_host_identity(spec: deployment_spec_srv1()), fold: "retract"))
+    && string_contains(s: sh, pattern: retract_leg_text(leg: RetractServeOff { endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint }))
+    && string_contains(s: sh, pattern: join(["disable-if-loaded ", gunbc_roadmap_unit_name as String], ""))
     && !string_contains(s: sh, pattern: "roadmap-site-readback")
 }
 
@@ -957,12 +968,13 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
 test fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
-  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } })
-  count(steps) == 1
-    && any(steps, s => match s {
-         Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
-         _ => false
-       })
+  match deploy_retract_effect_plan(
+    effect: EffectRemove { from: Dependency { step: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } } } },
+    spec: deployment_spec_srv1(),
+  ) {
+    RetractPlanRefused { step: st, reason: _ } => st == "dependency-teardown"
+    RetractPlanReady { legs: _ } => false
+  }
 }
 
 test fn witness_wholesale_refused_poison_carries_marker() -> Bool {
@@ -1098,12 +1110,12 @@ test fn production_belt_unit_carries_productions_spawn_root() -> Bool {
 }
 
 test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
-  let twin = live_deploy_retract_script_for(spec: srv1_twin_spec(), access: ci_deploy_srv1_access)
-  !string_contains(s: twin, pattern: gunbc.live_deploy.operations.rm_force_command(paths: ["/etc/systemd/system/gunbc-roadmap.service"]))
+  let twin = retract_plan_text(spec: srv1_twin_spec())
+  !string_contains(s: twin, pattern: "/etc/systemd/system/gunbc-roadmap.service")
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "tailscale serve reset")
-    && !string_contains(s: twin, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && string_contains(s: twin, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
+    && !string_contains(s: twin, pattern: retract_leg_text(leg: RetractServeOff { endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint }))
+    && string_contains(s: twin, pattern: retract_leg_text(leg: RetractServeOff { endpoint: srv1_twin_spec().names.tailscale_serve_endpoint }))
 }
 
 
@@ -1233,14 +1245,13 @@ test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
 }
 
 test fn production_retract_offs_its_own_endpoint() -> Bool {
-  let live_retract = live_deploy_retract_script_for(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
-  string_contains(s: live_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+  string_contains(s: witness_retract_script(), pattern: retract_leg_text(leg: RetractServeOff { endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint }))
 }
 
 test fn twin_retract_offs_its_own_endpoint_and_not_productions() -> Bool {
-  let twin_retract = live_deploy_retract_script_for(spec: srv1_twin_spec(), access: ci_deploy_srv1_access)
-  string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: srv1_twin_spec().names.tailscale_serve_endpoint))
-    && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+  let twin_retract = retract_plan_text(spec: srv1_twin_spec())
+  string_contains(s: twin_retract, pattern: retract_leg_text(leg: RetractServeOff { endpoint: srv1_twin_spec().names.tailscale_serve_endpoint }))
+    && !string_contains(s: twin_retract, pattern: retract_leg_text(leg: RetractServeOff { endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint }))
 }
 
 data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.102.2 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
@@ -1263,7 +1274,7 @@ fn unmeasured_client_target() -> DeploymentHostTarget {
 // (review 77150): no hand-built record with raw fields.
 fn preserve_removal_client_target() -> DeploymentHostTarget {
   let t = deployment_srv1_target()
-  let client = match semver_version_parse(cps: chars(s: "1.40.0" as String)) {
+  let client = match semver_version_parse(cps: chars(text: "1.40.0" as String)) {
     Absent => ScopedRemovalUnobserved { reason: "the fixture client version label failed to parse — a defect in the fixture, not an observation gap" }
     Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
   }
@@ -1308,24 +1319,52 @@ fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
   )
 }
 
+// INHABITANCE ON THE REAL ROUTE: realize_live_deploy_retract_on_host over the LOCAL locus reads the
+// typed plan, and a plan refusal comes back as a typed NotConverged naming its step before any leg
+// runs. The refusing specs are the unobserved and the lab-plan-refused targets.
+fn retract_route_refusal(spec: DeploymentSpec) -> String {
+  match realize_live_deploy_retract_on_host(
+    spec: spec,
+    transport: LocalShell,
+    intent: HostEffectIntent {
+      target: HostOs { node: srv1_host },
+      effect: LiveDeployRetract { spec: spec },
+      evidence: host_effect_identity_evidence,
+      transport: LocalShell,
+      privilege_denial: none,
+    },
+    access: ci_deploy_srv1_access,
+  ) {
+    NotConverged { reason: r, applied: _ } => r
+    Converged { evidence: _, applied: _ } => "CONVERGED"
+  }
+}
+
+test fn the_real_retract_route_refuses_typed_on_a_plan_refusal_before_any_leg() -> Bool {
+  let unobserved = retract_route_refusal(spec: spec_with_target(target: unmeasured_client_target()))
+  let lab = retract_route_refusal(spec: spec_with_target(target: sandbox_refused_ready_client_target()))
+  string_contains(s: unobserved, pattern: "live_deploy retract refused at step tailscale-client")
+    && string_contains(s: lab, pattern: "live_deploy retract refused at step lab-plan")
+}
+
 test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
-  let unobserved = live_deploy_retract_script_for(spec: spec_with_target(target: unmeasured_client_target()), access: ci_deploy_srv1_access)
-  let too_old = live_deploy_retract_script_for(spec: spec_with_target(target: preserve_removal_client_target()), access: ci_deploy_srv1_access)
+  let unobserved = retract_plan_text(spec: spec_with_target(target: unmeasured_client_target()))
+  let too_old = retract_plan_text(spec: spec_with_target(target: preserve_removal_client_target()))
   let measured = witness_retract_script()
-  string_contains(s: unobserved, pattern: "__GUNBC_DEPLOY_REFUSED__")
+  string_contains(s: unobserved, pattern: "REFUSED tailscale-client:")
     && string_contains(s: unobserved, pattern: "UNOBSERVED")
-    && !string_contains(s: unobserved, pattern: emitted_tailscale_binary_word())
-    && string_contains(s: too_old, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && !string_contains(s: unobserved, pattern: "serve-off")
+    && string_contains(s: too_old, pattern: "REFUSED tailscale-client:")
     && string_contains(s: too_old, pattern: "1.40.0")
     && !string_contains(s: too_old, pattern: "UNOBSERVED")
-    && !string_contains(s: too_old, pattern: emitted_tailscale_binary_word())
-    && !string_contains(s: measured, pattern: "__GUNBC_DEPLOY_REFUSED__")
-    && string_contains(s: measured, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+    && !string_contains(s: too_old, pattern: "serve-off")
+    && !string_contains(s: measured, pattern: "REFUSED")
+    && string_contains(s: measured, pattern: retract_leg_text(leg: RetractServeOff { endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint }))
 }
 
 test fn a_lab_plan_refusal_is_not_an_unobserved_tailscale_client() -> Bool {
-  let sandbox = live_deploy_retract_script_for(spec: spec_with_target(target: sandbox_refused_ready_client_target()), access: ci_deploy_srv1_access)
-  let srv2 = live_deploy_retract_script_for(spec: selected_deployment_spec(row: srv2_deploy_desired_deployment()), access: ci_deploy_srv1_access)
+  let sandbox = retract_plan_text(spec: spec_with_target(target: sandbox_refused_ready_client_target()))
+  let srv2 = retract_plan_text(spec: selected_deployment_spec(row: srv2_deploy_desired_deployment()))
   match sandbox_refused_ready_client_target().os_package_manager {
     Absent => false
     Present { value: pm } =>
@@ -1564,7 +1603,7 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
   let full = deploy_witness_full_install_plan(spec: spec)
   let executable = member_fragment_text(member: Executable, plan: full)
   let verify_source = "echo '5555555555555555555555555555555555555555555555555555555555555555  target/release/gunbc' | sha256sum -c -"
-  let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", spec.service.serve_binary as String, "' | sha256sum -c -"], "")
+  let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", fixed_serve_binary_path(binary: spec.service.serve_binary), "' | sha256sum -c -"], "")
   let steps = spec.steps
   three_markers_in_order(text: executable, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
     && owned_step_index(steps: steps, kind: UpsertOwned { kind: ServeBinary }) < owned_step_index(steps: steps, kind: UpsertOwned { kind: GunbcSourceTree })
@@ -2037,19 +2076,13 @@ test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
     object_source_serve: apply_complete_object_source_serve(),
   )
   let apply_mutate = pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_frags))
-  let retract_frags = retract_intent_fragments_for(spec: spec, access: a)
-  let retract_pipe = compose_host_script(fragments: retract_frags)
+  let retract_text = retract_plan_text(spec: spec)
   any(apply_frags, f => fragment_is_refused_member(f: f, name: "serve-unit"))
     && any(apply_frags, f => fragment_is_refused_member(f: f, name: "oidc"))
     && count(compose_host_script_mutate_steps(fragments: apply_frags)) == 0
     && !string_contains(s: apply_mutate, pattern: "daemon-reload")
     && !string_contains(s: apply_mutate, pattern: unit)
-    && !any(retract_frags, f => match f {
-      Mutate { member: m, steps: s } =>
-        count(s) > 0 && any(retract_frags, d => fragment_is_refused_member(f: d, name: m as String))
-      Decide { member: _, standing: _, steps: _ } => false
-    })
-    && !string_contains(s: pipeline_steps_text(steps: retract_pipe.steps), pattern: join(["restart ", unit], ""))
+    && !string_contains(s: retract_text, pattern: join(["restart ", unit], ""))
 }
 
 // THE SHARED PROJECTION MUST SEE COMPOSE'S DROP. A refusing OIDC clock (Absent) is one member's
@@ -2217,12 +2250,9 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
 // of pointing ExecStart back at the shared instance path, which is the tempting repair because it
 // is the one that makes the unit look complete.
 //
-// THE FOURTH CONJUNCT IS THE RED FOR THE SPEC-SIDE HALF OF THE REPAIR. DeploymentServiceConfig has
-// no constant that is true for this service, so gunbc.live_deploy.spec parks a refusal marker in
-// serve_binary rather than a plausible path. That marker is only honest while nothing renders it --
-// so this asserts it does not appear in the unit, and a future edit that reconnects ExecStart to the
-// config field fails here with the marker's own text naming the cause, instead of shipping a unit
-// systemd rejects on a host.
+// THE SPEC-SIDE HALF IS A TYPE, NOT A MARKER. The broker's serve_binary is PerReleaseBinary
+// (gunbc.live_deploy.serve_binary), so the unit's ExecStart is read through serve_binary_path over the revision
+// it is rendered for; the controls below pin each arm.
 //
 // ITS CEILING: this says the emitted bytes name a copy of the verified artifact at the path the unit
 // starts. It does NOT say that binary can parse the sources beside it -- that is a fact about two
@@ -2245,7 +2275,41 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     && string_contains(s: script, pattern: binary)
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
-    && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
+}
+
+// ONE CONTROL PER ARM. The broker's config holds PerReleaseBinary and resolves to its release locus's binary under a
+// bound revision; a fixed arm resolves to its own path.
+test fn the_broker_serve_binary_is_the_per_release_arm_over_the_bound_revision() -> Bool {
+  let spec = deployment_spec_srv1()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  serve_binary_path(binary: spec.approval_broker.serve_binary, release_root: spec.approval_broker.repo_root as String, revision: rev)
+    == release_locus_binary_path(root: srv1_gunbc_approval_broker_root as String, revision: rev)
+    && spec.approval_broker.serve_binary == PerReleaseBinary
+}
+
+test fn a_fixed_serve_binary_resolves_to_its_own_path_whatever_the_revision() -> Bool {
+  let admitted = admit_fixed_serve_path(path: "/opt/gunbc/bin/gunbc" as NonEmptyStr)
+  let fixed = FixedServeBinary { binary: admitted }
+  fixed_serve_binary_path(binary: admitted) == "/opt/gunbc/bin/gunbc"
+    && serve_binary_path(binary: fixed, release_root: "/x", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }) == "/opt/gunbc/bin/gunbc"
+}
+
+// A per-release serve binary cannot be handed to a fixed-only renderer: DeploymentSpec.service is typed over
+// AdmittedFixedServeBinary, which only admit_fixed_serve_path mints. No fixture here executes that refusal for this type (the generic
+// sole_constructor probes execute the wall; a type-specific RED is a declared frontier). What executes here is the other half: every fixed-only renderer, reached by a non-apply route
+// (the belt, publication and fabric-storage unit files, not desired_apply_host_checked), emits a production spec with no marker, while the
+// broker's per-release unit resolves its own locus path.
+test fn the_fixed_only_renderers_emit_no_unbound_marker_off_the_apply_route() -> Bool {
+  let marker = "__GUNBC_DEPLOY_UNREACHABLE__"
+  let spec = deployment_spec_srv1()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let fabric = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: rev, door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance())))
+  let belt = serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec))
+  let publication = serialize_systemd_unit_file(file: live_deploy_publication_service_unit_file(spec: spec))
+  !string_contains(s: fabric, pattern: marker)
+    && !string_contains(s: belt, pattern: marker)
+    && !string_contains(s: publication, pattern: marker)
+    && string_contains(s: belt, pattern: fixed_serve_binary_path(binary: spec.service.serve_binary))
 }
 
 // THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
@@ -2266,6 +2330,19 @@ test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_i
 
 // Leftover timer retirement: present is disable+rm+reload+not-found readback; absent is the same
 // script skipping disable because LoadState is already not-found (rm -f is a no-op).
+test fn retract_leftover_timer_legs_retire_a_present_unit() -> Bool {
+  let spec = deployment_spec_srv1()
+  let unit = deployment_retired_belt_timer_unit_name(names: spec.names)
+  let path = deployment_retired_belt_timer_unit_path(names: spec.names)
+  let text = join(retract_leftover_timer_legs(unit: unit, path: path) |> map(l => retract_leg_text(leg: l)), "\n")
+  string_contains(s: text, pattern: join(["disable-if-loaded ", unit as String], ""))
+    && string_contains(s: text, pattern: join(["remove-files ", path as String], ""))
+    && string_contains(s: text, pattern: "daemon-reload")
+    && string_contains(s: text, pattern: join(["unit-gone-readback ", unit as String], ""))
+}
+
+// Leftover timer retirement: present is disable+rm+reload+not-found readback; absent is the same
+// script skipping disable because LoadState is already not-found (rm -f is a no-op).
 test fn leftover_timer_retire_removes_a_present_unit_and_is_noop_when_absent() -> Bool {
   let spec = deployment_spec_srv1()
   let unit = deployment_retired_belt_timer_unit_name(names: spec.names)
@@ -2276,7 +2353,7 @@ test fn leftover_timer_retire_removes_a_present_unit_and_is_noop_when_absent() -
     && string_contains(s: text, pattern: "not-found")
     && string_contains(s: text, pattern: "systemctl")
     && (match leftover_systemd_timer_retire_dissolution {
-      UnboundDissolution { description } => string_contains(s: description as String, pattern: "LoadState=not-found")
+      UnboundDissolution { description } => string_contains(s: description as String, pattern: "LoadState=not-found") && string_contains(s: description as String, pattern: "retract_leftover_timer_legs")
       BoundDissolution { trigger: _ } => false
     })
 }

@@ -105,6 +105,7 @@ import v2.std.node {
   node_subtree_count,
 }
 import v2.std.witness { Holds, Violates, Witness, list_nth }
+import std.host_text { chars }
 
 data bash_fold_diagnostic_anchor: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -774,7 +775,7 @@ fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
 fn bash_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
     token_class: token_class,
-    pattern: LiteralPattern { text: chars(s: text) }
+    pattern: LiteralPattern { text: chars(text: text) }
   }
 }
 

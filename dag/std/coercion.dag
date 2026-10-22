@@ -5,6 +5,7 @@ import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
 import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.host_text { chars }
 
 type TypeCheckpoint {
   dag_name: String
@@ -542,6 +543,38 @@ fn judge_text_conversion_plan(
         TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
         TextPlanEndpointKeyed { endpoint: te } =>
           judge_conversion_plan(rows: rows, route: route, source: se, target: te)
+      }
+  }
+}
+
+// THE PLAN FOR A CROSSING THE COMPILER INSERTS, selected by the crossing's two endpoints -- never by a
+// spelling, and never by scanning phases for a producer. A host-text value meeting a code-point-sequence
+// formal names no route of its own, so the route is whichever plan runs between exactly those two
+// carriers; one such plan is then judged by its own route through judge_conversion_plan, the same
+// judgment an authored route call receives. None, or several, refuse at the crossing: the roster, not
+// the crossing, would have to choose, and an absent or ambiguous plan is never resolved by picking one.
+type CrossingPlanSelection
+  = CrossingPlanJudged { judgment: ConversionPlanJudgment }
+  | CrossingPlanNone
+  | CrossingPlanSeveral { routes: List<DeclarationRef> }
+
+fn select_text_crossing_plan(rows: List<ConversionPlan>, source: TextRepresentation, target: TextRepresentation) -> CrossingPlanSelection {
+  match text_plan_endpoint(rep: source) {
+    TextPlanEndpointUnkeyed => CrossingPlanJudged { judgment: ConversionPlanEndpointNotText { source: source, target: target } }
+    TextPlanEndpointKeyed { endpoint: se } =>
+      match text_plan_endpoint(rep: target) {
+        TextPlanEndpointUnkeyed => CrossingPlanJudged { judgment: ConversionPlanEndpointNotText { source: source, target: target } }
+        TextPlanEndpointKeyed { endpoint: te } =>
+          let between = rows |> filter(r => conversion_endpoint_eq(a: conversion_plan_source(plan: r), b: se) && conversion_endpoint_eq(a: conversion_plan_target(plan: r), b: te))
+          if (between |> count) > 1 {
+            CrossingPlanSeveral { routes: between |> map(r => r.route) }
+          } else {
+            match between |> first {
+              Absent => CrossingPlanNone
+              Present { value: plan } =>
+                CrossingPlanJudged { judgment: judge_conversion_plan(rows: rows, route: plan.route, source: se, target: te) }
+            }
+          }
       }
   }
 }
