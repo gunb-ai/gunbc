@@ -21,8 +21,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // an invariant: a cast the checker skips (below) still reaches it as a runtime abort.
 //
 // NOT CLAIMED: a user `type Nat` passed at an Int formal. Executed at the PR head and at the merge-base it
-// does not refuse in either (no declared route is consulted for a call argument), so it is a pre-existing gap this
-// change neither opens nor closes.
+// does not refuse in either (no declared route is consulted for a call argument): the known declared-type-wall
+// gap, a pre-existing one this change neither opens nor closes. Trigger: #14430 closes it; claim it there.
 //
 // dissolve-on: std.coercion cast rows are declaration-keyed throughout (grounded_primitive_coproduct_identities
 // and dag_cast_rules are still name-keyed); a user `type Nat` cast to Int is skipped by the checker
