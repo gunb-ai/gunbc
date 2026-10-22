@@ -63,6 +63,8 @@ import gunbc.managed_directory { declared_directory_mode }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
 import extdeps.tools.findutils { find_subtree_mode_readback_command, find_path_probe_command }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
+import extdeps.languages.bash.invocation { bash_program_command }
+import gunbc.live_deploy.emit { dashboard_git_worker_repository_premise_gate_command_text }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, DashboardLocalProvision, DashboardEnsureGitSharedRepositoryPosture,
   DashboardMigrateGitWorkerSubtree, srv1_lab_dashboard_instance, dashboard_git_worker_subtree_walk_depth,
@@ -1351,5 +1353,73 @@ test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> 
     }
     let untouched = wet_ok(command: rm_recursive_force_command(path: root))
     standing_ok && contradiction_ok && untouched
+  }
+}
+
+// ===================== WORKER-ROOT-EQUIVALENT-3: the repository premise gate, executed =====================
+//
+// The gate is the fix's load-bearing arm: it must let a real repository (established, or freshly
+// bootstrapped and not yet committed) through, and REFUSE every state in which the git subtree steps
+// would write against a non-repository -- above all the skeleton the old standing step fabricated
+// (a .git DIRECTORY with objects/refs/logs and NO HEAD), which a directory test would have waved
+// through. These run the EXACT gate text the apply runs (the same builder, one authority), through
+// `bash -c` over the host route, and grade on the EXIT CODE -- the discriminating signal. The refusal
+// sentence is written to stdout, which the host route discards on a nonzero exit, so it is not a
+// grader here (grading on that prose would be the heuristic the command_runner row rejects).
+//
+// RED on main: there was no gate builder and no such command text, so this claim cannot even be built
+// at 5ea3ffcd -- it is RED by absence of the fix.
+
+// THE GATE'S VERDICT ON ONE DIRECTORY: true = the gate PASSED (exit 0), false = it REFUSED (nonzero).
+// Feeding the apply's OWN gate text to bash -c, so the thing graded is the thing shipped.
+fn wre3_gate_passes(repo: String) -> Bool {
+  wet_ok(command: bash_program_command(script: dashboard_git_worker_repository_premise_gate_command_text(repo: repo)))
+}
+
+// THE GATE REFUSES EVERY FABRICATED / UNESTABLISHED STATE, AND PASSES THE TWO REAL ONES. Five
+// directories, planted on the host:
+//   real repo (a commit)          -> PASS
+//   freshly initialised, no commit -> PASS   (the bootstrap arm's own state: git init, nothing committed yet)
+//   .git skeleton, NO HEAD         -> REFUSE  (the fabrication; a directory test would wrongly PASS it)
+//   a plain directory, absent .git -> REFUSE
+//   a directory nested IN a repo   -> REFUSE  (walk-up: git would resolve to the OUTER .git, path != repo/.git)
+// The two refusals that a naive `test -d repo/.git` would have PASSED (the HEAD-less skeleton, and the
+// walk-up that resolves elsewhere) are what make this a discriminating arm and not a shape check.
+test fn the_repository_premise_gate_admits_only_a_real_repository() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-gate-XXXXXX" as NonEmptyStr))
+  if root == "" || wet_self_uid() < 0 {
+    false
+  } else {
+    // PASS state 1: a repository with a commit.
+    let real = join([root, "/real"], "")
+    // PASS state 2: git init only -- unborn HEAD, the bootstrap arm's pre-commit state.
+    let unborn = join([root, "/unborn"], "")
+    // REFUSE state 1: the fabrication -- a .git directory with the three children and NO HEAD.
+    let skel = join([root, "/skel"], "")
+    // REFUSE state 2: a plain directory, no repository anywhere near it.
+    let plain = join([root, "/plain"], "")
+    // REFUSE state 3: a directory nested INSIDE a repository (the git walk-up trap).
+    let outer = join([root, "/outer"], "")
+    let nested = join([root, "/outer/wtless"], "")
+    let planted = wet_ok(command: mkdir_parents_command(path: real))
+      && wet_repo_with_a_commit(repo: real)
+      && wet_ok(command: mkdir_parents_command(path: unborn))
+      && wet_ok(command: git_init_quiet_command(repository_dir: unborn))
+      && wet_ok(command: mkdir_parents_command(path: join([skel, "/.git/objects/f9"], "")))
+      && wet_ok(command: mkdir_parents_command(path: join([skel, "/.git/refs/heads"], "")))
+      && wet_ok(command: mkdir_parents_command(path: join([skel, "/.git/logs/refs/heads"], "")))
+      && wet_ok(command: mkdir_parents_command(path: plain))
+      && wet_ok(command: mkdir_parents_command(path: outer))
+      && wet_ok(command: git_init_quiet_command(repository_dir: outer))
+      && wet_ok(command: mkdir_parents_command(path: nested))
+    // The skeleton really has no HEAD: if git had one, this would not be the state the fabrication left.
+    let skeleton_is_headless = !wet_ok(command: find_path_probe_command(path: join([skel, "/.git/HEAD"], ""), kind: "f", clause: []))
+    let verdicts = wre3_gate_passes(repo: real)
+      && wre3_gate_passes(repo: unborn)
+      && !wre3_gate_passes(repo: skel)
+      && !wre3_gate_passes(repo: plain)
+      && !wre3_gate_passes(repo: nested)
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && skeleton_is_headless && verdicts && cleaned
   }
 }

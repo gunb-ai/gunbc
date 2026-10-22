@@ -793,6 +793,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_repository_premise_gate_admits_only_a_real_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_repository_premise_gate_admits_only_a_real_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness.dag",
       function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after",

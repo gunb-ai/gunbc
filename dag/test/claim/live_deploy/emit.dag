@@ -172,6 +172,8 @@ import gunbc.live_deploy.emit {
   compose_host_script,
   compose_host_script_decide_steps,
   compose_host_script_mutate_steps,
+  git_repository_subtree_tree_position_fragments,
+  git_subtree_group_rootless_poison,
   host_script_step_marker,
   host_script_trace_steps,
   HostScriptProceed,
@@ -2385,5 +2387,161 @@ test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publicat
     && any(pub_path, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
 }
 
+// ===================== WORKER-ROOT-EQUIVALENT-3: git subtree applies AFTER the repository =====================
+//
+// The apply-order/fabrication fix (lab apply abd9fdc4, 2026-10-17): the re-group sweep and the shared-
+// posture step -- and, for a tree-publishing spec, the three worker .git/ installs -- must not run in
+// the standing host-script pre-position, which is BEFORE the step that establishes the repository. On
+// a fresh instance that installed a root-owned source/.git skeleton into the very directory the tree
+// step must create. These claims read the COMPOSED MUTATE text of the lab apply (the WorkerDedicatedAccount
+// spec, the only one that carries git-worker demands -- prod is WorkerIsServiceUser and carries none, so
+// reading prod here would be vacuously green) and assert ORDER and POSITION, not mere presence, so each
+// is RED on main by position rather than by novelty.
 
+// The lab spec (WorkerDedicatedAccount): the only spec whose directory roster carries the git-worker
+// owned-directory demands and whose step roster carries the GunbcSourceTree step. Reused from the green
+// dedicated-worker claim so the premise (a non-empty subtree group) is the SAME fact already certified.
+fn wre3_lab_apply_text() -> String {
+  let spec = srv1_twin_spec()
+  apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+}
+
+// A spec copied from the lab spec with the GunbcSourceTree ArtifactStep REMOVED from the step roster
+// (the directories are kept, so the subtree group is still owed): this is the shape that must keep
+// today's standing behaviour -- the group emitted, with no premise gate (nothing moves it). Record
+// fields are copied EXPLICITLY; this dialect has no `..spec` record update.
+fn wre3_lab_spec_without_tree_step() -> DeploymentSpec {
+  let spec = srv1_twin_spec()
+  DeploymentSpec {
+    role_singletons: spec.role_singletons,
+    target: spec.target,
+    steps: filter(spec.steps, s => match s {
+      ArtifactStep { step: art } => art.kind != GunbcSourceTree
+      Dependency { step: _ } => true,
+    }),
+    service: spec.service,
+    approval_broker: spec.approval_broker,
+    names: spec.names,
+    instance_id: spec.instance_id,
+    directories: spec.directories,
+  }
+}
+
+fn wre3_lab_apply_text_without_tree_step() -> String {
+  let spec_no_tree = wre3_lab_spec_without_tree_step()
+  apply_emitted_steps_text(spec: spec_no_tree, plan: deploy_witness_full_install_plan(spec: spec_no_tree))
+}
+
+fn wre3_marker(member: String) -> String {
+  concat("__GUNBC_HOST_SCRIPT_STEP__ Mutate ", concat(member, " 0"))
+}
+
+fn wre3_has_marker(text: String, member: String) -> Bool {
+  string_contains(s: text, pattern: wre3_marker(member: member))
+}
+
+fn wre3_has_no_marker(text: String, member: String) -> Bool {
+  !string_contains(s: text, pattern: wre3_marker(member: member))
+}
+
+// THE GIT SUBTREE NEVER RUNS BEFORE THE REPOSITORY IS ESTABLISHED. Splitting the composed MUTATE text
+// on the tree step's convergence readback, the segment BEFORE the first readback must carry none of the
+// group's members (the sweep, the posture, the premise gate). This is the manager's "a fresh-instance
+// apply runs no git step before the tree exists", stated as position, not presence -- so on main, where
+// the sweep and posture sat at the standing pre-position (before EVERY step), their markers fell in the
+// pre-readback segment and the claim is RED. The readback and the sweep/posture markers all exist on
+// main, so it is RED by position and not by novelty. The group members emit one marker per child, so
+// this only asks for presence-after, never a single occurrence.
+fn wre3_group_never_before_the_readback(text: String) -> Bool {
+  let pre_readback = split(s: text, sep: wre3_readback_anchor).first()
+  !string_contains(s: pre_readback, pattern: wre3_marker(member: "git-worker-subtree"))
+    && !string_contains(s: pre_readback, pattern: wre3_marker(member: "repository-shared-posture"))
+    && !string_contains(s: pre_readback, pattern: wre3_marker(member: "git-worker-subtree-premise"))
+}
+
+// The pivot: the ServeBinary/TreePublication arm's convergence readback -- the fact that the repository
+// is established. A single literal, present on main too (it appears only in repository_convergence_readback_command's
+// argv), so the order claims below are RED by POSITION and not by novelty.
+data wre3_readback_anchor: String = "repository_convergence_readback_wet"
+
+// A group member appears, and appears only AFTER the repository readback: the pre-readback segment is
+// clean and at least one post-readback segment carries the member's trace marker.
+fn wre3_member_after_readback(text: String, member: String) -> Bool {
+  wre3_group_never_before_the_readback(text: text)
+    && string_contains(s: text, pattern: wre3_marker(member: member))
+    && any(split(s: text, sep: wre3_readback_anchor).skip(n: 1), part =>
+      string_contains(s: part, pattern: wre3_marker(member: member)))
+}
+
+// THE REPOSITORY FIRST, THEN THE GIT SUBTREE. The re-group sweep must not appear before the tree
+// step's convergence readback. On main the sweep sat at the standing pre-position BEFORE any step, so
+// its marker fell in the pre-readback segment -- RED there, GREEN here.
+test fn wre3_the_git_subtree_sweep_applies_after_the_repository_is_established() -> Bool {
+  wre3_member_after_readback(text: wre3_lab_apply_text(), member: "git-worker-subtree")
+}
+
+// THE POSTURE STEP TRAVELS WITH THE SWEEP. The shared-posture member (git-config of the shared
+// repository, which writes .git/config) shares the one premise, so it too moves to the tree position
+// behind the readback. RED on main by position, same reasoning as the sweep claim.
+test fn wre3_the_shared_posture_applies_after_the_repository_is_established() -> Bool {
+  wre3_member_after_readback(text: wre3_lab_apply_text(), member: "repository-shared-posture")
+}
+
+// THE PREMISE GATE IS PRESENT AND FIRST IN ITS GROUP. A tree-publishing spec emits the gate member,
+// behind the readback and ahead of the sweep it protects. RED on main: main emitted no gate member and
+// ran the sweep unguarded. This is the presence half of the gate; the executed half is the wet witness.
+test fn wre3_the_tree_publishing_apply_emits_the_premise_gate_ahead_of_the_sweep() -> Bool {
+  let text = wre3_lab_apply_text()
+  wre3_member_after_readback(text: text, member: "git-worker-subtree-premise")
+    && any(split(s: text, sep: wre3_marker(member: "git-worker-subtree-premise")).skip(n: 1), part =>
+      string_contains(s: part, pattern: wre3_marker(member: "git-worker-subtree")))
+}
+
+// THE BOTH-WAYS GATE, OTHER DIRECTION: NO TREE STEP MEANS TODAY'S STANDING BEHAVIOUR. With the
+// GunbcSourceTree step removed, nothing can host the gate, so the sweep and posture stay where they
+// always were (present in the standing position, BEFORE any readback -- indeed before every step) and
+// the premise gate is NOT emitted at all. The gate member's absence here is what proves the suppression
+// is CONDITIONAL (gated on the tree step) and not the unconditional drop the review found; the standing
+// presence is what proves non-tree specs are unchanged.
+test fn wre3_a_spec_without_the_tree_step_keeps_the_standing_group_and_emits_no_gate() -> Bool {
+  let text = wre3_lab_apply_text_without_tree_step()
+  wre3_has_marker(text: text, member: "git-worker-subtree")
+    && wre3_has_marker(text: text, member: "repository-shared-posture")
+    && wre3_has_no_marker(text: text, member: "git-worker-subtree-premise")
+}
+
+// NO FABRICATED ROOT: an unknown instance id has no repository to premise on. The tree group must
+// refuse at EMISSION with the deployment poison instead of resolving the root to the empty string and
+// running `git -C ''` against the script's cwd. RED on main: main had no such refusal (it emitted the
+// standing group against an unestablished repository). This claim is the emission-time half of the
+// "no fabricated default" fix; the executed-gate half is the wet witness.
+// NO FABRICATED ROOT: an unknown instance id has no repository to premise on. The tree-position group
+// must refuse at EMISSION with the deployment poison, instead of resolving the repository root to the
+// empty string and running `git -C ''` against the script's cwd. The poison is emitted as a Decide
+// member (HostScriptRefused), which zeroes the whole mutate half -- so this claim reads the group
+// emitter's OWN composed script (decide + mutate), the most specific surface, rather than the whole
+// apply (where an unrelated arm's poison could mask it). RED on main: main had no such refusal, so the
+// marker string and the group emitter did not exist. The executed-gate half is in the wet witness.
+test fn wre3_an_unknown_instance_poisons_the_tree_group_instead_of_running_git_against_empty() -> Bool {
+  let spec = srv1_twin_spec()
+  let spec_unknown = DeploymentSpec {
+    role_singletons: spec.role_singletons,
+    target: spec.target,
+    steps: spec.steps,
+    service: spec.service,
+    approval_broker: spec.approval_broker,
+    names: spec.names,
+    instance_id: "no-such-dashboard-instance-for-the-poison-claim" as NonEmptyStr,
+    directories: spec.directories,
+  }
+  let text = pipeline_steps_text(steps: compose_host_script(
+    fragments: git_repository_subtree_tree_position_fragments(
+      spec: spec_unknown,
+      plan: deploy_witness_full_install_plan(spec: spec_unknown),
+    ),
+  ).steps)
+  // The group refuses by name, and it does NOT fall through to the rev-parse gate against an empty cwd.
+  string_contains(s: text, pattern: git_subtree_group_rootless_poison)
+    && !string_contains(s: text, pattern: "rev-parse --absolute-git-dir")
+}
 
