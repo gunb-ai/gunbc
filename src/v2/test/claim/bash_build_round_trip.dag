@@ -1,5 +1,7 @@
 module v2.test.claim.bash_build_round_trip
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
@@ -69,7 +71,8 @@ fn bash_build_round_trip_via_emit_matches_golden(
 ) -> Bool {
   let tree = InferredTree {
     root: emitted,
-    facts: PartialFunction { lookup: bash_build_round_trip_facts_lookup }
+    facts: PartialFunction { lookup: bash_build_round_trip_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
   match emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } =>
