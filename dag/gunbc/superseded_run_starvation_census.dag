@@ -8,6 +8,7 @@ import extdeps.github.workflow_runs
 import extdeps.github.workflow_runs {
   GitHubWorkflowRunId,
   github_workflow_run_id_wire_text,
+  github_workflow_run_id_of_wire,
   WorkflowRun,
   WorkflowRunList,
   WorkflowRunPullRequest,
@@ -415,9 +416,9 @@ fn pair_for_dead_run(pr: Int, dead: WorkflowRun, remaining: List<WorkflowRun>, f
       if live.created_at >= from && live.created_at <= through && live.created_at < dead.updated_at {
         [SupersededRunPair {
           pull_request: pr,
-          superseded_run: dead.id,
+          superseded_run: github_workflow_run_id_of_wire(n: dead.id),
           superseded_head: dead.head_sha,
-          live_head_run: live.id,
+          live_head_run: github_workflow_run_id_of_wire(n: live.id),
           live_head: live.head_sha,
         }]
       } else { [] }
@@ -482,7 +483,7 @@ fn extract_boundary_obligations(groups: List<PrGroup>, from: Timestamp) -> List<
           if r.created_at < from && r.updated_at > from {
             [LeftBoundaryLookbackExhausted {
               pull_request: g.pr,
-              earliest_observed_run: r.id,
+              earliest_observed_run: github_workflow_run_id_of_wire(n: r.id),
             }]
           } else { [] }
         Absent => []

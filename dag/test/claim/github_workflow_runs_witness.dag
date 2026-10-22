@@ -1,6 +1,5 @@
 module test.claim.github_workflow_runs_witness
 
-import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -11,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // exactly as `path` already is, because this witness asks only about status and conclusion wire
 // labels and an invented login would be a fabricated observation rather than an absent one.
 data sample_run: WorkflowRun = WorkflowRun { display_title: none,
-  id: GitHubWorkflowRunId { value: 12345678 }
+  id: 12345678
   name: "CI"
   head_sha: "abc123def456abc123def456abc123def456abc123"
   event: "push"

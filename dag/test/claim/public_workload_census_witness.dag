@@ -1,6 +1,5 @@
 module test.claim.public_workload_census_witness
 
-import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, List, String, NonEmptyStr }
 import std.measure { hardware_thread_count }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
@@ -69,7 +68,7 @@ data candidate_biome_blob_mismatch_control: WorkloadCandidate = WorkloadCandidat
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -120,7 +119,7 @@ data candidate_biome_matrix_selector_mismatch_control: WorkloadCandidate = Workl
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -177,7 +176,7 @@ data candidate_pdns_axis_name_mismatch_control: WorkloadCandidate = WorkloadCand
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 100984779675,
-      run_id: GitHubWorkflowRunId { value: 33860869079 },
+      run_id: 33860869079,
       run_attempt: 1,
       name: "build dnsdist (asan+ubsan, full, -arm)",
       status: Completed,
@@ -239,7 +238,7 @@ data candidate_pdns_axis_name_swap_control: WorkloadCandidate = WorkloadCandidat
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 100984779675,
-      run_id: GitHubWorkflowRunId { value: 33860869079 },
+      run_id: 33860869079,
       run_attempt: 1,
       name: "build dnsdist (asan+ubsan, full, -arm)",
       status: Completed,
@@ -294,7 +293,7 @@ data candidate_biome_job_key_mismatch_control: WorkloadCandidate = WorkloadCandi
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -344,7 +343,7 @@ data candidate_biome_job_key_titlecase_uninspected_control: WorkloadCandidate = 
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -394,7 +393,7 @@ data candidate_biome_multi_label_control: WorkloadCandidate = WorkloadCandidate 
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -444,7 +443,7 @@ data candidate_empty_labels_control: WorkloadCandidate = WorkloadCandidate {
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -494,7 +493,7 @@ data candidate_absent_conclusion_control: WorkloadCandidate = WorkloadCandidate 
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -544,7 +543,7 @@ data candidate_run_attempt_zero_control: WorkloadCandidate = WorkloadCandidate {
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 0,
       name: "Test (depot-ubuntu-24.04-arm-16)",
       status: Completed,
@@ -594,7 +593,7 @@ data candidate_empty_matrix_axes_control: WorkloadCandidate = WorkloadCandidate 
   observed: JobRunObserved {
     job: WorkflowJobRun {
       id: 101088906536,
-      run_id: GitHubWorkflowRunId { value: 33892992396 },
+      run_id: 33892992396,
       run_attempt: 1,
       name: "Test ()",
       status: Completed,

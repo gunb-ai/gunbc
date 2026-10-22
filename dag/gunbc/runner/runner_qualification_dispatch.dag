@@ -27,7 +27,7 @@ import extdeps.github.expressions {
 }
 import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs {
-  GitHubWorkflowRunId,
+  GitHubWorkflowRunId, github_workflow_run_id_of_wire,
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
 import gunbc.repository { gunbc_repository }
@@ -673,8 +673,8 @@ fn decide_qualification_run(
 ) -> QualificationRunVerdict {
   match run_read {
     RestAnswered { answer: run } =>
-      if run.id != run_id || run.event != "workflow_dispatch" || !optional_text_is(o: run.path, expected: qualification_workflow_path() as String) {
-        RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, observed_path: run.path, foreign_jobs: [] } }
+      if github_workflow_run_id_of_wire(n: run.id) != run_id || run.event != "workflow_dispatch" || !optional_text_is(o: run.path, expected: qualification_workflow_path() as String) {
+        RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: github_workflow_run_id_of_wire(n: run.id), observed_event: run.event, observed_path: run.path, foreign_jobs: [] } }
       } else if run.run_attempt != dispatched_run_attempt {
         RunVerdictRefused { refusal: RunAdvancedPastDispatchedAttempt { observed_attempt: run.run_attempt } }
       } else if !optional_text_is(o: run.head_branch, expected: subject.branch as String) {
@@ -692,9 +692,9 @@ fn decide_qualification_run(
                     if count(jobs.jobs) != jobs.total_count {
                       RunVerdictRefused { refusal: RunJobsTruncated { returned: count(jobs.jobs), total: jobs.total_count } }
                     } else {
-                      let foreign = jobs.jobs |> filter(j => j.run_id != run_id || j.run_attempt != dispatched_run_attempt) |> map(j => j.id)
+                      let foreign = jobs.jobs |> filter(j => github_workflow_run_id_of_wire(n: j.run_id) != run_id || j.run_attempt != dispatched_run_attempt) |> map(j => j.id)
                       if count(foreign) != 0 {
-                        RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, observed_path: run.path, foreign_jobs: foreign } }
+                        RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: github_workflow_run_id_of_wire(n: run.id), observed_event: run.event, observed_path: run.path, foreign_jobs: foreign } }
                       } else {
                         decide_floor_job(subject: subject, run: run, conclusion: conclusion, jobs: jobs.jobs)
                       }
@@ -754,11 +754,11 @@ fn planned_collection_reads(plan: QualificationCollectionPlan) -> List<Qualifica
 // an unchecked token (a split helper was exactly that bypass).
 fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
   match plan_qualification_collection(
-    subject: dispatched.subject, run_id: dispatched.receipt.workflow_run_id,
+    subject: dispatched.subject, run_id: github_workflow_run_id_of_wire(n: dispatched.receipt.workflow_run_id),
     token_app: token.app, token_installation: token.installation,
   ) {
     CollectionRefusedBeforeAnyRead { refusal: r } =>
-      QualificationRunRefused { run_id: dispatched.receipt.workflow_run_id, refusal: r }
+      QualificationRunRefused { run_id: github_workflow_run_id_of_wire(n: dispatched.receipt.workflow_run_id), refusal: r }
     CollectionReadsPlanned { run_id: run_id, attempt: attempt } => {
       let owner = gunbc_repository.owner as NonEmptyStr
       let repo = gunbc_repository.name as NonEmptyStr
@@ -1171,7 +1171,7 @@ fn collect_qualification_instruments(collected: CollectedQualificationRun, token
     token_app: token.app,
     token_installation: token.installation,
     floor_job_id: collected.floor_job.id,
-    run_id: collected.dispatched.receipt.workflow_run_id,
+    run_id: github_workflow_run_id_of_wire(n: collected.dispatched.receipt.workflow_run_id),
   ) {
     CollectReadsRefused { token_app: a, token_installation: i } => QualificationCollectUnderAnotherInstallation { token_app: a, token_installation: i }
     CollectReadsPlanned { job_id: _, run_id: _ } => collect_qualification_instruments_under(collected: collected, token: token)
@@ -1189,7 +1189,7 @@ fn collect_qualification_instruments_under(collected: CollectedQualificationRun,
   ]
 {
   let job_id = collected.floor_job.id
-  let run_id = collected.dispatched.receipt.workflow_run_id
+  let run_id = github_workflow_run_id_of_wire(n: collected.dispatched.receipt.workflow_run_id)
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr
   let slot = collected.dispatched.subject.slot

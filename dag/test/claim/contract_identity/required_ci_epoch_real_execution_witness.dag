@@ -1,6 +1,5 @@
 module test.claim.contract_identity.required_ci_epoch_real_execution_witness
 
-import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, String, Int, NonEmptyStr, FilePath, GitRef }
 import extdeps.git
 import std.algebra { trim }
@@ -130,7 +129,7 @@ type EpochExperiment {
 // on the pushed revision rather than as a delivered run-completion event.
 fn fixture_merge_group_runs_at(head_sha: String) -> WorkflowRunList {
   let r = WorkflowRun { display_title: none,
-    id: GitHubWorkflowRunId { value: 1 },
+    id: 1,
     name: Present { value: witness_floor_workflow_name },
     path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },
     head_sha: head_sha as CommitSha,

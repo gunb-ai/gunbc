@@ -1,6 +1,5 @@
 module test.claim.superseded_run_starvation_census_witness
 
-import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, Int, String, Timestamp }
 import gunbc.superseded_run_starvation_census {
   dead_head_start_standing,
@@ -85,7 +84,7 @@ test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool {
 // actor and triggering_actor: none. They are optional in the projection, no census fold reads
 // them, and inventing a login would be a fabricated observation rather than an absent one.
 data run_with_pull_request: WorkflowRun = WorkflowRun { display_title: none,
-  id: GitHubWorkflowRunId { value: 1 },
+  id: 1,
   name: none,
   path: none,
   head_sha: "abc123",
@@ -105,7 +104,7 @@ data run_with_pull_request: WorkflowRun = WorkflowRun { display_title: none,
 }
 
 data run_without_pull_request: WorkflowRun = WorkflowRun { display_title: none,
-  id: GitHubWorkflowRunId { value: 2 },
+  id: 2,
   name: none,
   path: none,
   head_sha: "def456",
@@ -139,7 +138,7 @@ test fn pr_number_for_run_without_pr_returns_none() -> Bool {
 }
 
 data run_sha_abc: WorkflowRun = WorkflowRun { display_title: none,
-  id: GitHubWorkflowRunId { value: 3 },
+  id: 3,
   name: none,
   path: none,
   head_sha: "abc123",
@@ -159,7 +158,7 @@ data run_sha_abc: WorkflowRun = WorkflowRun { display_title: none,
 }
 
 data run_sha_def: WorkflowRun = WorkflowRun { display_title: none,
-  id: GitHubWorkflowRunId { value: 4 },
+  id: 4,
   name: none,
   path: none,
   head_sha: "def456",
@@ -180,14 +179,14 @@ data run_sha_def: WorkflowRun = WorkflowRun { display_title: none,
 
 test fn first_run_with_different_head_finds_differing_sha() -> Bool {
   match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_def]) {
-    Present { value: r } => r.id.value == 4
+    Present { value: r } => r.id == 4
     Absent => false
   }
 }
 
 test fn first_run_with_different_head_skips_matching_and_finds_differing() -> Bool {
   match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_def]) {
-    Present { value: r } => r.id.value == 4
+    Present { value: r } => r.id == 4
     Absent => false
   }
 }
@@ -208,7 +207,7 @@ test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
 
 data job_cancelled: WorkflowJobRun = WorkflowJobRun {
   id: 100,
-  run_id: GitHubWorkflowRunId { value: 1 },
+  run_id: 1,
   run_attempt: 1,
   name: "test-job",
   status: Completed,
@@ -223,7 +222,7 @@ data job_cancelled: WorkflowJobRun = WorkflowJobRun {
 
 data job_failed: WorkflowJobRun = WorkflowJobRun {
   id: 101,
-  run_id: GitHubWorkflowRunId { value: 1 },
+  run_id: 1,
   run_attempt: 1,
   name: "build-job",
   status: Completed,
@@ -238,7 +237,7 @@ data job_failed: WorkflowJobRun = WorkflowJobRun {
 
 data job_success: WorkflowJobRun = WorkflowJobRun {
   id: 102,
-  run_id: GitHubWorkflowRunId { value: 1 },
+  run_id: 1,
   run_attempt: 1,
   name: "lint-job",
   status: Completed,
@@ -253,7 +252,7 @@ data job_success: WorkflowJobRun = WorkflowJobRun {
 
 data job_queued: WorkflowJobRun = WorkflowJobRun {
   id: 103,
-  run_id: GitHubWorkflowRunId { value: 1 },
+  run_id: 1,
   run_attempt: 1,
   name: "deploy-job",
   status: Queued,
@@ -268,7 +267,7 @@ data job_queued: WorkflowJobRun = WorkflowJobRun {
 
 data job_in_progress: WorkflowJobRun = WorkflowJobRun {
   id: 104,
-  run_id: GitHubWorkflowRunId { value: 1 },
+  run_id: 1,
   run_attempt: 1,
   name: "test-in-progress",
   status: InProgress,
@@ -344,7 +343,7 @@ test fn earliest_created_at_returns_none_when_no_jobs() -> Bool {
 test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
   let job_no_created = WorkflowJobRun {
     id: 200,
-    run_id: GitHubWorkflowRunId { value: 1 },
+    run_id: 1,
     run_attempt: 1,
     name: "no-created",
     status: InProgress,

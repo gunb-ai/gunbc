@@ -37,7 +37,7 @@ import gunbc.auth.gcp_iam_converge {
 }
 import gunbc.auth.gcp_iam_converge_run { observe_token, iam_converge_token_env }
 import gunbc.auth.approval_run_identity { run_attempt }
-import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_of_wire }
 import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
 import gunbc.auth.approval_gate {
   approval_refusal_text, GateAdmitted, GateRefused, approval_gate_from_poll,
@@ -84,8 +84,8 @@ type BranchRunReading
 // can only ever reach the one attempt of the file this grant is for.
 fn judge_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
   let path = match run.path { Present { value: p } => p  Absent => "" }
-  if run.id != run_id {
-    BranchRunRefused { reason: concat("GitHub answered about another run: ", github_workflow_run_id_wire_text(id: run.id)) as NonEmptyStr }
+  if github_workflow_run_id_of_wire(n: run.id) != run_id {
+    BranchRunRefused { reason: concat("GitHub answered about another run: ", run.id as String) as NonEmptyStr }
   } else if run.run_attempt != run_attempt {
     BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
   } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
