@@ -1394,6 +1394,11 @@ fn observe_environment_protection(
       module_path: "test.claim.deployment_gate_operator_steps_witness",
       decl_name: "protection_for"
     ),
+    // THE ANSWER ROUTE'S PROTECTION READ (stage 2): it takes the sealed read, so the name check lives here once.
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "observe_environment_protection_for_route"
+    ),
     // THE MISMATCHED-RESPONSE FIXTURE (round-6 blocker 1a). Admitted so the red can be written at all; it
     // is the door that lets a witness hold a read whose response names an environment other than the one
     // asked for. It is admitted, not privileged: it goes through this same mint, so whatever the mint

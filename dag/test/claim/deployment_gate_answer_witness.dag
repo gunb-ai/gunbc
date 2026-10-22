@@ -39,6 +39,15 @@ import extdeps.github.deployment_protection_rule {
   PendingDeploymentReviewer,
   EnabledDeploymentProtectionRule,
   RuleOwningApp,
+  installation_readback_endpoint_path,
+  enabled_rule_readback_endpoint_path,
+  environment_protection_readback_endpoint_path,
+  installation_readback_path_built_for,
+  enabled_rule_readback_path_built_for,
+  environment_protection_readback_path_built_for,
+  BuiltReadPathOk,
+  BuiltReadPathRefused,
+  ReadRepoAxis,
   InstallationWireFields,
   Approved,
   Rejected,
@@ -68,12 +77,18 @@ import gunbc.auth.deployment_gate_authorization {
   RemovalAdmitted,
   ApprovingArm,
   admit_reviewer_removal,
+  ProtectionResponseNamedAnotherEnvironment,
 }
 import gunbc.fleet.deployment_gate_answer {
   SentRequest,
   InstallationReadResponse,
+  ProtectionReadResponse,
   RuleReadResponse,
   ReviewResponse,
+  ClaimNamesAnotherEnvironment,
+  EnvironmentReadDidNotAnswer,
+  ProtectionNotEstablished,
+  EnvironmentRoute,
   GateAnswerOutcome,
   Answered,
   Waiting,
@@ -159,12 +174,30 @@ fn in_flight_run(run_id: GitHubWorkflowRunId) -> WorkflowRunRecord {
 }
 
 // The protection read of a gate whose reviewer has been removed, and of one that still has it.
-fn protection_with(reviewers: Bool) -> GitHubEnvironmentProtectionSettings {
-  GitHubEnvironmentProtectionSettings {
-    name: srv1_production_environment_name as String,
-    deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }] },
-    reviewer_requirement: if reviewers { RequiredReviewers } else { NoRequiredReviewers },
+fn protection_read_of(
+  named: String,
+  reviewers: Bool,
+  path: NonEmptyStr,
+  status: HttpStatus
+) -> ProtectionReadResponse {
+  ProtectionReadResponse {
+    sent: SentRequest { method: GET, path: path },
+    status: status,
+    settings: GitHubEnvironmentProtectionSettings {
+      name: named,
+      deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }] },
+      reviewer_requirement: if reviewers { RequiredReviewers } else { NoRequiredReviewers },
+    },
   }
+}
+
+fn protection_with(reviewers: Bool) -> ProtectionReadResponse {
+  protection_read_of(
+    named: srv1_production_environment_name as String,
+    reviewers: reviewers,
+    path: "/repos/gunb-ai/gunbc/environments/srv1-production",
+    status: 200
+  )
 }
 
 // THE WIRE FACTS, as the three responses would arrive, with the request each says was sent.
@@ -218,7 +251,7 @@ fn review_response_for(run_id: GitHubWorkflowRunId, status: HttpStatus) -> Revie
 // only caller, which is what the confinement admits.
 fn route(
   boundary: DeploymentGateBoundary,
-  protection: GitHubEnvironmentProtectionSettings,
+  protection_read: ProtectionReadResponse,
   claim: GateRequestClaim,
   run: WorkflowRunRecord,
   wait: PendingDeploymentWait,
@@ -229,7 +262,7 @@ fn route(
 ) -> GateAnswerOutcome {
   answer_pending_environment_gate(
     boundary: boundary,
-    protection: protection,
+    protection_read: protection_read,
     claim: claim,
     installation_claim: installation_claim,
     requested_rule_id: rule_id,
@@ -245,7 +278,7 @@ fn route(
 fn honest_route(run_id: GitHubWorkflowRunId, decision: ProposedDecision) -> GateAnswerOutcome {
   route(
     boundary: srv1_deployment_gate_boundary,
-    protection: protection_with(reviewers: false),
+    protection_read: protection_with(reviewers: false),
     claim: claim_for(run_id: run_id, environment: gated_env),
     run: in_flight_run(run_id: run_id),
     wait: wait_for_environment(environment_name: gated_env),
@@ -283,7 +316,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
   // The installation read shows another installation than the operator typed.
   (match route(
      boundary: srv1_deployment_gate_boundary,
-     protection: protection_with(reviewers: false),
+     protection_read: protection_with(reviewers: false),
      claim: claim_for(run_id: run_a, environment: gated_env),
      run: in_flight_run(run_id: run_a),
      wait: wait_for_environment(environment_name: gated_env),
@@ -308,7 +341,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
   // The enabled rule belongs to another App than the one observed.
   && (match route(
         boundary: srv1_deployment_gate_boundary,
-        protection: protection_with(reviewers: false),
+        protection_read: protection_with(reviewers: false),
         claim: claim_for(run_id: run_a, environment: gated_env),
         run: in_flight_run(run_id: run_a),
         wait: wait_for_environment(environment_name: gated_env),
@@ -325,7 +358,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
   // The rule row's id is not the rule id the caller requested to answer.
   && (match route(
         boundary: srv1_deployment_gate_boundary,
-        protection: protection_with(reviewers: false),
+        protection_read: protection_with(reviewers: false),
         claim: claim_for(run_id: run_a, environment: gated_env),
         run: in_flight_run(run_id: run_a),
         wait: wait_for_environment(environment_name: gated_env),
@@ -342,7 +375,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
   // The read was not the installation route: the response says it hit another path.
   && (match route(
         boundary: srv1_deployment_gate_boundary,
-        protection: protection_with(reviewers: false),
+        protection_read: protection_with(reviewers: false),
         claim: claim_for(run_id: run_a, environment: gated_env),
         run: in_flight_run(run_id: run_a),
         wait: wait_for_environment(environment_name: gated_env),
@@ -367,7 +400,7 @@ test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
 test fn a_run_record_for_another_run_is_refused_before_the_mint() -> Bool {
   match route(
     boundary: srv1_deployment_gate_boundary,
-    protection: protection_with(reviewers: false),
+    protection_read: protection_with(reviewers: false),
     claim: claim_for(run_id: run_a, environment: gated_env),
     run: in_flight_run(run_id: run_b),
     wait: wait_for_environment(environment_name: gated_env),
@@ -383,13 +416,14 @@ test fn a_run_record_for_another_run_is_refused_before_the_mint() -> Bool {
   }
 }
 
-// RED 3, CROSSED ENVIRONMENT, both halves. (a) The mint refuses a claim for another environment than the
-// boundary's body. (b) A pair of REAL receipts, answered honestly on srv1-production, unlocks nothing for
+// RED 3, CROSSED ENVIRONMENT, both halves. (a) A claim for another environment than the boundary's is a typed
+// Waiting, compared ONCE and early, and the mint is handed the boundary's environment, never the claim's
+// (the mint's own refusal of a crossed environment is witnessed by the stage-1 witnesses). (b) A pair of REAL receipts, answered honestly on srv1-production, unlocks nothing for
 // the sibling lane's boundary: the admission refuses with TrialArmIsOnAnotherEnvironment.
 test fn a_crossed_environment_is_refused_by_the_mint_and_by_the_admission() -> Bool {
   (match route(
      boundary: srv1_deployment_gate_boundary,
-     protection: protection_with(reviewers: false),
+     protection_read: protection_with(reviewers: false),
      claim: claim_for(run_id: run_a, environment: sibling_env),
      run: in_flight_run(run_id: run_a),
      wait: wait_for_environment(environment_name: sibling_env),
@@ -398,9 +432,9 @@ test fn a_crossed_environment_is_refused_by_the_mint_and_by_the_admission() -> B
      rule_read: honest_rule_read(),
      review_response: review_response_for(run_id: run_a, status: 204)
    ) {
-     Waiting { reason: ReviewNotAccepted { because: _ } } => true
+     Waiting { reason: ClaimNamesAnotherEnvironment { claimed: c, boundary: b } } => c == sibling_env && b == gated_env
      Waiting { reason: _ } => false
-     BrokerDeclined { because: _ } => true
+     BrokerDeclined { because: _ } => false
      Answered { receipt: _ } => false
    })
   && (match honest_route(run_id: run_a, decision: ProposeApprove) {
@@ -430,7 +464,7 @@ test fn a_crossed_environment_is_refused_by_the_mint_and_by_the_admission() -> B
 test fn a_broker_denial_carries_its_typed_reason() -> Bool {
   match route(
     boundary: srv1_deployment_gate_boundary,
-    protection: protection_with(reviewers: false),
+    protection_read: protection_with(reviewers: false),
     claim: claim_for(run_id: run_a, environment: gated_env),
     run: in_flight_run(run_id: run_a),
     wait: wait_for_environment(environment_name: sibling_env),
@@ -451,7 +485,7 @@ test fn a_broker_denial_carries_its_typed_reason() -> Bool {
 test fn while_required_reviewers_stand_the_route_only_waits() -> Bool {
   match route(
     boundary: srv1_deployment_gate_boundary,
-    protection: protection_with(reviewers: true),
+    protection_read: protection_with(reviewers: true),
     claim: claim_for(run_id: run_a, environment: gated_env),
     run: in_flight_run(run_id: run_a),
     wait: wait_for_environment(environment_name: gated_env),
@@ -465,4 +499,109 @@ test fn while_required_reviewers_stand_the_route_only_waits() -> Bool {
     Answered { receipt: _ } => false
     BrokerDeclined { because: _ } => false
   }
+}
+
+// THE PROTECTION READ IS THE STAGE-1 SEALED READ. A response that names another environment is refused by
+// observe_environment_protection and the route carries that refusal's `because` unchanged.
+test fn a_protection_response_naming_another_environment_waits_with_its_own_refusal() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection_read: protection_read_of(
+      named: sibling_env as String,
+      reviewers: false,
+      path: "/repos/gunb-ai/gunbc/environments/srv1-production",
+      status: 200
+    ),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_a, status: 204)
+  ) {
+    Waiting {
+      reason: ProtectionNotEstablished {
+        because: ProtectionResponseNamedAnotherEnvironment { requested_environment: r, named_in_response: n },
+      },
+    } => r == gated_env && n == (sibling_env as String)
+    Waiting { reason: _ } => false
+    BrokerDeclined { because: _ } => false
+    Answered { receipt: _ } => false
+  }
+}
+
+// THE ENVIRONMENT GET IS BOUND TO ITS EXACT ROUTE, like the other two reads: the same facts sent from the
+// sibling environment's path wait as ReadWasNotTheRoute, not as an answer.
+test fn a_protection_read_from_another_route_is_not_the_route() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection_read: protection_read_of(
+      named: srv1_production_environment_name as String,
+      reviewers: false,
+      path: "/repos/gunb-ai/gunbc/environments/gcp-iam-bootstrap",
+      status: 200
+    ),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_a, status: 204)
+  ) {
+    Waiting { reason: ReadWasNotTheRoute { route: EnvironmentRoute, expected: _, sent: _ } } => true
+    Waiting { reason: _ } => false
+    BrokerDeclined { because: _ } => false
+    Answered { receipt: _ } => false
+  }
+}
+
+// A non-200 environment read is not a read.
+test fn a_protection_read_that_did_not_answer_waits() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection_read: protection_read_of(
+      named: srv1_production_environment_name as String,
+      reviewers: false,
+      path: "/repos/gunb-ai/gunbc/environments/srv1-production",
+      status: 404
+    ),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_a, status: 204)
+  ) {
+    Waiting { reason: EnvironmentReadDidNotAnswer { status: 404 } } => true
+    Waiting { reason: _ } => false
+    BrokerDeclined { because: _ } => false
+    Answered { receipt: _ } => false
+  }
+}
+
+// EACH READ PATH IS ITS TEMPLATE ROW WITH THE PLACEHOLDERS FILLED, and a segment that would be filled a
+// second time (a brace) is refused rather than substituted.
+test fn each_read_path_is_its_template_with_the_placeholders_filled() -> Bool {
+  (match installation_readback_path_built_for(owner: "gunb-ai", repo: "gunbc") {
+     BuiltReadPathOk { path: p } => p == replace(replace(installation_readback_endpoint_path as String, "\{owner\}", "gunb-ai"), "\{repo\}", "gunbc")
+     BuiltReadPathRefused { axis: _, hostile_value: _ } => false
+   })
+  && (match enabled_rule_readback_path_built_for(owner: "gunb-ai", repo: "gunbc", environment_name: gated_env) {
+        BuiltReadPathOk { path: p } =>
+          p == replace(replace(replace(enabled_rule_readback_endpoint_path as String, "\{owner\}", "gunb-ai"), "\{repo\}", "gunbc"), "\{environment_name\}", gated_env as String)
+        BuiltReadPathRefused { axis: _, hostile_value: _ } => false
+      })
+  && (match environment_protection_readback_path_built_for(owner: "gunb-ai", repo: "gunbc", environment_name: gated_env) {
+        BuiltReadPathOk { path: p } =>
+          p == replace(replace(replace(environment_protection_readback_endpoint_path as String, "\{owner\}", "gunb-ai"), "\{repo\}", "gunbc"), "\{environment_name\}", gated_env as String)
+        BuiltReadPathRefused { axis: _, hostile_value: _ } => false
+      })
+  && (match installation_readback_path_built_for(owner: "gunb-ai", repo: "\{owner\}") {
+        BuiltReadPathRefused { axis: ReadRepoAxis, hostile_value: _ } => true
+        BuiltReadPathRefused { axis: _, hostile_value: _ } => false
+        BuiltReadPathOk { path: _ } => false
+      })
 }

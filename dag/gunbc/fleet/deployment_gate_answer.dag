@@ -36,6 +36,7 @@ import extdeps.github.deployment_protection_rule {
   review_call,
   installation_readback_call,
   enabled_rule_readback_call,
+  environment_protection_readback_call,
   BuiltReviewPath,
   BuiltReviewPathOk,
   BuiltReviewPathRefused,
@@ -48,6 +49,7 @@ import extdeps.github.deployment_protection_rule {
   review_endpoint_path_built_for,
   installation_readback_path_built_for,
   enabled_rule_readback_path_built_for,
+  environment_protection_readback_path_built_for,
   InstallationWireFields,
   EnabledDeploymentProtectionRule,
   PendingDeploymentWait,
@@ -84,6 +86,12 @@ import gunbc.auth.deployment_gate_authorization {
   AcceptedReviewRefused,
   AcceptedReviewRefusal,
   AcceptedRuleReviewReceipt,
+  EnvironmentProtectionRead,
+  EnvironmentProtectionObservation,
+  ProtectionReadEstablished,
+  ProtectionReadRefused,
+  ProtectionResponseNamedAnotherEnvironment,
+  observe_environment_protection,
   observe_gate_installation,
   observe_rule_ownership,
   broker_answer_decision,
@@ -104,6 +112,12 @@ type InstallationReadResponse {
   wire: InstallationWireFields,
 }
 
+type ProtectionReadResponse {
+  sent: SentRequest,
+  status: HttpStatus,
+  settings: GitHubEnvironmentProtectionSettings,
+}
+
 type RuleReadResponse {
   sent: SentRequest,
   status: HttpStatus,
@@ -117,13 +131,16 @@ type ReviewResponse {
 
 // WHICH READ A MISROUTED REQUEST WAS.
 type GateRoute
-  = InstallationRoute
+  = EnvironmentRoute
+  | InstallationRoute
   | EnabledRuleRoute
   | ReviewRoute
 
 type GateWaitReason
   = RequiredReviewersStand
-  | ProtectionReadNamesAnotherEnvironment { read: String, boundary: NonEmptyStr }
+  | ClaimNamesAnotherEnvironment { claimed: NonEmptyStr, boundary: NonEmptyStr }
+  | EnvironmentReadDidNotAnswer { status: HttpStatus }
+  | ProtectionNotEstablished { because: ProtectionResponseNamedAnotherEnvironment }
   | RouteSegmentIsNotRouteSafe { axis: ReadPathAxis, hostile_value: NonEmptyStr }
   | ReviewRouteSegmentIsNotRouteSafe { refusal: ReviewPathBuildRefusal, hostile_segment: ReviewPathSegment }
   | ReadWasNotTheRoute { route: GateRoute, expected: SentRequest, sent: SentRequest }
@@ -163,6 +180,54 @@ fn review_body_for(boundary: DeploymentGateBoundary, capability: ApprovalCapabil
       ProposeDeny => Rejected
     },
     comment: Absent,
+  }
+}
+
+// THE PROTECTION READ. The only caller of observe_environment_protection (admit_callers names this fn);
+// the sealed observation, not the raw response, is what the DARK test reads.
+fn observe_environment_protection_for_route(
+  boundary: DeploymentGateBoundary,
+  response: ProtectionReadResponse
+) -> EnvironmentProtectionRead {
+  observe_environment_protection(
+    owner: boundary_owner(boundary: boundary),
+    repo: boundary_repo(boundary: boundary),
+    environment_name: boundary.environment_name,
+    settings: response.settings
+  )
+}
+
+// WHAT THE PROTECTION PHASE YIELDS: a typed stop, or the standing in which no human reviewer is required.
+type ProtectionPhase
+  = ProtectionStopped { outcome: GateAnswerOutcome }
+  | ProtectionClear
+
+fn protection_phase(boundary: DeploymentGateBoundary, response: ProtectionReadResponse) -> ProtectionPhase {
+  match environment_protection_readback_path_built_for(
+    owner: boundary_owner(boundary: boundary),
+    repo: boundary_repo(boundary: boundary),
+    environment_name: boundary.environment_name
+  ) {
+    BuiltReadPathRefused { axis: a, hostile_value: v } =>
+      ProtectionStopped { outcome: wait_for(reason: RouteSegmentIsNotRouteSafe { axis: a, hostile_value: v }) }
+    BuiltReadPathOk { path: path } => {
+      let expected = expected_request(call: environment_protection_readback_call, path: path)
+      if !is_the_route(expected: expected, sent: response.sent) {
+        ProtectionStopped { outcome: wait_for(reason: ReadWasNotTheRoute { route: EnvironmentRoute, expected: expected, sent: response.sent }) }
+      } else if response.status != environment_protection_readback_call.success_status {
+        ProtectionStopped { outcome: wait_for(reason: EnvironmentReadDidNotAnswer { status: response.status }) }
+      } else {
+        match observe_environment_protection_for_route(boundary: boundary, response: response) {
+          ProtectionReadRefused { because: b } => ProtectionStopped { outcome: wait_for(reason: ProtectionNotEstablished { because: b }) }
+          ProtectionReadEstablished { observation: o } =>
+            if environment_protection_requires_reviewers(settings: o.protection) {
+              ProtectionStopped { outcome: wait_for(reason: RequiredReviewersStand) }
+            } else {
+              ProtectionClear
+            }
+        }
+      }
+    }
   }
 }
 
@@ -319,7 +384,7 @@ fn prepare_after_ownership(
 // decision through prepare_review, then phase C: the only call to the receipt mint.
 fn answer_pending_environment_gate(
   boundary: DeploymentGateBoundary,
-  protection: GitHubEnvironmentProtectionSettings,
+  protection_read: ProtectionReadResponse,
   claim: GateRequestClaim,
   installation_claim: GateInstallationClaim,
   requested_rule_id: GitHubDeploymentProtectionRuleId,
@@ -330,11 +395,12 @@ fn answer_pending_environment_gate(
   rule_read: RuleReadResponse,
   review_response: ReviewResponse
 ) -> GateAnswerOutcome {
-  if protection.name != (boundary.environment_name as String) {
-    wait_for(reason: ProtectionReadNamesAnotherEnvironment { read: protection.name, boundary: boundary.environment_name })
-  } else if environment_protection_requires_reviewers(settings: protection) {
-    wait_for(reason: RequiredReviewersStand)
+  if claim.environment != boundary.environment_name {
+    wait_for(reason: ClaimNamesAnotherEnvironment { claimed: claim.environment, boundary: boundary.environment_name })
   } else {
+    match protection_phase(boundary: boundary, response: protection_read) {
+      ProtectionStopped { outcome: stop } => stop
+      ProtectionClear =>
     match prepare_review(
       boundary: boundary,
       claim: claim,
@@ -353,7 +419,7 @@ fn answer_pending_environment_gate(
           owner: boundary_owner(boundary: boundary),
           repo: boundary_repo(boundary: boundary),
           run_id: claim.run_id,
-          environment_name: claim.environment,
+          environment_name: boundary.environment_name,
           intended: review.state,
           review: review,
           status: review_response.status,
@@ -365,5 +431,6 @@ fn answer_pending_environment_gate(
         }
       }
     }
+  }
   }
 }
