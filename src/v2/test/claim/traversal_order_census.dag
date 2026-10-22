@@ -9,6 +9,14 @@ import v2.compiler.traversal_order_census {
   TraversalCensusReport,
   TraversalFnFact,
   TraversalMention,
+  TraversalTally,
+  TallyFused,
+  TallyStructural,
+  TallyUnresolved,
+  traversal_result_tally,
+  traversal_result_unresolved,
+  traversal_result_unresolved_for_no_row,
+  traversal_tally_same,
   traversal_census_exit,
   traversal_census_join
 }
@@ -68,12 +76,12 @@ fn join(facts: List<TraversalFnFact>, rows: List<TraversalDisposition>) -> Trave
   traversal_census_join(stages: stages, facts: facts, rows: rows, seeds: seeds)
 }
 
-fn count_class(r: TraversalCensusReport, word: String) -> Int {
-  fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if x.class_word == word { n + 1 } else { n } })
+fn count_class(r: TraversalCensusReport, tally: TraversalTally) -> Int {
+  fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if traversal_tally_same(a: traversal_result_tally(r: x), b: tally) { n + 1 } else { n } })
 }
 
-fn has_cause(r: TraversalCensusReport, cause: String) -> Bool {
-  fold_list(xs: r.results, empty: false, cons: fn(any, x) { any || x.cause == cause })
+fn has_no_row_cause(r: TraversalCensusReport) -> Bool {
+  fold_list(xs: r.results, empty: false, cons: fn(any, x) { any || traversal_result_unresolved_for_no_row(r: x) })
 }
 
 fn has_refusal(r: TraversalCensusReport, prefix: String) -> Bool {
@@ -83,7 +91,7 @@ fn has_refusal(r: TraversalCensusReport, prefix: String) -> Bool {
 // 1. A detected site with no row is Unresolved (positive control for the whole instrument).
 test fn an_unclassified_direct_traversal_is_unresolved_holds() -> Bool {
   let r = join(facts: [root_fact(mentions: [fold_call(path: [0], shape: "a")]), helper_fact], rows: [])
-  count_class(r: r, word: "unresolved") >= 1 && has_cause(r: r, cause: "no_row") && traversal_census_exit(report: r) == 1
+  count_class(r: r, tally: TallyUnresolved) >= 1 && has_no_row_cause(r: r) && traversal_census_exit(report: r) == 1
 }
 
 // 2. The same site with a row is classified, and the census holds.
@@ -93,7 +101,7 @@ test fn a_classified_traversal_holds_when_every_site_has_its_row() -> Bool {
     TraversalDisposition { key: TraversalSiteKey { function: "h.pos", path: [0], callee: "children", kind: SiteChildrenRead, shape: "c" }, class: StructuralEnumeration { builds: "child list" as NonEmptyStr } }
   ]
   let r = join(facts: [root_fact(mentions: [fold_call(path: [0], shape: "a")]), helper_fact], rows: rows)
-  count_class(r: r, word: "structural") == 2 && count_class(r: r, word: "unresolved") == 0 && traversal_census_exit(report: r) == 0
+  count_class(r: r, tally: TallyStructural) == 2 && count_class(r: r, tally: TallyUnresolved) == 0 && traversal_census_exit(report: r) == 0
 }
 
 // 3. A row whose site is gone is a stale-row refusal (negative control).
@@ -111,7 +119,7 @@ test fn a_helper_mediated_children_read_is_a_site_in_the_caller_holds() -> Bool 
 // 5. Direct recursion (a Cons walk calling itself) is a site.
 test fn direct_recursion_is_a_site_holds() -> Bool {
   let r = join(facts: [root_fact(mentions: [mention(callee: "m.root", kind: SiteCall, path: [1], shape: "r", fed: true)]), helper_fact], rows: [])
-  fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if x.module == "m" && x.class_word == "unresolved" { n + 1 } else { n } }) == 1
+  fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if x.module == "m" && traversal_result_unresolved(r: x) { n + 1 } else { n } }) == 1
 }
 
 // 6. A closure module no stage owns refuses the census.
@@ -124,24 +132,24 @@ test fn an_unowned_closure_module_refuses() -> Bool {
 // 7. Identical sibling sites are distinguished by path: a row for one does not classify the other.
 test fn identical_sibling_sites_are_distinguished_by_path_holds() -> Bool {
   let r = join(facts: [root_fact(mentions: [fold_call(path: [0], shape: "a"), fold_call(path: [1], shape: "a")]), helper_fact], rows: [structural_row(path: [0], shape: "a")])
-  count_class(r: r, word: "structural") == 1 && fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if x.module == "m" && x.class_word == "unresolved" { n + 1 } else { n } }) == 1
+  count_class(r: r, tally: TallyStructural) == 1 && fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if x.module == "m" && traversal_result_unresolved(r: x) { n + 1 } else { n } }) == 1
 }
 
 // 8. A row re-pointed onto code that changed (same path, different shape) is stale and the site is Unresolved.
 test fn a_swapped_site_at_the_same_path_refuses_the_old_row() -> Bool {
   let r = join(facts: [root_fact(mentions: [fold_call(path: [0], shape: "b")]), helper_fact], rows: [structural_row(path: [0], shape: "a")])
-  length(xs: r.stale) == 1 && has_cause(r: r, cause: "no_row")
+  length(xs: r.stale) == 1 && has_no_row_cause(r: r)
 }
 
 // 9. A primitive named as a value (higher-order delegation) is a site, not a pass.
 test fn higher_order_delegation_is_a_site_holds() -> Bool {
   let r = join(facts: [root_fact(mentions: [mention(callee: "std.algebra.fold_list", kind: SiteValueReference, path: [0], shape: "a", fed: false)]), helper_fact], rows: [])
-  fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if x.module == "m" && x.class_word == "unresolved" { n + 1 } else { n } }) == 1
+  fold_list(xs: r.results, empty: 0, cons: fn(n, x) { if x.module == "m" && traversal_result_unresolved(r: x) { n + 1 } else { n } }) == 1
 }
 
 // 10. A fused row is admitted when it names a declaration; naming nothing is not writable (DeclarationRef).
 test fn a_fused_row_naming_a_discharge_declaration_is_admitted() -> Bool {
   let row = TraversalDisposition { key: key(path: [0], shape: "a"), class: AdmittedFusedRealization { discharge: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan") } }
   let facts = [root_fact(mentions: [fold_call(path: [0], shape: "a")]), helper_fact]
-  count_class(r: join(facts: facts, rows: [row]), word: "fused") == 1
+  count_class(r: join(facts: facts, rows: [row]), tally: TallyFused) == 1
 }

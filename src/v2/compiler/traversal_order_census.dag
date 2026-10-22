@@ -271,12 +271,78 @@ fn trav_descend(acc: TravAcc, ipath: List<Int>, node: Node, skip_head: Bool, ret
 
 // ═══ THE REDUCTION (pure over facts) ══════════════════════════════════════════════════════════════
 
+type TraversalUnresolvedCause
+  = NoRow
+  | DuplicateRow
+
+// A detected site is either claimed by exactly one roster row or Unresolved; there is no Unresolved arm to
+// author in the roster, so the sum lives here, and the text is rendered only in traversal_census_lines.
+type TraversalVerdict
+  = SiteResolved { class: TraversalClass }
+  | SiteUnresolved { cause: TraversalUnresolvedCause }
+
 type TraversalSiteResult {
   stage: String
   module: String
   key: TraversalSiteKey
-  class_word: String
-  cause: String
+  verdict: TraversalVerdict
+}
+
+type TraversalTally
+  = TallyStructural
+  | TallyRecurrence
+  | TallyFused
+  | TallyUnresolved
+
+fn traversal_result_tally(r: TraversalSiteResult) -> TraversalTally {
+  match r.verdict {
+    SiteResolved { class: c } =>
+      match c {
+        StructuralEnumeration { builds: _ } => TallyStructural
+        ExplicitRecurrence { carrier: _ } => TallyRecurrence
+        AdmittedFusedRealization { discharge: _ } => TallyFused
+      }
+    SiteUnresolved { cause: _ } => TallyUnresolved
+  }
+}
+
+fn traversal_tally_same(a: TraversalTally, b: TraversalTally) -> Bool {
+  trav_tally_index(t: a) == trav_tally_index(t: b)
+}
+
+fn traversal_result_unresolved(r: TraversalSiteResult) -> Bool {
+  traversal_tally_same(a: traversal_result_tally(r: r), b: TallyUnresolved)
+}
+
+fn trav_tally_index(t: TraversalTally) -> Int {
+  match t {
+    TallyStructural => 0
+    TallyRecurrence => 1
+    TallyFused => 2
+    TallyUnresolved => 3
+  }
+}
+
+fn traversal_result_unresolved_for_no_row(r: TraversalSiteResult) -> Bool {
+  match r.verdict {
+    SiteUnresolved { cause: c } =>
+      match c {
+        NoRow => true
+        DuplicateRow => false
+      }
+    SiteResolved { class: _ } => false
+  }
+}
+
+fn trav_cause_text(r: TraversalSiteResult) -> String {
+  match r.verdict {
+    SiteUnresolved { cause: c } =>
+      match c {
+        NoRow => "no_row"
+        DuplicateRow => "duplicate_row"
+      }
+    SiteResolved { class: _ } => ""
+  }
 }
 
 type TraversalCensusReport {
@@ -354,14 +420,6 @@ fn trav_path_text(path: List<Int>) -> String {
   fold_list(xs: path, empty: "", cons: fn(acc, i) { if acc == "" { to_string(i) } else { concat(acc, concat(".", to_string(i))) } })
 }
 
-fn trav_path_same(a: List<Int>, b: List<Int>) -> Bool {
-  trav_path_text(path: a) == trav_path_text(path: b) && length(xs: a) == length(xs: b)
-}
-
-fn traversal_key_same(a: TraversalSiteKey, b: TraversalSiteKey) -> Bool {
-  a.function == b.function && a.callee == b.callee && a.shape == b.shape && trav_kind_word(k: a.kind) == trav_kind_word(k: b.kind) && trav_path_same(a: a.path, b: b.path)
-}
-
 fn trav_site_key(f: TraversalFnFact, m: TraversalMention) -> TraversalSiteKey {
   TraversalSiteKey { function: f.function, path: m.path, callee: m.callee, kind: m.kind, shape: m.shape }
 }
@@ -376,37 +434,43 @@ fn trav_is_site(prims: Map<String, Bool>, f: TraversalFnFact, m: TraversalMentio
   }
 }
 
-fn trav_row_count(rows: List<TraversalDisposition>, key: TraversalSiteKey) -> Int {
-  fold_list(xs: rows, empty: 0, cons: fn(n, r) { if traversal_key_same(a: r.key, b: key) { n + 1 } else { n } })
+// The roster joined once by site identity: a count and the first class per identity, so a site's lookup and
+// the stale-row scan are map reads rather than a rescan of the roster per site.
+type TravRowIndex {
+  counts: Map<String, Int>
+  classes: Map<String, TraversalClass>
 }
 
-fn trav_row_for(rows: List<TraversalDisposition>, key: TraversalSiteKey) -> Optional<TraversalClass> {
-  fold_list(xs: rows, empty: optional_absent(), cons: fn(found, r) {
-    match found {
-      Present { value: _ } => found
-      Absent => if traversal_key_same(a: r.key, b: key) { optional_present(value: r.class) } else { found }
+fn trav_site_id(key: TraversalSiteKey) -> String {
+  concat(trav_key_text(key: key), concat(" shape=", key.shape))
+}
+
+fn trav_row_index(rows: List<TraversalDisposition>) -> TravRowIndex {
+  fold_list(xs: rows, empty: TravRowIndex { counts: empty_map(), classes: empty_map() }, cons: fn(ix, r) {
+    let id = trav_site_id(key: r.key)
+    let classes = match map_lookup(m: ix.classes, key: id) {
+      Present { value: _ } => ix.classes
+      Absent => map_insert(m: ix.classes, key: id, value: r.class)
     }
+    TravRowIndex { counts: map_insert(m: ix.counts, key: id, value: trav_row_count(ix: ix, id: id) + 1), classes: classes }
   })
 }
 
-// A row is a CLAIM about the site; its class word is the arm. A fused arm carries a DeclarationRef to the
-// plan's discharge declaration, which the compiler resolves, so a fused row naming nothing real is unwritable.
-fn trav_class_word(c: TraversalClass) -> String {
-  match c {
-    StructuralEnumeration { builds: _ } => "structural"
-    ExplicitRecurrence { carrier: _ } => "recurrence"
-    AdmittedFusedRealization { discharge: _ } => "fused"
+fn trav_row_count(ix: TravRowIndex, id: String) -> Int {
+  match map_lookup(m: ix.counts, key: id) {
+    Present { value: n } => n
+    Absent => 0
   }
 }
 
-fn trav_result(stage: String, module: String, key: TraversalSiteKey, rows: List<TraversalDisposition>) -> TraversalSiteResult {
-  if trav_row_count(rows: rows, key: key) > 1 {
-    TraversalSiteResult { stage: stage, module: module, key: key, class_word: "unresolved", cause: "duplicate_row" }
+fn trav_result(stage: String, module: String, key: TraversalSiteKey, ix: TravRowIndex) -> TraversalSiteResult {
+  let id = trav_site_id(key: key)
+  if trav_row_count(ix: ix, id: id) > 1 {
+    TraversalSiteResult { stage: stage, module: module, key: key, verdict: SiteUnresolved { cause: DuplicateRow } }
   } else {
-    match trav_row_for(rows: rows, key: key) {
-      Absent => TraversalSiteResult { stage: stage, module: module, key: key, class_word: "unresolved", cause: "no_row" }
-      Present { value: c } =>
-        TraversalSiteResult { stage: stage, module: module, key: key, class_word: trav_class_word(c: c), cause: "" }
+    match map_lookup(m: ix.classes, key: id) {
+      Absent => TraversalSiteResult { stage: stage, module: module, key: key, verdict: SiteUnresolved { cause: NoRow } }
+      Present { value: c } => TraversalSiteResult { stage: stage, module: module, key: key, verdict: SiteResolved { class: c } }
     }
   }
 }
@@ -471,11 +535,12 @@ fn traversal_census_join(
   let owned = trav_owned_modules(stages: stages)
   let prims = trav_primitives(seeds: seeds, facts: facts, owned: owned)
   let index = trav_fn_index(facts: facts)
+  let ix = trav_row_index(rows: rows)
   let results = fold_list(xs: facts, empty: [], cons: fn(acc, f) {
     if trav_has(m: owned, key: f.module) {
       fold_list(xs: f.mentions, empty: acc, cons: fn(a, m) {
         if trav_is_site(prims: prims, f: f, m: m) {
-          list_snoc_item(xs: a, item: trav_result(stage: trav_stage_of_module(stages: stages, module: f.module), module: f.module, key: trav_site_key(f: f, m: m), rows: rows))
+          list_snoc_item(xs: a, item: trav_result(stage: trav_stage_of_module(stages: stages, module: f.module), module: f.module, key: trav_site_key(f: f, m: m), ix: ix))
         } else {
           a
         }
@@ -484,8 +549,9 @@ fn traversal_census_join(
       acc
     }
   })
+  let seen = fold_list(xs: results, empty: empty_map(), cons: fn(m, r) { map_insert(m: m, key: trav_site_id(key: r.key), value: true) })
   let stale = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
-    if fold_list(xs: results, empty: false, cons: fn(any, s) { any || traversal_key_same(a: s.key, b: r.key) }) { acc } else { list_snoc_item(xs: acc, item: r.key) }
+    if trav_has(m: seen, key: trav_site_id(key: r.key)) { acc } else { list_snoc_item(xs: acc, item: r.key) }
   })
   let unestablished = fold_list(xs: facts, empty: [], cons: fn(acc, f) {
     if trav_has(m: owned, key: f.module) {
@@ -523,12 +589,12 @@ fn traversal_census_join(
 
 // ═══ THE OUTPUT ═══════════════════════════════════════════════════════════════════════════════════
 
-fn trav_count(results: List<TraversalSiteResult>, module: String, word: String) -> Int {
-  fold_list(xs: results, empty: 0, cons: fn(n, r) { if r.module == module && r.class_word == word { n + 1 } else { n } })
+fn trav_count(results: List<TraversalSiteResult>, module: String, tally: TraversalTally) -> Int {
+  fold_list(xs: results, empty: 0, cons: fn(n, r) { if r.module == module && trav_tally_index(t: traversal_result_tally(r: r)) == trav_tally_index(t: tally) { n + 1 } else { n } })
 }
 
 fn trav_unresolved_count(report: TraversalCensusReport) -> Int {
-  fold_list(xs: report.results, empty: 0, cons: fn(n, r) { if r.class_word == "unresolved" { n + 1 } else { n } })
+  fold_list(xs: report.results, empty: 0, cons: fn(n, r) { if traversal_result_unresolved(r: r) { n + 1 } else { n } })
 }
 
 fn traversal_census_exit(report: TraversalCensusReport) -> Int {
@@ -540,10 +606,10 @@ fn trav_key_text(key: TraversalSiteKey) -> String {
 }
 
 fn trav_total_line(stage: String, module: String, results: List<TraversalSiteResult>) -> String {
-  let structural = to_string(trav_count(results: results, module: module, word: "structural"))
-  let recurrence = to_string(trav_count(results: results, module: module, word: "recurrence"))
-  let fused = to_string(trav_count(results: results, module: module, word: "fused"))
-  let unresolved = to_string(trav_count(results: results, module: module, word: "unresolved"))
+  let structural = to_string(trav_count(results: results, module: module, tally: TallyStructural))
+  let recurrence = to_string(trav_count(results: results, module: module, tally: TallyRecurrence))
+  let fused = to_string(trav_count(results: results, module: module, tally: TallyFused))
+  let unresolved = to_string(trav_count(results: results, module: module, tally: TallyUnresolved))
   concat("[traversal-order-census] total stage=", concat(stage, concat(" module=", concat(module, concat(" structural=", concat(structural, concat(" recurrence=", concat(recurrence, concat(" fused=", concat(fused, concat(" unresolved=", unresolved))))))))))) 
 }
 
@@ -554,8 +620,8 @@ fn traversal_census_lines(stages: List<TraversalStage>, report: TraversalCensusR
     })
   })
   let unresolved = fold_list(xs: report.results, empty: [], cons: fn(acc, r) {
-    if r.class_word == "unresolved" {
-      list_snoc_item(xs: acc, item: concat("[traversal-order-census] unresolved stage=", concat(r.stage, concat(" ", concat(trav_key_text(key: r.key), concat(" cause=", r.cause))))))
+    if traversal_result_unresolved(r: r) {
+      list_snoc_item(xs: acc, item: concat("[traversal-order-census] unresolved stage=", concat(r.stage, concat(" ", concat(trav_key_text(key: r.key), concat(" cause=", trav_cause_text(r: r)))))))
     } else {
       acc
     }
