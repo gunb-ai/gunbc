@@ -2410,7 +2410,7 @@ fn infer_match_bool_arm_body_type(
 // A MATCH ARM IS JUDGED AT THE EXPECTED TYPE BY THE SAME POSITION JUDGMENT AS A BRANCH ARM (infer_judge_branch_arms_at_expected):
 // infer_judge_declared_position_closing, so the if and match forms of one shape refuse with one reason (a bare x: Int? at Optional<Int?>
 // is optional-layer depth, not a join conflict).
-fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<NonEmptyDiagnostics> {
+fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree, rigid_binders: List<Symbol>) -> Optional<NonEmptyDiagnostics> {
   match expected {
     Absent => Absent
     Present { value: e } =>
@@ -2423,7 +2423,8 @@ fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entrie
         formal: InhabitanceFormal { parameter_identity: ^match_arm, declared: e },
         produced_at: body,
         type_params: Empty,
-        instances: infer_no_type_variable_instances()
+        instances: infer_no_type_variable_instances(),
+        rigid_binders: rigid_binders
       ) {
         Rejected { diagnostics: r } => Present { value: r }
         Accepted { value: _, diagnostics: _ } => Absent
@@ -2431,12 +2432,12 @@ fn infer_match_arm_body_refusal_at_expected(match_node: Node, body: Node, entrie
   }
 }
 
-fn infer_match_arms_refusal_at_expected(match_node: Node, bodies: List<Node>, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree) -> Optional<NonEmptyDiagnostics> {
+fn infer_match_arms_refusal_at_expected(match_node: Node, bodies: List<Node>, entries: Map<Node, List<InferredFacts>>, expected: Optional<Node>, resolved: ResolvedTree, rigid_binders: List<Symbol>) -> Optional<NonEmptyDiagnostics> {
   let no_refusal: Optional<NonEmptyDiagnostics> = Absent
   fold(bodies, init: no_refusal, f: fn(cur, body) {
     match cur {
       Present { value: _ } => cur
-      Absent => infer_match_arm_body_refusal_at_expected(match_node: match_node, body: body, entries: entries, expected: expected, resolved: resolved)
+      Absent => infer_match_arm_body_refusal_at_expected(match_node: match_node, body: body, entries: entries, expected: expected, resolved: resolved, rigid_binders: rigid_binders)
     }
   })
 }
@@ -2463,7 +2464,8 @@ fn infer_match_bool_arm_rows_accept(
   cd: Diagnostics,
   scrutinee_type: Node,
   expected: Optional<Node>,
-  resolved: ResolvedTree
+  resolved: ResolvedTree,
+  rigid_binders: List<Symbol>
 ) -> Outcome<InferredFacts> {
   match infer_match_bool_arm_row(
     arm: first_arm_target,
@@ -2491,7 +2493,8 @@ fn infer_match_bool_arm_rows_accept(
             }),
             entries: entries,
             expected: expected,
-            resolved: resolved
+            resolved: resolved,
+            rigid_binders: rigid_binders
           )
           match at_expected {
             Present { value: r } => Rejected { diagnostics: r }
@@ -2860,6 +2863,7 @@ fn infer_match_bool(
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
   expected: Optional<Node>,
+  rigid_binders: List<Symbol>,
 ) -> Outcome<InferredFacts> {
   let arm_targets = list_map(xs: match_role_slots(n: node, role: MatchArmSlot), f: fn(a) { child_slot_target(slot: a) })
   if !all_edges_positional(children: node.children) || length(xs: arm_targets) != 2 {
@@ -2900,7 +2904,8 @@ fn infer_match_bool(
                                 ),
                                 scrutinee_type: scrutinee_type,
                                 expected: expected,
-                                resolved: resolved
+                                resolved: resolved,
+                                rigid_binders: rigid_binders
                               )
                             } else {
                               outcome_rejected(infer_match_scrutinee_not_bool_diagnostic(node: node))
@@ -2953,17 +2958,18 @@ fn infer_match(
   partials: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
-  expected: Optional<Node>
+  expected: Optional<Node>,
+  rigid_binders: List<Symbol>
 ) -> Outcome<InferredFacts> {
   let arms = list_map(xs: match_role_slots(n: node, role: MatchArmSlot), f: fn(a) { child_slot_target(slot: a) })
   if is_empty(xs: arms) {
-    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
   } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
-    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
   } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
-    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
   } else {
-    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders)
   }
 }
 
@@ -3490,7 +3496,8 @@ fn infer_match_coproduct_rows(
   resolved: ResolvedTree,
   scrutinee_target: Node,
   cd: Diagnostics,
-  expected: Optional<Node>
+  expected: Optional<Node>,
+  rigid_binders: List<Symbol>
 ) -> Outcome<InferredFacts> {
   match fold(arms, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, arm) {
     match acc {
@@ -3511,7 +3518,7 @@ fn infer_match_coproduct_rows(
             let any_open = infer_coproduct_any_open(rows: rows, entries: entries, instances: coproduct.instances, resolved: resolved)
             let declaring = infer_join_declaring_at_expected(declaring: infer_arm_declaring_type(rows: rows, entries: entries, instances: coproduct.instances, resolved: resolved), any_open: any_open, expected: expected)
             let bodies = infer_coproduct_arm_body_types(rows: rows, entries: entries, instances: coproduct.instances, declaring: declaring, resolved: resolved)
-            let at_expected = infer_match_arms_refusal_at_expected(match_node: node, bodies: infer_coproduct_row_bodies(rows: rows), entries: entries, expected: expected, resolved: resolved)
+            let at_expected = infer_match_arms_refusal_at_expected(match_node: node, bodies: infer_coproduct_row_bodies(rows: rows), entries: entries, expected: expected, resolved: resolved, rigid_binders: rigid_binders)
             match at_expected {
             Present { value: r } => Rejected { diagnostics: r }
             Absent =>
@@ -3572,7 +3579,8 @@ fn infer_match_coproduct(
   partials: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
-  expected: Optional<Node>
+  expected: Optional<Node>,
+  rigid_binders: List<Symbol>
 ) -> Outcome<InferredFacts> {
   if !all_edges_positional(children: node.children) {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
@@ -3622,7 +3630,8 @@ fn infer_match_coproduct(
                               entries: entries,
                               resolved: resolved,
                               cd: cd,
-                              expected: expected
+                              expected: expected,
+                              rigid_binders: rigid_binders
                             )
                         }
                     }
@@ -6080,8 +6089,9 @@ fn infer_gather_match_row_on_entries(
   partials: List<Node>,
   resolved: ResolvedTree,
   expected: Optional<Node>,
+  rigid_binders: List<Symbol>,
 ) -> InferGatherFoldAcc {
-  match infer_match(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected) {
+  match infer_match(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -7622,7 +7632,8 @@ fn infer_gather_fold_step_merged(
       pending: merged_pending,
       partials: partials,
       resolved: resolved,
-      expected: acc.declared_position_expected
+      expected: acc.declared_position_expected,
+      rigid_binders: acc.rigid_binders
     )
   } else if acc.await_loop_row && children_remaining == 0 {
     infer_gather_loop_row_on_entries(
@@ -7849,7 +7860,7 @@ fn infer_gather_branch_join(
     Present { value: expected } =>
       match acc.branch_hold.held {
         Empty => start
-        Cons { head: _, tail: _ } => infer_judge_branch_arms_at_expected(branch: acc.node, start: start, held: acc.branch_hold.held, expected: expected, resolved: resolved)
+        Cons { head: _, tail: _ } => infer_judge_branch_arms_at_expected(branch: acc.node, start: start, held: acc.branch_hold.held, expected: expected, resolved: resolved, rigid_binders: acc.rigid_binders)
       }
     Absent =>
       fold(acc.branch_hold.held, init: start, f: fn(cur, h) {
@@ -7882,7 +7893,7 @@ fn infer_gather_branch_join(
 // (infer_judge_declared_position_closing): a literal arm goes through the ordinary literal-at-expected judgement, a held arm is closed
 // at the expected type, and a bare T at a T? position refuses (no implicit lift). The sibling-declaring join
 // (infer_resolve_held_arm) is the answer only where there is no expected type to read.
-fn infer_judge_branch_arms_at_expected(branch: Node, start: InferHoldResolution, held: List<InferHeldArm>, expected: Node, resolved: ResolvedTree) -> InferHoldResolution {
+fn infer_judge_branch_arms_at_expected(branch: Node, start: InferHoldResolution, held: List<InferHeldArm>, expected: Node, resolved: ResolvedTree, rigid_binders: List<Symbol>) -> InferHoldResolution {
   let held_entries = fold(held, init: start, f: fn(cur, h) {
     InferHoldResolution {
       entries: concat_inferred_facts_entries(a: cur.entries, b: h.settled.entries),
@@ -7906,7 +7917,8 @@ fn infer_judge_branch_arms_at_expected(branch: Node, start: InferHoldResolution,
             formal: InhabitanceFormal { parameter_identity: ^branch_arm, declared: expected },
             produced_at: arm,
             type_params: Empty,
-            instances: infer_no_type_variable_instances()
+            instances: infer_no_type_variable_instances(),
+            rigid_binders: rigid_binders
           ) {
             Rejected { diagnostics: r } => InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: r } }
             Accepted { value: next, diagnostics: d } =>
@@ -9157,7 +9169,7 @@ fn infer_frame_inherited(frame: InferFrame) -> InferFrame {
 
 // A MATCH ARM IS A BRANCH ARM: the expected type of the match reaches each arm body (F2), as infer_branch_arm_child_frame does for if.
 fn infer_frame_with_declared_position_expected(frame: InferFrame, expected: Optional<Node>) -> InferFrame {
-  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: frame.entering, declared_position_expected: expected }
+  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: frame.entering, declared_position_expected: expected, rigid_binders: frame.rigid_binders }
 }
 
 fn infer_frame_keep_declared_position_expected(frame: InferFrame) -> InferFrame {
