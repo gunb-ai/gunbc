@@ -36,7 +36,7 @@ fn gib_from_centi(centi: Nat) -> Nat {
 
 fn card_budget_from_measured_cell(memory_bytes: Nat, cell: CellOutcome, full_attention_bytes_per_token: Nat, indexer_bytes_per_token: Nat) -> CardBudget? {
   match cell {
-    CellMeasured { weights_centi_gib: w, kv_centi_gib: k, kv_tokens: t, gpu_memory_utilization_basis_points: u, throughput: _ } => {
+    CellMeasured { weights_centi_gib: Present { value: w }, kv_centi_gib: Present { value: k }, kv_tokens: Present { value: t }, gpu_memory_utilization_basis_points: u, throughput: _ } => {
       let usable = memory_bytes * u / 10000
       let weights = gib_from_centi(centi: w)
       let kv = gib_from_centi(centi: k)

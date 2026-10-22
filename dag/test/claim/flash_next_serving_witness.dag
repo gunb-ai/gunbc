@@ -20,8 +20,8 @@ import gunbc.serving.flash_next_experiment_identity {
   flash_next_experiment_identity_frontier, kv_arithmetic_capacity, serving_variant_eq,
 }
 import gunbc.serving.flash_next_quant_matrix {
-  QuantCell, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
-  CellRefusedWeightsExceedUsableMemory, CellUnobserved, flash_next_quant_matrix, quant_matrix_outcome,
+  QuantCell, QuantMatrixRow, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
+  CellRefusedWeightsExceedUsableMemory, CellRefusedOther, CellUnobserved, ConcurrencyReading, upstream_defect_observations, flash_next_quant_matrix, quant_matrix_outcome,
   flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_centi_gib,
   WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
@@ -341,7 +341,7 @@ test fn w_quant_matrix_refuses_bf16_weights_and_never_zeroes_unrun_cells() -> Bo
   let fp8w = QuantCell { weights: WeightFp8Qwen128Blocks, kv: KvBf16 }
   count(flash_next_quant_matrix) == 18
     && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: H200UpstreamV032, c: fp8) {
-         Present { value: CellMeasured { weights_centi_gib: w, kv_centi_gib: _, kv_tokens: t, gpu_memory_utilization_basis_points: u, throughput: tp } } => w == 7339 && t == 2626530 && u == 8500 && count(tp) == 3
+         Present { value: CellMeasured { weights_centi_gib: Present { value: w }, kv_centi_gib: _, kv_tokens: Present { value: t }, gpu_memory_utilization_basis_points: u, throughput: tp } } => w == 7339 && t == 2626530 && u == 8500 && count(tp) == 5
          _ => false
        }
     && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: bf16w) {
@@ -349,7 +349,7 @@ test fn w_quant_matrix_refuses_bf16_weights_and_never_zeroes_unrun_cells() -> Bo
          _ => false
        }
     && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: H200UpstreamV032, c: fp8w) {
-         Present { value: CellUnobserved { trigger: _ } } => true
+         Present { value: CellRefusedOther { cause: _ } } => true
          _ => false
        }
     && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200PredictedNativeStack, c: fp8) {
@@ -414,4 +414,22 @@ test fn w_recipe_throughput_reading_is_not_superseded_by_a_rate_at_another_concu
       m > 3000 && m < 3500 && c == 16 && d > 2200 && d < 2350 && t == 900
     _ => false
   }
+}
+
+// Every relayed throughput level is unadmitted (none has passed gpu_bench_warm_run_admission), the preempting and collapsed
+// levels are flagged capacity-boundary evidence, and the B200 FP8-KV c1 rate is below BF16-KV (the FA2 fallback finding).
+data sweep_count_seed: Nat = 0
+
+fn matrix_level_count(rows: List<QuantMatrixRow>, boundary_only: Bool, scoreable_only: Bool) -> Nat {
+  fold(rows, init: sweep_count_seed, f: (acc, r) => match r.outcome {
+    CellMeasured { weights_centi_gib: _, kv_centi_gib: _, kv_tokens: _, gpu_memory_utilization_basis_points: _, throughput: tp } =>
+      acc + count(tp |> filter(l => (!boundary_only || l.capacity_boundary) && (!scoreable_only || throughput_scoreable(a: l.admission))))
+    _ => acc
+  })
+}
+
+test fn w_sweep_levels_are_unadmitted_and_boundary_levels_are_flagged() -> Bool {
+  matrix_level_count(rows: flash_next_quant_matrix, boundary_only: false, scoreable_only: true) == 0
+    && matrix_level_count(rows: flash_next_quant_matrix, boundary_only: true, scoreable_only: false) == 4
+    && count(upstream_defect_observations) == 2
 }

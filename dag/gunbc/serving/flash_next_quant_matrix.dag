@@ -61,16 +61,19 @@ type ConcurrencyReading {
   admission: WarmAdmission
   concurrency: Nat
   decode_deci_tokens_per_second_per_request: Nat
-  inter_token_gap_microseconds: Nat
-  ttft_median_milliseconds: Nat
+  inter_token_gap_microseconds: Nat?
+  ttft_median_milliseconds: Nat?
   ttft_max_milliseconds: Nat?
+  aggregate_deci_tokens_per_second: Nat?
+  preemptions: Nat?
+  capacity_boundary: Bool
 }
 
 type CellOutcome
   = CellMeasured {
-      weights_centi_gib: Nat
-      kv_centi_gib: Nat
-      kv_tokens: Nat
+      weights_centi_gib: Nat?
+      kv_centi_gib: Nat?
+      kv_tokens: Nat?
       gpu_memory_utilization_basis_points: Nat
       throughput: List<ConcurrencyReading>
     }
@@ -108,10 +111,67 @@ fn refused_bf16(memory_bytes: Nat, utilization_bp: Nat) -> CellOutcome {
   weights_outcome_for(memory_bytes: memory_bytes, utilization_bp: utilization_bp, weights_bytes: bf16_weights_bytes, fits: unobserved())
 }
 
-data h200_nvl_session_replay: List<ConcurrencyReading> = [
-  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 1, decode_deci_tokens_per_second_per_request: 2987, inter_token_gap_microseconds: 11700, ttft_median_milliseconds: 1820, ttft_max_milliseconds: none },
-  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 4, decode_deci_tokens_per_second_per_request: 981, inter_token_gap_microseconds: 16400, ttft_median_milliseconds: 1900, ttft_max_milliseconds: none },
-  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 8, decode_deci_tokens_per_second_per_request: 580, inter_token_gap_microseconds: 22000, ttft_median_milliseconds: 2040, ttft_max_milliseconds: Present { value: 18100 } },
+
+fn nat_present(n: Nat) -> Nat? {
+  Present { value: n }
+}
+
+// One level of the upstream sweep. agg is the server-counted generation_tokens_total delta over the level's wall time
+// (warm-turn tokens included), per_request the median per-request decode rate, both in tenths of tok/s. A level with
+// preemptions or a collapse is capacity-boundary evidence, never engine throughput.
+fn sweep_level(c: Nat, agg: Nat, per_request: Nat, gap_us: Nat?, ttft_ms: Nat?, preempt: Nat, boundary: Bool) -> ConcurrencyReading {
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: c, decode_deci_tokens_per_second_per_request: per_request, inter_token_gap_microseconds: gap_us, ttft_median_milliseconds: ttft_ms, ttft_max_milliseconds: none, aggregate_deci_tokens_per_second: nat_present(n: agg), preemptions: nat_present(n: preempt), capacity_boundary: boundary }
+}
+
+data b200_nvfp4_kvfp8_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 2120, per_request: 3570, gap_us: nat_present(n: 8900), ttft_ms: nat_present(n: 1680), preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3970, per_request: 2240, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 4690, per_request: 1310, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 16, agg: 5200, per_request: 760, gap_us: none, ttft_ms: nat_present(n: 2200), preempt: 0, boundary: false),
+]
+
+data b200_nvfp4_kvbf16_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 2180, per_request: 4160, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3660, per_request: 1780, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 4630, per_request: 1270, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 16, agg: 4020, per_request: 310, gap_us: none, ttft_ms: nat_present(n: 4260), preempt: 0, boundary: false),
+]
+
+data b200_fp8w_kvfp8_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 1920, per_request: 3470, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3380, per_request: 1850, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 3670, per_request: 940, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 16, agg: 2790, per_request: 230, gap_us: none, ttft_ms: nat_present(n: 15500), preempt: 31, boundary: true),
+]
+
+data b200_fp8w_kvbf16_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 2050, per_request: 3230, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3440, per_request: 1730, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 2790, per_request: 430, gap_us: none, ttft_ms: none, preempt: 2, boundary: true),
+  sweep_level(c: 16, agg: 2430, per_request: 410, gap_us: none, ttft_ms: nat_present(n: 33500), preempt: 17, boundary: true),
+]
+
+data h200_nvfp4_kvbf16_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 1200, per_request: 2800, gap_us: none, ttft_ms: nat_present(n: 4290), preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 1760, per_request: 1200, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 1860, per_request: 700, gap_us: none, ttft_ms: none, preempt: 0, boundary: false),
+]
+
+// Per-request only (no aggregate relayed); the c16 level collapsed (gap 443 ms, TTFT 21 s) and is capacity-boundary evidence.
+// The operator marked this cell to be re-measured.
+
+// Upstream log, H200 at gpu-memory-utilization 0.95: available KV 1.53 GiB against 4.21 GiB (FP8 KV) / 7.57 GiB (BF16 KV)
+// for one 262,144-token request (estimated max length 51,200 / 25,600). The checkpoint loads but cannot serve the length.
+data h200_fp8w_refusal_cause: NonEmptyStr = "upstream refused to start: available KV 1.53 GiB at gpu-memory-utilization 0.95 is below the 4.21 GiB (FP8 KV) or 7.57 GiB (BF16 KV) one 262144-token request needs; estimated max model len 51200 (FP8 KV) / 25600 (BF16 KV)" as NonEmptyStr
+
+// Per-request only (no aggregate relayed); the c16 level collapsed (gap 443 ms, TTFT 21 s) and is capacity-boundary evidence.
+// The operator marked this cell to be re-measured.
+data h200_nvfp4_kvfp8_levels: List<ConcurrencyReading> = [
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 1, decode_deci_tokens_per_second_per_request: 2987, inter_token_gap_microseconds: Present { value: 11700 }, ttft_median_milliseconds: Present { value: 1820 } , ttft_max_milliseconds: none, aggregate_deci_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 4, decode_deci_tokens_per_second_per_request: 981, inter_token_gap_microseconds: Present { value: 16400 }, ttft_median_milliseconds: Present { value: 1900 } , ttft_max_milliseconds: none, aggregate_deci_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 8, decode_deci_tokens_per_second_per_request: 580, inter_token_gap_microseconds: Present { value: 22000 }, ttft_median_milliseconds: Present { value: 2040 } , ttft_max_milliseconds: Present { value: 18100 }, aggregate_deci_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 12, decode_deci_tokens_per_second_per_request: 380, inter_token_gap_microseconds: none, ttft_median_milliseconds: none, ttft_max_milliseconds: none, aggregate_deci_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 16, decode_deci_tokens_per_second_per_request: 98, inter_token_gap_microseconds: nat_present(n: 443000), ttft_median_milliseconds: nat_present(n: 21000), ttft_max_milliseconds: none, aggregate_deci_tokens_per_second: none, preemptions: none, capacity_boundary: true },
 ]
 
 fn kv_cell(weights: WeightDtype, kv: KvDtype) -> QuantCell {
@@ -119,19 +179,19 @@ fn kv_cell(weights: WeightDtype, kv: KvDtype) -> QuantCell {
 }
 
 data flash_next_quant_matrix: List<QuantMatrixRow> = [
-  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: 7339, kv_centi_gib: 4223, kv_tokens: 2626530, gpu_memory_utilization_basis_points: 8500, throughput: h200_nvl_session_replay } },
-  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: unobserved() },
-  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: unobserved() },
-  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: unobserved() },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: Present { value: 7339 }, kv_centi_gib: Present { value: 4223 }, kv_tokens: Present { value: 2626530 }, gpu_memory_utilization_basis_points: 8500, throughput: h200_nvfp4_kvfp8_levels } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellMeasured { weights_centi_gib: none, kv_centi_gib: none, kv_tokens: Present { value: 1462338 }, gpu_memory_utilization_basis_points: 8500, throughput: h200_nvfp4_kvbf16_sweep } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellRefusedOther { cause: h200_fp8w_refusal_cause } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellRefusedOther { cause: h200_fp8w_refusal_cause } },
   QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: h200_nvl_observed_memory), utilization_bp: 8500) },
   QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: h200_nvl_observed_memory), utilization_bp: 8500) },
-  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: 7434, kv_centi_gib: 8125, kv_tokens: 5051998, gpu_memory_utilization_basis_points: 9000, throughput: [] } },
-  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: unobserved() },
-  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: unobserved() },
-  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: unobserved() },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: Present { value: 7434 }, kv_centi_gib: Present { value: 8125 }, kv_tokens: Present { value: 5051998 }, gpu_memory_utilization_basis_points: 9000, throughput: b200_nvfp4_kvfp8_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellMeasured { weights_centi_gib: none, kv_centi_gib: none, kv_tokens: Present { value: 2814151 }, gpu_memory_utilization_basis_points: 9000, throughput: b200_nvfp4_kvbf16_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: Present { value: 12721 }, kv_centi_gib: Present { value: 2919 }, kv_tokens: Present { value: 1814647 }, gpu_memory_utilization_basis_points: 9000, throughput: b200_fp8w_kvfp8_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellMeasured { weights_centi_gib: none, kv_centi_gib: none, kv_tokens: none, gpu_memory_utilization_basis_points: 9000, throughput: b200_fp8w_kvbf16_sweep } },
   QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization_bp: 9000) },
   QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization_bp: 9000) },
-  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: 7186, kv_centi_gib: 1424, kv_tokens: 773026, gpu_memory_utilization_basis_points: 9600, throughput: [] } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: Present { value: 7186 }, kv_centi_gib: Present { value: 1424 }, kv_tokens: Present { value: 773026 }, gpu_memory_utilization_basis_points: 9600, throughput: [] } },
   QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
   QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
   QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
@@ -174,6 +234,18 @@ data upstream_ple_note: NonEmptyStr = "PLE table re-expressed BF16: upstream rej
 data upstream_v032_run_observations: List<UpstreamRunObservation> = [
   UpstreamRunObservation { variant: H200UpstreamV032, gpu_uuid: "GPU-db782247-b35d-34cf-3f2a-02c3d8c2918e" as NonEmptyStr, vbios: "96.00.D9.00.0E" as NonEmptyStr, power_limit_deci_watts: 5000, driver_version: "615.71.09" as NonEmptyStr, moe_backend: "NvFp4 MoE MARLIN (recipe triton refuses NVFP4)" as NonEmptyStr, mtp_expert_backend: "marlin" as NonEmptyStr, linear_backend: "HummingMxfp8LinearKernel" as NonEmptyStr, attention_note: "fp8 KV + fp8 indexer KV" as NonEmptyStr, ple_note: upstream_ple_note },
   UpstreamRunObservation { variant: B200UpstreamV032, gpu_uuid: "GPU-801c30bc-4111-f820-3b13-16318ba8f211" as NonEmptyStr, vbios: "97.00.C5.00.2D" as NonEmptyStr, power_limit_deci_watts: 10000, driver_version: "580.126.09" as NonEmptyStr, moe_backend: "NvFp4 MoE FLASHINFER_TRTLLM (main experts)" as NonEmptyStr, mtp_expert_backend: "NvFp4 MoE MARLIN W4A16 (MTP experts)" as NonEmptyStr, linear_backend: "MXFP8 FlashInferCutedslMxfp8LinearKernel (main) + MarlinMxfp8LinearKernel (one other group)" as NonEmptyStr, attention_note: "FA4 Blackwell head_size 256 does not support fp8 KV; falls back to FA2 (upstream warning)" as NonEmptyStr, ple_note: upstream_ple_note },
+]
+
+// OBSERVATIONS of the upstream 0.32.0 runs that are not throughput rows (relayed by the operator, raw files under
+// /root/bench/<tag>/ on each box). A defect observed is a finding about the stack, not a property of the card.
+type UpstreamDefectObservation {
+  variant: ServingVariant
+  finding: NonEmptyStr
+}
+
+data upstream_defect_observations: List<UpstreamDefectObservation> = [
+  UpstreamDefectObservation { variant: B200UpstreamV032, finding: "FP8 KV is slower than BF16 KV at c1 (357 vs 416 tok/s per request): upstream logs that FA4 Blackwell head_size=256 does not support fp8 KV and falls back to FA2; a kernel gap, not hardware" as NonEmptyStr },
+  UpstreamDefectObservation { variant: H200UpstreamV032, finding: "max-model-len 1000000 (YaRN x4): server READY with 3068862 KV tokens (3.07x of 1M), then CUDA illegal memory access at about 900k context with zero bench rows; the B200 1M result is pending" as NonEmptyStr },
 ]
 
 data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(
