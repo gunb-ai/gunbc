@@ -9,7 +9,7 @@ HEADSHA=8f7af1271081476ec2c2019db4d2d448c481ea52  # gh pr view 14575 --json head
 CEN=src/v2/workflow/outside_discovery_roots_census.dag
 WIT=src/v2/test/claim/outside_discovery_roots_census_witness.dag
 REX=src/v2/test/claim/outside_discovery_roots_census_real_execution.dag
-HEAD_CEN_SHA=373447efdc7af24cd3215c74df942d35bb23e50e99e9e074d02435f3852f6913
+HEAD_CEN_SHA=726e9c1462a9830a1dc139c84f77679f7ddf1e3c996a5b7839c1086ac2e35a45
 echo "PWD=$(pwd) RUNNER_HEAD=$(git rev-parse HEAD | cut -c1-12) (runner git is main; head gating comes ONLY from the fetch assertion below) START $(date -u +%H:%M:%S)Z"
 git worktree prune >/dev/null 2>&1 || true
 rm -rf /tmp/wt575m
