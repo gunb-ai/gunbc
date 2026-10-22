@@ -72,9 +72,45 @@ type OperatorSpec {
   algebra_field: AlgebraFieldKind?
 }
 
+// A PREFIX (unary) operator's binding power, declared beside the infix rows rather than written as
+// a literal at each prefix arm of the parser. Before this type existed, `v1.compiler.parse`
+// `parse_prefix` handed each prefix arm's operand a hand-written minimum binding power, and the one
+// value chosen (12) admitted every infix row with left_bp >= 12 -- so `-1 - 2` parsed as -(1 - 2)
+// and `!a * b` as !(a * b), silently, in the seed parser and in everything that reads its tree.
+// The class is gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator.
+//
+// A prefix operator binds only its own postfix operand, so its power sits above every infix row it
+// must not absorb: `|>` at 17 stays outside `-a |> f`, while `.` at 19 is consumed by the operand's
+// postfix layer -- the same closure the v2 grammar rows enforce structurally, where
+// `unary_expr -> '-' unary_expr | postfix_expr` cannot swallow an infix tail at any power.
+type PrefixOperatorSpec {
+  symbol: String
+  binding_power: Int
+}
+
+// A POSTFIX (trailing) operator's binding power, declared beside the prefix and infix rows for the
+// same reason PrefixOperatorSpec exists: the parser used to carry these thresholds as literals at
+// each postfix arm (`21 < min_bp` for call and index, `13 < min_bp` for `as`), and a hand-written
+// gate is the same defect class as the hand-written prefix power the RFM row
+// gunbc.recurring_failure_mode.unary_minus_absorbs_a_following_additive_operator records — the one
+// `as` gate chose (13) sits BELOW the additive rows at 13/14, which is why v1 historically read
+// `a + b as T` as `(a + b) as T` while the v2 grammar rows, whose postfix repeat accepts `as`
+// unconditionally, read `a + (b as T)`. Declaring the row at 19 — above the prefix rows at 18, so a
+// unary operand consumes its cast (`-a as T` is -(a as T) on BOTH parsers, the shape the closed v2
+// production has always given) and above the pipe's right power at 18, so an additive or pipe right
+// side also consumes its cast — replaces the literal with the table and moves v1 onto v2's
+// authority. A language whose rows carry no row for a symbol does not have that postfix operator;
+// the parser declines to consume it and the ordinary downstream refusal reports it.
+type PostfixOperatorSpec {
+  symbol: String
+  binding_power: Int
+}
+
 type SyntaxSpec {
   item_forms: List<ItemForm>
   operators: List<OperatorSpec>
+  prefix_operators: List<PrefixOperatorSpec>
+  postfix_operators: List<PostfixOperatorSpec>
   keyword_literals: Map<String, LiteralValue>
   keyword_set: Map<String, Bool>
 }

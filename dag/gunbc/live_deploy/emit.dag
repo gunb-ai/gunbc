@@ -362,7 +362,7 @@ import v2.std.node { Node }
 import gunbc.ci.ci_deploy_access { DeployAccess }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_install_shell }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_command }
-import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
+import v2.workflow.effect_plan_bash_materialize { BashPlanEffect }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
   systemctl_daemon_reload_effect,
@@ -371,7 +371,9 @@ import gunbc.live_deploy.effect_leaf {
   apt_install_effect,
   apt_install_unelevated_effect,
   dpkg_status_effect,
+  observed_sha256_env_write_effect,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -437,7 +439,7 @@ fn deploy_raw(command: String) -> PipelineStep {
 // constructors live in gunbc.live_deploy.effect_leaf because EffectPlanStep and PipelineStep both
 // declare Do/If/For/While/Retry/Let/Call, and variant names resolve corpus-wide -- a module holding
 // both coproducts does not resolve. The split is forced by the substrate, not a layering choice.
-fn deploy_effect_run(inv: BashBoundOperationInvocation) -> Run {
+fn deploy_effect_run(inv: BashPlanEffect) -> Run {
   Run {
     command: deploy_effect_command(inv: inv),
     env: Empty,
@@ -446,7 +448,7 @@ fn deploy_effect_run(inv: BashBoundOperationInvocation) -> Run {
   }
 }
 
-fn deploy_effect(inv: BashBoundOperationInvocation) -> PipelineStep {
+fn deploy_effect(inv: BashPlanEffect) -> PipelineStep {
   Do { run: deploy_effect_run(inv: inv) }
 }
 
@@ -987,24 +989,25 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
 // is the digest of exactly what the sidecar unit executes. The sidecar's own receipt names sha256 of /proc/self/exe;
 // the broker joins the two (gunbc.auth.approval_device_crypto_realization device_crypto_echo_join) and refuses a
 // disagreement.
-// FAIL-CLOSED: the digest is taken by assignment (a sha256sum failure fails the && chain, no pipe to mask it) and must be
-// exactly 64 characters before anything is written, so an empty NAME= can never reach the env file. The shell transport
-// is a scaffold dissolved when the typed observe_executable digest (as device_crypto_sidecar_readback_exit uses) has a
-// staged-write route that takes a runtime value, i.e. the orchestration-to-shell bash-emit capability; until then this
-// step is the only runtime-valued write. SCAFFOLD operator-approved on gunbc#14570 (relayed by wise-bat-528).
-fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+// FAIL-CLOSED: the env file is the typed leaf v2.std.effect_plan_observed_sha256 ObservedSha256EnvWrite, lowered by
+// v2.workflow.effect_plan_bash_materialize; the write is refused before any byte is written unless the observed line opens
+// with a valid Sha256DigestHex, so an empty NAME= can never reach the env file.
+fn device_crypto_sidecar_digest_env_effect(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> BashPlanEffect {
   let svc = spec.approval_broker
-  let owner = svc.service_user
-  let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
+  observed_sha256_env_write_effect(
+    path: device_crypto_sidecar_binary_path(spec: spec, revision: revision),
+    dest: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision),
+    env_name: approval_device_crypto_deployed_digest_env_name as String,
+    mode: install_file_shared_mode,
+    owner: svc.service_user,
+  )
+}
+
+fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   // The sidecar binary itself is a member of the broker's release locus (approval_broker_release_locus_executables),
   // installed by release_locus_install_steps ahead of this step; only the runtime-valued digest write is here.
   [
-    deploy_raw(command: join([
-      "d=$(", sha256sum_program().invocation as String, " ", installed, ") && d=$\{d%% *} && test $\{#d} -eq 64 && ",
-      printf_program().invocation as String, " '", approval_device_crypto_deployed_digest_env_name as String, "=%s\\n' \"$d\" | ",
-      join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
-        device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision)]), " "),
-    ], "")),
+    deploy_effect(inv: device_crypto_sidecar_digest_env_effect(spec: spec, revision: revision)),
   ]
 }
 
@@ -1230,7 +1233,7 @@ fn apply_attempt_unit_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
     )),
     deploy_raw(command: deploy_stage_install_owned_command(
       stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
-      mode: "0644" as NonEmptyStr,
+      mode: install_file_shared_mode,
       owner: root_principal,
       group: root_principal,
       dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root),
@@ -1291,7 +1294,7 @@ fn attempt_system_unit_grant_steps_for_sudoers(
           )),
           deploy_raw(command: deploy_stage_install_owned_command(
             stage_name: rev_stage,
-            mode: "0644" as NonEmptyStr,
+            mode: install_file_shared_mode,
             owner: approval_broker_helper_root_principal,
             group: approval_broker_helper_root_principal,
             dest: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
@@ -3045,7 +3048,7 @@ fn release_locus_binary_install_step(owner: NonEmptyStr, root: String, name: Str
     mode: install_executable_shared_mode,
     owner: owner,
     group: owner,
-    source: join(["target/release/", name], ""),
+    source: join([cargo_default_release_dir_rel, "/", name], ""),
     dest: join([root, "/", name], ""),
   ))
 }
@@ -3462,7 +3465,7 @@ fn root_owned_helper_snapshot_steps(locus: HelperLocus, revision: ReleaseRevisio
         deploy_raw(command: pwd_tree_copy_privileged_command(rel: sub, dest: join([dir, "/", sub], "")))),
       [
         deploy_raw(command: pwd_file_install_privileged_command(
-          rel: join(["target/release/", gunbc_release_bin_name], ""),
+          rel: join([cargo_default_release_dir_rel, "/", gunbc_release_bin_name], ""),
           mode: install_executable_shared_mode,
           owner: locus.owner,
           group: locus.owner,
@@ -3688,7 +3691,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
 // The deploying checkout's build, the one source the install copies from; the same path the planner
 // digests (gunbc.live_deploy.member_observe release_executable_source_path) so the verification
 // line above and the planned identity name one file.
-data release_executable_install_source: String = "target/release/gunbc"
+data release_executable_install_source: String = concat(cargo_default_release_dir_rel, "/gunbc")
 
 fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   match kind {
@@ -3726,7 +3729,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         mode: install_executable_shared_mode,
         owner: spec.service.service_user,
         group: spec.service.service_user,
-        source: "target/release/gunbc",
+        source: concat(cargo_default_release_dir_rel, "/gunbc"),
         dest: path as String,
       )),
       deploy_raw(command: install_d_owned_command(
