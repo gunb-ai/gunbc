@@ -18,8 +18,9 @@ import std.measure { Second, second, second_count, Millisecond, millisecond, mil
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
-import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium, runner_host_medium_image_stem }
+import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
@@ -2956,11 +2957,19 @@ fn mtcollins1_boot_wet() -> ProcessExit
 // resolution arm without running the readback, which keeps its own witnesses.
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
-  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, image_stem: runner_host_medium_image_stem, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() })
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() })
 }
 
-fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, image_stem: NonEmptyStr, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt
+fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "boot_with_toolchain"),
+  ]
 {
+  let image_stem = match ubuntu_seeded_install_media_image_stem(image_name: medium.image_name, output_digest: medium.digest) {
+    Present { value: st } => st
+    Absent => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: the boot medium ", medium.image_name as String, " is not named for its own digest, so no image stem derives from it; controller untouched")))
+  }
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched"))))

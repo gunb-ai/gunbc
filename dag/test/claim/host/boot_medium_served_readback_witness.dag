@@ -11,7 +11,9 @@ import gunbc.host.boot_medium_served_readback {
 import std.optional { Present, Absent }
 import gunbc.typed_argv_exec { TypedArgvExecRefused }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_medium }
-import gunbc.runner.runner_host_medium { runner_host_boot_medium }
+import gunbc.runner.runner_host_medium { runner_host_boot_medium, runner_host_medium_image_stem }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium, mtcollins1_census_image_stem }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -99,4 +101,29 @@ test fn the_two_sites_state_what_each_has_touched() -> Bool {
     Present { value: t } => string_contains(s: t, pattern: "after grant, before attach") && string_contains(s: t, pattern: "media attach, boot selection and power untouched")
     Absent => false
   })
+}
+
+// THE STEM IS DERIVED FROM THE MEDIUM, NEVER SUPPLIED BESIDE IT: each medium row yields exactly its own
+// stem, and a name that is not the one its digest produces yields none (a stem that disagrees with its
+// medium is unwritable rather than checked).
+test fn a_medium_yields_its_own_image_stem_and_a_name_for_another_digest_yields_none() -> Bool {
+  let runner = mtcollins1_boot_medium
+  let census = mtcollins1_census_boot_medium
+  let runner_stem = match ubuntu_seeded_install_media_image_stem(image_name: runner.image_name, output_digest: runner.digest) {
+    Present { value: st } => (st as String) == (runner_host_medium_image_stem as String)
+    Absent => false
+  }
+  let census_stem = match ubuntu_seeded_install_media_image_stem(image_name: census.image_name, output_digest: census.digest) {
+    Present { value: st } => (st as String) == (mtcollins1_census_image_stem as String)
+    Absent => false
+  }
+  let crossed = match ubuntu_seeded_install_media_image_stem(image_name: runner.image_name, output_digest: census.digest) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  let bare = match ubuntu_seeded_install_media_image_stem(image_name: "x.iso", output_digest: runner.digest) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  runner_stem && census_stem && crossed && bare
 }

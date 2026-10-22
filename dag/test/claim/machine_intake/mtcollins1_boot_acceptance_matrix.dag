@@ -39,7 +39,7 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
   SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
 }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium, mtcollins1_census_image_stem }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium }
 import gunbc.machine_intake.mtcollins1_census_medium_readback { census_record_path }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
@@ -137,7 +137,7 @@ fn ready_toolchain() -> RunnerBrowserToolchainResolution {
 }
 
 fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt {
-  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_census_boot_medium, image_stem: mtcollins1_census_image_stem, resolve_toolchain: fn() { toolchain })
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_census_boot_medium, resolve_toolchain: fn() { toolchain })
 }
 
 fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
