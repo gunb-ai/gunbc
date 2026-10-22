@@ -48,7 +48,7 @@ import gunbc.auth.authorization_pattern_selection {
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
   MintedCredentialReach, MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential, MintsHostRootReach,
   ReversibleByReapply, IrreversibleEffect,
-  BillsExternally, NoBillingConsequence,
+  BillsExternally, NoBillingConsequence, BillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
   InterlockPending, InterlockedBy, StandingRulingInterlock,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
@@ -866,17 +866,24 @@ fn manual_operator_api_effect(subject: NonEmptyStr, cause: NonEmptyStr, reach: M
   }
 }
 
-fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> PrivilegedEffect {
+// A step with no API. Frequency is read from the intervention the corpus already models, and the
+// cause and billing are the caller's facts: a console act and a billed dashboard signup are different
+// effects, so neither is fixed here.
+fn manual_no_api_effect(subject: NonEmptyStr, step: HumanIntervention, cause: NonEmptyStr, billing: BillingConsequence) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: subject,
-    frequency: DeviceOnce,
+    frequency: step.frequency,
     reversibility: ReversibleByReapply,
     surface: HumanSurfaceOnly { step: step },
-    workload_identity: WorkloadIdentityUnbindable { cause: "the act happens at the machine's console; no API reaches it" as NonEmptyStr },
+    workload_identity: WorkloadIdentityUnbindable { cause: cause },
     minted_reach: MintsNoCredential,
-    billing: NoBillingConsequence,
+    billing: billing,
     witness_discharge: NoWitnessDischarge,
   }
+}
+
+fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> PrivilegedEffect {
+  manual_no_api_effect(subject: subject, step: step, cause: "the act happens at the machine's console; no API reaches it" as NonEmptyStr, billing: NoBillingConsequence)
 }
 
 data privileged_effect_census: List<PrivilegedEffectSite> = [
@@ -1657,7 +1664,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_origin", decl_name: "cloudflare_account_allocation_intervention"),
-    effect: manual_physical_effect(subject: "create the Cloudflare account that owns the fleet's R2 storage, billed to the LLC (dashboard signup; no API creates an account)" as NonEmptyStr, step: cloudflare_account_allocation_intervention()),
+    effect: manual_no_api_effect(subject: "create the Cloudflare account that owns the fleet's R2 storage, billed to the LLC" as NonEmptyStr, step: cloudflare_account_allocation_intervention(), cause: "Cloudflare account creation is a dashboard signup; no API creates an account" as NonEmptyStr, billing: BillsExternally),
     realized: RealizedHumanStep,
     divergence_reason: none,
   },

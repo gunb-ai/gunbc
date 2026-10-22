@@ -9,7 +9,7 @@ import gunbc.auth.authorization_pattern_selection {
   WorkloadIdentityBindable, WorkloadIdentityUnbindable,
   MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential, MintsHostRootReach,
   ReversibleByReapply, IrreversibleEffect,
-  BillsExternally, NoBillingConsequence,
+  BillsExternally, NoBillingConsequence, BillingConsequence,
   NoWitnessDischarge, StandingRulingUnderInterlock, WitnessDischarge,
   FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, AdministratorEdge,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
@@ -17,12 +17,13 @@ import gunbc.auth.authorization_pattern_selection {
   AuthorizationPatternSelection,
   InterlockPending, InterlockedBy,
   select_authorization_pattern, witness_required,
+
 }
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, census_verdicts, undecidable_sites,
   unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
   reasoned_divergences, reasoned_divergences_with_fired_triggers,
-  site_verdict, SiteVerdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+  site_verdict, SiteVerdict, DivergenceReason, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
   mtcollins1_boot_effect, privileged_effect_interlocks, privileged_effect_interlock_hold, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
   ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
   runner_lifecycle_scope_ruling, runner_lifecycle_operator_ruling, OperatorScopeRuling, ruling_discharge_for,
@@ -33,9 +34,15 @@ import gunbc.ci.deploy_route_requirement {
   srv1_deploy_route_requirement, srv1_observed_job_tenancy, deploy_route_switch_admitted, SoleTenantOfJobUid,
 }
 import std.human_intervention {
-  HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
+  HumanIntervention, HumanInterventionIdentity, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly,
   NoDischargeSiteModeled,
 }
+import gunbc.auth.privileged_effect_census {
+  manual_api_effect_beside_unlanded_approval_adapter, manual_srv1_root_step_beside_administrator_edge,
+  github_environment_gate_is_not_the_approval_route,
+}
+import gunbc.cloudflare.r2_origin { cloudflare_account_allocation_intervention }
+import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
 import std.decl_ref { decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.types { NonEmptyStr, String, Int, List }
 import std.logic { Bool }
@@ -596,48 +603,93 @@ test fn the_deploy_route_switch_is_refused_while_srv1_shares_the_job_uid() -> Bo
 }
 
 // ── THE MANUAL-STEP ROWS (node adhoc-28759c44-922), run through the real fold ────────────────
-// Each row is a place where an operator's hand stands in for the modeled route. The claim is about
-// the row's OWN verdict (site_verdict), so deleting a row, or editing its characteristics until the
-// selection moves, turns the matching claim red. The reasoned arm is asserted beside the selection:
-// a selection that moved onto the realized pattern would make the reason dead and the claim red.
-fn manual_row_diverges_with_reason(key: String, selects_approved: Bool, selects_edge: Bool) -> Bool {
-  let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
-  (rows |> count) == 1
-    && any(map(rows, row => site_verdict(row: row)), v =>
-      (if selects_approved { selected_approved(s: v.selection) } else { selected_administrator_edge(s: v.selection) || !selects_edge })
+// Each claim reads the row's OWN verdict (site_verdict) and pins the exact reason authority, so
+// swapping a row's divergence_reason for another turns the claim red, as does deleting the row or
+// editing its characteristics until the selection moves.
+fn row_verdicts(key: String) -> List<SiteVerdict> {
+  map(filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row))
+}
+
+fn row_diverges_for_exactly(key: String, expected: DivergenceReason, selects_approved: Bool) -> Bool {
+  let vs = row_verdicts(key: key)
+  (vs |> count) == 1
+    && any(vs, v =>
+      (if selects_approved { selected_approved(s: v.selection) } else { selected_administrator_edge(s: v.selection) })
         && match v.conformance {
-          DivergesWithReason { reason: _ } => true
+          DivergesWithReason { reason: r } => (r.statement as String) == (expected.statement as String)
           Conforms => false
           Diverges => false
           SiteNotDecidable { standing: _ } => false
         })
 }
 
-test fn manual_operator_api_effects_select_the_approval_route_and_state_the_divergence() -> Bool {
-  manual_row_diverges_with_reason(key: "gunbc.secret_provision::gcp_fleet_secrets_wif_binding_intervention", selects_approved: true, selects_edge: false)
-    && manual_row_diverges_with_reason(key: "gunbc.cloudflare.r2_origin::cloudflare_bootstrap_custody_intervention", selects_approved: true, selects_edge: false)
-    && manual_row_diverges_with_reason(key: "gunbc.review_sheet_operator::shared_drive_create_intervention", selects_approved: true, selects_edge: false)
-    && manual_row_diverges_with_reason(key: "gunbc.review_sheet_operator::spreadsheet_create_intervention", selects_approved: true, selects_edge: false)
-    && manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_publisher_token_mint_intervention", selects_approved: true, selects_edge: false)
-    && manual_row_diverges_with_reason(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", selects_approved: true, selects_edge: false)
+test fn manual_operator_api_effects_select_the_approval_route_for_the_unlanded_adapter_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.secret_provision::gcp_fleet_secrets_wif_binding_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.cloudflare.r2_origin::cloudflare_bootstrap_custody_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.review_sheet_operator::shared_drive_create_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.review_sheet_operator::spreadsheet_create_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_publisher_token_mint_intervention", expected: manual_api_effect_beside_unlanded_approval_adapter, selects_approved: true)
 }
 
-test fn manual_srv1_root_steps_select_the_administrator_edge_and_state_the_divergence() -> Bool {
-  manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", selects_approved: false, selects_edge: true)
-    && manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_server_install_intervention", selects_approved: false, selects_edge: true)
-    && manual_row_diverges_with_reason(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_subscriber_grant_intervention", selects_approved: false, selects_edge: true)
+test fn the_srv1_production_protection_row_selects_the_approval_route_for_the_github_gate_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", expected: github_environment_gate_is_not_the_approval_route, selects_approved: true)
 }
 
-fn manual_row_conforms_as_a_named_step(key: String) -> Bool {
+test fn manual_srv1_root_steps_select_the_administrator_edge_for_the_edge_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", expected: manual_srv1_root_step_beside_administrator_edge, selects_approved: false)
+    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_server_install_intervention", expected: manual_srv1_root_step_beside_administrator_edge, selects_approved: false)
+    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_subscriber_grant_intervention", expected: manual_srv1_root_step_beside_administrator_edge, selects_approved: false)
+}
+
+fn frequency_name(f: HumanInterventionFrequency) -> String {
+  match f {
+    FleetOnce => "FleetOnce"
+    DeviceOnce => "DeviceOnce"
+    EveryProvision => "EveryProvision"
+    EveryOperatorRequest => "EveryOperatorRequest"
+    BreakGlassOnly => "BreakGlassOnly"
+  }
+}
+
+fn billing_name(b: BillingConsequence) -> String {
+  match b {
+    BillsExternally => "BillsExternally"
+    NoBillingConsequence => "NoBillingConsequence"
+  }
+}
+
+// A human-only row conforms ONLY as the exact named step: the selection carries this intervention's
+// identity, the effect's surface names the same intervention, and the effect's frequency and billing
+// are the stated values (the frequency is read from the intervention, never fixed by the helper).
+fn human_row_is(key: String, step: HumanIntervention, frequency: String, billing: String) -> Bool {
   let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
   (rows |> count) == 1
-    && any(map(rows, row => site_verdict(row: row)), v =>
-      match v.selection { ManualStepRequired { step: _, receipt: _ } => true _ => false }
-        && match v.conformance { Conforms => true _ => false })
+    && any(rows, row =>
+      frequency_name(f: row.effect.frequency) == frequency
+        && frequency_name(f: row.effect.frequency) == frequency_name(f: step.frequency)
+        && billing_name(b: row.effect.billing) == billing
+        && match row.effect.surface {
+          HumanSurfaceOnly { step: es } => (es.identity as String) == (step.identity as String)
+          ApiSurface => false
+        }
+        && any(row_verdicts(key: key), v =>
+          match v.selection {
+            ManualStepRequired { step: s, receipt: _ } => (s.identity as String) == (step.identity as String)
+            _ => false
+          }
+          && match v.conformance { Conforms => true _ => false }))
 }
 
-test fn no_api_physical_steps_are_named_and_conform() -> Bool {
-  manual_row_conforms_as_a_named_step(key: "gunbc.cloudflare.r2_origin::cloudflare_account_allocation_intervention")
-    && manual_row_conforms_as_a_named_step(key: "gunbc.spark.dgx_pxe_boot::spark_pxe_firmware_enablement_intervention")
-    && manual_row_conforms_as_a_named_step(key: "gunbc.fleet.mtcollins_firmware_converge::mtcollins1_ac_power_cycle_effect")
+test fn the_cloudflare_account_signup_is_the_named_fleet_once_billed_step() -> Bool {
+  human_row_is(key: "gunbc.cloudflare.r2_origin::cloudflare_account_allocation_intervention", step: cloudflare_account_allocation_intervention(), frequency: "FleetOnce", billing: "BillsExternally")
+}
+
+test fn the_spark_pxe_console_step_is_the_named_device_once_unbilled_step() -> Bool {
+  human_row_is(key: "gunbc.spark.dgx_pxe_boot::spark_pxe_firmware_enablement_intervention", step: spark_pxe_firmware_enablement_intervention(), frequency: "DeviceOnce", billing: "NoBillingConsequence")
+}
+
+test fn the_mtcollins_power_cycle_step_conforms_as_a_named_step() -> Bool {
+  any(row_verdicts(key: "gunbc.fleet.mtcollins_firmware_converge::mtcollins1_ac_power_cycle_effect"), v =>
+    match v.selection { ManualStepRequired { step: s, receipt: _ } => (s.identity as String) == "mtcollins1_ac_power_cycle_after_firmware_step" _ => false }
+      && match v.conformance { Conforms => true _ => false })
 }
