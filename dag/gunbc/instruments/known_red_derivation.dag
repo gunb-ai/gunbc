@@ -3203,6 +3203,7 @@ fn known_red_disposition_name(d: ClaimDisposition) -> String {
     PanickedBeforeVerdict => "PanickedBeforeVerdict"
     NotAttemptedAfterAbort => "NotAttemptedAfterAbort"
     ObservationUnreadableBeforeVerdict => "ObservationUnreadableBeforeVerdict"
+    SubjectUnresolvedBeforeVerdict => "SubjectUnresolvedBeforeVerdict"
   }
 }
 
