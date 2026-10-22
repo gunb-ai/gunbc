@@ -545,6 +545,10 @@ fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated
   }
 }
 
+fn live_head_list_jobs_run_id(pair: SupersededRunPair) -> String {
+  github_workflow_run_id_wire_text(id: pair.live_head_run)
+}
+
 fn refresh_pair(
   auth_token: String,
   owner: String,
@@ -583,7 +587,7 @@ fn refresh_pair(
             auth_token: auth_token,
             owner: owner,
             repo: repo,
-            run_id: github_workflow_run_id_wire_text(id: pair.live_head_run),
+            run_id: live_head_list_jobs_run_id(pair: pair),
           ) {
             RestRefused { refusal } =>
               RefreshReadRefused {
