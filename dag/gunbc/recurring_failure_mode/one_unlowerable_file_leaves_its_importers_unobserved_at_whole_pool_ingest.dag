@@ -1,12 +1,14 @@
 module gunbc.recurring_failure_mode.one_unlowerable_file_leaves_its_importers_unobserved_at_whole_pool_ingest
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data one_unlowerable_file_leaves_its_importers_unobserved_at_whole_pool_ingest: RecurringFailureMode = RecurringFailureMode {
   identity: "one_unlowerable_file_leaves_its_importers_unobserved_at_whole_pool_ingest" as NonEmptyStr,
 
-  rung: RungUnread { cause: BlockerClassUnstated },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of carrying, per refused module, the first refused file and its cause and grouping module counts per root, so a census over the whole pool reports how many modules each refused file strands and cannot exit 0 over an unobserved population." } },
 
   receipts: [
     "**a file that does not lower at whole-pool ingest is refused, and every module that imports it resolves as refused or unbound, so a census over the whole pool completes green while observing nothing** (INVALID STATE: the native census route ingests the whole pool, files that fail body lowering enter `file_refusals`, and their importers are reported as `importee_refused`, `declarer_refused` or `unbound_symbol` rather than resolved).",
