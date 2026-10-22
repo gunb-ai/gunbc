@@ -25,7 +25,7 @@ import gunbc.host.bmc_control_binding {
   bmc_control_binding,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
-import std.decl_ref { DeclarationRef }
+import gunbc.rung_drop { RungDrop }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
 import gunbc.host.virtual_media_boot_selection {
@@ -125,7 +125,7 @@ fn reset_subject_roster_of(
 
 type ResetRosterEntry
   = OrdinaryResetRosterHost { host: NonEmptyStr }
-  | ResetRosterHostUnderDeclaredDrop { host: NonEmptyStr, drop: DeclarationRef }
+  | ResetRosterHostUnderDeclaredDrop { host: NonEmptyStr, drop: RungDrop }
 
 fn reset_roster_hosts(entries: List<ResetRosterEntry>) -> List<NonEmptyStr> {
   map(entries, e => match e {
@@ -139,7 +139,7 @@ type ResetSubjectLookup
   | ResetSubjectAdmittedOrdinary { subject: AdmittedResetSubject }
   | ResetSubjectAdmittedUnderDeclaredDrop {
       subject: AdmittedResetSubject
-      drop: DeclarationRef
+      drop: RungDrop
       standing_subject: MachineIntakeSubject
       current_subject: MachineIntakeSubject
     }
