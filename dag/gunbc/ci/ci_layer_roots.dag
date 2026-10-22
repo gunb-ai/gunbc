@@ -573,6 +573,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
   WitnessExclusionRow {
+    pattern: "base64_tool_real_execution_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
     pattern: "site_pxe_edge_chainloader_real_execution_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -890,7 +895,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration.dag",
     classification: FalsifierRehomedBinWet,
-    reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows. Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
+    reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Declared but UNREALIZED consumer: the FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows name a cadence whose executor (falsifier.yml) was deleted at 611fd02770/#8283, so no scheduled run executes these two claims today; the loss is carried by the typed frontier falsifier_rehomed_roster_rows and the rung drop gunbc.rung_drop.falsifier_rehomed_rows_unexecuted (#14615). Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
     dissolution: unbound_dissolution(description: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced")
   },
   WitnessExclusionRow {
@@ -940,6 +945,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe over extdeps.languages.bash.invocation bash_program_command, and RunArgv carries no mock_response, so hermetic discovery refuses. Its subject is the exit status of a real bash under set -euo pipefail running the approval broker's helper snapshot readback (gunbc.live_deploy.emit helper_snapshot_readback_command_at): a find that FAILS must stop the stage before the grant, which is a fact about errexit semantics that no in-process assertion observes and no mock honestly supplies (side-chat review on 15f470cfc8). THE EXECUTION IS PURELY LOCAL: mktemp -d, mkdir, chmod, ln, mv, find and test inside a temp directory the program removes on exit; no network, no remote host, no Cargo. SIZE IS DERIVED: six invocations, the clean control plus one per refusal arm (missing snapshot, missing ancestor, writable entry, snapshot symlink, symlinked ancestor)." as String,
     dissolution: unbound_dissolution(description: "shell.Exec.RunArgv gains input-varying mock_response coverage that can express a nonzero exit from a failed command substitution under errexit -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-status mock does NOT discharge it: a mocked status is authored data, and the subject here is what bash itself does with a failed find")},
+  WitnessExclusionRow {
+    pattern: "observed_sha256_guard_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe over extdeps.languages.bash.invocation bash_program_command, and RunArgv carries no mock_response, so hermetic discovery refuses. Its subject is what a real bash does with the text v2.workflow.effect_plan_bash_materialize emits for an ObservedSha256EnvWrite leaf (gunbc.live_deploy.effect_leaf observed_sha256_env_write_effect): an unreadable, empty, short, uppercase, non-hex, separator-less or single-space observation must exit with the typed cause's status before the dest file is written, and a valid line must write exactly NAME=<digest>. THE EXECUTION IS LOCAL: sudo and install are shadowed shell functions and the files live under one scratch directory in /tmp; no network, no remote host, no Cargo. SIZE IS DERIVED: one positive control, the refusal arms and one agreement fold over lower_hex_64." as String,
+    dissolution: unbound_dissolution(description: "shell.Exec.RunArgv gains input-varying mock_response coverage that can express a nonzero exit from a failed grep guard under errexit -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed-status mock does NOT discharge it: the subject is what bash itself does with the guard")},
   WitnessExclusionRow {
     pattern: "spark_snapshot_verify_wrapper_local_wet.dag",
     classification: LocalRepoWetLane,
@@ -1970,6 +1980,12 @@ data falsifier_rehomed_roster_rows: List<RehomedBinWetRow> = [
     dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
   }
 ]
+
+fn falsifier_rehomed_roster_entries() -> List<ScheduleWitnessEntry> {
+  fold(falsifier_rehomed_roster_rows, init: [], f: fn(acc, r) {
+    concat(acc, [bin_wet(entry: r.entry, f: r.function)])
+  })
+}
 
 fn falsifier_rehomed_bin_wet_entries() -> List<ScheduleWitnessEntry> {
   fold(falsifier_rehomed_bin_wet_rows, init: [], f: fn(acc, r) {

@@ -1,7 +1,8 @@
 module test.claim.unapplied_generic_accumulator_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { any_class_count_for }
+import gunbc.compile_census_probe { any_class_census, census_verdict, census_verdict_all }
+import std.process { ProcessExit }
 
 // THE EXECUTING EVIDENCE for gunbc.recurring_failure_mode
 // unapplied_generic_accumulator_types_element_as_container. One fold, written twice: once with the
@@ -22,15 +23,19 @@ data annotated_accumulator_source: String = "module test.claim.annotated_accumul
 // DISCRIMINATING RED, in the repaired direction: on the parent of this change the unannotated
 // fold raises the advisory once and refuses `t.v` once; with the accumulator refined from the
 // step's return it raises neither. It goes red if the refinement stops firing.
-test fn unannotated_empty_accumulator_is_refined_from_the_step_return() -> Bool {
-  any_class_count_for(source: unannotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
-    && any_class_count_for(source: unannotated_accumulator_source, wanted_class: "InternalError") == 0
+test fn unannotated_empty_accumulator_is_refined_from_the_step_return() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: any_class_census(source: unannotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n == 0 }),
+    census_verdict(census: any_class_census(source: unannotated_accumulator_source, wanted_class: "InternalError"), holds: fn(n) { n == 0 }),
+  ])
 }
 
 // ACCEPTED POSITIVE CONTROL: the annotated twin was clean before the change and must stay clean,
 // which is what makes the cell above mean "the argument was present and dropped" rather than
 // "this fold cannot be typed".
-test fn annotated_accumulator_twin_stays_clean() -> Bool {
-  any_class_count_for(source: annotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
-    && any_class_count_for(source: annotated_accumulator_source, wanted_class: "InternalError") == 0
+test fn annotated_accumulator_twin_stays_clean() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: any_class_census(source: annotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable"), holds: fn(n) { n == 0 }),
+    census_verdict(census: any_class_census(source: annotated_accumulator_source, wanted_class: "InternalError"), holds: fn(n) { n == 0 }),
+  ])
 }

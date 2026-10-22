@@ -1,5 +1,7 @@
 module v2.test.claim.manual.infer_ground_add
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
@@ -243,7 +245,8 @@ fn infer_receipt_context() -> EvalContext {
 fn infer_receipt_empty_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: empty_map()
+    facts: empty_map(),
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

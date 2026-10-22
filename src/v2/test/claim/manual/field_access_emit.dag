@@ -1,5 +1,7 @@
 module v2.test.claim.manual.field_access_emit
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -137,7 +139,8 @@ fn field_access_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data field_access_inferred_tree: InferredTree = InferredTree {
   root: field_access_emitted_root,
-  facts: PartialFunction { lookup: field_access_facts_lookup }
+  facts: PartialFunction { lookup: field_access_facts_lookup },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 test fn field_access_emit_holds() -> Bool {
