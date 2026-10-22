@@ -4,7 +4,7 @@ import v2.compiler.source_root_eval { native_lane_file_refusal_index, native_tes
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.test.claim.resolve.namespace_candidate_rule { NcrAbsent, NcrFileRefused, NcrRefused, NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of, ncr_verdict_refuses_with }
+import v2.test.claim.resolve.namespace_candidate_rule { NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of, ncr_verdict_refuses_with }
 import v2.std.text { String }
 import v2.std.node { Symbol }
 
@@ -43,37 +43,47 @@ data lasf_ingest: SourceRootIngest = Cons {
   }
 }
 
-fn lasf_verdict(module_name: String) -> NcrVerdict {
-  match native_test_context_from_ingest(ingest: lasf_ingest) {
-    Rejected { diagnostics: _ } => NcrAbsent
-    Accepted { value: context, diagnostics: _ } =>
-      ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: native_lane_file_refusal_index(refusals: context.file_refusals), ingest: lasf_ingest, module_name: module_name))
-  }
-}
+// ONE NULLARY PRODUCER, FORCED ONCE (the reason v2.test.claim.resolve.namespace_candidate_rule
+// NcrOutcomes states): a per-claim front end would be re-entered once per claim.
+type LasfOutcomes
+  = LasfContextRefused
+  | LasfDecided {
+      red: NcrVerdict
+      name_control: NcrVerdict
+      types_control: NcrVerdict
+    }
 
-fn lasf_refused(v: NcrVerdict) -> Bool {
-  match v {
-    NcrRefused { reason: _, competing: _, reasons: _ } => true
-    _ => false
+fn lasf_outcomes() -> LasfOutcomes {
+  match native_test_context_from_ingest(ingest: lasf_ingest) {
+    Rejected { diagnostics: _ } => LasfContextRefused
+    Accepted { value: context, diagnostics: _ } => {
+      let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+      LasfDecided {
+        red: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: lasf_ingest, module_name: "v2.lasf_red")),
+        name_control: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: lasf_ingest, module_name: "v2.lasf_name_control")),
+        types_control: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: lasf_ingest, module_name: "v2.lasf_types_control"))
+      }
+    }
   }
 }
 
 test fn importing_source_span_from_lens_application_refuses() -> Bool {
-  lasf_refused(v: lasf_verdict(module_name: "v2.lasf_red"))
+  match lasf_outcomes() {
+    LasfContextRefused => false
+    LasfDecided { red: v, name_control: _, types_control: _ } => ncr_verdict_refuses_with(v: v, reason: ^resolve_reason_unbound_symbol)
+  }
 }
 
 test fn importing_a_declared_name_from_the_same_module_resolves() -> Bool {
-  ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.lasf_name_control"))
+  match lasf_outcomes() {
+    LasfContextRefused => false
+    LasfDecided { red: _, name_control: v, types_control: _ } => ncr_verdict_is_resolved(v: v)
+  }
 }
 
 test fn importing_source_span_from_std_types_resolves() -> Bool {
-  ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.lasf_types_control"))
-}
-
-test fn the_refusal_is_not_a_missing_module() -> Bool {
-  !ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_module_not_found)
-}
-
-test fn the_refusal_is_an_unbound_symbol() -> Bool {
-  ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_unbound_symbol)
+  match lasf_outcomes() {
+    LasfContextRefused => false
+    LasfDecided { red: _, name_control: _, types_control: v } => ncr_verdict_is_resolved(v: v)
+  }
 }
