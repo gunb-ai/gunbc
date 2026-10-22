@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.join_judged_against_its_sibling_rather_than_its_declared_context
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data join_judged_against_its_sibling_rather_than_its_declared_context: RecurringFailureMode = RecurringFailureMode {
   identity: "join_judged_against_its_sibling_rather_than_its_declared_context" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**join judged against its sibling rather than against its declared context** (INVALID STATE: v1.compiler.infer's if-expression join infers both branches independently, then tests them against EACH OTHER with node_type_compatible; the enclosing declared return type is never consulted.",

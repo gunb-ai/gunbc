@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_prefix_read_unfolds_the_whole_text_on_every_window_attempt
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_prefix_read_unfolds_the_whole_text_on_every_window_attempt: RecurringFailureMode = RecurringFailureMode {
   identity: "a_prefix_read_unfolds_the_whole_text_on_every_window_attempt" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "INVALID STATE: a reader that needs only the start of a text pays for the whole text. v2.compiler.tokenize tokenize_prefix_prepared stopped its WALK at a scalar limit, but its first step was `unicode_scalar_unfold(s: text)` over the WHOLE text, and v2.compiler.module_header module_header_read_window called it once per window attempt (the window starts at module_header_first_window and doubles until the header production settles). So the unfold was O(file) per attempt while the walk it fed was O(window): the prefix door made the lex proportional to the header and left the text ingress proportional to the file. A header that settled in the first window still unfolded every scalar of its file.",

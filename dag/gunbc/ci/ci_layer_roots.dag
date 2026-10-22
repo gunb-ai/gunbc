@@ -1162,6 +1162,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "fci1_bounded_store_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "host_capacity_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1955,6 +1960,56 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
     reason: "Wet Codex account-standing trip (materialize + app-server initialize/account/rateLimits). Wall >> per-PR bin budget; must never claim turn_started. Falsifier batch 5 no longer executes anything (falsifier.yml deleted 611fd02770/#8283, 2026-08-15; see falsifier_substrate_long_lane_note); a dedicated integration workflow remains the eventual route. HOST OBLIGATION: gunbc.host.host_cli_dependency codex_wet_materialization_host_cli_requirements (npm → apt install npm on cadence image); absent npm is HostDependencyAbsent, never auto-install inside the witness.",
     dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
+  }
+]
+
+// THE TYPED FRONTIER FOR COMMIT-ROSTER ROWS THAT RODE FalsifierCadenceJob, and it is a list beside
+// falsifier_rehomed_bin_wet_rows rather than additions to it because that list is specifically the
+// bin_witness_wet per-row-budget overflow (falsifier_cadence_surface_note, before its correction,
+// said exactly this) -- mixing the two would give one name two meanings (DESIGN 3). The row shape is
+// shared on purpose: reason plus dissolution is what a re-home owes, whatever it was re-homed from.
+//
+// WHY THESE ROWS LEFT gunbc.commit_workflow commit_gate_roster (falsifier-surface leaf, node
+// adhoc-cea8e60d-505): FalsifierCadenceJob stopped being an executing surface, and a row enrolled
+// only on it is a bare de-enrollment. None of the five functions is returned to
+// GithubActionsCiJob here: that would re-open the batch-4 over-budget that re-homed them (batch-4 clamp
+// FLOOR-BATCH-OVER-BUDGET, run 30148859947), so they are carried here, typed, until an executor
+// exists. Walls: witness_row_cost_basis.tsv records 12481ms (wall, run 30550328673, srv_fleet_arm64)
+// for witness_parse_binding_fidelity_distinct_identifiers_holds, over the five-second per-PR
+// budget, which is the measured reason that row stays out of the floor; the bind/loop census rows
+// have no recorded reading there, so none is claimed for them.
+// The two frontier_probe rows that also rode the commit roster were the SAME identities already in
+// falsifier_rehomed_bin_wet_rows (a duplicate enrolment); they stay there and appear once.
+data falsifier_rehomed_roster_rows: List<RehomedBinWetRow> = [
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
+    function: "bind_census_ingested_executes_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); that surface's executor, falsifier.yml, was deleted at 611fd02770 (#8283), so the row ran nowhere while reading as enrolled. The file's other functions keep their per-PR file-grain enrolment.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
+    function: "bind_census_ingested_wrong_value_red_holds",
+    reason: "RED-control pole of bind_census_ingested_executes_holds: re-homed with it so the discriminating pair stays together; same dead executor.",
+    dissolution: unbound_dissolution(description: "fires with bind_census_ingested_executes_holds dissolution (same file, same mechanism)")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
+    function: "loop_census_ingested_executes_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); same dead executor as bind_census_ingested_executes_holds.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
+    function: "loop_census_ingested_wrong_value_red_holds",
+    reason: "RED-control pole of loop_census_ingested_executes_holds: re-homed with it; same dead executor.",
+    dissolution: unbound_dissolution(description: "fires with loop_census_ingested_executes_holds dissolution (same file, same mechanism)")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
+    function: "witness_parse_binding_fidelity_distinct_identifiers_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); same dead executor. Its cheap sibling witness_resolve_distinct_param_bindings_holds stays per-PR.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
   }
 ]
 

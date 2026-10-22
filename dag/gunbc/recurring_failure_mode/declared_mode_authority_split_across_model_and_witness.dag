@@ -1,7 +1,9 @@
 module gunbc.recurring_failure_mode.declared_mode_authority_split_across_model_and_witness
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE ROW: one declared mode, spelled in more than one place, drifting when the authority moves.
 //
@@ -14,6 +16,14 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 // it was asserting the state the route produces, and the route produces a different state now.
 data declared_mode_authority_split_across_model_and_witness: RecurringFailureMode = RecurringFailureMode {
   identity: "declared_mode_authority_split_across_model_and_witness" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (a green required run said nothing in either direction
+  // about the one layer that could drift); now mitigated by the row's own RECOGNITION RULE -- one
+  // exported text function rendering the fold's authority at every site, and every fixture step that
+  // produces the asserted state taken from the production argv. A discipline, not a mechanism, so the
+  // ceiling stays decidable: the dry layer reaching a wet claim's VERDICT is what the runner exclusion
+  // currently makes impossible.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the dry layer demanding a wet claim's decision -- the verdict fold, not just its argv -- before the module's exclusion is honoured, SUFFICIENT FOR a transcription that has drifted from the declared arm to red a job that runs rather than pass unobserved." } },
 
   receipts: [
     "**ONE DECLARED MODE, SPELLINGS THAT DRIFT APART** (INVALID STATE: a permission mode is decided once, in a declared arm, and then appears a second time as the argument a grant passes to its tool and a THIRD time as the figure a witness compares against the produced state. The second spelling is rendered from the arm; the third is typed. Nothing in the build connects them, so the arm can move underneath the typed figure and only the witness notices -- and what it notices looks like a defect in the route rather than in itself.",

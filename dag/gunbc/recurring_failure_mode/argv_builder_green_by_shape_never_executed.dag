@@ -2,10 +2,17 @@ module gunbc.recurring_failure_mode.argv_builder_green_by_shape_never_executed
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data argv_builder_green_by_shape_never_executed: RecurringFailureMode = RecurringFailureMode {
   identity: "argv_builder_green_by_shape_never_executed" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (green with no executed leg), now mitigated by the
+  // per-builder executed-claim discipline this PR's wet witness instantiates; the ceiling row below
+  // restates the row's own CEILING and NEXT-RUNG lines, not new belief.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the admitted-builder ledger records, for each builder whose output a host runs, whether a lane executes it, and refuses a builder admitted with no executed witness -- the same shape as the coverage ledger the mint list keeps, SUFFICIENT FOR a shape-only green to become a red without anyone remembering to run the wet lane." } },
 
   receipts: [
     "INVALID STATE: an argv builder is green on the required path because every claim over it inspects the SHAPE of the words it produces -- lengths, membership, prefix order -- while nothing ever runs the vector, so a builder that renders a PLAUSIBLE but wrong command reports full coverage. HARM: the wrong command reaches the host, where the only witness left is a shell error at 3am in a lane no one is watching. CAUSE: shape claims are cheap and hermetic, so they are the ones that get written; the executed leg is the one deferred, and deferring it leaves no trace in the tally.",
