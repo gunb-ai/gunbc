@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE POPULATION THE FOLD EXPOSES, RECORDED WITH ITS ROUTES (#14152 lane, manager ruling
+// 2026-10-22: one row for the fold-census class with its spans; DFS done -- the class row
+// gunbc.recurring_failure_mode.silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics
+// owns the fail-open itself and deliberately quotes no counts; this row is its exposed-population
+// sibling: what the repaired fold makes the REQUIRED path refuse, per site, with each site's
+// repair owner and route. Charter 3 (vivid-carp-314) was told this row exists before filing
+// theirs. Every count here is re-derivable by the recipe in the last receipt; the head it was
+// measured at is named beside each number.)
+data stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes: RecurringFailureMode = RecurringFailureMode {
+  identity: "stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of the required-path seed build to run green on a head whose stage0 seed realizes the unify_generics conflict check, with zero disagreement refusals emitted -- reached when every site below carries its repair (compiler-side or corpus-side) and the re-derivation recipe prints an empty population"
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: the shipped stage0 seed was built while unify_generics was first-wins silent (gunbc.recurring_failure_mode.silent_first_wins_rebind_of_a_generic_type_variable_in_unify_generics), so corpus call sites whose arguments disagree about one formal type variable compiled forever without a word, and the seed carried their mis-bound instances downstream. The seed is stale evidence of those calls' well-formedness: it proves only that the SILENT fold accepted them. When the fold reports conflicts, the hidden population becomes hard compile errors on the required path (the seed-build instrument refuses to emit), which is the correct direction -- an error stops masquerading as success -- but it also means a compiler-side repair lands RED over corpus defects the seed had been laundering, and RED with no owner list is indistinguishable from a broken compiler.",
+
+    "THE POPULATION, AS MEASURED (head 0e6320f51286 + regen commit e9069e9bb7c7, the fold-realized vehicle head of PR #14711; release claim_executor/claim runs, no env overrides; cgroup peak = memory.max 24 GiB with oom_kill=0): the seed-build instrument refuses resolve with exactly 13 distinct 'bound as' disagreement sites. Three dispositions, defined mechanically by what the diagnostic shows a reader, matching the class row's three kinds:",
+
+    "(A) OVER-REJECTIONS -- the fold refuses a pairing that is one type, and the refusal must be fixed COMPILER-SIDE before PR-2 lands; each fix's RED is its sites leaving the 13-site population measured on PR-2's head: (A1) identical-print leaf-vs-leaf, the reader sees 'expected X, got X' -- dag/gunbc/remote_shell_command.dag:106:22 (expected 'type variable T bound as Primitive(PosixRedirection) (first argument)', got 'Primitive(PosixRedirection) (later argument)') and src/v2/std/integer.dag:425:49 (same print, Primitive(StandardIntegerType)). Owner: #14056 leaf-identity half -- leaf comparison by declaration identity, NEVER by printed text (gunbc.recurring_failure_mode.node_type_shape_prints_applied_head_without_declaration_identity records why printed shape cannot carry this judgment). (A2) wrapper / unresolved-form actuals -- <kernel:String> (expected 'type variable V bound as Primitive(List) (first argument)', got 'Primitive(String) (later argument)') and src/v2/std/integer.dag:20:12 (expected Primitive(Int), got UnresolvedDecl(Int<Primitive(Nat)>)). Owner: eager-cat-804's #14632 unify_child_actual (type-argument children arrive as wrappers whose real type sits under inferred.Resolved) plus the representation PR, per manager routing. (A3) own-form leaves escaping the REPLACE arm -- dag/std/algebra.dag:1412:56 twice (expected 'type variable A bound as Map(Primitive(K),Primitive(V)) (first argument)', got Map(Primitive(Symbol),Primitive(String)) / Map(Primitive(Symbol),Primitive(Symbol))). Mechanism: binding_is_generic_declaration_own_form decides by scanning n.params, but a call-site application node carries NO params, so a bound node whose leaves are the callee's own parameters (K, V) is not recognized as unsettled and falls to the refusal instead of the REPLACE arm. This is PR-2's own fold bug and is fixed INSIDE PR-2. (A4) alias-vs-own-RHS -- dag/std/algebra.dag:171:65 (Node(String<Product(Char<Primitive(Int)>)>) vs Node(FreeMonoid<Product(Char<Primitive(Int)>)>)) and src/v2/std/text.dag:7:15 (the same pairing, mirrored direction): DESIGN section 4's text ruling makes the v2.std.text alias String and its own RHS FreeMonoid<Char> ONE declaration (unlike the kernel-String crossing, which is a real wall -- gunbc.rung_drop.text_boundary_identity_wall); the fold peels childless aliases, and the applied-alias pairing needs the same single-declaration judgment through the alias body. Route: named by this row; the alias body is invisible to the compile fixture until the declaration-generation form arrives (gunbc.recurring_failure_mode.container_alias_spellings_are_hand_written_from_a_runtime_roster names the capability).",
+
+    "(B) SITES THE MANAGER ROUTED AS CORRECT CLOSURES (ruling 2026-10-22: 'real bugs the stale seed hid; list each with its owning module, routed to owners; they land before PR-2'). Each entry gives the span, the owning module, and the MECHANICAL print observation -- an owner must check the compiler-side class named beside it BEFORE editing the call site, because two of these prints look like the fold's own defect classes: src/v2/std/diagnostic.dag:146:37 prints expected and got IDENTICALLY (same fold-defect class as A1: leaf comparison by declaration identity, not printed text -- an owner who edits the call site without checking that will repair nothing); src/v2/std/compilers/target_model.dag:12278:6 differs only by wrapper form on the same inner declaration, Map(Primitive(Symbol),UnresolvedDecl(TargetDeriveSupplementalGenericBoundRequirementSet<Primitive(TargetCapabilityKey),Primitive(TargetDeriveSupplementalGenericBoundRequirementAuthority)>)) vs the same value under Node(...) -- the same class as A2's unresolved/wrapper form; genuinely-distinct prints: <kernel:Int> (expected 'type variable T bound as Product(Char<Primitive(Int)>) (first argument)', got 'Primitive(Int) (later argument)') -- owner: the kernel-Int call population; src/v2/std/diagnostic.dag:364:65 (Node(Outcome<Product(Unit<>)>) vs Node(Outcome<Coproduct(FreeMonoid)>)) and src/v2/std/diagnostic.dag:409:6 (Node(Outcome<Product(Unit<>)>) vs Node(Outcome<Container(FreeMonoid,Product(CliArgument<...>)>)>)) -- owner: v2.std.diagnostic. The Product(Unit<>) renderings on the bound side are the class row's kind (2) fabricated-placeholder caution: the placeholder arm belongs to gunbc.recurring_failure_mode.error_type_fabricated_as_a_type_by_total_accessors, so whoever repairs these sites must check whether the bound side is a real Product(Unit<>) or a fabricated slot before touching the call site.",
+
+    "SPANLESS KERNEL SITES ARE THEIR OWN OBSERVATION DEFECT: the two <kernel:Int>/<kernel:String> sites print 'no position: no source index for this file', so a reader cannot locate the call site to repair it. That is a diagnostic-position gap in the emitted-closure path (the kernel pseudo-file carries no NewlineIndex), not this row's class; named here so routed owners are not sent an unfindable location. gunbc.rung_drop.v1_required_lanes_withdrawn owns the required-path rung; this row does not claim it.",
+
+    "RE-DERIVATION RECIPE (the only citation of these numbers is by this producer; anyone may re-run it): check out the head carrying the realized fold (stage0 v1_compiler_infer.rs contains UnifyGenericsAcc), build release (cargo build --release --bin gunbc --bin claim_executor, -j6 or lower: the regen peaks at the 24 GiB cgroup cap), then run the seed-build instrument -- ./target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/seed_build_artifacts_regen.dag --function main_wet -- and grep 'bound as' from the resolve failure. Population at the head named above: 13 distinct sites, split (A) 8 sites / (B) 5 sites. The population reaching zero with the seed build green is this row's trigger firing; at that point this row is deleted in the same change that lands the last site's repair.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "unify_generics", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "binding_is_generic_declaration_own_form", field: WholeDeclaration },
+  ],
+}
