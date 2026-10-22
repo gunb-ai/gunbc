@@ -24,7 +24,8 @@ type MarkdownInline
   | SymbolRefInline { symbol: CitedSymbol }
 
 // THE ONE CANONICAL SPELLING of a cited symbol: the module path, then the declaration after a space,
-// then a field or type parameter after a dot. One spelling, the spaced form: never a per-site choice
+// then a field after a dot or a type parameter in angle brackets (the two are distinct components of
+// the declaration, so they never share a spelling). One spelling, the spaced form: never a per-site choice
 // between ::, . and space, which would be a second name for one citation. A module's name is structural
 // text, so it reaches host text through the declared crossing (std.coercion unicode_scalar_fold).
 fn cited_symbol_spelling(symbol: CitedSymbol) -> String {
@@ -36,7 +37,7 @@ fn cited_symbol_spelling(symbol: CitedSymbol) -> String {
         NamedField { field_name: f } =>
           concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat(".", f as String))))
         TypeParameter { name: t } =>
-          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat(".", t as String))))
+          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat("<", concat(t as String, ">")))))
       }
   }
 }

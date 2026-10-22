@@ -10,7 +10,7 @@ import std.markdown {
   CheckboxState, Checked, Unchecked,
   MarkdownAlignment, AlignNone, AlignLeft, AlignCenter, AlignRight,
 }
-import std.decl_ref { DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref, decl_field_ref }
+import std.decl_ref { DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref, decl_field_ref, decl_type_parameter_ref }
 import extdeps.languages.markdown {
   MarkdownSpellings, commonmark_gfm_spellings,
   ingest_markdown_source, ingest_markdown_source_with,
@@ -217,4 +217,13 @@ test fn witness_symbol_ref_serializes_as_its_canonical_code_span() -> Bool {
 test fn witness_code_symbol_ref_serializes_as_its_canonical_spelling() -> Bool {
   serialize_markdown_source(doc: MarkdownDocument { blocks: [CodeBlock { segments: [CodeText { text: "x // " }, CodeSymbolRef { symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.markdown", decl_name: "CodeBlock") } }, CodeText { text: "\n" }] }] })
     == serialize_markdown_source(doc: code_only_doc(code: "x // std.markdown CodeBlock\n"))
+}
+
+// A FIELD AND A TYPE PARAMETER ARE DIFFERENT COMPONENTS OF A DECLARATION, so they must not render in
+// one form (a dot for a field, angle brackets for a type parameter): the typed carrier distinguishes them, and a renderer that collapsed them would make a
+// reader unable to tell which one a document names.
+test fn witness_field_and_type_parameter_citations_render_distinctly() -> Bool {
+  let field = one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_field_ref(module_path: "std.decl_ref", decl_name: "ModuleIdentity", field_name: "name") } }])
+  let parameter = one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_type_parameter_ref(module_path: "std.optional", decl_name: "Optional", parameter: "T") } }])
+  field == "`std.decl_ref ModuleIdentity.name`\n" && parameter == "`std.optional Optional<T>`\n"
 }
