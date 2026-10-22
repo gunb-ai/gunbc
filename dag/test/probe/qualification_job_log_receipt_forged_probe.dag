@@ -1,5 +1,6 @@
 module test.probe.qualification_job_log_receipt_forged_probe
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 // THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside
 // gunbc.runner.runner_qualification_dispatch would otherwise hold a job-log receipt for rows it never
 // read from a run, or read a run's outputs under a token or run id the collector never admitted: (a)
@@ -40,6 +41,6 @@ fn reads_past_the_plan(c: CollectedQualificationRun, t: ControllerInstallationTo
 }
 
 // (d) THE CLAIM-COST READ UNDER A FREE TOKEN AND ANOTHER RUN'S ID. Refuses at read_claim_cost_artifact.
-fn claim_cost_for_another_run(t: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, other_run_id: Int) -> ClaimCostArtifactRead uses net: Network {
+fn claim_cost_for_another_run(t: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, other_run_id: GitHubWorkflowRunId) -> ClaimCostArtifactRead uses net: Network {
   read_claim_cost_artifact(token: t, owner: owner, repo: repo, run_id: other_run_id)
 }

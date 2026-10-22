@@ -361,6 +361,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.workspace_network_real_reader_witness", function: "real_reader_takes_the_route_the_reader_identity_dictates" },
       entry: "dag/test/claim/workspace_network_real_reader_witness.dag",
       function: "real_reader_takes_the_route_the_reader_identity_dictates",
@@ -3178,6 +3196,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness", function: "a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution" },
       entry: "dag/test/claim/fleet/site_pxe_edge_chainloader_real_execution_witness.dag",
       function: "a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "a_missing_file_is_the_real_unreadable_arm" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "a_missing_file_is_the_real_unreadable_arm",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

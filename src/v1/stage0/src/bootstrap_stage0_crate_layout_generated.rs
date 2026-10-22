@@ -33,7 +33,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "gunbc_file_transport_generated.rs",
     "release_locus_seed_constants_generated.rs",
     "native_route_seed_boundary_generated.rs",
-    "emitted_build_seed_constants_generated.rs",
     "main.rs"
 ];
 
