@@ -2493,21 +2493,19 @@ fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
 // absent directory, a plain directory, and a HEAD-less skeleton all fail. The gate FAILS CLOSED: on
 // failure it prints a refusal naming the read and the path, then false -- and set -euo pipefail
 // aborts the apply before any member mutates anything.
-// THE REFUSAL AS A TYPED THEN-BRANCH: the sentence goes to STDERR and the branch ends in `false`, so
-// the whole if exits nonzero. The sentence goes to stderr -- not stdout -- because the host route drops
-// stdout on a nonzero exit (gunbc.command_runner keeps only exit_code+stderr on ProcessRefused), so a
-// refusal written to stdout is invisible both to the operator and to a claim; on stderr it survives and
-// names itself. Each refusal names WHICH premise failed, so a decomposed run points straight at the state.
+// THE REFUSAL AS A TYPED THEN-BRANCH: the sentence goes to STDOUT and the branch ends in `false`, so
+// the whole if exits nonzero. The sentence stays on stdout (operator convention: the thing a refusal
+// says belongs on the thing it says it). A claim that must read it reads the RAW observation
+// (run_shell_command_observe), which keeps stdout even on a failed exit -- run_shell_command_capture
+// discards stdout on nonzero, which is right for reading a value but would make this refusal silent to
+// an assertion. Each refusal names WHICH premise failed, so a decomposed run points straight at the state.
 fn dashboard_git_worker_repository_premise_refusal_branch(sentence: String) -> List<Node> {
   [
-    bash_build_with_redir(
-      inner: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: "printf"),
-        bash_build_word_lit(text: "%s\n"),
-        bash_build_word_lit(text: sentence),
-      ]),
-      redir: ^bash_production_fold_redir_stdout_to_stderr,
-    ),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "printf"),
+      bash_build_word_lit(text: "%s\n"),
+      bash_build_word_lit(text: sentence),
+    ]),
     bash_build_command_from_lits(lits: ["false"]),
   ]
 }

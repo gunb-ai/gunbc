@@ -46,8 +46,8 @@ import gunbc.live_deploy.member_observe {
   AbsentIsTheStanding, AbsentContradictsListing, posture_missing_sentinel,
 }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessObservation }
+import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe }
 import extdeps.git {
   git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command,
   git_worktree_add_detached_command, git_branch_command, git_rev_parse_head_command,
@@ -1367,35 +1367,45 @@ test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> 
 // test fn per planted state so a red run names the state that failed (review: decompose, do not
 // explain a whole-tree false). Each test feeds the apply's OWN gate text (dashboard_git_worker_
 // repository_premise_gate_command_text -- the single authority the step runs) to `bash -c` over the
-// host route and asserts BOTH signals: the EXIT CODE (wet_ok) and the REFUSAL SENTENCE ON STDERR.
+// host route and asserts BOTH signals: the EXIT CODE and the REFUSAL SENTENCE ON STDOUT.
 //
-// WHY STDERR AND WHY A HEAD PREMISE, BOTH LEARNED ON srv1 (non-root, uid 1000, Ubuntu 24.04 git 2.43):
-//  (a) the host route discards STDOUT on a nonzero exit (gunbc.command_runner keeps only
-//      exit_code+stderr on ProcessRefused), so a refusal written to stdout is invisible to the operator
-//      and to a claim -- the sentence is on stderr now, so it survives and is assertable;
+// WHY THE RAW OBSERVER AND WHY A HEAD PREMISE:
+//  (a) the gate's refusal sentence is on STDOUT (operator convention). run_shell_command_capture
+//      DISCARDS stdout on a nonzero exit, so a capture-based claim could not read a refusal -- the
+//      earlier "no gate logged a failure" symptom. This uses run_shell_command_observe, the raw
+//      {exit_code, stdout, stderr} triple gunbc.command_runner exists to hand back for exactly this
+//      caller ("whose evidence IS the stdout of a run that failed"), so the exit code and the stdout
+//      sentence are BOTH read off a refused run;
 //  (b) --absolute-git-dir is GIT-VERSION-SENSITIVE: on a HEAD-less .git it can resolve the directory
-//      with exit 0 (observed on 2.43), so a path-equality-only gate ADMITS the fabrication and never
-//      exits nonzero -- which is exactly the earlier red where no gate logged a failure. A MODELLED git
-//      read decides it version-independently: `git symbolic-ref HEAD` succeeds on a bootstrapped/unborn
-//      repository (git init writes .git/HEAD) and fails on a HEAD-less tree. Not a directory test.
+//      with exit 0 (observed on srv1's git 2.43), so a path-equality-only gate ADMITS the fabrication
+//      and never exits nonzero. A MODELLED git read decides it version-independently: `git
+//      symbolic-ref HEAD` succeeds on a bootstrapped/unborn repository (git init writes .git/HEAD) and
+//      fails on a HEAD-less tree. Not a directory test.
 //
 // RED on main: there was no gate builder and no such command text at 5ea3ffcd, so these cannot build.
 // RED at the pre-hardening head too: the HEAD-less skeleton was admitted (path premise passed, the old
 // else was a bare `:`), so the skeleton test -- the discriminating one -- is what the HEAD premise fixes.
 
-// THE GATE RUN, AS THE SHIPPED COMMAND: the verdict is the process outcome of `bash -c <gate text>`.
-// true = exit 0 (admitted); the sentence is read from a REFUSAL only (stdout is gone on nonzero).
-fn wre3_gate_passes(repo: String) -> Bool {
-  wet_ok(command: bash_program_command(script: dashboard_git_worker_repository_premise_gate_command_text(repo: repo)))
+// THE GATE RUN, AS THE SHIPPED COMMAND: `bash -c <gate text>` through the RAW observer, which keeps
+// stdout EVEN ON A NONZERO EXIT (gunbc.command_runner's run_shell_command_observe, the triple this
+// module exists to hand back -- run_shell_command_capture would throw the refusal sentence away). The
+// gate's verdict is the exit code; its refusal sentence is the stdout of a run that failed -- precisely
+// the evidence the raw observation was built to preserve.
+fn wre3_gate_observation(repo: String) -> ProcessObservation {
+  run_shell_command_observe(
+    command: bash_program_command(script: dashboard_git_worker_repository_premise_gate_command_text(repo: repo)),
+    transport: LocalExec,
+  )
 }
 
-// The refusal sentence the gate wrote to STDERR, or "" if it admitted. Read from the typed outcome.
-fn wre3_gate_stderr(repo: String) -> String {
-  match wet(command: bash_program_command(script: dashboard_git_worker_repository_premise_gate_command_text(repo: repo))) {
-    ProcessRefused { exit_code: _, stderr: e } => trim(s: e)
-    ProcessOutputPresent { text: _ } => ""
-    ProcessOutputAbsent => ""
-  }
+fn wre3_gate_passes(repo: String) -> Bool {
+  wre3_gate_observation(repo: repo).exit_code == 0
+}
+
+// The refusal sentence the gate printed to STDOUT (kept on the failed run by the raw observer), trimmed.
+// "" on an admit -- an admitted gate writes nothing, so this is also the admit check.
+fn wre3_gate_stdout(repo: String) -> String {
+  trim(s: wre3_gate_observation(repo: repo).stdout)
 }
 
 // A fresh scratch root for one state's claim; "" if the host gave us none.
@@ -1403,7 +1413,7 @@ fn wre3_scratch_root() -> String {
   wet_out(command: mktemp_directory_command(template: "/tmp/wre3-gate-XXXXXX" as NonEmptyStr))
 }
 
-// ADMIT STATE 1 -- a repository with a commit: exit 0 and NO refusal sentence on stderr.
+// ADMIT STATE 1 -- a repository with a commit: exit 0 and NO refusal sentence on stdout.
 test fn the_premise_gate_admits_a_committed_repository() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1411,7 +1421,7 @@ test fn the_premise_gate_admits_a_committed_repository() -> Bool {
   } else {
     let repo = join([root, "/real"], "")
     let planted = wet_ok(command: mkdir_parents_command(path: repo)) && wet_repo_with_a_commit(repo: repo)
-    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stderr(repo: repo) == ""
+    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stdout(repo: repo) == ""
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && admitted && cleaned
   }
@@ -1426,17 +1436,17 @@ test fn the_premise_gate_admits_an_unborn_repository() -> Bool {
   } else {
     let repo = join([root, "/unborn"], "")
     let planted = wet_ok(command: mkdir_parents_command(path: repo)) && wet_ok(command: git_init_quiet_command(repository_dir: repo))
-    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stderr(repo: repo) == ""
+    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stdout(repo: repo) == ""
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && admitted && cleaned
   }
 }
 
 // REFUSE STATE 1 -- the FABRICATION: a .git DIRECTORY with objects/refs/logs and NO HEAD. Refuses with
-// a NONZERO exit and a non-empty stderr sentence. The verdict tolerates which premise fires first, since
+// a NONZERO exit and a non-empty stdout sentence. The verdict tolerates which premise fires first, since
 // --absolute-git-dir is version-sensitive here: the refusal must be one of the model's OWN two
 // sentences (path or HEAD), so it is compared to the builders (no prose is re-typed) and a silent admit
-// -- empty stderr, exit 0 -- fails. This is THE discriminating arm and the one the HEAD premise added.
+// -- empty stdout, exit 0 -- fails. This is THE discriminating arm and the one the HEAD premise added.
 test fn the_premise_gate_refuses_a_headless_dot_git_skeleton() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1449,7 +1459,7 @@ test fn the_premise_gate_refuses_a_headless_dot_git_skeleton() -> Bool {
     // The state really is HEAD-less; if git had written a HEAD this would not be the fabrication.
     let headless = !wet_ok(command: find_path_probe_command(path: join([skel, "/.git/HEAD"], ""), kind: "f", clause: []))
     let refused = !wre3_gate_passes(repo: skel)
-      && string_contains(s: wre3_gate_stderr(repo: skel), pattern: "gunbc-deploy-refused: repository premise:")
+      && string_contains(s: wre3_gate_stdout(repo: skel), pattern: "gunbc-deploy-refused: repository premise:")
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && headless && refused && cleaned
   }
@@ -1465,7 +1475,7 @@ test fn the_premise_gate_refuses_a_plain_directory() -> Bool {
     let plain = join([root, "/plain"], "")
     let planted = wet_ok(command: mkdir_parents_command(path: plain))
     let refused = !wre3_gate_passes(repo: plain)
-      && wre3_gate_stderr(repo: plain) == trim(s: dashboard_git_worker_repository_premise_refusal_sentence(repo: plain))
+      && wre3_gate_stdout(repo: plain) == trim(s: dashboard_git_worker_repository_premise_refusal_sentence(repo: plain))
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && refused && cleaned
   }
@@ -1486,7 +1496,7 @@ test fn the_premise_gate_refuses_a_directory_nested_in_a_repository() -> Bool {
       && wet_ok(command: git_init_quiet_command(repository_dir: outer))
       && wet_ok(command: mkdir_parents_command(path: nested))
     let refused = !wre3_gate_passes(repo: nested)
-      && wre3_gate_stderr(repo: nested) == trim(s: dashboard_git_worker_repository_premise_refusal_sentence(repo: nested))
+      && wre3_gate_stdout(repo: nested) == trim(s: dashboard_git_worker_repository_premise_refusal_sentence(repo: nested))
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && refused && cleaned
   }
