@@ -1,11 +1,13 @@
 module v2.compiler.nfr_wildcard_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_at_optional, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Arrow, Edge, Atom, Authored, ComputationNode, Disj, Instantiation, Match, MatchArmPatternEdge, Node, Positional, StructuralLabel, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child, find_binder_type, find_core_child, is_wildcard_pattern }
+import v2.compiler.decl_ref_census { ImportPair, field_target, pair_target, string_value, tag_path_text, last_segment }
+import v2.std.node_query { construct_field_edges }
 import v2.std.text { String }
 
 // THE NON-FOLD-RESIDUE WILDCARD CENSUS (a pure reader; the verb is v2.compiler.source_root_eval
@@ -165,4 +167,67 @@ fn declares_coproduct_named(root: Node, name: String) -> Bool {
         StructuralLabel { label: _ } => false
       })
   })
+}
+
+// The module a head denotes under the module's import rows: the binding's target is the declaration's
+// qualified path, so its module is everything before the last segment. Absent when no row binds the head.
+fn head_module_optional(pairs: List<ImportPair>, head: String) -> Optional<String> {
+  match pair_target(pairs: pairs, binding: head) {
+    Absent => optional_absent()
+    Present { value: target } =>
+      optional_present(value: target.substring(start: 0, end: target.length() - last_segment(spelling: target).length() - 1))
+  }
+}
+
+// ROSTER ROWS. A row's subject is a PathSubject construct inside the module's own
+// `data non_fold_residue_frontier` item; the host file is the prefix of a bare symbol, so the join key
+// of a row is "<file>::<symbol>" for a bare subject and the subject itself when it already carries one.
+// An `#armN` suffix names an arm and is dropped: the site is the fn.
+data frontier_data_name: String = "non_fold_residue_frontier"
+
+data path_subject_spelling: String = "PathSubject"
+
+fn subject_join_key(file: String, path: String) -> String {
+  let base = match list_at_optional(xs: path.split(delimiter: "#"), index: 0) {
+    Present { value: b } => b
+    Absent => path
+  }
+  if length(xs: base.split(delimiter: "::")) > 1 { base } else { concat(file, "::", base) }
+}
+
+fn path_subject_paths(n: Node, acc: List<String>) -> List<String> {
+  let here = match tag_path_text(n: n) {
+    Present { value: p } =>
+      if last_segment(spelling: p) == path_subject_spelling {
+        match string_value(n: field_target(n: n, name: "path")) {
+          Present { value: v } => list_snoc_item(xs: acc, item: v)
+          Absent => acc
+        }
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) { path_subject_paths(n: e.target, acc: a) })
+}
+
+fn frontier_member_targets(root: Node) -> List<Node> {
+  fold(node_member_edges(root: root), init: [], f: fn(acc, e) {
+    match e.label {
+      Authored { name: sym } => if symbol_lexeme(sym: sym) == frontier_data_name { list_snoc_item(xs: acc, item: e.target) } else { acc }
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+    }
+  })
+}
+
+// Every join key the module's frontier item names, in authored order (duplicates kept: the verb refuses them).
+fn roster_join_keys(file: String, root: Node) -> List<String> {
+  fold(frontier_member_targets(root: root), init: [], f: fn(acc, t) {
+    fold(path_subject_paths(n: t, acc: []), init: acc, f: fn(a, p) { list_snoc_item(xs: a, item: subject_join_key(file: file, path: p)) })
+  })
+}
+
+fn site_join_key(file: String, fn_name: String) -> String {
+  concat(file, "::", fn_name)
 }

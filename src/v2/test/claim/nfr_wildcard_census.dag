@@ -4,7 +4,8 @@ import std.algebra { list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.types { List }
-import v2.compiler.nfr_wildcard_census { WildcardSite, declares_coproduct_named, root_member_sites }
+import v2.compiler.decl_ref_census { ImportPair }
+import v2.compiler.nfr_wildcard_census { WildcardSite, declares_coproduct_named, head_module_optional, roster_join_keys, root_member_sites, site_join_key }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
@@ -62,4 +63,45 @@ test fn nfr_census_coproduct_declared_in_module() -> Bool {
     Accepted { value: nt, diagnostics: _ } =>
       declares_coproduct_named(root: nt.root, name: "C") && (declares_coproduct_named(root: nt.root, name: "R") == false)
   }
+}
+
+data nfr_roster_src: String = "module m.r\n\nimport std.roster_frontier { FrontierRow, PathSubject }\n\ndata non_fold_residue_frontier: List<FrontierRow> = [\n  FrontierRow { subject: PathSubject { path: \"pick\" }, reason: \"r\", dissolution: d },\n  FrontierRow { subject: PathSubject { path: \"dag/x.dag::other#arm2\" }, reason: \"r\", dissolution: d }\n]\n"
+
+fn nfr_roster_keys() -> List<String> {
+  match nfr_normalized(text: nfr_roster_src) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: nt, diagnostics: _ } => roster_join_keys(file: "dag/m/r.dag", root: nt.root)
+  }
+}
+
+test fn nfr_roster_bare_subject_takes_the_host_file_prefix() -> Bool {
+  match list_at_optional(xs: nfr_roster_keys(), index: 0) {
+    Present { value: k } => k == "dag/m/r.dag::pick"
+    Absent => false
+  }
+}
+
+test fn nfr_roster_qualified_subject_keeps_its_file_and_drops_the_arm() -> Bool {
+  (count(nfr_roster_keys()) == 2) && (match list_at_optional(xs: nfr_roster_keys(), index: 1) {
+    Present { value: k } => k == "dag/x.dag::other"
+    Absent => false
+  })
+}
+
+test fn nfr_head_module_is_the_import_target_minus_the_declaration() -> Bool {
+  match head_module_optional(pairs: [ImportPair { binding: "Optional", target: "std.optional.Optional" }], head: "Optional") {
+    Present { value: m } => m == "std.optional"
+    Absent => false
+  }
+}
+
+test fn nfr_unbound_head_has_no_module() -> Bool {
+  match head_module_optional(pairs: [], head: "Optional") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn nfr_site_key_joins_file_and_fn() -> Bool {
+  site_join_key(file: "dag/m/r.dag", fn_name: "pick") == "dag/m/r.dag::pick"
 }
