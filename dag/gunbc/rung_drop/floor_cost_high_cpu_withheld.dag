@@ -2,6 +2,7 @@ module gunbc.rung_drop.floor_cost_high_cpu_withheld
 
 import std.types { NonEmptyStr }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import std.algebra { list_flat_map }
 import v2.workflow.floor_cost_debt {
   floor_cost_debt_proven_chunk_14, floor_cost_debt_proven_chunk_15, floor_cost_debt_proven_chunk_16,
   floor_cost_debt_proven_chunk_17, floor_cost_debt_proven_chunk_18, floor_cost_debt_proven_chunk_19,
