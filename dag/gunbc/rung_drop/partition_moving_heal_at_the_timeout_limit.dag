@@ -1,7 +1,8 @@
 module gunbc.rung_drop.partition_moving_heal_at_the_timeout_limit
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for heal convergence of a partition-moving change (DESIGN 4b(3)). Operator
@@ -32,15 +33,11 @@ data partition_moving_heal_at_the_timeout_limit: RungDrop = RungDrop {
 
   declared: "2026-10-19",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "a producer identity finer than the v1-compiler crate, or fewer fixed-point stages, so a partition-moving converge demands fewer producer-changed regens (per-stage rebuild incrementality was measured and is not the cost)" },
-    population: [
-      "partition-moving changes (a change that moves partition_generated.rs, such as adding a seed module) run under gunbc.heal_workflow",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "partition-moving changes (a change that moves partition_generated.rs, such as adding a seed module) run under gunbc.heal_workflow", tail: [] } },
     restoration_trigger: "THE CAPABILITY, either of two: (1) a producer identity finer than the v1-compiler crate, such as the emitter and frontend split into their own crate, so a stage whose install leaves the emit path unchanged has a provably equal producer and its regen can be reused keyed on module input plus emitter identity; OR (2) fewer fixed-point stages for a partition-moving change. Landed AND MEASURED on a partition-moving heal run (the saving is measured before it is claimed), with that heal finishing inside its limit with stated margin."
-  }
+  } }
 }

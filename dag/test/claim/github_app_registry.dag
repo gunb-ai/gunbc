@@ -63,7 +63,8 @@ import gunbc.runner.runner_jit_perform {
 import extdeps.uri { Uri, uri_https }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host.managed_host { ManagedHost, managed_hosts, managed_host_binding, ManagedHostAccessUnobserved }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.host.bmc_control_binding { BmcControlAccessUnobserved }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -1362,7 +1363,7 @@ fn group_restricted_to(workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
 }
 
 fn host_unit_slot(h: ManagedHost) -> HostUnitSlotStanding {
-  host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow)
+  host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow)
 }
 
 fn host_unit_planned(standing: HostUnitSlotStanding, perms: List<GitHubAppPermission>, group: MicrovmRunnerGroupStanding) -> JitMintPlan {
@@ -1429,13 +1430,13 @@ test fn witness_jit_mint_refuses_a_group_restricted_to_another_workflow() -> Boo
 // RED: A HOST THE MANAGED-HOST SEAM DOES NOT BIND HAS NO SLOT, and the refusal carries the seam's own
 // standing rather than a re-coined cause -- even with a fully sufficient credential.
 test fn witness_jit_mint_refuses_a_host_the_managed_host_seam_does_not_bind() -> Bool {
-  let unbound = ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint { host: "fixture-bmc" } }
+  let unbound = BmcControlAccessUnobserved { endpoint: BmcControllerEndpoint { host: "fixture-bmc" } }
   match host_unit_planned(
-    standing: host_unit_slot_for(host: bmc_controlled_host(standing: unbound), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow),
+    standing: host_unit_slot_for(host: bmc_controlled_host(host: operator_host_srv2, standing: unbound), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow),
     perms: runner_grant,
     group: group_restricted_to(workflow: qualification_workflow),
   ) {
-    JitMintRefusedSubject { refusal: SubjectHostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: BmcRouteNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } } } } =>
+    JitMintRefusedSubject { refusal: SubjectHostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: BmcRouteNotBound { standing: BmcControlAccessUnobserved { endpoint: e } } } } } =>
       (e.host as String) == "fixture-bmc"
     _ => false
   }
