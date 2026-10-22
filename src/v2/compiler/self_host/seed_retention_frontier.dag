@@ -5,16 +5,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, dissolution_is_bound, unbound_dissolution }
 import std.algebra { length, list_map, collection_join_shape }
 import std.optional { Absent, Present }
-import v2.compiler.self_host.emitter_producer_provenance {
-  BuildGreen,
-  BehavioralProbeUnbound,
-  CargoGreen,
-  ProducerEmissionReceipt,
-  SourceProduced,
-  V1SeedEmitter,
-  cssl_harness_realized_closure,
-  mint_producer_emission_receipt
-}
 import std.integer { int_to_decimal_string }
 import gunbc.rust_emitted_edge { rust_module_emit_filename }
 import extdeps.rust.cargo { CargoTarget, Lib, Bin, cargo_target_source_path }
@@ -574,11 +564,15 @@ fn cited_reason_authorities() -> List<DeclarationRef> {
 // alone is not enough: an emitted file whose module no executed control reached is
 // EmittedUnexecuted, which is the specification-without-execution state DESIGN section 5 names.
 // Precedence is emitted first, then retention row, then refusal, so a file is never counted twice;
-// a retention row on an emitted path remains the census's RosteredPathIsCompared refusal.
+// a retention row on an emitted path is the census's RosteredPathIsCompared refusal: the emitted
+// manifest is the compared population, and self_host_frontier_holds refuses on any collision.
 //
-// The producer here is the seed (compile_stage0 is v1 emit_rust), so the receipt is minted as
-// V1SeedEmitter over cssl_harness_realized_closure through the single mint, with no behavioral
-// probe bound; a refused mint is Unclassified (loud), never EmittedUnexecuted.
+// SelfEmitted carries only what the host observed: the executed-closure entry that matched the
+// file's module, under a ControlsPassed verdict. It does not carry a ProducerEmissionReceipt.
+// That receipt asserts a producer, qualifications, a build result and a realized emitter closure,
+// and the host passes in none of them, so minting one here would be a fabricated receipt
+// (DESIGN section 5). The host's build is implied only by its controls having run against the
+// built binary, and that is exactly the ControlsPassed fact already recorded.
 
 type EmittedPopulationRow {
   crate_relative_path: String
@@ -589,8 +583,12 @@ type FrontierControlsVerdict
   = ControlsPassed
   | ControlsNotPassed
 
+type SelfEmittedObservation {
+  executed_closure_module: String
+}
+
 type FrontierStanding
-  = SelfEmitted { crate_relative_path: String, source_module: String, receipt: ProducerEmissionReceipt }
+  = SelfEmitted { crate_relative_path: String, source_module: String, observation: SelfEmittedObservation }
   | EmittedUnexecuted { crate_relative_path: String, source_module: String }
   | SeedRetained { row: SeedRetentionFrontierRow }
   | GeneratedCensusArtifact { crate_relative_path: String }
@@ -599,6 +597,7 @@ type FrontierStanding
 type SelfHostFrontier {
   standings: List<FrontierStanding>
   stale_rows: List<SeedRetentionCensusRow>
+  compared_collisions: List<SeedRetentionCensusRow>
   duplicate_paths: List<String>
 }
 
@@ -626,28 +625,16 @@ fn frontier_emitted_standing(
   executed_closure_modules: List<String>,
   controls: FrontierControlsVerdict
 ) -> FrontierStanding {
-  let executed = path_in(path: row.source_module, paths: executed_closure_modules)
   match controls {
     ControlsNotPassed => EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
     ControlsPassed =>
-      if executed {
-        match mint_producer_emission_receipt(
-          module_path: row.source_module,
-          producer: V1SeedEmitter,
-          qualifications: [SourceProduced, CargoGreen],
-          build_result: BuildGreen,
-          behavioral_probe: BehavioralProbeUnbound,
-          realized_closure: cssl_harness_realized_closure
-        ) {
-          Present { value: receipt } => SelfEmitted {
-            crate_relative_path: row.crate_relative_path,
-            source_module: row.source_module,
-            receipt: receipt
-          }
-          Absent => Unclassified { crate_relative_path: row.crate_relative_path }
+      match filter(xs: executed_closure_modules, predicate: fn(m) { m == row.source_module }) {
+        Cons { head: matched, tail: _ } => SelfEmitted {
+          crate_relative_path: row.crate_relative_path,
+          source_module: row.source_module,
+          observation: SelfEmittedObservation { executed_closure_module: matched }
         }
-      } else {
-        EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
+        Empty => EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
       }
   }
 }
@@ -688,7 +675,7 @@ fn self_host_frontier(
   let census = seed_retention_census(
     roster: roster,
     observed_crate_rust_paths: observed_crate_rust_paths,
-    compared_crate_rust_paths: []
+    compared_crate_rust_paths: list_map(xs: emitted, f: fn(row) { row.crate_relative_path })
   )
   let emitted_scan = frontier_index_scan(rows: emitted, path_of: fn(row) { row.crate_relative_path })
   let roster_scan = frontier_index_scan(rows: roster, path_of: fn(row) { row.crate_relative_path })
@@ -706,6 +693,7 @@ fn self_host_frontier(
       }
     ),
     stale_rows: census.stale_rows,
+    compared_collisions: census.compared_collisions,
     duplicate_paths: concat(emitted_scan.duplicate_paths, roster_scan.duplicate_paths)
   }
 }
@@ -724,7 +712,7 @@ fn frontier_counts(frontier: SelfHostFrontier) -> FrontierCounts {
     init: FrontierCounts { self_emitted: 0, emitted_unexecuted: 0, seed_retained: 0, unclassified: 0, generated_census_artifacts: 0 },
     f: fn(acc, standing) {
       match standing {
-        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => FrontierCounts { self_emitted: acc.self_emitted + 1, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
+        SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => FrontierCounts { self_emitted: acc.self_emitted + 1, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
         EmittedUnexecuted { crate_relative_path: _, source_module: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted + 1, seed_retained: acc.seed_retained, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
         SeedRetained { row: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained + 1, unclassified: acc.unclassified, generated_census_artifacts: acc.generated_census_artifacts }
         Unclassified { crate_relative_path: _ } => FrontierCounts { self_emitted: acc.self_emitted, emitted_unexecuted: acc.emitted_unexecuted, seed_retained: acc.seed_retained, unclassified: acc.unclassified + 1, generated_census_artifacts: acc.generated_census_artifacts }
@@ -739,6 +727,7 @@ fn frontier_counts(frontier: SelfHostFrontier) -> FrontierCounts {
 fn self_host_frontier_holds(frontier: SelfHostFrontier) -> Bool {
   (frontier_counts(frontier: frontier).unclassified == 0)
     && (length(xs: frontier.stale_rows) == 0)
+    && (length(xs: frontier.compared_collisions) == 0)
     && (length(xs: frontier.duplicate_paths) == 0)
 }
 
@@ -749,7 +738,7 @@ fn frontier_retained_count_where(frontier: SelfHostFrontier, predicate: fn(SeedR
     f: fn(acc, standing) {
       match standing {
         SeedRetained { row: row } => if predicate(row) { acc + 1 } else { acc }
-        SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => acc
+        SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => acc
         EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
         Unclassified { crate_relative_path: _ } => acc
         GeneratedCensusArtifact { crate_relative_path: _ } => acc
@@ -878,6 +867,7 @@ fn frontier_summary_line(frontier: SelfHostFrontier) -> String {
     " seed_retained=", int_to_decimal_string(value: counts.seed_retained),
     " unclassified=", int_to_decimal_string(value: counts.unclassified),
     " stale_rows=", int_to_decimal_string(value: length(xs: frontier.stale_rows)),
+    " compared_collisions=", int_to_decimal_string(value: length(xs: frontier.compared_collisions)),
     " reason_not_yet_declared=", int_to_decimal_string(value: frontier_undeclared_reason_count(frontier: frontier)),
     " unbound_dissolution=", int_to_decimal_string(value: frontier_unbound_dissolution_count(frontier: frontier)),
     " generated_census_artifacts=", int_to_decimal_string(value: counts.generated_census_artifacts)
@@ -922,7 +912,7 @@ fn frontier_file_line(path: String, standing: String, source_module: String, cau
 
 fn frontier_standing_file_line(standing: FrontierStanding) -> String {
   match standing {
-    SelfEmitted { crate_relative_path: path, source_module: module, receipt: _ } => frontier_file_line(path: path, standing: "self-emitted", source_module: module, cause: "-", reason: "-")
+    SelfEmitted { crate_relative_path: path, source_module: module, observation: _ } => frontier_file_line(path: path, standing: "self-emitted", source_module: module, cause: "-", reason: "-")
     EmittedUnexecuted { crate_relative_path: path, source_module: module } => frontier_file_line(path: path, standing: "emitted-unexecuted", source_module: module, cause: "-", reason: "-")
     SeedRetained { row: row } => frontier_file_line(path: row.crate_relative_path, standing: "seed-retained", source_module: "-", cause: frontier_cause_word(cause: row.cause), reason: frontier_reason_word(reason: row.reason))
     GeneratedCensusArtifact { crate_relative_path: path } => frontier_file_line(path: path, standing: "generated-census-artifact", source_module: "-", cause: "-", reason: "-")
@@ -938,7 +928,7 @@ fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
       f: fn(acc, standing) {
         match standing {
           Unclassified { crate_relative_path: path } => concat(acc, [frontier_standing_file_line(standing: standing), concat("[self-host-frontier] REFUSED unclassified: ", path)])
-          SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
+          SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
           EmittedUnexecuted { crate_relative_path: _, source_module: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
           SeedRetained { row: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
           GeneratedCensusArtifact { crate_relative_path: _ } => concat(acc, [frontier_standing_file_line(standing: standing)])
@@ -948,7 +938,7 @@ fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
     concat(
       list_map(xs: frontier.duplicate_paths, f: fn(path) { concat("[self-host-frontier] REFUSED duplicate path in an input: ", path) }),
       list_map(
-      xs: frontier.stale_rows,
+      xs: concat(frontier.stale_rows, frontier.compared_collisions),
       f: fn(row) {
         match row {
           RosterRowWithoutObservedPath { crate_relative_path: path } => concat("[self-host-frontier] REFUSED roster row without observed path: ", path)

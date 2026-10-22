@@ -173,7 +173,7 @@ fn stage0_retention_standing_path(
     path: path
   ) {
     SeedRetained { row: row } => row.crate_relative_path
-    SelfEmitted { crate_relative_path: _, source_module: _, receipt: _ } => ""
+    SelfEmitted { crate_relative_path: _, source_module: _, observation: _ } => ""
     EmittedUnexecuted { crate_relative_path: _, source_module: _ } => ""
     Unclassified { crate_relative_path: _ } => ""
     GeneratedCensusArtifact { crate_relative_path: _ } => ""

@@ -21,6 +21,12 @@ import v2.compiler.self_host.seed_retention_frontier {
   ControlsNotPassed,
   ControlsPassed,
   EmittedPopulationRow,
+  EmittedUnexecuted,
+  FrontierStanding,
+  GeneratedCensusArtifact,
+  SeedRetained,
+  SelfEmitted,
+  Unclassified,
   frontier_counts,
   frontier_undeclared_reason_count,
   self_host_frontier,
@@ -278,6 +284,68 @@ test fn witness_frontier_duplicate_path_in_an_input_refuses() -> Bool {
     && !self_host_frontier_holds(frontier: duplicated_roster)
 }
 
+// RED: a retention row on a path the emitted manifest also declares is a collision, never a silent
+// SelfEmitted. The roster below is the control's roster plus one synthetic row on
+// src/emitted_in_closure.rs. Positive control: witness_frontier_control_classifies_every_standing,
+// the same inputs without that row, holds.
+test fn witness_frontier_roster_row_on_an_emitted_path_refuses() -> Bool {
+  let f = self_host_frontier(
+    roster: concat(frontier_roster, [retained_reason_undeclared(path: "src/emitted_in_closure.rs", cause: SeedRetainedIntrinsicSource)]),
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed
+  )
+  (length(xs: f.compared_collisions) == 1)
+    && (length(xs: f.stale_rows) == 0)
+    && (length(xs: f.duplicate_paths) == 0)
+    && (frontier_counts(frontier: f).unclassified == 0)
+    && !self_host_frontier_holds(frontier: f)
+}
+
+// The executed-closure entry each SelfEmitted standing carries, in standing order.
+fn frontier_self_emitted_observations(standings: List<FrontierStanding>) -> List<String> {
+  fold(standings, init: [], f: fn(acc, standing) {
+    match standing {
+      SelfEmitted { crate_relative_path: _, source_module: _, observation: o } => concat(acc, [o.executed_closure_module])
+      EmittedUnexecuted { crate_relative_path: _, source_module: _ } => acc
+      SeedRetained { row: _ } => acc
+      GeneratedCensusArtifact { crate_relative_path: _ } => acc
+      Unclassified { crate_relative_path: _ } => acc
+    }
+  })
+}
+
+// Positive control: the SelfEmitted observation is the executed-closure entry the host supplied,
+// read from that input and not minted from constants.
+test fn witness_frontier_self_emitted_carries_the_observed_closure_entry() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed
+  )
+  match frontier_self_emitted_observations(standings: f.standings) {
+    Cons { head: only, tail: rest } => (only == "fx.in_closure") && (length(xs: rest) == 0)
+    Empty => false
+  }
+}
+
+// RED: a closure that does not name the emitted module, even under ControlsPassed, produces no
+// SelfEmitted observation. Both emitted files read EmittedUnexecuted.
+test fn witness_frontier_mismatched_closure_produces_no_observation() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: ["fx.some_other_module"],
+    controls: ControlsPassed
+  )
+  (length(xs: frontier_self_emitted_observations(standings: f.standings)) == 0)
+    && (frontier_counts(frontier: f).emitted_unexecuted == 2)
+}
+
 fn report_has(lines: List<String>, pattern: String) -> Bool {
   any(xs: lines, predicate: fn(l) { string_contains(s: l, pattern: pattern) })
 }
@@ -348,6 +416,19 @@ test fn witness_report_deleted_row_refuses() -> Bool {
   )
   (r.exit == 1)
     && report_has(lines: r.lines, pattern: "REFUSED unclassified: src/alpha.rs")
+}
+
+// RED through the text route: a retention row on a manifest-declared path is refused by name, exit 1.
+test fn witness_report_roster_row_on_an_emitted_path_refuses() -> Bool {
+  let r = self_host_frontier_report_over(
+    roster: concat(frontier_roster, [retained_reason_undeclared(path: "src/emitted_in_closure.rs", cause: SeedRetainedIntrinsicSource)]),
+    manifest_text: report_manifest,
+    verdict_text: "controls-passed\nemitted_in_closure\n",
+    observed_text: report_observed
+  )
+  (r.exit == 1)
+    && report_has(lines: r.lines, pattern: "compared_collisions=1")
+    && report_has(lines: r.lines, pattern: "REFUSED roster row for a compared path: src/emitted_in_closure.rs")
 }
 
 // RED: a deleted manifest line (the emission no longer declared) -> that file is Unclassified.
