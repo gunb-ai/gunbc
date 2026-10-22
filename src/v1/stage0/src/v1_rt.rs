@@ -347,7 +347,7 @@ pub fn octets_bytes(o: Rc<Vec<i64>>) -> Vec<u8> {
 
 /// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
 /// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
-pub fn pure_dag_seam_unreachable() -> i64 {
+pub fn pure_dag_seam_unreachable() -> ! {
     panic!("std.error_primitives pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
 }
 
