@@ -282,4 +282,129 @@ I created nothing in the repo. The only files I wrote are scratch extracts in `/
 `applied_argument_types_identical`, `applied_argument_heads_identical`, `arguments_agree_in_lockstep`, `optional_instance_at_payload_of` and `whole_declaration_carried` (04_types) form the type-equality relation. Class SETTLED_TRANSPARENT: heads settle through transparent aliases only and stop at a brand alias; arguments compare recursively; `whole_declaration_carried` reads only the carrier's own `declaration`. The review's missing reader was this relation.
 
 ## Mechanical closure over the remaining files
-`child_type_node(` callers in 04_items, 04_lookup, 04_emit_info, 04_patterns, 05_emit, trait_derive_emit, 05_emit_rust are being classified by the same rule; the result is appended below when complete.
+Read-only pass by grep over `child_type_node(` / `resolved_type(` / type-node `.inferred Resolved`. Class letters: A = WANTS_AUTHORED, T = SETTLED_TRANSPARENT, S = WANTS_SETTLED, U = UNAFFECTED, ? = UNSURE (the emit rows: whether emitted Rust names the alias or its expansion decides). 05_emit_rust / trait_derive_emit rows are grouped, so the counts understate the hits; the 12 UNSURE rows are open obligations to resolve before their conversion, not classifications. The same grep over 04_infer/04_types/04_env/04_resolve found no `child_type_node(` caller missing from the tables above.
+
+Classes: A=WANTS_AUTHORED, T=SETTLED_TRANSPARENT, S=WANTS_SETTLED, U=UNAFFECTED, ?=UNSURE.
+Gap grep: every function in 04_infer/04_types/04_env/04_resolve that calls `child_type_node(` is already named in the note (0 uncovered).
+
+### src/v1/04_items.dag
+| fn | class | reason |
+|---|---|---|
+| inferred_to_outputs | S | reads Resolved node children as output structure (arrow/product fields) |
+
+### src/v1/04_lookup.dag
+| fn | class | reason |
+|---|---|---|
+| lookup_field_type_node | S | reads fields of a type: structure |
+| resolve_scrutinee_type_node_seen | S | peels aliases to reach structure; is the settle itself |
+| map_value_type_in_env | S | reads Map element child |
+| map_key_type_in_env | S | reads Map key child |
+| set_element_type_in_env | S | reads Set element child |
+| field_summary_for_type | S | enumerates fields of product |
+| product_field_result_type | S | reads field type of product |
+| lookup_structural_method | S | container/kind dispatch on receiver |
+| declared_arg_types_for_method | S | reads element/arg types by kind |
+| lookup_coproduct_common_field_node | U | forwards field nodes, no structure test |
+| lookup_field_in_product | U | find-by-name pass-through |
+
+### src/v1/04_patterns.dag
+| fn | class | reason |
+|---|---|---|
+| instantiate_scrutinee_expansion | S | substitutes args into expansion: structure |
+| expand_scrut_from_decl | S | expands declaration body |
+| expand_scrut_from_type_name | S | expands by name to body |
+| expand_scrut_type_for_variant_lookup | S | needs coproduct structure |
+| pattern_subject_from_node | S | reads scrutinee structure |
+| lookup_variant_in_type | S | reads variants |
+| constructor_roster_for | S | enumerates constructors |
+| is_uninhabited_sum | S | inhabitance question |
+| generic_use_slot_bindings | A | binds by authored param name |
+| peel_never_identity_candidate | A | tests whether written as Never |
+| lookup_field_in_variant | U | find-by-name |
+| constructor_fields | U | returns children |
+| synthesize_* | U | builders |
+
+### src/v1/04_emit_info.dag
+| fn | class | reason |
+|---|---|---|
+| build_field_type_map | A | records authored field type names for emit |
+| build_type_summary | S | Arrow check on field types |
+| enum_variant_payload_has_fn | S | Arrow check through alias |
+| add_emit_item_summary | S | Arrow check |
+| enum_field_type_consistent | T | compares two instantiations |
+| collect_type_node_import_surface_occurrences | ? | collects occurrences; decided by whether import surface must list alias or expansion deps (expansion deps are implied by the alias import) |
+| build_struct_field_summaries | U | copies summaries |
+
+### src/v1/05_emit.dag
+| fn | class | reason |
+|---|---|---|
+| has_nested_records_node | S | structure walk; emits expansion shape |
+| transparent_representation_root | S | peels transparent alias: is a settle |
+| transparent_named_carrier_root | S | same |
+| emit_typed_for_each_shared | S | element kind of iterated container |
+| collect_type_names_from_node | A | collects authored names |
+| named_type_vars_in_node | A | spelling of type vars |
+| render_node_type | ? | prints authored name; Rust names the alias only if every alias is emitted as a Rust `type` in scope (decide via closed_alias_peel_verdict + alias emission) |
+| cast_source_representation_identical | T | equality of representations |
+| emit_typed_cast_shared | T | same |
+| extend_scope sites | U | bind names only |
+
+### src/v1/trait_derive_emit.dag
+| fn | class | reason |
+|---|---|---|
+| v1_wf_child_type_node | A | compensator re-deriving authored child; dies with change (second representation) |
+| clone/ord/map-key analysis walkers (v1_*_type_expr_*) | S | derive eligibility from structure (emitted derive is on the Rust type; alias expands) |
+| name/declaration-identity checks in those walkers | A | by authored name / declaration |
+| v1_item_alias_hop_type_exprs | S | alias hop is a settle |
+| v1_arrow_type_expr_mentions_param | S | structure of arrow |
+
+### src/v1/05_emit_rust.dag
+| fn | class | reason |
+|---|---|---|
+| render_rust_type | ? | picks alias name vs expansion vs `__applied_type_args`; decide by closed_alias_peel_verdict and whether the alias is a Rust `type` item |
+| render_rust_decl_type | ? | same |
+| render_rust_fn_sig_type | ? | same |
+| render_rust_applied_type | ? | same |
+| render_rust_alias_rhs_type | ? | same |
+| render_rust_type_with_applied_binding_in_scope | ? | same |
+| render_rust_field_type_with_applied_binding | ? | three-way property check (field, authored type expr, rt_child) |
+| emit_struct_field_from_child | ? | same three-way check |
+| render_variant_payload_type | ? | same family |
+| render_rust_decl_type_container_arg | S | compensator; dead after change |
+| rust_decl_type_container_arg_needs_resolved_overlay | S | compensator; dead after change |
+| type_needs_rc_seen | S | structural recursion test |
+| rust_*_ord_eligible | S | element kind decides Ord eligibility |
+| type_node_has_*, type_param_is_collection_element_in_values, type_node_mentions_name | A | spelling/name presence |
+| member_type_nodes, decl_member_type_nodes | U | pass-through |
+| rust_empty_map_value_type_str | ? | renders value child via render_rust_type; same decider |
+| rust_empty_map_kv_type_str | ? | same |
+| type_node_carries_erased_type_argument | S | tests inferred CompilerError on arg: reads the cached Resolved; with authored ref the arg's error lives on the reference node, verify |
+| type_node_child_is_type_variable | S | tests inferred TypeVariable on arg |
+| type_node_carries_applicationless_parametric_head | A | was the head written without args |
+| rust_empty_set_element_type_str | S | Ord eligibility + render (render part ?) |
+| emit_rust_empty_set_expr | S | same; message prints authored name |
+| rust_list_lit_callable_element_type | S | Arrow test on element |
+| collection_element_type | S | element kind + closure generic scan |
+| rust_struct_field_type_node_from_container | U | returns resolved_type of field |
+| lookup_struct_field_type_name | A | returns authored name of field type |
+| rust_operand_alias_or_refinement_continue | S | is the alias-hop settle loop duplicating settled_type |
+| rust_operand_realization_of_type | A | provenance/authored name/declaration ref identity |
+| field_access_field_is_boxed | S | needs_box_wrapping on structure |
+| explicit_record_struct_name | A | returns authored name of record type |
+
+### List 1: note classes believed wrong under the rule
+Not verified wrong by body reading (limited pass):
+- grounded_constructor_shapes: body applies `type_reference_declaration_ref` to the field's `child_type_node`, then asks `declaration_is_grounded_natural`. This is an inhabitance question: WANTS_SETTLED agrees with the note, and note it is the only reader whose answer flips (authored alias decl is not the natural).
+- classify_let_value: its tail arm reads `val.inferred Resolved` of an EXPRESSION value and tests `is_container_type` on the authored name, plus element authored name. Container question: S agrees. The element name is an identity read on the first child (A), so the settle must apply to the container only.
+- prefer_specific_type, applied_argument_types_identical, optional_instance_at_payload_of, applied_argument_heads_identical, whole_declaration_carried, declaration_carried_through_resolution: bodies not re-read; note classes accepted, no counter-evidence.
+- Candidate disagreement: rust_operand_alias_or_refinement_continue duplicates settled_type (A single-hop alias peel), should be listed as a settle consumer.
+
+### List 2: places reading cached Resolved of an applied type as an independent value
+- 05_emit_rust: `__applied_type_args` property overlay (authored args beside expansion children) in render_rust_field_type_with_applied_binding, emit_struct_field_from_child, render_rust_decl_type_container_arg(+needs_resolved_overlay).
+- 05_emit_rust: lookup_struct_field_type_name, rust_struct_field_type_node_from_container, field_access_field_is_boxed, rust_operand_alias_or_refinement_continue (resolved_type on field/alias decl).
+- 05_emit_rust: type_node_carries_erased_type_argument, type_node_child_is_type_variable, rust_empty_set_* (read `.inferred` of arg).
+- trait_derive_emit: v1_wf_child_type_node.
+- 04_patterns: expand_scrut_* (reuse expansion children as args).
+- 04_types: declaration_carried_through_resolution Resolved-chain fallback (per note).
+- 04_lookup: map_/set_*_type_in_env read children of Resolved.
+- 04_emit_info: collect_type_node_import_surface_occurrences.
