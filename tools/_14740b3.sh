@@ -24,7 +24,7 @@ data fx_binding: Int = 7
 data fx_other: Int = 8
 EOF
 cat > dag/test/fx740/consumer_a.dag <<'EOF'
-import dag.test.fx740.fx_lib { fx_binding }
+import test.fx740.fx_lib { fx_binding }
 test fn a_reads_it_holds: Bool = fx_binding == 7
 EOF
 git add -A; git commit -qm c1_base
@@ -34,14 +34,14 @@ cat > dag/test/fx740/fx_lib.dag <<'EOF'
 data fx_other: Int = 8
 EOF
 cat > dag/test/fx740/consumer_a.dag <<'EOF'
-import dag.test.fx740.fx_lib { fx_other }
+import test.fx740.fx_lib { fx_other }
 test fn a_reads_it_holds: Bool = fx_other == 8
 EOF
 git add -A; git commit -qm c2_head_removes_binding
 HEADC=$(git rev-parse HEAD)
 git checkout -q main
 cat > dag/test/fx740/consumer_b.dag <<'EOF'
-import dag.test.fx740.fx_lib { fx_binding }
+import test.fx740.fx_lib { fx_binding }
 test fn b_reads_it_holds: Bool = fx_binding == 7
 EOF
 git add -A; git commit -qm c3_main_adds_caller
