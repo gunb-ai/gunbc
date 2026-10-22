@@ -279,6 +279,7 @@ data dag_cast_rules: List<CastRule> = [
 
 data grounded_primitive_coproduct_identities: List<CastRule> = [
   { from_type: "Int",    to_type: "Nat" },
+  { from_type: "Nat",    to_type: "Int" },
   { from_type: "String", to_type: "FreeMonoid" },
 ]
 

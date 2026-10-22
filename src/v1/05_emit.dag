@@ -7,7 +7,7 @@ import std.compiler_entry {
 }
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
-import std.coercion { TypeRealizationDecision }
+import std.coercion { TypeRealizationDecision, dag_can_cast }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
@@ -3396,18 +3396,20 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
   }
 }
 
-// A SOURCE GROUNDED ONTO A HOST NUMERIC IS ITS TARGET'S CARRIER WHEN THE TWO SPELL THE SAME HOST TYPE. std.coercion
-// grounded_primitive_coproduct_identities says a Nat IS an Int, and the realization decision made at the
-// source's own reference (provenance-keyed, so v2.std.nat's Peano Nat answers Unrealized and never
-// qualifies) names the host spelling it is grounded onto. When that spelling is the target's, the target
-// has no operation to perform: this reads the declared realization, not a second cast table.
-fn cast_source_grounded_onto_target_carrier(expr: Node, target_spelling: String, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> Bool {
+// A DECLARED ROUTE WHOSE REPRESENTATIONS COINCIDE REALIZES AS THE IDENTITY. LEGALITY is std.coercion's
+// (dag_can_cast over grounded_primitive_coproduct_identities: a Nat IS an Int); emit decides nothing
+// about it. What emit adds is only the realization: the decision made at the source's own reference
+// (provenance-keyed, so v2.std.nat's Peano Nat answers Unrealized and never qualifies) names the host
+// spelling the source is grounded onto, and when that is the target's the target performs no operation.
+fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, target_spelling: String, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> Bool {
   match expr.inferred {
     Present { value: Resolved { node: n } } =>
-      match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: authored_name_at(source_indices: source_indices, node: n), target: target)) {
-        Present { value: spelling } => spelling == target_spelling
-        Absent => false
-      }
+      if dag_can_cast(source_type: authored_name_at(source_indices: source_indices, node: n), target_type: authored_name_at(source_indices: source_indices, node: cast_target_node)) {
+        match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: authored_name_at(source_indices: source_indices, node: n), target: target)) {
+          Present { value: spelling } => spelling == target_spelling
+          Absent => false
+        }
+      } else { false }
     _ => false
   }
 }
@@ -3430,7 +3432,7 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
     expr_str
   } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
     expr_str
-  } else if cast_source_grounded_onto_target_carrier(expr: expr, target_spelling: ty_str, target: target, source_indices: source_indices) {
+  } else if cast_source_grounded_onto_target_carrier(expr: expr, cast_target_node: cast_target_node, target_spelling: ty_str, target: target, source_indices: source_indices) {
     expr_str
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
