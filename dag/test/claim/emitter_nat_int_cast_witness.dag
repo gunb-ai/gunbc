@@ -1,0 +1,37 @@
+module test.claim.emitter_nat_int_cast_witness
+
+// Permanent regression control for `Nat as Int` at emit (#14545: extdeps.units.iso8601_calendar failed
+// rustc with 'unreachable expression' because the cast arm rendered `panic!("unsupported cast from Nat
+// to i64")`). A std.nat Nat IS an Int (std.coercion grounded_primitive_coproduct_identities) and its
+// realization decision is grounded onto the host numeric i64, so casting it to Int performs no
+// operation. A cast the target genuinely cannot realize (`Nat as Float`: Nat is grounded onto i64, not
+// f64) refuses at BUILD time as compile_error!, never as a runtime panic!.
+//
+// dissolve-on: expression renderers return typed diagnostics located at the .dag source
+// (gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target); the refusal then moves there.
+
+fn nat_int_source() -> String {
+  "module nat_int_cast\n\nimport std.types { Int }\nimport std.nat { Nat }\n\nfn width() -> Nat {\n  60\n}\n\nfn widen() -> Int {\n  (width() as Int) * 2\n}\n"
+}
+
+fn nat_float_source() -> String {
+  "module nat_float_cast\n\nimport std.types { Float }\nimport std.nat { Nat }\n\nfn width() -> Nat {\n  60\n}\n\nfn widen() -> Float {\n  width() as Float\n}\n"
+}
+
+fn w_nat_as_int_is_the_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    nat_int_source(),
+    "src/nat_int_cast.rs",
+    ["pub fn widen"],
+    ["unsupported cast", "panic!"]
+  )
+}
+
+fn w_unsupported_cast_refuses_at_build_time() -> Bool {
+  compile_dag_rust_emit_check(
+    nat_float_source(),
+    "src/nat_float_cast.rs",
+    ["compile_error!(\"unsupported cast from"],
+    ["panic!(\"unsupported cast"]
+  )
+}

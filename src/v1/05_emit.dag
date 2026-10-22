@@ -3396,6 +3396,22 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
   }
 }
 
+// A SOURCE GROUNDED ONTO A HOST NUMERIC IS ITS TARGET'S CARRIER WHEN THE TWO SPELL THE SAME HOST TYPE. std.coercion
+// grounded_primitive_coproduct_identities says a Nat IS an Int, and the realization decision made at the
+// source's own reference (provenance-keyed, so v2.std.nat's Peano Nat answers Unrealized and never
+// qualifies) names the host spelling it is grounded onto. When that spelling is the target's, the target
+// has no operation to perform: this reads the declared realization, not a second cast table.
+fn cast_source_grounded_onto_target_carrier(expr: Node, target_spelling: String, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match expr.inferred {
+    Present { value: Resolved { node: n } } =>
+      match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: authored_name_at(source_indices: source_indices, node: n), target: target)) {
+        Present { value: spelling } => spelling == target_spelling
+        Absent => false
+      }
+    _ => false
+  }
+}
+
 // THREE MEANINGS, IN ORDER, AND THE THIRD IS UNCHANGED. Rendered-representation identity and
 // declared-carrier identity are two INDEPENDENTLY SUFFICIENT witnesses that the target has no
 // operation to perform -- neither is derived from the other, and neither is authority over the
@@ -3413,6 +3429,8 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   if src_ty != "" && src_ty == ty_str {
     expr_str
   } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
+    expr_str
+  } else if cast_source_grounded_onto_target_carrier(expr: expr, target_spelling: ty_str, target: target, source_indices: source_indices) {
     expr_str
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
