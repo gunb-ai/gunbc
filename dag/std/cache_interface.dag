@@ -2,7 +2,6 @@ module std.cache_interface
 
 import std.types { NonEmptyStr, Bool, Int, LogicalTime, brand, List }
 import std.optional { Absent, Optional, Present }
-import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import std.measure { Nano, ByteSize, Second, second, Nanosecond, nanosecond, nanosecond_count }
@@ -254,7 +253,7 @@ type CacheRowEvidence
   = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
   | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
   | OperatorObserved { note: NonEmptyStr, observed_at: Optional<LogicalTime> }
-  | CiReceiptCitation { workflow_run_id: GitHubWorkflowRunId, step_id: NonEmptyStr }
+  | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
 
 type CacheEvidence {
   field: NonEmptyStr
