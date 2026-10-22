@@ -201,7 +201,8 @@ test fn witness_frontier_control_classifies_every_standing() -> Bool {
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: frontier_closure,
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   (frontier_counts(frontier: f).self_emitted == 1)
     && (frontier_counts(frontier: f).emitted_unexecuted == 1)
@@ -218,7 +219,8 @@ test fn witness_frontier_deleted_retention_row_is_unclassified() -> Bool {
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: frontier_closure,
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   (frontier_counts(frontier: f).unclassified == 1)
     && !self_host_frontier_holds(frontier: f)
@@ -231,7 +233,8 @@ test fn witness_frontier_module_outside_executed_closure_is_unexecuted() -> Bool
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: [],
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   (frontier_counts(frontier: f).self_emitted == 0)
     && (frontier_counts(frontier: f).emitted_unexecuted == 2)
@@ -245,7 +248,8 @@ test fn witness_frontier_failed_controls_emit_nothing() -> Bool {
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: frontier_closure,
-    controls: ControlsNotPassed
+    controls: ControlsNotPassed,
+    declared_divergent_paths: []
   )
   frontier_counts(frontier: f).self_emitted == 0
 }
@@ -257,7 +261,8 @@ test fn witness_frontier_stale_row_still_refuses() -> Bool {
     observed_crate_rust_paths: ["src/alpha.rs", "src/bin/gamma.rs"],
     emitted: [],
     executed_closure_modules: [],
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   !self_host_frontier_holds(frontier: f)
 }
@@ -271,14 +276,16 @@ test fn witness_frontier_duplicate_path_in_an_input_refuses() -> Bool {
     observed_crate_rust_paths: frontier_observed,
     emitted: concat(frontier_emitted, [EmittedPopulationRow { crate_relative_path: "src/emitted_in_closure.rs", source_module: "fx.in_closure" }]),
     executed_closure_modules: frontier_closure,
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   let duplicated_roster = self_host_frontier(
     roster: concat(frontier_roster, [retained_host_binary(path: "src/bin/gamma.rs")]),
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: frontier_closure,
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   !self_host_frontier_holds(frontier: duplicated_emitted)
     && !self_host_frontier_holds(frontier: duplicated_roster)
@@ -294,12 +301,46 @@ test fn witness_frontier_roster_row_on_an_emitted_path_refuses() -> Bool {
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: frontier_closure,
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   (length(xs: f.compared_collisions) == 1)
     && (length(xs: f.stale_rows) == 0)
     && (length(xs: f.duplicate_paths) == 0)
     && (frontier_counts(frontier: f).unclassified == 0)
+    && !self_host_frontier_holds(frontier: f)
+}
+
+// A DECLARED divergent emission is SeedRetained through its row and is not a collision. Same inputs
+// as the collision RED above, with src/emitted_in_closure.rs registered as divergent: it leaves the
+// compared population, so the frontier holds.
+test fn witness_frontier_declared_divergent_emission_is_retained_not_collided() -> Bool {
+  let f = self_host_frontier(
+    roster: concat(frontier_roster, [retained_reason_undeclared(path: "src/emitted_in_closure.rs", cause: SeedRetainedIntrinsicSource)]),
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: ["src/emitted_in_closure.rs"]
+  )
+  (length(xs: f.compared_collisions) == 0)
+    && (frontier_counts(frontier: f).self_emitted == 0)
+    && (frontier_counts(frontier: f).seed_retained == 3)
+    && self_host_frontier_holds(frontier: f)
+}
+
+// RED: a registered divergent emission with NO retention row is Unclassified. The registration does
+// not stand in for a row.
+test fn witness_frontier_declared_divergent_emission_without_a_row_refuses() -> Bool {
+  let f = self_host_frontier(
+    roster: frontier_roster,
+    observed_crate_rust_paths: frontier_observed,
+    emitted: frontier_emitted,
+    executed_closure_modules: frontier_closure,
+    controls: ControlsPassed,
+    declared_divergent_paths: ["src/emitted_in_closure.rs"]
+  )
+  (frontier_counts(frontier: f).unclassified == 1)
     && !self_host_frontier_holds(frontier: f)
 }
 
@@ -324,7 +365,8 @@ test fn witness_frontier_self_emitted_carries_the_observed_closure_entry() -> Bo
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: frontier_closure,
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   match frontier_self_emitted_observations(standings: f.standings) {
     Cons { head: only, tail: rest } => (only == "fx.in_closure") && (length(xs: rest) == 0)
@@ -340,7 +382,8 @@ test fn witness_frontier_mismatched_closure_produces_no_observation() -> Bool {
     observed_crate_rust_paths: frontier_observed,
     emitted: frontier_emitted,
     executed_closure_modules: ["fx.some_other_module"],
-    controls: ControlsPassed
+    controls: ControlsPassed,
+    declared_divergent_paths: []
   )
   (length(xs: frontier_self_emitted_observations(standings: f.standings)) == 0)
     && (frontier_counts(frontier: f).emitted_unexecuted == 2)
@@ -358,6 +401,7 @@ data report_observed: String = "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_c
 test fn witness_report_control_holds() -> Bool {
   let r = self_host_frontier_report_over(
     roster: frontier_roster,
+    declared_divergent_paths: [],
     manifest_text: report_manifest,
     verdict_text: "controls-passed\nemitted_in_closure\n",
     observed_text: report_observed
@@ -375,6 +419,7 @@ test fn witness_report_control_holds() -> Bool {
 test fn witness_report_nested_manifest_path_is_no_observation() -> Bool {
   let r = self_host_frontier_report_over(
     roster: frontier_roster,
+    declared_divergent_paths: [],
     manifest_text: "// src/emitted_in_closure.rs\n// src/cli_run/native_lane_runner.rs\n",
     verdict_text: "controls-passed\nemitted_in_closure\n",
     observed_text: report_observed
@@ -387,6 +432,7 @@ test fn witness_report_nested_manifest_path_is_no_observation() -> Bool {
 test fn witness_report_crate_entry_files_are_unexecuted_not_refused() -> Bool {
   let r = self_host_frontier_report_over(
     roster: frontier_roster,
+    declared_divergent_paths: [],
     manifest_text: "// src/emitted_in_closure.rs\n// src/main.rs\n// src/lib.rs\n",
     verdict_text: "controls-passed\nemitted_in_closure\nmain\nlib\n",
     observed_text: "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_closure.rs\nsrc/main.rs\nsrc/lib.rs\n"
@@ -398,6 +444,7 @@ test fn witness_report_crate_entry_files_are_unexecuted_not_refused() -> Bool {
 test fn witness_report_module_removed_from_closure_moves_to_unexecuted() -> Bool {
   let r = self_host_frontier_report_over(
     roster: frontier_roster,
+    declared_divergent_paths: [],
     manifest_text: report_manifest,
     verdict_text: "controls-passed\n",
     observed_text: report_observed
@@ -410,6 +457,7 @@ test fn witness_report_module_removed_from_closure_moves_to_unexecuted() -> Bool
 test fn witness_report_deleted_row_refuses() -> Bool {
   let r = self_host_frontier_report_over(
     roster: [retained_host_binary(path: "src/bin/gamma.rs")],
+    declared_divergent_paths: [],
     manifest_text: report_manifest,
     verdict_text: "controls-passed\nemitted_in_closure\n",
     observed_text: report_observed
@@ -422,6 +470,7 @@ test fn witness_report_deleted_row_refuses() -> Bool {
 test fn witness_report_roster_row_on_an_emitted_path_refuses() -> Bool {
   let r = self_host_frontier_report_over(
     roster: concat(frontier_roster, [retained_reason_undeclared(path: "src/emitted_in_closure.rs", cause: SeedRetainedIntrinsicSource)]),
+    declared_divergent_paths: [],
     manifest_text: report_manifest,
     verdict_text: "controls-passed\nemitted_in_closure\n",
     observed_text: report_observed
@@ -435,6 +484,7 @@ test fn witness_report_roster_row_on_an_emitted_path_refuses() -> Bool {
 test fn witness_report_deleted_manifest_line_refuses() -> Bool {
   let r = self_host_frontier_report_over(
     roster: frontier_roster,
+    declared_divergent_paths: [],
     manifest_text: "// src/emitted_outside_closure.rs\n",
     verdict_text: "controls-passed\nemitted_in_closure\n",
     observed_text: report_observed
@@ -445,9 +495,9 @@ test fn witness_report_deleted_manifest_line_refuses() -> Bool {
 
 // No observation is exit 2, never a green or a refusal.
 test fn witness_report_missing_inputs_are_no_observation() -> Bool {
-  let empty_verdict = self_host_frontier_report_over(roster: frontier_roster, manifest_text: report_manifest, verdict_text: "", observed_text: report_observed)
-  let no_observed = self_host_frontier_report_over(roster: frontier_roster, manifest_text: report_manifest, verdict_text: "controls-passed\n", observed_text: "")
-  let bad_word = self_host_frontier_report_over(roster: frontier_roster, manifest_text: report_manifest, verdict_text: "maybe\n", observed_text: report_observed)
+  let empty_verdict = self_host_frontier_report_over(roster: frontier_roster, declared_divergent_paths: [], manifest_text: report_manifest, verdict_text: "", observed_text: report_observed)
+  let no_observed = self_host_frontier_report_over(roster: frontier_roster, declared_divergent_paths: [], manifest_text: report_manifest, verdict_text: "controls-passed\n", observed_text: "")
+  let bad_word = self_host_frontier_report_over(roster: frontier_roster, declared_divergent_paths: [], manifest_text: report_manifest, verdict_text: "maybe\n", observed_text: report_observed)
   (empty_verdict.exit == 2) && (no_observed.exit == 2) && (bad_word.exit == 2)
 }
 
@@ -456,6 +506,7 @@ data census_artifact_report_input: String = "// src/emitted_in_closure.rs\n// sr
 test fn witness_report_census_manifest_is_its_own_standing_not_self_emitted() -> Bool {
   let r = self_host_frontier_report_over(
     roster: frontier_roster,
+    declared_divergent_paths: [],
     manifest_text: census_artifact_report_input,
     verdict_text: "controls-passed\nemitted_in_closure\nemitted_population\n",
     observed_text: "src/alpha.rs\nsrc/bin/gamma.rs\nsrc/emitted_in_closure.rs\nsrc/emitted_population.rs\n"

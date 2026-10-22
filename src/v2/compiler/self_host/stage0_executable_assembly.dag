@@ -170,6 +170,7 @@ fn stage0_retention_standing_path(
     roster_by_path: roster_by_path,
     executed_closure_modules: [],
     controls: ControlsNotPassed,
+    declared_divergent_paths: [],
     path: path
   ) {
     SeedRetained { row: row } => row.crate_relative_path

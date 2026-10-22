@@ -14,6 +14,7 @@ import gunbc.stage0.stage0_emitted_population_manifest {
   self_host_frontier_verdict_passed_word,
   self_host_frontier_verdict_not_passed_word
 }
+import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_stage0_files }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -566,6 +567,11 @@ fn cited_reason_authorities() -> List<DeclarationRef> {
 // Precedence is emitted first, then retention row, then refusal, so a file is never counted twice;
 // a retention row on an emitted path is the census's RosteredPathIsCompared refusal: the emitted
 // manifest is the compared population, and self_host_frontier_holds refuses on any collision.
+// The one exception is a DECLARED divergent emission: a path registered in
+// v2.compiler.self_host.stage0_crate_layout emitter_produced_divergent_registrations is emitted, but
+// its committed bytes are not the emission. It is SeedRetained through its retention row and leaves
+// the compared population. If it has no row it is Unclassified, so a registration never stands in
+// for a row and a row never stands in for a registration.
 //
 // SelfEmitted carries only what the host observed: the executed-closure entry that matched the
 // file's module, under a ControlsPassed verdict. It does not carry a ProducerEmissionReceipt.
@@ -644,10 +650,16 @@ fn frontier_path_standing(
   roster_by_path: Map<String, SeedRetentionFrontierRow>,
   executed_closure_modules: List<String>,
   controls: FrontierControlsVerdict,
+  declared_divergent_paths: List<String>,
   path: String
 ) -> FrontierStanding {
   match map_get(emitted_by_path, path) {
-    Present { value: row } => if path == frontier_census_manifest_path() {
+    Present { value: row } => if path_in(path: path, paths: declared_divergent_paths) {
+      match map_get(roster_by_path, path) {
+        Present { value: retained } => SeedRetained { row: retained }
+        Absent => Unclassified { crate_relative_path: path }
+      }
+    } else if path == frontier_census_manifest_path() {
       GeneratedCensusArtifact { crate_relative_path: path }
     } else if frontier_path_is_crate_entry(path: path) {
       EmittedUnexecuted { crate_relative_path: row.crate_relative_path, source_module: row.source_module }
@@ -670,12 +682,16 @@ fn self_host_frontier(
   observed_crate_rust_paths: List<String>,
   emitted: List<EmittedPopulationRow>,
   executed_closure_modules: List<String>,
-  controls: FrontierControlsVerdict
+  controls: FrontierControlsVerdict,
+  declared_divergent_paths: List<String>
 ) -> SelfHostFrontier {
   let census = seed_retention_census(
     roster: roster,
     observed_crate_rust_paths: observed_crate_rust_paths,
-    compared_crate_rust_paths: list_map(xs: emitted, f: fn(row) { row.crate_relative_path })
+    compared_crate_rust_paths: filter(
+      xs: list_map(xs: emitted, f: fn(row) { row.crate_relative_path }),
+      predicate: fn(p) { !path_in(path: p, paths: declared_divergent_paths) }
+    )
   )
   let emitted_scan = frontier_index_scan(rows: emitted, path_of: fn(row) { row.crate_relative_path })
   let roster_scan = frontier_index_scan(rows: roster, path_of: fn(row) { row.crate_relative_path })
@@ -688,6 +704,7 @@ fn self_host_frontier(
           roster_by_path: roster_scan.by_path,
           executed_closure_modules: executed_closure_modules,
           controls: controls,
+          declared_divergent_paths: declared_divergent_paths,
           path: path
         )
       }
@@ -951,13 +968,19 @@ fn frontier_standing_lines(frontier: SelfHostFrontier) -> List<String> {
   )
 }
 
-// The live roster is bound here and nowhere else; the parameterized fold is what the controlled
+// The live roster and the live divergence registry are bound here and nowhere else; the parameterized fold is what the controlled
 // fixture witnesses probe (a probe over the live roster would copy the current tree).
 fn self_host_frontier_report(manifest_text: String, verdict_text: String, observed_text: String) -> SelfHostFrontierReport {
-  self_host_frontier_report_over(roster: seed_retention_frontier_roster, manifest_text: manifest_text, verdict_text: verdict_text, observed_text: observed_text)
+  self_host_frontier_report_over(
+    roster: seed_retention_frontier_roster,
+    declared_divergent_paths: list_map(xs: emitter_produced_divergent_stage0_files(), f: fn(b) { concat("src/", b) }),
+    manifest_text: manifest_text,
+    verdict_text: verdict_text,
+    observed_text: observed_text
+  )
 }
 
-fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, manifest_text: String, verdict_text: String, observed_text: String) -> SelfHostFrontierReport {
+fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, declared_divergent_paths: List<String>, manifest_text: String, verdict_text: String, observed_text: String) -> SelfHostFrontierReport {
   let verdict_lines = frontier_nonempty_lines(text: verdict_text)
   let observed = frontier_nonempty_lines(text: observed_text)
   let manifest_paths = emitted_population_paths_from_manifest(content: manifest_text)
@@ -978,7 +1001,8 @@ fn self_host_frontier_report_over(roster: List<SeedRetentionFrontierRow>, manife
           observed_crate_rust_paths: observed,
           emitted: frontier_emitted_rows(paths: manifest_paths),
           executed_closure_modules: closure,
-          controls: if word == self_host_frontier_verdict_passed_word { ControlsPassed } else { ControlsNotPassed }
+          controls: if word == self_host_frontier_verdict_passed_word { ControlsPassed } else { ControlsNotPassed },
+          declared_divergent_paths: declared_divergent_paths
         )
         SelfHostFrontierReport {
           lines: concat([frontier_summary_line(frontier: frontier)], frontier_standing_lines(frontier: frontier)),
