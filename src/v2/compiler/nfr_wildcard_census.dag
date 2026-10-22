@@ -231,3 +231,13 @@ fn roster_join_keys(file: String, root: Node) -> List<String> {
 fn site_join_key(file: String, fn_name: String) -> String {
   concat(file, "::", fn_name)
 }
+
+fn declares_member_named(root: Node, name: String) -> Bool {
+  fold(node_member_edges(root: root), init: false, f: fn(acc, e) {
+    acc || (match e.label {
+      Authored { name: sym } => symbol_lexeme(sym: sym) == name && (node_is_arrow(n: e.target) == false)
+      Positional => false
+      StructuralLabel { label: _ } => false
+    })
+  })
+}

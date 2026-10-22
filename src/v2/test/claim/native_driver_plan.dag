@@ -17,6 +17,7 @@ import v2.compiler.source_root_eval {
   NativeDriverCensusScoped,
   NativeDriverDemandCensus,
   NativeDriverDeclRefCensus,
+  NativeDriverNfrWildcardCensus,
   NativeDriverPlanRefused,
   NativeDriverPlanned,
   native_driver_adjudicate_needs_facts,
@@ -52,6 +53,7 @@ fn parsed_verb_is_census(argv: List<String>) -> Bool {
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
         NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverNfrWildcardCensus { source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
@@ -68,6 +70,7 @@ fn parsed_verb_is_census_resolve(argv: List<String>) -> Bool {
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
         NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverNfrWildcardCensus { source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
@@ -84,6 +87,7 @@ fn parsed_verb_is_adjudicate(argv: List<String>) -> Bool {
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
         NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverNfrWildcardCensus { source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => true
       }
@@ -112,6 +116,7 @@ fn planned_facts_path(argv: List<String>) -> String {
         NativeDriverCensusInfer { source_roots: _ } => ""
         NativeDriverDemandCensus { source_roots: _ } => ""
         NativeDriverDeclRefCensus { source_roots: _ } => ""
+        NativeDriverNfrWildcardCensus { source_roots: _ } => ""
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => ""
       }
   }
@@ -151,6 +156,7 @@ fn parsed_verb_is_census_infer(argv: List<String>) -> Bool {
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
         NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverNfrWildcardCensus { source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => true
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
@@ -230,6 +236,7 @@ fn planned_pattern_render(argv: List<String>) -> String {
         NativeDriverCensusInfer { source_roots: _ } => ""
         NativeDriverDemandCensus { source_roots: _ } => ""
         NativeDriverDeclRefCensus { source_roots: _ } => ""
+        NativeDriverNfrWildcardCensus { source_roots: _ } => ""
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => ""
       }
   }
@@ -291,6 +298,7 @@ fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => true
         NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverNfrWildcardCensus { source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
@@ -319,6 +327,7 @@ fn planned_scoped_subject(argv: List<String>) -> String {
         NativeDriverCensusInfer { source_roots: _ } => ""
         NativeDriverDemandCensus { source_roots: _ } => ""
         NativeDriverDeclRefCensus { source_roots: _ } => ""
+        NativeDriverNfrWildcardCensus { source_roots: _ } => ""
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => ""
       }
   }
@@ -361,6 +370,7 @@ fn planned_scoped_against(argv: List<String>) -> String {
         NativeDriverCensusInfer { source_roots: _ } => "<other>"
         NativeDriverDemandCensus { source_roots: _ } => "<other>"
         NativeDriverDeclRefCensus { source_roots: _ } => "<other>"
+        NativeDriverNfrWildcardCensus { source_roots: _ } => "<other>"
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => "<other>"
       }
   }

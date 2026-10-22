@@ -316,6 +316,7 @@ pub enum TargetProducer {
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
     DeclRefCensus,
+    NfrWildcardCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -595,6 +596,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("decl-ref-census"),
             TargetProducer::DeclRefCensus,
+        ),
+        (
+            instrument_label("nfr-wildcard-census"),
+            TargetProducer::NfrWildcardCensus,
         ),
         (
             instrument_label("generic-identity-census"),
@@ -1124,6 +1129,11 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::DeclRefCensus => run_census_verb(
             "decl-ref-census",
             "decl-ref-census",
+            &self_host_source_roots(),
+        ),
+        TargetProducer::NfrWildcardCensus => run_census_verb(
+            "nfr-wildcard-census",
+            "nfr-wildcard-census",
             &self_host_source_roots(),
         ),
         TargetProducer::GenericIdentityCensus => {
