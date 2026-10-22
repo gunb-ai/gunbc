@@ -397,6 +397,17 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
       decl_name: "compile_clean_diagnostic_census_binding",
       field: WholeDeclaration
     }
+  },
+  AdvisoryClassCeilingRow {
+    class_name: "TextRepresentationUnidentifiedAtBoundary" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "the declaration identity of every v1 type reference at a text boundary, the grounding the class's standing names (gunbc.rung_drop text_boundary_identity_wall, STANDING RESTATED 2026-09-28): an IDENTIFIED text crossing is already structurally guaranteed -- refused, located, or unfolded through the declared row (ruling gunbc.design_ruling text_crossings_go_through_the_unfold) -- while a boundary whose other side has no readable declaration identity is UNJUDGED, because v1's one type-reference derivation (v1.compiler.infer_env type_reference_declaration_reading) answers TypeReferenceUnidentified for it. The check is decidable once that identity is read; promoting the class before it would refuse correct sites (the standing measured 3,632 correct sites refused whole-corpus when they were refused), the fabricated refusal DESIGN 4b forbids. The class empties as the TypeReferenceUnidentified arm empties, and its restoration is the rung drop's own trigger: the declared-boundary conformance peeling capability."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
   }
 ]
 
