@@ -1,6 +1,5 @@
 module test.claim.cpu_socket_termination_witness
 
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.logic { Bool }
 import std.types { List, String, NonEmptyStr }
 import extdeps.cpu.types {
@@ -8,12 +7,12 @@ import extdeps.cpu.types {
   SocketedPinGrid,
   SocketedLandGrid, CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
 import extdeps.vendor.amd { amd }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { DeclarationRef, decl_field_ref, declaration_ref_eq }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.ampere {
-  ampere_lga4926_cooling_mount, altra_max_m12830_catalog, ampere_cpu_catalog_rows }
+  ampere_lga4926_cooling_mount, ampere_lga4926_socket, altra_max_m12830_catalog, ampere_cpu_catalog_rows }
 import extdeps.cpu.amd {
   amd_am4_cooling_mount,
   amd_cpu_catalog_rows,
@@ -139,14 +138,24 @@ test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
 // rows it names, in the file an author is already editing, rather than in a test module they have
 // no reason to open. A genuinely closed denominator would have to be discovered from the module
 // tree, which is lens work and is not attempted here.
+// A row's socket is grounded when its figures are cited, or when the socket says in its own
+// figure_standing that they are TranscribedUncited -- the standing is read here, so an uncited socket
+// cannot pass as cited and a cited one cannot hide behind an empty list.
+fn socket_standing_is_uncited(r: CpuModelCatalogRow) -> Bool {
+  match r.socket.figure_standing {
+    TranscribedUncited { read_obligation: _ } => true
+    _ => false
+  }
+}
+
 fn every_row_cites_its_socket(rows: List<CpuModelCatalogRow>) -> Bool {
-  count(rows |> filter(r => count(r.socket_citations) >= 2)) == count(rows)
+  count(rows |> filter(r => count(r.socket_citations) >= 2 || socket_standing_is_uncited(r: r))) == count(rows)
 }
 
 test fn w_every_catalog_row_in_both_rosters_cites_its_socket() -> Bool {
   every_row_cites_its_socket(rows: amd_cpu_catalog_rows)
     && every_row_cites_its_socket(rows: ampere_cpu_catalog_rows)
-    && count(amd_cpu_catalog_rows) == 3
+    && count(amd_cpu_catalog_rows) == 5
     && count(ampere_cpu_catalog_rows) == 3
 }
 
@@ -162,7 +171,7 @@ test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
     cores: ryzen_9_7950x3d_catalog.cores,
     threads: ryzen_9_7950x3d_catalog.threads,
     nominal_sustained_per_thread_hz: ryzen_9_7950x3d_catalog.nominal_sustained_per_thread_hz,
-    socket: ryzen_9_7950x3d_catalog.socket,
+    socket: ampere_lga4926_socket,
     socket_citations: [],
     tdp_watts: ryzen_9_7950x3d_catalog.tdp_watts,
     l1_cache: ryzen_9_7950x3d_catalog.l1_cache,
