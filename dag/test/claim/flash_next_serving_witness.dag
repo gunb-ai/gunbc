@@ -13,6 +13,12 @@ import extdeps.qwen.qwen3_8_flash_next {
   flash_next_params_per_routed_expert, qwen3_8_flash_next_consumer_frontier,
 }
 import gunbc.serving.gpu_observed_memory_receipt { observed_memory_bytes, h200_nvl_observed_memory, b200_observed_memory, observed_memory_frontier }
+import gunbc.serving.flash_next_experiment_identity {
+  H200ObservedCurrentStack, B200ObservedCurrentStack, B200PredictedNativeStack, H200UpstreamV032, B200UpstreamV032,
+  VariantPlanned, host_ngram_table_copies, Pro6000MaxQNative, VariantRefused,
+  VariantUnobserved, VariantObserved, VariantHypothesis, VariantStatus, flash_next_variant_rows, variant_status,
+  flash_next_experiment_identity_frontier, kv_arithmetic_capacity, serving_variant_eq,
+}
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
 import gunbc.serving.flash_next_image_capability_observation {
   Sm90, Sm100, Sm120, Fp8MainKvCache, FlashInferNativeFp4Moe, Nvfp4PleTable, JitIfCompiles, NotBuilt, BuiltIn,
@@ -215,6 +221,7 @@ test fn w_declared_frontiers_are_open() -> Bool {
     && !dissolution_is_bound(condition: flash_next_maxq_run_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_image_observation_frontier)
     && !dissolution_is_bound(condition: observed_memory_frontier)
+    && !dissolution_is_bound(condition: flash_next_experiment_identity_frontier)
     && !dissolution_is_bound(condition: flash_next_roofline_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_measured_readings_frontier)
 }
@@ -267,4 +274,43 @@ fn card_memory_is(card: RooflineCard?, bytes: Nat) -> Bool {
     Present { value: c } => c.memory_bytes == bytes
     none => false
   }
+}
+
+// Unsupported paths are Refused or Unobserved, never zero; variants never compare equal across stacks.
+test fn w_variants_are_distinct_and_unsupported_paths_are_not_zero() -> Bool {
+  !serving_variant_eq(a: H200ObservedCurrentStack, b: B200ObservedCurrentStack)
+    && !serving_variant_eq(a: B200ObservedCurrentStack, b: B200PredictedNativeStack)
+    && status_is_refused(s: variant_status(rows: flash_next_variant_rows, v: H200ObservedCurrentStack))
+    && status_is_unobserved(s: variant_status(rows: flash_next_variant_rows, v: B200ObservedCurrentStack))
+    && status_is_observed(s: variant_status(rows: flash_next_variant_rows, v: Pro6000MaxQNative))
+    && status_is_hypothesis(s: variant_status(rows: flash_next_variant_rows, v: B200PredictedNativeStack))
+    && !serving_variant_eq(a: H200UpstreamV032, b: H200ObservedCurrentStack)
+    && !serving_variant_eq(a: H200UpstreamV032, b: B200UpstreamV032)
+    && status_is_planned(s: variant_status(rows: flash_next_variant_rows, v: H200UpstreamV032))
+    && host_ngram_table_copies(replicas: 8, shared_copy: true) == 1
+    && host_ngram_table_copies(replicas: 8, shared_copy: false) == 8
+}
+
+fn status_is_planned(s: VariantStatus?) -> Bool {
+  match s { Present { value: VariantPlanned { recorded_when: _ } } => true, _ => false }
+}
+
+fn status_is_refused(s: VariantStatus?) -> Bool {
+  match s { Present { value: VariantRefused { cause: _ } } => true, _ => false }
+}
+fn status_is_unobserved(s: VariantStatus?) -> Bool {
+  match s { Present { value: VariantUnobserved { trigger: _ } } => true, _ => false }
+}
+fn status_is_observed(s: VariantStatus?) -> Bool {
+  match s { Present { value: VariantObserved { run_receipt_ref: _ } } => true, _ => false }
+}
+fn status_is_hypothesis(s: VariantStatus?) -> Bool {
+  match s { Present { value: VariantHypothesis { basis: _ } } => true, _ => false }
+}
+
+// KV arithmetic fills two of the six capacity quantities and leaves the SLO-bound ones absent, not zero.
+test fn w_kv_arithmetic_leaves_slo_bound_capacity_absent() -> Bool {
+  let c = kv_arithmetic_capacity(retained_tokens: 1700000, max_context_tokens: 262144)
+  match c.gpu_resident_warm_sessions_at_slo { none => true, Present { value: _ } => false }
+    && match c.aggregate_retained_tokens { Present { value: v } => v == 1700000, none => false }
 }
