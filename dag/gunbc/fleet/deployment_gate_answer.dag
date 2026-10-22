@@ -1,0 +1,369 @@
+module gunbc.fleet.deployment_gate_answer
+
+// STAGE 2 OF gunbc.plans.ntfy_deployment_gate_approval: THE ROUTE THAT ANSWERS THE PENDING GITHUB GATE.
+//
+// WHAT THIS MODULE IS. A pure fold over the facts a transport hands it. It performs no HTTP, signs no
+// JWT and mints no token: the later actuator change owns transport (it reuses gunbc.github_effect_perform,
+// never a second HTTP path) and hands this route what GitHub returned. The route's job is the JOIN: it
+// derives the three requests that ought to have been sent from ONE DeploymentGateBoundary and the filed
+// claim, compares them with the requests the responses say were sent, and only then walks the confined
+// mints in the order the plan fixes:
+//   A. observe_gate_installation  (App-JWT read of GET /repos/{owner}/{repo}/installation)
+//   B. observe_rule_ownership     (the enabled-rule read), with the installation OBSERVED in A, never claimed
+//   C. broker_answer_decision, then the review call, then mint_accepted_rule_review.
+// It is the only non-witness caller of those mints.
+//
+// DARK. While the environment still lists RequiredReviewers the route returns Waiting{RequiredReviewersStand}
+// BEFORE any read or review is considered, so stage 2 is unreachable for srv1-production until the operator
+// removes the reviewer (stage 5). That is a typed arm of the outcome, not a toggle: there is no input that
+// skips it. CONSEQUENCE, stated plainly: the plan's stage-4 witnessed trial cannot run through this route
+// while reviewers stand either; lifting DARK is a later change that needs the operator's yes.
+//
+// WHAT IS NEVER RETURNED. Answered carries an AcceptedRuleReviewReceipt, which only the mint can build, so
+// "approved" cannot be reported without a 204 on the exact route. Every other arm is Waiting or
+// BrokerDeclined.
+//
+// THE RUN ID IS THE CARRIER (extdeps.github.workflow_runs GitHubWorkflowRunId) at every position; the path
+// text crosses through github_workflow_run_id_wire_text inside the extdeps builder, never a cast.
+import std.types { String, List, NonEmptyStr, HttpStatus }
+import std.optional { Present, Absent }
+import extdeps.ietf.http_semantics { HttpMethod }
+import extdeps.github.github { Repository }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import extdeps.github.actions_runs { WorkflowRunRecord }
+import extdeps.github.deployment_protection_rule {
+  RestCall,
+  review_call,
+  installation_readback_call,
+  enabled_rule_readback_call,
+  BuiltReviewPath,
+  BuiltReviewPathOk,
+  BuiltReviewPathRefused,
+  BuiltReadPath,
+  BuiltReadPathOk,
+  BuiltReadPathRefused,
+  ReadPathAxis,
+  ReviewPathBuildRefusal,
+  ReviewPathSegment,
+  review_endpoint_path_built_for,
+  installation_readback_path_built_for,
+  enabled_rule_readback_path_built_for,
+  InstallationWireFields,
+  EnabledDeploymentProtectionRule,
+  PendingDeploymentWait,
+  DeploymentProtectionRuleReview,
+  ReviewState,
+  Approved,
+  Rejected,
+  GitHubDeploymentProtectionRuleId,
+}
+import gunbc.auth.github_deployment_environment {
+  GitHubEnvironmentProtectionSettings,
+  environment_protection_requires_reviewers,
+}
+import gunbc.auth.approval_capability { ApprovalCapability, ProposeApprove, ProposeDeny }
+import gunbc.auth.deployment_gate_authorization {
+  DeploymentGateBoundary,
+  GateRequestClaim,
+  GateInstallationClaim,
+  ObservedGateInstallation,
+  InstallationObservation,
+  InstallationObserved,
+  InstallationObservationRefused,
+  InstallationObservationRefusal,
+  EnvironmentRuleOwnership,
+  OwnedByGateApp,
+  NotOwnedByGateApp,
+  OwnershipRefusalReason,
+  BrokerAnswerVerdict,
+  BrokerMayAnswer,
+  BrokerRefused,
+  BrokerAnswerRefusal,
+  AcceptedReviewOutcome,
+  Accepted,
+  AcceptedReviewRefused,
+  AcceptedReviewRefusal,
+  AcceptedRuleReviewReceipt,
+  observe_gate_installation,
+  observe_rule_ownership,
+  broker_answer_decision,
+  capability_decision,
+  mint_accepted_rule_review,
+}
+
+// A REQUEST AS THE TRANSPORT SAYS IT SENT IT. Method and path; the body of a review is built here, never
+// supplied, so it is not part of what a response can claim.
+type SentRequest {
+  method: HttpMethod,
+  path: NonEmptyStr,
+}
+
+type InstallationReadResponse {
+  sent: SentRequest,
+  status: HttpStatus,
+  wire: InstallationWireFields,
+}
+
+type RuleReadResponse {
+  sent: SentRequest,
+  status: HttpStatus,
+  rules: List<EnabledDeploymentProtectionRule>,
+}
+
+type ReviewResponse {
+  sent: SentRequest,
+  status: HttpStatus,
+}
+
+// WHICH READ A MISROUTED REQUEST WAS.
+type GateRoute
+  = InstallationRoute
+  | EnabledRuleRoute
+  | ReviewRoute
+
+type GateWaitReason
+  = RequiredReviewersStand
+  | ProtectionReadNamesAnotherEnvironment { read: String, boundary: NonEmptyStr }
+  | RouteSegmentIsNotRouteSafe { axis: ReadPathAxis, hostile_value: NonEmptyStr }
+  | ReviewRouteSegmentIsNotRouteSafe { refusal: ReviewPathBuildRefusal, hostile_segment: ReviewPathSegment }
+  | ReadWasNotTheRoute { route: GateRoute, expected: SentRequest, sent: SentRequest }
+  | InstallationNotObserved { because: InstallationObservationRefusal }
+  | RuleReadDidNotAnswer { status: HttpStatus }
+  | RuleOwnershipNotObserved { because: OwnershipRefusalReason }
+  | ReviewNotAccepted { because: AcceptedReviewRefusal }
+
+type GateAnswerOutcome
+  = Answered { receipt: AcceptedRuleReviewReceipt }
+  | Waiting { reason: GateWaitReason }
+  | BrokerDeclined { because: BrokerAnswerRefusal }
+
+// A CALL AND THE PATH THE BOUNDARY BUILDS FOR IT, read together: the route never compares a response with
+// a bare string.
+fn expected_request(call: RestCall, path: NonEmptyStr) -> SentRequest {
+  SentRequest { method: call.method, path: path }
+}
+
+fn is_the_route(expected: SentRequest, sent: SentRequest) -> Bool {
+  expected.method == sent.method && expected.path == sent.path
+}
+
+fn boundary_owner(boundary: DeploymentGateBoundary) -> NonEmptyStr {
+  boundary.repository.owner as NonEmptyStr
+}
+
+fn boundary_repo(boundary: DeploymentGateBoundary) -> NonEmptyStr {
+  boundary.repository.name as NonEmptyStr
+}
+
+fn review_body_for(boundary: DeploymentGateBoundary, capability: ApprovalCapability) -> DeploymentProtectionRuleReview {
+  DeploymentProtectionRuleReview {
+    environment_name: boundary.environment_name,
+    state: match capability_decision(capability: capability) {
+      ProposeApprove => Approved
+      ProposeDeny => Rejected
+    },
+    comment: Absent,
+  }
+}
+
+// PHASE A. The only caller of observe_gate_installation (admit_callers names this fn).
+fn observe_gate_installation_for_route(
+  boundary: DeploymentGateBoundary,
+  response: InstallationReadResponse,
+  claim: GateInstallationClaim
+) -> InstallationObservation {
+  observe_gate_installation(
+    owner: boundary_owner(boundary: boundary),
+    repo: boundary_repo(boundary: boundary),
+    status: response.status,
+    wire: response.wire,
+    claim: claim
+  )
+}
+
+// PHASE B. The only caller of observe_rule_ownership; the installation is the OBSERVED one from phase A.
+fn observe_rule_ownership_for_route(
+  boundary: DeploymentGateBoundary,
+  response: RuleReadResponse,
+  observed: ObservedGateInstallation
+) -> EnvironmentRuleOwnership {
+  observe_rule_ownership(rules: response.rules, environment_name: boundary.environment_name, observed: observed)
+}
+
+fn wait_for(reason: GateWaitReason) -> GateAnswerOutcome {
+  Waiting { reason: reason }
+}
+
+// WHAT THE PRE-MINT PHASES YIELD. The mint itself is called from answer_pending_environment_gate and
+// nowhere else (its admit_callers names that fn, and admission has no same-module exemption), so phases
+// A and B and the broker decision hand it a ready ownership or a typed stop.
+type ReviewPrep
+  = PrepStopped { outcome: GateAnswerOutcome }
+  | PrepReady { ownership: EnvironmentRuleOwnership }
+
+fn stopped(reason: GateWaitReason) -> ReviewPrep {
+  PrepStopped { outcome: Waiting { reason: reason } }
+}
+
+fn prepare_review(
+  boundary: DeploymentGateBoundary,
+  claim: GateRequestClaim,
+  installation_claim: GateInstallationClaim,
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  capability: ApprovalCapability,
+  installation_read: InstallationReadResponse,
+  rule_read: RuleReadResponse,
+  review_response: ReviewResponse
+) -> ReviewPrep {
+  match installation_readback_path_built_for(owner: boundary_owner(boundary: boundary), repo: boundary_repo(boundary: boundary)) {
+    BuiltReadPathRefused { axis: a, hostile_value: v } => stopped(reason: RouteSegmentIsNotRouteSafe { axis: a, hostile_value: v })
+    BuiltReadPathOk { path: ipath } => {
+      let iexpected = expected_request(call: installation_readback_call, path: ipath)
+      if !is_the_route(expected: iexpected, sent: installation_read.sent) {
+        stopped(reason: ReadWasNotTheRoute { route: InstallationRoute, expected: iexpected, sent: installation_read.sent })
+      } else {
+        match observe_gate_installation_for_route(boundary: boundary, response: installation_read, claim: installation_claim) {
+          InstallationObservationRefused { because: b } => stopped(reason: InstallationNotObserved { because: b })
+          InstallationObserved { observed: observed } =>
+            prepare_after_installation(
+              boundary: boundary,
+              claim: claim,
+              observed: observed,
+              wait: wait,
+              run: run,
+              capability: capability,
+              rule_read: rule_read,
+              review_response: review_response
+            )
+        }
+      }
+    }
+  }
+}
+
+fn prepare_after_installation(
+  boundary: DeploymentGateBoundary,
+  claim: GateRequestClaim,
+  observed: ObservedGateInstallation,
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  capability: ApprovalCapability,
+  rule_read: RuleReadResponse,
+  review_response: ReviewResponse
+) -> ReviewPrep {
+  match enabled_rule_readback_path_built_for(
+    owner: boundary_owner(boundary: boundary),
+    repo: boundary_repo(boundary: boundary),
+    environment_name: boundary.environment_name
+  ) {
+    BuiltReadPathRefused { axis: a, hostile_value: v } => stopped(reason: RouteSegmentIsNotRouteSafe { axis: a, hostile_value: v })
+    BuiltReadPathOk { path: rpath } => {
+      let rexpected = expected_request(call: enabled_rule_readback_call, path: rpath)
+      if !is_the_route(expected: rexpected, sent: rule_read.sent) {
+        stopped(reason: ReadWasNotTheRoute { route: EnabledRuleRoute, expected: rexpected, sent: rule_read.sent })
+      } else if rule_read.status != enabled_rule_readback_call.success_status {
+        stopped(reason: RuleReadDidNotAnswer { status: rule_read.status })
+      } else {
+        let ownership = observe_rule_ownership_for_route(boundary: boundary, response: rule_read, observed: observed)
+        match ownership {
+          NotOwnedByGateApp { because: b } => stopped(reason: RuleOwnershipNotObserved { because: b })
+          OwnedByGateApp { observation: _ } =>
+            prepare_after_ownership(
+              boundary: boundary,
+              claim: claim,
+              ownership: ownership,
+              wait: wait,
+              run: run,
+              capability: capability,
+              review_response: review_response
+            )
+        }
+      }
+    }
+  }
+}
+
+fn prepare_after_ownership(
+  boundary: DeploymentGateBoundary,
+  claim: GateRequestClaim,
+  ownership: EnvironmentRuleOwnership,
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  capability: ApprovalCapability,
+  review_response: ReviewResponse
+) -> ReviewPrep {
+  match broker_answer_decision(wait: wait, run: run, claim: claim, capability: capability, ownership: ownership) {
+    BrokerRefused { because: b } => PrepStopped { outcome: BrokerDeclined { because: b } }
+    BrokerMayAnswer =>
+      match review_endpoint_path_built_for(
+        owner: boundary_owner(boundary: boundary),
+        repo: boundary_repo(boundary: boundary),
+        run_id: claim.run_id
+      ) {
+        BuiltReviewPathRefused { refusal: r, hostile_segment: h } =>
+          stopped(reason: ReviewRouteSegmentIsNotRouteSafe { refusal: r, hostile_segment: h })
+        BuiltReviewPathOk { path: path } => {
+          let expected = expected_request(call: review_call, path: path)
+          if !is_the_route(expected: expected, sent: review_response.sent) {
+            stopped(reason: ReadWasNotTheRoute { route: ReviewRoute, expected: expected, sent: review_response.sent })
+          } else {
+            PrepReady { ownership: ownership }
+          }
+        }
+      }
+  }
+}
+
+// THE ROUTE. DARK first (typed, before any read is considered), then phases A and B and the broker
+// decision through prepare_review, then phase C: the only call to the receipt mint.
+fn answer_pending_environment_gate(
+  boundary: DeploymentGateBoundary,
+  protection: GitHubEnvironmentProtectionSettings,
+  claim: GateRequestClaim,
+  installation_claim: GateInstallationClaim,
+  requested_rule_id: GitHubDeploymentProtectionRuleId,
+  wait: PendingDeploymentWait,
+  run: WorkflowRunRecord,
+  capability: ApprovalCapability,
+  installation_read: InstallationReadResponse,
+  rule_read: RuleReadResponse,
+  review_response: ReviewResponse
+) -> GateAnswerOutcome {
+  if protection.name != (boundary.environment_name as String) {
+    wait_for(reason: ProtectionReadNamesAnotherEnvironment { read: protection.name, boundary: boundary.environment_name })
+  } else if environment_protection_requires_reviewers(settings: protection) {
+    wait_for(reason: RequiredReviewersStand)
+  } else {
+    match prepare_review(
+      boundary: boundary,
+      claim: claim,
+      installation_claim: installation_claim,
+      wait: wait,
+      run: run,
+      capability: capability,
+      installation_read: installation_read,
+      rule_read: rule_read,
+      review_response: review_response
+    ) {
+      PrepStopped { outcome: o } => o
+      PrepReady { ownership: ownership } => {
+        let review = review_body_for(boundary: boundary, capability: capability)
+        match mint_accepted_rule_review(
+          owner: boundary_owner(boundary: boundary),
+          repo: boundary_repo(boundary: boundary),
+          run_id: claim.run_id,
+          environment_name: claim.environment,
+          intended: review.state,
+          review: review,
+          status: review_response.status,
+          ownership: ownership,
+          requested_rule_id: requested_rule_id
+        ) {
+          Accepted { receipt: r } => Answered { receipt: r }
+          AcceptedReviewRefused { because: b } => wait_for(reason: ReviewNotAccepted { because: b })
+        }
+      }
+    }
+  }
+}

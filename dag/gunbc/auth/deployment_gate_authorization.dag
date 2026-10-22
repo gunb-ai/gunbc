@@ -2300,14 +2300,10 @@ type ReviewerRemovalAdmission
 // made anywhere in this file, and the next rung (a run-id carrier that carries inequality in its own
 // construction) is not available in this corpus yet.
 //
-// THE ADMITTED CALLER OF THE RECEIPT MINT, AND ITS FRONTIER. The stage-2 route
-// (gunbc.fleet.deployment_gate_answer::answer_pending_environment_gate) is the mint's only admitted
-// production caller, and it does not exist until stage 2. Declaring a non-existent module path in
-// admit_callers would make this module unresolvable, so the frontier is modelled the way the corpus
-// models an unbuilt producer: the admitted list contains the witnesses that carry real responses, and
-// the route's path is recorded as the standing below, which the stage-2 PR must retire by adding itself
-// to the list. The type, the confinement and the refusal REDs land NOW; only the route is deferred.
-data accepted_review_mint_frontier: NonEmptyStr = "gunbc.fleet.deployment_gate_answer::answer_pending_environment_gate"
+// THE ADMITTED CALLER OF THE RECEIPT MINT. gunbc.fleet.deployment_gate_answer::answer_pending_environment_gate
+// is the mint's only admitted production caller and is named in its admit_callers. The route's consumer
+// (the actuator that performs the three calls and hands the route their responses) is the declared
+// frontier recorded in gunbc.plans.ntfy_deployment_gate_approval, with its trigger and success condition.
 
 fn admit_reviewer_removal(
   approved: AcceptedRuleReviewReceipt?,

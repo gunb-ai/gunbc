@@ -1,0 +1,468 @@
+module test.claim.deployment_gate_answer_witness
+
+// WITNESS FOR THE STAGE-2 ROUTE gunbc.fleet.deployment_gate_answer::answer_pending_environment_gate.
+//
+// WHAT THESE CLAIMS ARE OVER, STATED PLAINLY (DESIGN §3, "a witness discriminates at one interface").
+// Every input below is a SUPPLIED WIRE FACT at the route's interface: the responses GitHub would return,
+// the run record, the wait, the filed claim and the tapped capability. Nothing here performs HTTP, so
+// no claim in this file establishes that a REAL transport produces those facts. That real-producer claim
+// is the declared frontier recorded in gunbc.plans.ntfy_deployment_gate_approval ("Stage 2's declared
+// frontier"): the route's consumer is the later actuator change, and the inhabitance claim becomes
+// executable on the real I/O path when it lands.
+//
+// WHAT EACH CLAIM STILL EXECUTES: the REAL route. The honest-path claims drive the real confined mints
+// (observe_gate_installation, observe_rule_ownership, mint_accepted_rule_review) through the route, and
+// the receipts they assert on can only have been built by the mint, so deleting the route's integration
+// of the mints makes the inhabitance claims go red.
+//
+// THE FIVE REDS: forged binding, crossed run id, crossed environment, broker denied, dark state.
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import std.types { Int, Bool, List, NonEmptyStr, HttpStatus, Timestamp, String }
+import std.measure { minute }
+import std.optional { Present, Absent }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.ietf.http_semantics { GET, POST }
+import extdeps.github.github { Repository }
+import extdeps.github.actions_runs { WorkflowRunRecord }
+import extdeps.github.app { GitHubAppId, GitHubAppInstallationId }
+import extdeps.github.deployment_environments {
+  DeploymentBranchPolicyRule,
+  PolicyRefBranch,
+  SelectedBranchesAndTags,
+  RequiredReviewers,
+  NoRequiredReviewers,
+}
+import extdeps.github.deployment_protection_rule {
+  GitHubDeploymentProtectionRuleId,
+  PendingDeploymentWait,
+  PendingDeploymentEnvironment,
+  PendingDeploymentReviewer,
+  EnabledDeploymentProtectionRule,
+  RuleOwningApp,
+  InstallationWireFields,
+  Approved,
+  Rejected,
+}
+import gunbc.repository { gunbc_repository }
+import gunbc.auth.github_deployment_environment {
+  GitHubEnvironmentProtectionSettings,
+  srv1_production_environment_name,
+}
+import gunbc.auth.approval_capability {
+  ApprovalCapability,
+  ApprovalCapabilityClaims,
+  ProposedDecision,
+  ProposeApprove,
+  ProposeDeny,
+}
+import extdeps.crypto.mac { MacKeyId }
+import gunbc.auth.deployment_gate_authorization {
+  DeploymentGateBoundary,
+  srv1_deployment_gate_boundary,
+  GateRequestClaim,
+  GateInstallationClaim,
+  BrokerAnswerRefusal,
+  RecordRunIdIsNotTheFiledRun,
+  TrialArmIsOnAnotherEnvironment,
+  RemovalRefused,
+  RemovalAdmitted,
+  ApprovingArm,
+  admit_reviewer_removal,
+}
+import gunbc.fleet.deployment_gate_answer {
+  SentRequest,
+  InstallationReadResponse,
+  RuleReadResponse,
+  ReviewResponse,
+  GateAnswerOutcome,
+  Answered,
+  Waiting,
+  BrokerDeclined,
+  GateWaitReason,
+  RequiredReviewersStand,
+  ReadWasNotTheRoute,
+  InstallationRoute,
+  InstallationNotObserved,
+  RuleOwnershipNotObserved,
+  ReviewNotAccepted,
+  answer_pending_environment_gate,
+}
+
+data gated_env: NonEmptyStr = srv1_production_environment_name
+data sibling_env: NonEmptyStr = "gcp-iam-bootstrap"
+data sibling_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
+  repository: gunbc_repository,
+  environment_name: sibling_env,
+}
+data run_a: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067113 }
+data run_b: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067114 }
+
+data app_id: GitHubAppId = GitHubAppId { value: 1900000001 }
+data installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 888800001 }
+data rule_id: GitHubDeploymentProtectionRuleId = GitHubDeploymentProtectionRuleId { value: 900000001 }
+
+data installation_claim: GateInstallationClaim = GateInstallationClaim {
+  installation_id: installation_id,
+  app_id: app_id,
+}
+
+fn claim_for(run_id: GitHubWorkflowRunId, environment: NonEmptyStr) -> GateRequestClaim {
+  GateRequestClaim {
+    run_id: run_id,
+    environment: environment,
+    escalation_id: "srv1-gate-35447067113",
+    request_revision: "rev-1",
+    attempt: "fleet-converge-35447067113" as AttemptIdentity,
+  }
+}
+
+fn capability_for(decision: ProposedDecision) -> ApprovalCapability {
+  ApprovalCapability {
+    claims: ApprovalCapabilityClaims {
+      protocol: "gunbc.approval-capability.v1",
+      issuer: "gunbc.auth.approval_broker",
+      audience: "gunbc.auth.approval_broker",
+      authority: "gunbc.auth.scoped_authorization",
+      escalation_id: "srv1-gate-35447067113",
+      request_revision: "rev-1",
+      decision: decision,
+      attempt: "fleet-converge-35447067113" as AttemptIdentity,
+      issued_at: "2026-10-18T09:01:00Z" as Timestamp,
+      expires_at: "2026-10-18T09:11:00Z" as Timestamp,
+      key_id: "broker-key-1" as MacKeyId,
+    },
+    tag_b64url: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  }
+}
+
+fn wait_for_environment(environment_name: NonEmptyStr) -> PendingDeploymentWait {
+  PendingDeploymentWait {
+    environment: PendingDeploymentEnvironment { id: 160000001, name: environment_name },
+    wait_timer: minute(count: 30),
+    wait_timer_started_at: Present { value: "2026-10-18T09:00:00Z" },
+    current_user_can_approve: true,
+    reviewers: [] as List<PendingDeploymentReviewer>,
+  }
+}
+
+fn in_flight_run(run_id: GitHubWorkflowRunId) -> WorkflowRunRecord {
+  WorkflowRunRecord {
+    run_id: run_id,
+    event: "workflow_dispatch",
+    head_branch: "main",
+    status: "in_progress",
+    conclusion: "",
+    created_at_epoch_s: 1792000000,
+    run_started_at_epoch_s: 1792000060,
+    updated_at_epoch_s: 1792000120,
+  }
+}
+
+// The protection read of a gate whose reviewer has been removed, and of one that still has it.
+fn protection_with(reviewers: Bool) -> GitHubEnvironmentProtectionSettings {
+  GitHubEnvironmentProtectionSettings {
+    name: srv1_production_environment_name as String,
+    deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }] },
+    reviewer_requirement: if reviewers { RequiredReviewers } else { NoRequiredReviewers },
+  }
+}
+
+// THE WIRE FACTS, as the three responses would arrive, with the request each says was sent.
+data honest_installation_read: InstallationReadResponse = InstallationReadResponse {
+  sent: SentRequest { method: GET, path: "/repos/gunb-ai/gunbc/installation" },
+  status: 200,
+  wire: InstallationWireFields {
+    id: Present { value: 888800001 },
+    app_id: Present { value: 1900000001 },
+    app_slug: Present { value: "gunbc-deployment-gate" },
+  },
+}
+
+fn rule_read_with(rule_row_id: Int, row_app: GitHubAppId) -> RuleReadResponse {
+  RuleReadResponse {
+    sent: SentRequest {
+      method: GET,
+      path: "/repos/gunb-ai/gunbc/environments/srv1-production/deployment_protection_rules",
+    },
+    status: 200,
+    rules: [
+      EnabledDeploymentProtectionRule {
+        id: GitHubDeploymentProtectionRuleId { value: rule_row_id },
+        node_id: "DPPR_1",
+        enabled: true,
+        app: RuleOwningApp { id: row_app, slug: "gunbc-deployment-gate" },
+      }
+    ],
+  }
+}
+
+fn honest_rule_read() -> RuleReadResponse {
+  rule_read_with(rule_row_id: 900000001, row_app: app_id)
+}
+
+fn review_response_for(run_id: GitHubWorkflowRunId, status: HttpStatus) -> ReviewResponse {
+  ReviewResponse {
+    sent: SentRequest {
+      method: POST,
+      path: if run_id.value == 35447067113 {
+        "/repos/gunb-ai/gunbc/actions/runs/35447067113/deployment_protection_rule"
+      } else {
+        "/repos/gunb-ai/gunbc/actions/runs/35447067114/deployment_protection_rule"
+      },
+    },
+    status: status,
+  }
+}
+
+// THE ROUTE UNDER TEST, every input a supplied fact. No mint is called from this file: the route is the
+// only caller, which is what the confinement admits.
+fn route(
+  boundary: DeploymentGateBoundary,
+  protection: GitHubEnvironmentProtectionSettings,
+  claim: GateRequestClaim,
+  run: WorkflowRunRecord,
+  wait: PendingDeploymentWait,
+  decision: ProposedDecision,
+  installation_read: InstallationReadResponse,
+  rule_read: RuleReadResponse,
+  review_response: ReviewResponse
+) -> GateAnswerOutcome {
+  answer_pending_environment_gate(
+    boundary: boundary,
+    protection: protection,
+    claim: claim,
+    installation_claim: installation_claim,
+    requested_rule_id: rule_id,
+    wait: wait,
+    run: run,
+    capability: capability_for(decision: decision),
+    installation_read: installation_read,
+    rule_read: rule_read,
+    review_response: review_response
+  )
+}
+
+fn honest_route(run_id: GitHubWorkflowRunId, decision: ProposedDecision) -> GateAnswerOutcome {
+  route(
+    boundary: srv1_deployment_gate_boundary,
+    protection: protection_with(reviewers: false),
+    claim: claim_for(run_id: run_id, environment: gated_env),
+    run: in_flight_run(run_id: run_id),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: decision,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_id, status: 204)
+  )
+}
+
+// INHABITANCE, over the route: the honest wire facts, with the reviewer gone, produce a receipt that only
+// the mint can have built, naming the run, the environment, the DECISION THE TAP CARRIED and the rule and
+// installation the two reads established.
+test fn the_honest_wire_facts_are_answered_with_a_receipt_from_the_mint() -> Bool {
+  (match honest_route(run_id: run_a, decision: ProposeApprove) {
+     Answered { receipt: r } =>
+       r.run_id.value == 35447067113
+         && r.environment_name == gated_env
+         && r.state == Approved
+         && r.rule_id.value == 900000001
+         && r.installation_id.value == 888800001
+     Waiting { reason: _ } => false
+     BrokerDeclined { because: _ } => false
+   })
+  && (match honest_route(run_id: run_b, decision: ProposeDeny) {
+        Answered { receipt: r } => r.run_id.value == 35447067114 && r.state == Rejected
+        Waiting { reason: _ } => false
+        BrokerDeclined { because: _ } => false
+      })
+}
+
+// RED 1, FORGED BINDING: the rule id or the installation the reads show differ from what was claimed or
+// requested. No receipt, and the outcome is Waiting.
+test fn a_forged_binding_yields_no_receipt_and_waits() -> Bool {
+  // The installation read shows another installation than the operator typed.
+  (match route(
+     boundary: srv1_deployment_gate_boundary,
+     protection: protection_with(reviewers: false),
+     claim: claim_for(run_id: run_a, environment: gated_env),
+     run: in_flight_run(run_id: run_a),
+     wait: wait_for_environment(environment_name: gated_env),
+     decision: ProposeApprove,
+     installation_read: InstallationReadResponse {
+       sent: honest_installation_read.sent,
+       status: 200,
+       wire: InstallationWireFields {
+         id: Present { value: 777 },
+         app_id: Present { value: 1900000001 },
+         app_slug: Present { value: "gunbc-deployment-gate" },
+       },
+     },
+     rule_read: honest_rule_read(),
+     review_response: review_response_for(run_id: run_a, status: 204)
+   ) {
+     Waiting { reason: InstallationNotObserved { because: _ } } => true
+     Waiting { reason: _ } => false
+     Answered { receipt: _ } => false
+     BrokerDeclined { because: _ } => false
+   })
+  // The enabled rule belongs to another App than the one observed.
+  && (match route(
+        boundary: srv1_deployment_gate_boundary,
+        protection: protection_with(reviewers: false),
+        claim: claim_for(run_id: run_a, environment: gated_env),
+        run: in_flight_run(run_id: run_a),
+        wait: wait_for_environment(environment_name: gated_env),
+        decision: ProposeApprove,
+        installation_read: honest_installation_read,
+        rule_read: rule_read_with(rule_row_id: 900000001, row_app: GitHubAppId { value: 2222222222 }),
+        review_response: review_response_for(run_id: run_a, status: 204)
+      ) {
+        Waiting { reason: RuleOwnershipNotObserved { because: _ } } => true
+        Waiting { reason: _ } => false
+        Answered { receipt: _ } => false
+        BrokerDeclined { because: _ } => false
+      })
+  // The rule row's id is not the rule id the caller requested to answer.
+  && (match route(
+        boundary: srv1_deployment_gate_boundary,
+        protection: protection_with(reviewers: false),
+        claim: claim_for(run_id: run_a, environment: gated_env),
+        run: in_flight_run(run_id: run_a),
+        wait: wait_for_environment(environment_name: gated_env),
+        decision: ProposeApprove,
+        installation_read: honest_installation_read,
+        rule_read: rule_read_with(rule_row_id: 900000042, row_app: app_id),
+        review_response: review_response_for(run_id: run_a, status: 204)
+      ) {
+        Waiting { reason: ReviewNotAccepted { because: _ } } => true
+        Waiting { reason: _ } => false
+        Answered { receipt: _ } => false
+        BrokerDeclined { because: _ } => false
+      })
+  // The read was not the installation route: the response says it hit another path.
+  && (match route(
+        boundary: srv1_deployment_gate_boundary,
+        protection: protection_with(reviewers: false),
+        claim: claim_for(run_id: run_a, environment: gated_env),
+        run: in_flight_run(run_id: run_a),
+        wait: wait_for_environment(environment_name: gated_env),
+        decision: ProposeApprove,
+        installation_read: InstallationReadResponse {
+          sent: SentRequest { method: GET, path: "/repos/gunb-ai/someone-elses-fork/installation" },
+          status: 200,
+          wire: honest_installation_read.wire,
+        },
+        rule_read: honest_rule_read(),
+        review_response: review_response_for(run_id: run_a, status: 204)
+      ) {
+        Waiting { reason: ReadWasNotTheRoute { route: InstallationRoute, expected: _, sent: _ } } => true
+        Waiting { reason: _ } => false
+        Answered { receipt: _ } => false
+        BrokerDeclined { because: _ } => false
+      })
+}
+
+// RED 2, CROSSED RUN ID: the run record GitHub returned is for run B while the filed claim is for run A.
+// Refused by the broker's decision BEFORE the mint is reached.
+test fn a_run_record_for_another_run_is_refused_before_the_mint() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection: protection_with(reviewers: false),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_b),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_a, status: 204)
+  ) {
+    BrokerDeclined { because: RecordRunIdIsNotTheFiledRun { record_run_id: _, filed_run_id: _ } } => true
+    BrokerDeclined { because: _ } => false
+    Waiting { reason: _ } => false
+    Answered { receipt: _ } => false
+  }
+}
+
+// RED 3, CROSSED ENVIRONMENT, both halves. (a) The mint refuses a claim for another environment than the
+// boundary's body. (b) A pair of REAL receipts, answered honestly on srv1-production, unlocks nothing for
+// the sibling lane's boundary: the admission refuses with TrialArmIsOnAnotherEnvironment.
+test fn a_crossed_environment_is_refused_by_the_mint_and_by_the_admission() -> Bool {
+  (match route(
+     boundary: srv1_deployment_gate_boundary,
+     protection: protection_with(reviewers: false),
+     claim: claim_for(run_id: run_a, environment: sibling_env),
+     run: in_flight_run(run_id: run_a),
+     wait: wait_for_environment(environment_name: sibling_env),
+     decision: ProposeApprove,
+     installation_read: honest_installation_read,
+     rule_read: honest_rule_read(),
+     review_response: review_response_for(run_id: run_a, status: 204)
+   ) {
+     Waiting { reason: ReviewNotAccepted { because: _ } } => true
+     Waiting { reason: _ } => false
+     BrokerDeclined { because: _ } => true
+     Answered { receipt: _ } => false
+   })
+  && (match honest_route(run_id: run_a, decision: ProposeApprove) {
+        Answered { receipt: approve } => match honest_route(run_id: run_b, decision: ProposeDeny) {
+          Answered { receipt: reject } =>
+            match admit_reviewer_removal(
+              approved: Present { value: approve },
+              rejected: Present { value: reject },
+              boundary: sibling_boundary
+            ) {
+              RemovalRefused {
+                missing: TrialArmIsOnAnotherEnvironment { arm: ApprovingArm, arm_environment: _, expected_environment: _ },
+              } => true
+              RemovalRefused { missing: _ } => false
+              RemovalAdmitted { evidence: _ } => false
+            }
+          Waiting { reason: _ } => false
+          BrokerDeclined { because: _ } => false
+        }
+        Waiting { reason: _ } => false
+        BrokerDeclined { because: _ } => false
+      })
+}
+
+// RED 4, BROKER DENIED: the typed reason is carried, no receipt, no review. Here the wait names another
+// environment than the claim, so the decision refuses and the route reports the refusal itself.
+test fn a_broker_denial_carries_its_typed_reason() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection: protection_with(reviewers: false),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: sibling_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_a, status: 204)
+  ) {
+    BrokerDeclined { because: _ } => true
+    Waiting { reason: _ } => false
+    Answered { receipt: _ } => false
+  }
+}
+
+// RED 5, DARK: with required reviewers present the result is Waiting{RequiredReviewersStand} even though
+// every other fact is honest, and a 204 is never even considered. The control above (reviewers gone) is
+// Answered on the same facts, so the only thing this red varies is the reviewer requirement.
+test fn while_required_reviewers_stand_the_route_only_waits() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection: protection_with(reviewers: true),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_a, status: 204)
+  ) {
+    Waiting { reason: RequiredReviewersStand } => true
+    Waiting { reason: _ } => false
+    Answered { receipt: _ } => false
+    BrokerDeclined { because: _ } => false
+  }
+}
