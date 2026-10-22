@@ -1,6 +1,8 @@
 module test.claim.sole_constructor_arm_seal_witness
 
-import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_verdict_all, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -16,39 +18,44 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // names (DESIGN section 3), so the Rust test's two-file definer has no fixture form. That case was a
 // control, never a discriminating RED (see the PR body for #14419).
 //
-// Counts are keyed (class, subject) and exact: `== 1` so a second, unintended refusal cannot pass.
+// Counts are keyed (class, subject) and exact: `== 1` so a second, unintended refusal cannot pass. A
+// census that did not run is CensusUnobserved (exit 2), never a zero, so no control greens by vacancy.
 
-fn arm_refusals(source: String) -> Int {
-  blocking_subject_count_for(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "ArmA")
+fn arm_refusals(source: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "ArmA")
 }
 
 data outside_arm_literal_source: String = "module probe_arm_outside\nimport test.fixture.sole_constructor_arm_seal.definer { SealedArms, ArmA }\nfn forged() -> SealedArms { ArmA { n: 9 } }\n"
 
-test fn arm_literal_outside_the_defining_module_is_refused() -> Bool {
-  arm_refusals(source: outside_arm_literal_source) == 1
+test fn arm_literal_outside_the_defining_module_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: arm_refusals(source: outside_arm_literal_source), holds: fn(n) { n == 1 }))
 }
 
 data outside_match_source: String = "module probe_arm_match\nimport test.fixture.sole_constructor_arm_seal.definer { SealedArms, ArmA, ArmB, ArmU, mk }\nfn read() -> Int { match mk() { ArmA { n: n } => n  ArmB { s: _ } => 0  ArmU => 0 } }\n"
 
 // Control: consuming the sealed coproduct (calling the definer's mint, matching every arm) is legal
 // outside the definer; construction is the only thing the seal confines.
-test fn match_and_mint_call_outside_the_defining_module_are_clean() -> Bool {
-  arm_refusals(source: outside_match_source) == 0
-    && total_blocking_count_for(source: outside_match_source) == 0
+test fn match_and_mint_call_outside_the_defining_module_are_clean() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: arm_refusals(source: outside_match_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: outside_match_source), holds: fn(n) { n == 0 })
+  ])
 }
 
 data inside_arm_literal_source: String = "module probe_arm_inside\ntype Choice sole_constructor = ArmA { n: Int } | ArmB { s: String } | ArmU\nfn mk() -> Choice { ArmA { n: 1 } }\n"
 
 // Control: the same arm literal inside the declaring module is accepted.
-test fn arm_literal_inside_the_defining_module_is_clean() -> Bool {
-  arm_refusals(source: inside_arm_literal_source) == 0
-    && total_blocking_count_for(source: inside_arm_literal_source) == 0
+test fn arm_literal_inside_the_defining_module_is_clean() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: arm_refusals(source: inside_arm_literal_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: inside_arm_literal_source), holds: fn(n) { n == 0 })
+  ])
 }
 
 data same_named_type_source: String = "module probe_arm_same_name\nimport test.fixture.sole_constructor_arm_seal.definer { ArmA }\ntype SealedArms = Other { k: Int }\nfn forged() -> Int { ArmA { n: 9 }\n 0 }\n"
 
 // The seal is keyed on the declaration the arm resolves to, not on a declaration of the same name in
 // the constructing module: a local `SealedArms` must not launder the imported arm.
-test fn arm_literal_in_a_module_declaring_a_same_named_type_is_refused() -> Bool {
-  arm_refusals(source: same_named_type_source) == 1
+test fn arm_literal_in_a_module_declaring_a_same_named_type_is_refused() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: arm_refusals(source: same_named_type_source), holds: fn(n) { n == 1 }))
 }
