@@ -15,7 +15,12 @@ rm -rf /tmp/w680h $W
 git fetch -q origin +refs/pull/14680/head:refs/verifier/14680h2 || { echo FETCH_FAIL; exit 9; }
 [ "$(git rev-parse refs/verifier/14680h2)" = "$HEADSHA" ] || { echo "PR_REF_MOVED=$(git rev-parse refs/verifier/14680h2) STOP"; exit 9; }
 mkdir -p /sys/fs/cgroup/verif680
-echo 17179869184 > /sys/fs/cgroup/verif680/memory.max && echo "CGROUP memory.max=16G ok" || { echo CGROUP_FAIL; exit 9; }
+echo +memory > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+echo 51539607552 > /sys/fs/cgroup/verif680/memory.max || { echo CGROUP_FAIL; exit 9; }
+RB=$(cat /sys/fs/cgroup/verif680/memory.max)
+{ [ "$RB" != "max" ] && [ -n "$RB" ]; } || { echo "MEMORY_BOUND_READBACK_FAIL got=$RB -- STOP"; exit 9; }
+echo "CGROUP_WRAPPER=/sys/fs/cgroup/verif680 memory.max=$RB (read-back, bounded)"
+exec 11>>/sys/fs/cgroup/verif680/cgroup.procs; echo $BASHPID >&11
 git worktree add -q --detach /tmp/w680h $HEADSHA || { echo WT_FAIL; exit 9; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 export CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
@@ -28,12 +33,14 @@ echo "BUILD_COMMIT=$(git rev-parse HEAD) CB_SHA=$(sha $CB)"
 FNS=$(grep -aoE '^test fn [a-zA-Z0-9_]+' $F | sed 's/^test fn //' | sort | paste -sd,)
 echo "names_from_file=$(echo $FNS | tr ',' '\n' | wc -l)"
 runf () { # out fns
-  ( echo $BASHPID > /sys/fs/cgroup/verif680/cgroup.procs 2>/dev/null
-    timeout 1400 $CB --claim-run --source-root dag --source-root src/v2 --source-root src/v1 --entry $F --functions "$2" ) > "$1" 2>&1; echo $?
+  timeout 1400 $CB --claim-run --source-root dag --source-root src/v2 --entry $F --functions "$2" > "$1" 2>&1; echo $?
 }
 echo "=== A. HEAD 7/7 by name ==="
 rc=$(runf /tmp/c680h_head.out "$FNS"); echo "  rc=$rc PASS=$(grep -ac '^PASS ' /tmp/c680h_head.out) FAIL=$(grep -ac '^FAIL ' /tmp/c680h_head.out) UNOBS=$(grep -ac '^UNOBSERVED ' /tmp/c680h_head.out)"
 grep -aE '^(PASS|FAIL|UNOBSERVED) ' /tmp/c680h_head.out | sed 's/^/    V| /' | cut -c1-140
+for n in $(echo $FNS | tr ',' ' '); do
+  echo "    $n: PASS=$(grep -ac "^PASS $n\$" /tmp/c680h_head.out) FAIL=$(grep -ac "^FAIL $n\$" /tmp/c680h_head.out)"
+done
 grep -a 'HostBudgetUnreadable' /tmp/c680h_head.out | head -1 | sed 's/^/    PANIC| /' | cut -c1-140
 [ "$rc" = "0" ] && [ "$(grep -ac '^PASS ' /tmp/c680h_head.out)" = "0" ] && echo "  !! EXIT 0 OBSERVED NOTHING"
 echo "=== C. MUTATION: revert kind eligibility at the qualified door ==="
