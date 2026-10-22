@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.generated_binding_shadows_bare_render
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data generated_binding_shadows_bare_render: RecurringFailureMode = RecurringFailureMode {
   identity: "generated_binding_shadows_bare_render" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "generated binding shadows a bare render (an emitter that renders a name by SPELLING while a different generator in the same emission adds a binding for that spelling — a use line, an alias, a prelude — composes into a silent rebinding: each generator is locally correct and the artifact realizes the wrong declaration, with the diagnostic landing at the CONSUMER of the emitted file, far from either producer.",

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.verdict_judged_on_a_clock_that_counts_the_ho
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data verdict_judged_on_a_clock_that_counts_the_host: RecurringFailureMode = RecurringFailureMode {
   identity: "verdict_judged_on_a_clock_that_counts_the_host" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
     "**a verdict about a subject's own work is read on a clock that also advances while the host withholds the subject from running** (INVALID STATE: an exclusive partition claims its rows account for the driver's OWN work, and both the rows and the parent were read on the monotonic wall. Every interval the host descheduled the thread -- another tenant's build, fault service waiting on IO, a lock wait -- advanced the parent and no row, so it landed in the residual. HARM: a fixed-tolerance refusal over that residual is a function of host load, not of the subject; DESIGN section 5 requires a verdict determined by its subject, and this one reconciled on a quiet runner and refused on a contended host for the same tree.)",
     "SPECIMEN: std.compiler_entry native_driver_cost_account over the [native-cost-partition] receipt of the SourceRootEvalDriver (claim_executor --v2-native-route). A bisect across five points of main refused at every one on a loaded srv1 with a residual of the order of a hundred seconds, and the same route reconciled within tolerance on a quiet BuildBuddy runner; nothing in the subject separated the two runs. The residual re-derives by running the route and reading the receipt's remainder_nanos beside parent_wall_nanos; it is not transcribed here.",

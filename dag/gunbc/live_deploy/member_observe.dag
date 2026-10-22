@@ -261,7 +261,21 @@ fn desired_executable() -> ObservedMember {
 }
 
 // THE UNIT FILE: the installed document's content hash.
-fn unit_document_leg(arm: ObservationArm, path: String) -> Leg {
+//
+// ONE LEG, TWO STANDING POLICIES OVER ABSENCE, because two members read unit documents for different
+// reasons. observe_unit_file has ALREADY established presence via entry_presence before calling, so a
+// document missing at read time contradicts the listing -- that IS a refusal, with the contradiction
+// named. The repository-shared-posture member has no such prior: the two maintenance units are
+// installed BY THAT MEMBER, so on a host that never ran it absence is the expected standing, the same
+// re-writable standing as an unset config key -- it moves the digest and the member re-asserts. A
+// single policy could not serve both: forcing the refusal policy is what killed the re-root's first
+// fresh-lab deploy (absent units refused the plan), and forcing the standing policy would let the
+// serve unit's listing-and-read contradiction pass as a standing.
+type UnitDocumentAbsence
+  = AbsentContradictsListing
+  | AbsentIsTheStanding
+
+fn unit_document_leg(arm: ObservationArm, path: String, absent: UnitDocumentAbsence) -> Leg {
   match arm {
     OnTheHostItself => {
       let parent = path_parent(path: path)
@@ -274,10 +288,22 @@ fn unit_document_leg(arm: ObservationArm, path: String) -> Leg {
         read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
       ) {
         FilesystemFileRead { path: _, content } => LegOut { stdout: content }
-        FilesystemFileAbsent(_) => LegRefused { cause: join([path, " vanished between listing and read"], "") }
-        FilesystemFileIndeterminate { cause } => LegRefused { cause: cause }
-        FilesystemFileObservationsDisagree { path: _, cause } => LegRefused { cause: cause }
-        FilesystemFileSubjectRefused { directory: _, name: _, cause } => LegRefused { cause: cause }
+        FilesystemFileAbsent(_) => match absent {
+          AbsentContradictsListing => LegRefused { cause: join([path, " vanished between listing and read"], "") }
+          AbsentIsTheStanding => LegOut { stdout: posture_missing_sentinel }
+        }
+        FilesystemFileIndeterminate { cause } => match absent {
+          AbsentContradictsListing => LegRefused { cause: cause }
+          AbsentIsTheStanding => LegRefused { cause: join(["reading ", path, ": ", cause], "") }
+        }
+        FilesystemFileObservationsDisagree { path: _, cause } => match absent {
+          AbsentContradictsListing => LegRefused { cause: cause }
+          AbsentIsTheStanding => LegRefused { cause: join(["reading ", path, ": ", cause], "") }
+        }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause } => match absent {
+          AbsentContradictsListing => LegRefused { cause: cause }
+          AbsentIsTheStanding => LegRefused { cause: join(["reading ", path, ": ", cause], "") }
+        }
       }
     }
     OverTransport { transport } => remote_leg(transport: transport, argv: ["cat", "--", path], leg: join(["reading ", path], ""))
@@ -290,7 +316,7 @@ fn observe_unit_file(arm: ObservationArm, spec: DeploymentSpec) -> ObservedMembe
   match entry_presence(arm: arm, path: path) {
     EntryPresenceIndeterminate { cause } => MemberUnobservable { member: UnitFile, cause: cause }
     EntryAbsent => MemberAbsentOnHost { member: UnitFile }
-    EntryPresent => match unit_document_leg(arm: arm, path: path) {
+    EntryPresent => match unit_document_leg(arm: arm, path: path, absent: AbsentContradictsListing) {
       LegRefused { cause } => MemberUnobservable { member: UnitFile, cause: cause }
       LegOut { stdout: document } =>
         MemberObserved { identity: UnitFileAt { file: UnitFileIdentity { unit: unit, document: content_hash_atom(value: document as NonEmptyStr) } } }
@@ -315,7 +341,7 @@ fn observe_oidc_config_file(arm: ObservationArm, spec: DeploymentSpec) -> Observ
       match entry_presence(arm: arm, path: path) {
         EntryPresenceIndeterminate { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
         EntryAbsent => MemberAbsentOnHost { member: OidcConfigFile }
-        EntryPresent => match unit_document_leg(arm: arm, path: path) {
+        EntryPresent => match unit_document_leg(arm: arm, path: path, absent: AbsentContradictsListing) {
           LegRefused { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
           LegOut { stdout: document } =>
             MemberObserved { identity: OidcConfigAt { file: OidcConfigFileIdentity {
@@ -736,17 +762,33 @@ fn subtree_receipt_note(receipt: String) -> NonEmptyStr {
 fn observe_repository_shared_posture(arm: ObservationArm, instance: HostDashboardInstance) -> ObservedMember {
   let member = RepositorySharedPosture { path: instance.repo_root as NonEmptyStr }
   let repo = instance.repo_root as FilePath
-  let key_reads = map(dashboard_git_worker_posture_readback_keys(), key =>
-    posture_config_leg(arm: arm, repo: repo, key: key))
-  let service_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_service_unit_path(instance: instance) as String)
-  let timer_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_timer_unit_path(instance: instance) as String)
-  match posture_document_from_legs(key_legs: key_reads, service_leg: service_leg, timer_leg: timer_leg) {
-    PostureReadUnobservable { cause } => MemberUnobservable { member: member, cause: cause }
-    PostureReadOut { document } =>
-      MemberObserved { identity: RepositorySharedPostureAt { posture: RepositorySharedPostureIdentity {
-        path: instance.repo_root as NonEmptyStr,
-        document: content_hash_atom(value: document as NonEmptyStr),
-      } } }
+  // THE REPOSITORY IS ESTABLISHED PRESENT FIRST, by the corpus rule (extdeps.filesystem.filesystem_io):
+  // absence is a SUCCESSFUL PARENT LISTING without the entry -- never a failed read of the child, and
+  // here, decisively, never git's exit code. The re-root's first fresh-lab deploy is the case this
+  // establishes: on a fresh instance the source repository DOES NOT EXIST YET (the same apply clones
+  // it later in the script stage, after the artifact stage that carries the clone), so every leg below
+  // would have been reading a path with no repository in it. Absence is not unobservable: it is the
+  // member's ordinary MemberAbsentOnHost, which the generic Create arm decides as
+  // AssertRepositorySharedPosture -- a step the emitted script already runs AFTER the step that creates
+  // the repository. A present-but-unreadable repository (exit 128 from git inside it) stays honestly
+  // unobservable through the config legs; only a parent listing that itself failed is refused here.
+  match entry_presence(arm: arm, path: repo as String) {
+    EntryPresenceIndeterminate { cause } => MemberUnobservable { member: member, cause: join(["listing the parent of ", repo as String, " to establish the repository: ", cause], "") }
+    EntryAbsent => MemberAbsentOnHost { member: member }
+    EntryPresent => {
+      let key_reads = map(dashboard_git_worker_posture_readback_keys(), key =>
+        posture_config_leg(arm: arm, repo: repo, key: key))
+      let service_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_service_unit_path(instance: instance) as String, absent: AbsentIsTheStanding)
+      let timer_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_timer_unit_path(instance: instance) as String, absent: AbsentIsTheStanding)
+      match posture_document_from_legs(key_legs: key_reads, service_leg: service_leg, timer_leg: timer_leg) {
+      PostureReadUnobservable { cause } => MemberUnobservable { member: member, cause: cause }
+      PostureReadOut { document } =>
+        MemberObserved { identity: RepositorySharedPostureAt { posture: RepositorySharedPostureIdentity {
+          path: instance.repo_root as NonEmptyStr,
+          document: content_hash_atom(value: document as NonEmptyStr),
+        } } }
+      }
+    }
   }
 }
 
@@ -770,22 +812,34 @@ data posture_missing_sentinel: String = "\u{0}absent"
 // the posture's config step is). The local arm runs it under the deploy principal (the instance owner,
 // which already owns and can read its repository config, so this asks for no privilege the deploy lacks);
 // the remote arm sends the same argv through the transport and is honestly unobservable on a transport
-// refusal, never a faked "missing". `git config --get` exits nonzero when the key is unset; that is read
-// as the sentinel, not an unobservable, because the key being absent is the very thing the member fixes.
+// refusal, never a faked "missing".
+// THE REPOSITORY IS ESTABLISHED PRESENT BEFORE ANY LEG RUNS (see observe_repository_shared_posture),
+// so this leg never has to guess existence from git's exit code. git's documented outcome vocabulary
+// then splits cleanly: exit 0 is the value; exit 1 is THE KEY UNSET -- a real, re-writable standing,
+// the sentinel; ANY OTHER nonzero exit is a failed read of a repository the filesystem says is there
+// (128: not a repository, unreadable config, ...), and a failed read is unobservable, never a silent
+// "unset". Conflating them is the class: at the re-root's first fresh-lab deploy, `git config` died
+// with 128 because the repository did not exist yet, and every key was being recorded as "unset"
+// while the units beside it refused -- one half lying, the other refusing, the plan dead either way.
 fn posture_config_leg(arm: ObservationArm, repo: FilePath, key: NonEmptyStr) -> PostureConfigLeg {
   let command = git_local_config_get_command(repo: repo, key: key as String)
+  let read_failure_cause = join(["git config --get ", key as String, " at ", repo as String], "")
   match arm {
     OnTheHostItself =>
       match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
-        ProcessNotSpawned { program: _, cause } => PostureConfigUnobservable { cause: join([key as String, ": ", cause], "") }
+        ProcessNotSpawned { program: _, cause } => PostureConfigUnobservable { cause: join([read_failure_cause, ": ", cause], "") }
         ProcessRan { observation: o } =>
-          if o.exit_code == 0 { PostureConfigPair { key: key, value: trim(s: o.stdout) } } else { PostureConfigPair { key: key, value: posture_missing_sentinel } }
+          if o.exit_code == 0 { PostureConfigPair { key: key, value: trim(s: o.stdout) } }
+          else if o.exit_code == 1 { PostureConfigPair { key: key, value: posture_missing_sentinel } }
+          else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(o.exit_code)], "") } }
       }
     OverTransport { transport } =>
       match run_typed_argv_transport(argv: command.arguments, transport: transport) {
-        TypedArgvExecRefused { reason } => PostureConfigUnobservable { cause: join([key as String, ": ", reason], "") }
+        TypedArgvExecRefused { reason } => PostureConfigUnobservable { cause: join([read_failure_cause, ": ", reason], "") }
         TypedArgvExecConverged { result: r } =>
-          if r.exit_code == 0 { PostureConfigPair { key: key, value: trim(s: r.stdout) } } else { PostureConfigPair { key: key, value: posture_missing_sentinel } }
+          if r.exit_code == 0 { PostureConfigPair { key: key, value: trim(s: r.stdout) } }
+          else if r.exit_code == 1 { PostureConfigPair { key: key, value: posture_missing_sentinel } }
+          else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(r.exit_code)], "") } }
       }
   }
 }
@@ -798,9 +852,9 @@ fn posture_document_from_legs(
   match collect_posture_pairs(key_legs: key_legs) {
     PosturePairsRefused { cause } => PostureReadUnobservable { cause: cause }
     PosturePairs { pairs } => match service_leg {
-      LegRefused { cause } => PostureReadUnobservable { cause: join(["service unit: ", cause], "") }
+      LegRefused { cause } => PostureReadUnobservable { cause: cause }
       LegOut { stdout: service_document } => match timer_leg {
-        LegRefused { cause } => PostureReadUnobservable { cause: join(["timer unit: ", cause], "") }
+        LegRefused { cause } => PostureReadUnobservable { cause: cause }
         LegOut { stdout: timer_document } => PostureReadOut { document: dashboard_git_shared_repository_posture_document(
           pairs: pairs, service_unit_document: service_document, timer_unit_document: timer_document) }
       }

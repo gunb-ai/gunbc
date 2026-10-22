@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
+import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -133,7 +133,7 @@ import extdeps.systemd.unit_file {
   TriggerLimitIntervalSec, TriggerLimitBurst,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
-  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst, OnSuccess, OnFailure,
+  SystemdUnitDirective, Condition, ConditionDirectoryNotEmpty, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst, OnSuccess, OnFailure,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
   Environment, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
@@ -291,7 +291,7 @@ import gunbc.host.host_layout {
   publication_answer_dir,
   publication_refused_dir,
   publication_bare_mirror_path,
-  attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
+  attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
 }
@@ -1480,14 +1480,14 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // It starts the publication-answer drain, which enqueues that attempt's obligation directly. It
 // does not start discovery. refused/ is the same edge for a quarantine: the helper left the pending
 // set without an answer, and the drain re-enqueues PublishObligation.
-fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, install: SystemdInstallSection) -> SystemdUnitFile {
+fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, gates: List<SystemdUnitDirective>, install: SystemdInstallSection) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
-    unit: [
+    unit: concat([
       Description { text: description as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
-    ],
+    ], gates),
     service: concat([
       ServiceType { mode: OneshotMode },
       TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
@@ -1510,11 +1510,11 @@ fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: S
 }
 
 fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli", install: Installable { directives: [WantedBy { target: deployment_belt_unit_install_target(names: spec.names) }] })
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli", gates: [Condition { kind: ConditionDirectoryNotEmpty, negated: true, argument: attempt_exit_stalled_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr }], install: Installable { directives: [WantedBy { target: deployment_belt_unit_install_target(names: spec.names) }] })
 }
 
 fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt publication-answer drain (enqueues the attempt's publish obligation)", function: "belt_publication_answer_drain_cli", install: NotInstallable)
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt publication-answer drain (enqueues the attempt's publish obligation)", function: "belt_publication_answer_drain_cli", gates: [], install: NotInstallable)
 }
 
 fn live_deploy_belt_credential_recovery_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -1522,6 +1522,7 @@ fn live_deploy_belt_credential_recovery_unit_file(spec: DeploymentSpec) -> Syste
     spec: spec,
     description: "gunbc roadmap belt credential recovery (observes the recorded belt cgroup from its own unit)",
     function: "belt_credential_recovery_cli",
+    gates: [],
     install: NotInstallable)
 }
 
@@ -1545,6 +1546,8 @@ fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile
       PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) },
       DirectoryNotEmpty { path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
       DirectoryNotEmpty { path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
+      TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }
