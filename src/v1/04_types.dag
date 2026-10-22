@@ -883,7 +883,12 @@ fn type_head_is_declared_carrier_alias(name: String) -> Bool {
   }
 }
 
-fn type_heads_agree(left: Node, right: Node, left_name: String, right_name: String) -> Bool {
+// IDENTITY COMES FROM THE DECLARATION, NEVER FROM PRINTED TEXT (gunbc.rung_drop.text_boundary_identity_wall):
+// with both sides stamped the stamps decide; when a side carries no stamp it is resolved through the judging
+// env to its alias-resolved head DECLARATION and the heads compare. A side that resolves to no declaration
+// keeps the refusal - there is no name-spelling fallback path (gunbc.recurring_failure_mode
+// stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes; PR-2 measurement, lands as #14056).
+fn type_heads_agree(left: Node, right: Node, left_name: String, right_name: String, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   if type_head_is_declared_carrier_alias(name: left_name) || type_head_is_declared_carrier_alias(name: right_name) {
     type_head_carrier(name: left_name) == type_head_carrier(name: right_name)
   } else {
@@ -891,10 +896,27 @@ fn type_heads_agree(left: Node, right: Node, left_name: String, right_name: Stri
       Present { value: ld } =>
         match right.declaration {
           Present { value: rd } => ld.module_path == rd.module_path && ld.decl_name == rd.decl_name
-          Absent => false
+          Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
         }
-      Absent => false
+      Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
     }
+  }
+}
+
+// THE UNSTAMPED ARM: both sides must settle through the env to a head declaration, and the heads must be
+// one declaration. Unresolved identity is a refusal, never a spelling match (DESIGN section 5: no silent widen).
+fn settled_head_identity_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  match text {
+    TextJudgedIn { env: e } =>
+      match settled_type(n: left, source_indices: source_indices, env: e, fuel: 16) {
+        Absent => false
+        Present { value: ls } =>
+          match settled_type(n: right, source_indices: source_indices, env: e, fuel: 16) {
+            Absent => false
+            Present { value: rs } => ls.head.module_path == rs.head.module_path && ls.head.decl_name == rs.head.decl_name
+          }
+      }
+    TextNotAsked { reason: _ } => false
   }
 }
 
@@ -1551,7 +1573,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
     let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
     if left_is_container && right_is_container {
-      if !type_heads_agree(left: left, right: right, left_name: left_name, right_name: right_name) { false }
+      if !type_heads_agree(left: left, right: right, left_name: left_name, right_name: right_name, source_indices: source_indices, text: text) { false }
       else {
         match left.children |> first {
           Present { value: left_ch } =>
@@ -1595,7 +1617,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
         let left_applied = left.connective == NoConnective && (left.children |> count) > 0
         let right_applied = right.connective == NoConnective && (right.children |> count) > 0
         if left_applied && right_applied {
-          if !type_heads_agree(left: left, right: right, left_name: left_name, right_name: right_name) { false }
+          if !type_heads_agree(left: left, right: right, left_name: left_name, right_name: right_name, source_indices: source_indices, text: text) { false }
           else if left.children |> count != right.children |> count { false }
           else {
             left.children |> enumerate |> all(pair =>
