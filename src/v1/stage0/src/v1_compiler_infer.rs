@@ -10857,6 +10857,7 @@ pub fn validate_cast(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
+    source_is_nominal: bool,
 ) -> Option<Rc<ErrorNode>> {
     match source_inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: src_node, .. }) => {
@@ -10881,37 +10882,63 @@ pub fn validate_cast(
                         ))
                     }
                 } else {
-                    if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
-                        std::option::Option::None
+                    if source_is_nominal.clone() {
+                        {
+                            let msg = v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "invalid cast: ".to_string(),
+                                            source_name.clone(),
+                                        ),
+                                        " as ".to_string(),
+                                    ),
+                                    target_name.clone(),
+                                ),
+                                ": a nominal value has no declared conversion".to_string(),
+                            );
+                            let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                message: msg.clone(),
+                                span: span.clone(),
+                            });
+                            Some(crate::v1_std_core::make_error_node(
+                                diag.clone(),
+                                module_name.clone(),
+                            ))
+                        }
                     } else {
-                        if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
+                        if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
                             std::option::Option::None
                         } else {
-                            if crate::std_coercion::dag_can_cast(
-                                source_name.clone(),
-                                target_name.clone(),
-                            ) {
+                            if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
                                 std::option::Option::None
                             } else {
-                                {
-                                    let msg = v1_rt::concat(
-                                        v1_rt::concat(
+                                if crate::std_coercion::dag_can_cast(
+                                    source_name.clone(),
+                                    target_name.clone(),
+                                ) {
+                                    std::option::Option::None
+                                } else {
+                                    {
+                                        let msg = v1_rt::concat(
                                             v1_rt::concat(
-                                                "invalid cast: ".to_string(),
-                                                source_name.clone(),
+                                                v1_rt::concat(
+                                                    "invalid cast: ".to_string(),
+                                                    source_name.clone(),
+                                                ),
+                                                " as ".to_string(),
                                             ),
-                                            " as ".to_string(),
-                                        ),
-                                        target_name.clone(),
-                                    );
-                                    let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                        message: msg.clone(),
-                                        span: span.clone(),
-                                    });
-                                    Some(crate::v1_std_core::make_error_node(
-                                        diag.clone(),
-                                        module_name.clone(),
-                                    ))
+                                            target_name.clone(),
+                                        );
+                                        let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                            message: msg.clone(),
+                                            span: span.clone(),
+                                        });
+                                        Some(crate::v1_std_core::make_error_node(
+                                            diag.clone(),
+                                            module_name.clone(),
+                                        ))
+                                    }
                                 }
                             }
                         }
@@ -16679,12 +16706,25 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let inner_emissions = inner_result.emissions.clone();
             let si = scope.type_env.source_indices.clone();
             let target_name = crate::v1_std_core::authored_name_at(si.clone(), target_type.clone());
+            let source_is_nominal = match inner_typed.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved {
+                    node: source_node, ..
+                }) => {
+                    (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
+                        expected_type_head_exposure(source_node.clone(), scope.clone()),
+                    ) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
+                        expected_type_head_exposure(source_node.clone(), scope.clone()),
+                    ))
+                }
+                _ => false,
+            };
             let cast_diag = validate_cast(
                 inner_typed.inferred.clone(),
                 target_name.clone(),
                 span.clone(),
                 si.clone(),
                 scope.module_name.clone(),
+                source_is_nominal.clone(),
             );
             let cast_diags = match cast_diag.clone() {
                 Some(d) => Rc::new(vec![d.clone()]),

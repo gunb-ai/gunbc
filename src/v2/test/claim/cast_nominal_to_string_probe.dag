@@ -28,8 +28,23 @@ fn cns_generic_param() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> String {\n  x as String\n}\n")
 }
 
-fn cns_control_int() -> Outcome<ResolvedTree> {
+fn cns_int_to_string() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> String {\n  x as String\n}\n")
+}
+
+// POSITIVE CONTROLS, declared routes v2 is known to admit (v2.std.coercion rows): Int -> Float and
+// an identity cast. Int -> String is NOT a control: it has no declared route.
+fn cns_int_to_float() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Float {\n  x as Float\n}\n")
+}
+
+fn cns_int_identity() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n")
+}
+
+// ATTEMPT at an underived operand (GroundingNotDerived): a lambda parameter with no annotation.
+fn cns_lambda_param() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f() -> String {\n  let g = fn(y) { y as String }\n  g(1)\n}\n")
 }
 
 fn cns_infer_rejects_no_target(o: Outcome<ResolvedTree>) -> Bool {
@@ -66,5 +81,12 @@ test fn cns_record_literal_accepted_at_infer() -> Bool { cns_infer_accepts(o: cn
 test fn cns_generic_param_resolves() -> Bool { tpb_accepts(o: cns_generic_param()) }
 test fn cns_generic_param_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_generic_param()) }
 test fn cns_generic_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_generic_param()) }
-test fn cns_control_int_resolves() -> Bool { tpb_accepts(o: cns_control_int()) }
-test fn cns_control_int_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_control_int()) }
+test fn cns_int_to_string_resolves() -> Bool { tpb_accepts(o: cns_int_to_string()) }
+test fn cns_int_to_string_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_int_to_string()) }
+test fn cns_int_to_string_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_to_string()) }
+test fn cns_int_to_float_resolves() -> Bool { tpb_accepts(o: cns_int_to_float()) }
+test fn cns_int_to_float_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_to_float()) }
+test fn cns_int_identity_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_identity()) }
+test fn cns_lambda_param_resolves() -> Bool { tpb_accepts(o: cns_lambda_param()) }
+test fn cns_lambda_param_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_lambda_param()) }
+test fn cns_lambda_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_lambda_param()) }
