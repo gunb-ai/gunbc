@@ -748,6 +748,29 @@ fn concept_decl_node(
     }
 }
 
+// THE ONE DECISION THAT A NO-CONNECTIVE TYPE DECLARATION IS A REFINEMENT, with every gate it needs:
+// the item has no connective, its right-hand side is not the bodyless self-reference, and that
+// right-hand side is a one-child Conj carrying the predicate annotation. Returns the right-hand side and
+// the predicate. marshal_non_connective_type_item reflects the refinement from it and
+// reflected_predicate_standing derives the DeclFact standing from it, so the two cannot disagree.
+fn refinement_rhs(item: &Rc<Node>) -> Option<(Rc<Node>, Rc<Node>)> {
+    if item.connective != Connective::NoConnective {
+        return None;
+    }
+    let rhs = item
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))?;
+    let bodyless = rhs.connective == Connective::NoConnective
+        && rhs.name == item.name
+        && rhs.type_annotation.is_none();
+    if bodyless || rhs.connective != Connective::Conj || rhs.children.len() != 1 {
+        return None;
+    }
+    let predicate = rhs.type_annotation.clone()?;
+    Some((rhs, predicate))
+}
+
 // A TYPE DECLARATION WITH NO CONNECTIVE IS AN ALIAS, A REFINEMENT OR A BODYLESS (OPAQUE) DECLARATION;
 // it is never an empty Conj. Each reflects as the wrapper v2.std.type_binder reads unchanged:
 // alias -> type_alias_wrapper (TypeParamsEdge binders, TypeAliasEdge carrier); bodyless ->
@@ -796,15 +819,16 @@ fn marshal_non_connective_type_item(
     if bodyless {
         return Ok(conj(vec![core_edge_value(ctx, "TypeParamsEdge", binders)]));
     }
-    if let (Connective::Conj, Some(predicate), 1) = (
-        rhs.connective.clone(),
-        rhs.type_annotation.clone(),
-        rhs.children.len(),
-    ) {
+    if let Some((_, predicate)) = refinement_rhs(item) {
         let carrier = marshal_type_expr_ref(ctx, si, &rhs.children[0])?;
         let mut captured = Vec::new();
         for pred in predicate.children.iter() {
-            let spelling = predicate_spelling(pred);
+            let spelling = predicate_spelling(pred).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "marshal_non_connective_type_item: type `{}` has predicate `{}` with an argument that is neither a literal nor a record of literals",
+                    item.name, pred.name
+                ),
+            })?;
             captured.push(edge_positional(ctx, atom_identity_node(ctx, &spelling)));
         }
         let production = conj(vec![
@@ -836,28 +860,40 @@ fn marshal_non_connective_type_item(
     ]))
 }
 
-// A PARSED PREDICATE'S SPELLING: the parser has already folded `brand("X")` into a field-init node
-// (name Brand, one literal child) with no source span, so the spelling is the predicate name plus its
-// literal argument when it has one. It is the unelaborated form the standing edge names, not source text.
-fn predicate_spelling(pred: &Rc<Node>) -> String {
-    let literal = pred
-        .children
-        .first()
-        .and_then(|c| match c.expr_data.as_ref() {
-            ExprData::ExprLiteral { value, .. } => match value.as_ref() {
-                crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
-                    Some(format!("\"{s}\""))
-                }
-                crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
-                crate::std_syntax::LiteralValue::LitBool { value: b, .. } => Some(b.to_string()),
-                crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
-                _ => None,
-            },
+// A PARSED PREDICATE'S SPELLING: the parser has already folded `brand("X")` into a field-init node (name
+// Brand, one literal child) and `range(min: 1)` into one whose child is a record of literal properties,
+// both with no source span, so the spelling is the predicate name plus its arguments rendered
+// generically: a literal as itself, a record as `field: value` pairs in source order. An argument that
+// is neither refuses (None) rather than dropping to the bare name; the caller names the predicate.
+fn predicate_argument_spelling(arg: &Rc<Node>) -> Option<String> {
+    match arg.expr_data.as_ref() {
+        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => Some(format!("\"{s}\"")),
+            crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+            crate::std_syntax::LiteralValue::LitBool { value: b, .. } => Some(b.to_string()),
+            crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
             _ => None,
-        });
-    match literal {
-        Some(l) => format!("{}({l})", pred.name),
-        None => pred.name.clone(),
+        },
+        ExprData::ExprRecordLit { .. } => {
+            let mut pairs = Vec::new();
+            for property in arg.children.iter() {
+                let value = predicate_argument_spelling(property.children.first()?)?;
+                pairs.push(format!("{}: {value}", property.name));
+            }
+            Some(pairs.join(", "))
+        }
+        _ => None,
+    }
+}
+
+fn predicate_spelling(pred: &Rc<Node>) -> Option<String> {
+    match pred.children.first() {
+        None => Some(pred.name.clone()),
+        Some(arg) => Some(format!(
+            "{}({})",
+            pred.name,
+            predicate_argument_spelling(arg)?
+        )),
     }
 }
 
@@ -2073,20 +2109,11 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
 }
 
 // THE STANDING OF A REFINEMENT'S PREDICATES, FOR THE FACT THAT CARRIES THEM (v2.std.decl_index
-// PredicateStanding): a TypeItem whose right-hand side is a one-child Conj with a predicate is the
-// refinement marshal_non_connective_type_item reflects with source-spelled predicates; every other
-// fact is NotARefinement. The same test as that function's refinement arm, so the two cannot disagree.
+// PredicateStanding): a TypeItem that refinement_rhs accepts is the refinement
+// marshal_non_connective_type_item reflects with source-spelled predicates; every other fact is
+// NotARefinement. Both read the one decision in refinement_rhs, so the two cannot disagree.
 fn reflected_predicate_standing(ctx: &InterpContext, kind: ItemKind, item: &Rc<Node>) -> Value {
-    let is_refinement = kind == ItemKind::TypeItem
-        && item
-            .inferred
-            .as_ref()
-            .and_then(|inf| inferred_to_node(inf.clone()))
-            .is_some_and(|rhs| {
-                rhs.connective == Connective::Conj
-                    && rhs.type_annotation.is_some()
-                    && rhs.children.len() == 1
-            });
+    let is_refinement = kind == ItemKind::TypeItem && refinement_rhs(item).is_some();
     Value::Variant {
         type_name: ctx.sym("PredicateStanding"),
         variant_name: ctx.sym(if is_refinement {
@@ -3004,5 +3031,129 @@ mod field_binder_default_tests {
             span_of(17, 22),
         );
         marshal_with_default(literal).expect("a literal default marshals");
+    }
+}
+
+#[cfg(test)]
+mod refinement_rhs_tests {
+    use std::rc::Rc;
+
+    use crate::v1_std_core::{
+        empty_node_list, make_named_expr_node, Connective, ExprData, InferredNode, Node, SourceSpan,
+    };
+
+    use super::{predicate_spelling, refinement_rhs};
+
+    fn span() -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start: 0,
+            end: 1,
+        })
+    }
+
+    fn leaf(name: &str) -> Rc<Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            span(),
+            span(),
+        )
+    }
+
+    // A one-child Conj carrying a predicate annotation: the refinement-shaped right-hand side.
+    fn refinement_shaped_rhs() -> Rc<Node> {
+        let base = leaf("NonEmptyStr");
+        Rc::new(Node {
+            connective: Connective::Conj,
+            children: Rc::new(im::vector![leaf("String")]),
+            type_annotation: Some(leaf("predicates")),
+            ..(*base).clone()
+        })
+    }
+
+    fn item_with(connective: Connective) -> Rc<Node> {
+        let base = leaf("NonEmptyStr");
+        Rc::new(Node {
+            connective,
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: refinement_shaped_rhs(),
+            })),
+            ..(*base).clone()
+        })
+    }
+
+    // POSITIVE CONTROL: a no-connective item with the refinement-shaped rhs is a refinement.
+    #[test]
+    fn a_no_connective_item_with_a_predicated_conj_rhs_is_a_refinement() {
+        assert!(refinement_rhs(&item_with(Connective::NoConnective)).is_some());
+    }
+
+    // RED: the same Conj-shaped rhs on an item that has a connective is NOT a refinement, so the
+    // DeclFact standing (derived from this helper) reads NotARefinement for it.
+    #[test]
+    fn a_connective_item_with_a_conj_shaped_rhs_is_not_a_refinement() {
+        assert!(refinement_rhs(&item_with(Connective::Disj)).is_none());
+        assert!(refinement_rhs(&item_with(Connective::Conj)).is_none());
+    }
+
+    fn field_init(name: &str, value: Rc<Node>) -> Rc<Node> {
+        crate::v1_std_core::make_field_init_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            value,
+            span(),
+            span(),
+        )
+    }
+
+    fn int_literal(n: i64) -> Rc<Node> {
+        crate::v1_std_core::make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::ExprLiteral {
+                value: Rc::new(crate::std_syntax::LiteralValue::LitInt { value: n }),
+            }),
+            empty_node_list(),
+            None,
+            span(),
+        )
+    }
+
+    fn record(properties: Vec<Rc<Node>>) -> Rc<Node> {
+        crate::v1_std_core::make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+            Rc::new(properties.into_iter().collect()),
+            None,
+            span(),
+        )
+    }
+
+    // POSITIVE CONTROL, shaped as parse_single_predicate builds std.types Port: `range(min: 1, max: 65535)`.
+    #[test]
+    fn a_record_of_literals_is_spelled_with_its_field_names_in_source_order() {
+        let range = field_init(
+            "range",
+            record(vec![
+                field_init("min", int_literal(1)),
+                field_init("max", int_literal(65535)),
+            ]),
+        );
+        assert_eq!(
+            predicate_spelling(&range).as_deref(),
+            Some("range(min: 1, max: 65535)")
+        );
+    }
+
+    // RED: an expression argument (not a literal or a record of literals) refuses, never the bare name.
+    #[test]
+    fn an_expression_argument_is_unspellable() {
+        let call = field_init("max_len", leaf("compute"));
+        assert_eq!(predicate_spelling(&call), None);
+        let nested = field_init("range", record(vec![field_init("min", leaf("x"))]));
+        assert_eq!(predicate_spelling(&nested), None);
     }
 }

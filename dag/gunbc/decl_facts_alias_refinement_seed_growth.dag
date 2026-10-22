@@ -27,17 +27,19 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // WHY IT SERVES v2. The reflected carrier chain is what the Swift wire derivation reads, without a
 // per-atom row (gunbc.v1.v1_maintenance_standing v1_seed_standing PURPOSE test).
 //
-// HAND-ITEM DELTA: +5 citable declarations, all in v1_compiler.coproduct_reflection.
+// HAND-ITEM DELTA: +7 citable declarations, all in v1_compiler.coproduct_reflection.
 data decl_facts_alias_refinement_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "marshal_non_connective_type_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "predicate_argument_spelling", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "predicate_spelling", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "production_edge_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "refinement_rhs", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "reflected_item_kind", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "reflected_predicate_standing", field: WholeDeclaration }
   ],
   reason: "The host reflection is a host walk over the seed's own parsed nodes; an alias, a bodyless type and a refinement's captured predicates can only be turned into the wrapper shapes v2.std.type_binder reads where those parsed nodes are readable. The host cannot elaborate where-predicates, so it stamps their source-spelled standing instead of fabricating an elaboration.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete all five when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk; reflected_predicate_standing and PredicateStanding are deleted earlier, when the v2 reflection route elaborates where-predicates through body_lowering_fold.",
+  trigger: "Delete all seven when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk; reflected_predicate_standing and PredicateStanding are deleted earlier, when the v2 reflection route elaborates where-predicates through body_lowering_fold.",
   current_boundary: "Confined to the type-declaration arm of decl_facts_corpus_walk and concept_decl_node: reflected_item_kind is used only there, and v1 item_kind and the parse-only declaration path are unchanged."
 }

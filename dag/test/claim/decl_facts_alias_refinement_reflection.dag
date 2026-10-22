@@ -3,7 +3,8 @@ module test.claim.decl_facts_alias_refinement_reflection
 import std.types { String, List, Bool, Int }
 import std.optional { Optional, Present, Absent }
 import v2.std.decl_index { decl_facts_at, DeclFact, TypeItem, PredicateStanding, NotARefinement, RefinementPredicatesSourceSpelled }
-import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.type_binder { type_decl_view, TypeAlias, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl, refinement_declaration_of_node }
 
 // THE INHABITANCE CLAIM for the host reflection of an alias and a refinement: decl_facts_at yields a
@@ -83,4 +84,31 @@ test fn the_reflected_refinement_fact_is_source_spelled() -> Bool {
 test fn a_reflected_alias_fact_is_not_a_refinement() -> Bool {
   let hits = fact_of(qn: "std.types.Timestamp")
   count(hits) == 1 && all(hits, f => !is_source_spelled(f: f))
+}
+
+fn spells(f: DeclFact, spelling: String) -> Bool {
+  fold(node_subtree_nodes(root: f.node), init: false, f: fn(acc, n) {
+    acc || match node_atom_identity_optional(node: n) {
+      Absent => false
+      Present { value: s } => s == symbol_intern_lexeme(lexeme: spelling)
+    }
+  })
+}
+
+fn reflects_source_spelled(qn: String) -> Bool {
+  let hits = fact_of(qn: qn)
+  count(hits) == 1 && all(hits, f => f.kind == TypeItem && is_source_spelled(f: f))
+}
+
+// POSITIVE CONTROL for the generic argument spelling: a record-argument predicate reflects with its
+// real bounds and field names (std.types Port is `Int where range(min: 1, max: 65535)`), not the bare
+// predicate name a dropped argument would leave.
+test fn a_range_refinement_is_spelled_with_its_real_bounds() -> Bool {
+  let hits = fact_of(qn: "std.types.Port")
+  count(hits) == 1 && all(hits, f => spells(f: f, spelling: "range(min: 1, max: 65535)") && !spells(f: f, spelling: "range"))
+}
+
+// Every range refinement of std.types still reflects (none is refused by the unspellable-argument arm).
+test fn every_std_types_range_refinement_still_reflects() -> Bool {
+  all(["std.types.RetryCount", "std.types.HttpStatus", "std.types.Port", "std.types.EpochSecs", "std.types.EpochMs", "std.types.Duration", "std.types.Milliseconds", "std.types.Seconds"], qn => reflects_source_spelled(qn: qn))
 }
