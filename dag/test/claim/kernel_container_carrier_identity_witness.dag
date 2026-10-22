@@ -106,6 +106,12 @@ test fn kc_alias_refuses_a_value_at_the_wrong_argument() -> Bool {
   carrier_refused(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Cons { head: \"a\", tail: Empty {} }) }\n")))
 }
 
+// RED: an alias declaring ZERO parameters does not settle a use that supplies arguments -- `KcZero<String>` must not settle to
+// FreeMonoid<Int> and silently drop String (fail closed, DESIGN 5).
+test fn kc_zero_param_alias_refuses_a_use_with_arguments() -> Bool {
+  carrier_refused(o: carrier_run(entry_source: concat(kc_prelude, "type KcZero = FreeMonoid<Int>\nfn kc_take_alias(xs: KcZero<String>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Cons { head: 1, tail: Empty {} }) }\n")))
+}
+
 test fn kc_list_field_admits_the_carrier_constructor() -> Bool {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcHolder { xs: List<Int> }\nfn kc_use() -> KcHolder { KcHolder { xs: Empty {} } }\n")))
 }
