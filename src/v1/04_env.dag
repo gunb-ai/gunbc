@@ -1908,7 +1908,7 @@ fn text_element_is_char(n: Node, env: TypeEnv) -> TextRepresentation {
       match type_reference_declaration_reading(n: el, source_indices: env.source_indices, env: env) {
         TypeReferenceNamesDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
         TypeReferenceIsKernelType { name: _ } => NotText
-        TypeReferenceIsTypeVariable { id: _ } => NotText
+        TypeReferenceIsTypeVariable { id: _ } => TextRepresentationUnidentified
         TypeReferenceUnidentified { authored: _, resolved: _ } => TextRepresentationUnidentified
       }
   }
@@ -1919,17 +1919,23 @@ fn text_representation_by_identity(n: Node, env: TypeEnv) -> TextRepresentation 
 }
 
 // A declaration with no body, or whose resolved form is itself, is opaque: a type of its own
-// (v2.std.node Symbol), and not text. A generic type variable is a slot, not a declaration, and a
-// compiler-error type already carries its own diagnostic, so neither is text and neither is refused
-// here a second time.
+// (v2.std.node Symbol), and not text. A compiler-error type already carries its own diagnostic, so it
+// is not text and is not refused here a second time. An OPEN TYPE VARIABLE (here, or as a sequence's
+// element) is different: inference did not determine the type -- the measured case is an
+// un-instantiated generic call result, gunbc.owned_directory's list_at_optional element -- so reading
+// it as NotText answered ignorance with a verdict and admitted a host-text cast with no trace. It is
+// unidentified: counted and located at every text boundary (gunbc.rung_drop text_boundary_identity_wall).
 fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, visited: List<String>) -> TextRepresentation {
   let resolved = match n.inferred { Present { value: Resolved { node: r } } => Present { value: r }  _ => none }
   let kernel_string = node_is_kernel_mint_named(n: n, name: "String") || match resolved {
     Present { value: r } => node_is_kernel_mint_named(n: r, name: "String")
     Absent => false
   }
-  let generic_or_error = match n.inferred {
+  let open_type_variable = match n.inferred {
     Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  let compiler_error = match n.inferred {
     Present { value: CompilerError { message: _, span: _ } } => true
     _ => false
   }
@@ -1938,7 +1944,8 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
     Absent => false
   }
   if kernel_string { HostText }
-  else if generic_or_error { NotText }
+  else if compiler_error { NotText }
+  else if open_type_variable { TextRepresentationUnidentified }
   else if fuel <= 0 { TextRepresentationUnidentified }
   else if is_where_refinement_node(n: n) {
     match n.children |> first {
@@ -1950,7 +1957,7 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
     match type_reference_declaration_reading(n: n, source_indices: env.source_indices, env: env) {
       TypeReferenceUnidentified { authored: _, resolved: _ } => if kernel_other { NotText } else { TextRepresentationUnidentified }
       TypeReferenceIsKernelType { name: k } => if k == "String" { HostText } else { NotText }
-      TypeReferenceIsTypeVariable { id: _ } => NotText
+      TypeReferenceIsTypeVariable { id: _ } => TextRepresentationUnidentified
       TypeReferenceNamesDeclaration { declaration: d } =>
         if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid()) {
           text_element_is_char(n: n, env: env)
