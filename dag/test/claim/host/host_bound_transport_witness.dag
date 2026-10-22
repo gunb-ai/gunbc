@@ -119,9 +119,16 @@ test fn the_join_is_disjoint_across_hosts() -> Bool {
         Absent => false
         Present { value: t1 } => {
           let both = [operator_host_srv2, operator_host_mtcollins1]
-          count(hosts_reached_at(hosts: both, target: t2)) == 1 && first(hosts_reached_at(hosts: both, target: t2)) == Present { value: operator_host_srv2 }
-            && count(hosts_reached_at(hosts: both, target: t1)) == 1 && first(hosts_reached_at(hosts: both, target: t1)) == Present { value: operator_host_mtcollins1 }
+          count(hosts_reached_at(hosts: both, target: t2)) == 1 && host_is(found: first(hosts_reached_at(hosts: both, target: t2)), want: "srv2")
+            && count(hosts_reached_at(hosts: both, target: t1)) == 1 && host_is(found: first(hosts_reached_at(hosts: both, target: t1)), want: "mtcollins1")
         }
       }
+  }
+}
+
+fn host_is(found: HostIdentity?, want: String) -> Bool {
+  match found {
+    Absent => false
+    Present { value: h } => (h as String) == want
   }
 }
