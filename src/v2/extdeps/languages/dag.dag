@@ -148,6 +148,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   lex_rules_literal_for_class,
   char_kernel_type_node,
   symbol_kernel_type_node,
+  ListIntroductionUnwired,
   IntLiteralDecimal,
   ProducedDeclUnwired,
   CanonicalOperation,
@@ -6871,6 +6872,7 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^dag_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^dag_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: dag_block_evaluation_mode()
   }
 }
