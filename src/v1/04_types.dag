@@ -1401,6 +1401,33 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
   else { left }
 }
 
+fn gc16_eq_probe(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> String {
+  let l = peel_alias_rhs_once(n: left, text: text)
+  let r = peel_alias_rhs_once(n: right, text: text)
+  let lerr = if l.inferred != none { is_compiler_error(inferred: l.inferred.value) } else { false }
+  let rerr = if r.inferred != none { is_compiler_error(inferred: r.inferred.value) } else { false }
+  let ltv = if l.inferred != none { is_type_variable(inferred: l.inferred.value) } else { false }
+  let rtv = if r.inferred != none { is_type_variable(inferred: r.inferred.value) } else { false }
+  let lopt = l.return_cardinality == CardOptional
+  let ropt = r.return_cardinality == CardOptional
+  let lunit = is_unit_like(n: l)
+  let runit = is_unit_like(n: r)
+  let cross = text_crossing_in_judgment(left: l, right: r, text: text)
+  let lleaf = l.connective == NoConnective && l.children |> count == 0 && l.properties |> count == 0
+  let rleaf = r.connective == NoConnective && r.children |> count == 0 && r.properties |> count == 0
+  let lstruct = l.connective != NoConnective
+  let rstruct = r.connective != NoConnective
+  let ln = authored_name_at(source_indices: source_indices, node: l)
+  let rn = authored_name_at(source_indices: source_indices, node: r)
+  concat(
+    " P[", if lerr {"E"} else {"-"}, if rerr {"E"} else {"-"}, if ltv {"V"} else {"-"}, if rtv {"V"} else {"-"}, if lopt {"O"} else {"-"}, if ropt {"O"} else {"-"}, if lunit {"u"} else {"-"}, if runit {"u"} else {"-"}, if cross {"X"} else {"-"}, "]",
+    " LL=", if lleaf {"y"} else {"n"}, if rleaf {"y"} else {"n"},
+    " SS=", if lstruct {"y"} else {"n"}, if rstruct {"y"} else {"n"},
+    " CN=", if type_name_compatible(a: ln, b: rn) {"y"} else {"n"},
+    " NM=", ln, "||", rn
+  )
+}
+
 fn node_type_equals(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
   let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }

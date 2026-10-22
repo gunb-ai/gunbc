@@ -32,3 +32,14 @@ test fn list_int_equals_freemonoid_int() -> Bool {
 test fn box_int_against_box_bool_is_refused() -> Bool {
   blocking_count(source: "module locate.boxneq\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
 }
+
+// THE SHADOW-FORMAL CASE (manager ruling msg_60a19937 (a), PR-2 lane): a REAL corpus type whose
+// name collides with a callee's formal parameter name must NOT be mistaken for an unsettled
+// formal. f<K> forwards its own-form m against an actual that is the corpus type K: the fold's
+// interim own-form predicate must refuse, not treat the real K as an unsettled slot -- an ACCEPT
+// here is the interim's misread class made concrete, and it fails PR-2's RED. The identity
+// re-expression (binder_marked_type refs, not spelling) is the dissolution; #14750's
+// representation PR owns the substitution-key half (eager-cat-804).
+test fn corpus_type_shadow_named_like_formal_still_refuses() -> Bool {
+  blocking_count(source: "module locate.shadowformal\ntype K\nfn f<K>(m: K, k: K) -> K { m }\nfn caller(x: Int, y: K) -> Int { f(m: x, k: y) }\n") >= 1
+}
