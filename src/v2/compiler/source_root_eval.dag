@@ -292,6 +292,22 @@ import v2.compiler.dependency_demand_census {
   demand_census_strip,
   demand_census_unbound_locus_from_diagnostics,
 }
+import v2.compiler.traversal_order_census {
+  TraversalCensusReport,
+  TraversalFnFact,
+  traversal_census_exit,
+  traversal_census_join,
+  traversal_census_lines,
+  traversal_module_facts
+}
+import v2.compiler.fold_lowering { collection_roster_rows }
+import v2.compiler.traversal_order_roster {
+  traversal_closure_scope,
+  traversal_dispositions,
+  traversal_plan_discharges,
+  traversal_primitive_seeds,
+  traversal_stage_roster
+}
 import v2.compiler.normalized_tree {
   NormalizedTree,
   normalized_tree_import_bindings,
@@ -1541,6 +1557,7 @@ type NativeDriverVerb
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
   | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
   | NativeDriverDeclRefCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverTraversalOrderCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
@@ -1560,6 +1577,8 @@ data native_driver_verb_census_infer: String = "census-infer"
 data native_driver_verb_demand_census: String = "demand-census"
 
 data native_driver_verb_decl_ref_census: String = "decl-ref-census"
+
+data native_driver_verb_traversal_order_census: String = "traversal-order-census"
 
 data native_driver_verb_census_scoped: String = "census-scoped"
 
@@ -1609,6 +1628,7 @@ type NativeDriverParseState
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverDeclRefCensusRoots { roots: FreeMonoid<String> }
+  | DriverTraversalOrderCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusScopedSeekSubject
   | DriverCensusScopedAfterSubject { subject: String, rest: List<String> }
   | DriverCensusScopedSeekAgainst { subject: String }
@@ -1622,7 +1642,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census or decl-ref-census"
+    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census, decl-ref-census or traversal-order-census"
   )
 }
 
@@ -1644,6 +1664,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverDemandCensusRoots { roots: [] }
       } else if word == native_driver_verb_decl_ref_census {
         DriverDeclRefCensusRoots { roots: [] }
+      } else if word == native_driver_verb_traversal_order_census {
+        DriverTraversalOrderCensusRoots { roots: [] }
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
@@ -1664,6 +1686,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverDeclRefCensusRoots { roots: roots } =>
       DriverDeclRefCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverTraversalOrderCensusRoots { roots: roots } =>
+      DriverTraversalOrderCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusScopedSeekSubject =>
       match native_census_subject_module(label: word) {
         NativeCensusSubjectModuleUnavailable { reason: reason } =>
@@ -1751,6 +1775,8 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
     DriverDeclRefCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDeclRefCensus { source_roots: roots } }
+    DriverTraversalOrderCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverTraversalOrderCensus { source_roots: roots } }
     DriverCensusScopedSeekSubject =>
       NativeDriverPlanRefused {
         reason: ^native_driver_census_scoped_without_subject,
@@ -1805,6 +1831,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusInfer { source_roots: roots } => roots
         NativeDriverDemandCensus { source_roots: roots } => roots
         NativeDriverDeclRefCensus { source_roots: roots } => roots
+        NativeDriverTraversalOrderCensus { source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
@@ -3220,6 +3247,106 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
       NativeDemandCensusOutput {
         lines: demand_census_lines(r: report),
         exit: demand_census_exit(r: report)
+      }
+  }
+}
+
+// THE TRAVERSAL-ORDER CENSUS (M2V; v2.compiler.traversal_order_census). Streaming like the demand census:
+// each module in the closure scope is resolved, its traversal facts extracted, and its tree dropped
+// before the next; the join over the facts is the census's own pure reduction.
+type NativeTraversalCensusFold {
+  context: NativeTestContext
+  facts: List<TraversalFnFact>
+  unread: List<String>
+}
+
+type NativeTraversalCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_traversal_census_in_scope(module_qn: QualifiedName) -> Bool {
+  fold_list(xs: traversal_closure_scope, empty: false, cons: fn(any, p) {
+    any || list_starts_with(xs: module_qn, prefix: qualified_name_from_dotted_string(dotted: p), eq: fn(a, b) { a == b })
+  })
+}
+
+fn native_traversal_census_owned(module: String) -> Bool {
+  fold_list(xs: traversal_stage_roster, empty: false, cons: fn(any, s) {
+    any || fold_list(xs: s.modules, empty: false, cons: fn(a, m) { a || m == module })
+  })
+}
+
+fn native_traversal_census_module(w: NativeTraversalCensusFold, root: NormalizedTree) -> NativeTraversalCensusFold {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      if native_traversal_census_in_scope(module_qn: module_qn) {
+        let step = native_test_resolve_module(context: w.context, module: module_qn)
+        match step.resolved {
+          Rejected { diagnostics: _ } =>
+            NativeTraversalCensusFold { context: step.context, facts: w.facts, unread: Cons { head: qualified_name_to_dotted_string(qn: module_qn), tail: w.unread } }
+          Accepted { value: resolved, diagnostics: _ } =>
+            NativeTraversalCensusFold {
+              context: step.context,
+              facts: fold_list(
+                xs: traversal_module_facts(resolved: resolved, module_qn: module_qn, retain_shape: native_traversal_census_owned(module: qualified_name_to_dotted_string(qn: module_qn))),
+                empty: w.facts,
+                cons: fn(acc, f) { Cons { head: f, tail: acc } }
+              ),
+              unread: w.unread
+            }
+        }
+      } else {
+        w
+      }
+  }
+}
+
+fn native_traversal_census_seeds() -> List<String> {
+  fold_list(xs: collection_roster_rows, empty: traversal_primitive_seeds, cons: fn(acc, r) {
+    Cons { head: concat(r.row.module_path, concat(".", r.row.decl_name)), tail: acc }
+  })
+}
+
+fn native_traversal_order_census_output(ingest: SourceRootIngest) -> NativeTraversalCensusOutput {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: d } =>
+      NativeTraversalCensusOutput { lines: [concat("[traversal-order-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: front, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: ingest) {
+        Rejected { diagnostics: d } =>
+          NativeTraversalCensusOutput { lines: [concat("[traversal-order-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+        Accepted { value: scope, diagnostics: _ } =>
+          let state = fold_list(
+            xs: ingest,
+            empty: native_test_context_state_empty(),
+            cons: fn(acc, read) {
+              native_test_context_fold_step(state: acc, read: read, lex: front.lex, prepared: front.prepared, scope: scope)
+            }
+          )
+          let walked = fold_list(
+            xs: state.roots,
+            empty: NativeTraversalCensusFold { context: native_test_context_finish(state: state, front: front, ingest: ingest), facts: Empty, unread: Empty },
+            cons: fn(w, root) { native_traversal_census_module(w: w, root: root) }
+          )
+          if is_empty(xs: walked.facts) {
+            NativeTraversalCensusOutput { lines: ["[traversal-order-census] no observation: no module in the closure scope resolved"], exit: 2 }
+          } else {
+            let joined = traversal_census_join(
+              stages: traversal_stage_roster,
+              facts: walked.facts,
+              rows: traversal_dispositions,
+              seeds: native_traversal_census_seeds(),
+              discharges: traversal_plan_discharges
+            )
+            let report = TraversalCensusReport {
+              results: joined.results,
+              stale: joined.stale,
+              refusals: fold_list(xs: walked.unread, empty: joined.refusals, cons: fn(acc, m) { Cons { head: concat("unreadable_module ", m), tail: acc } })
+            }
+            NativeTraversalCensusOutput { lines: traversal_census_lines(stages: traversal_stage_roster, report: report), exit: traversal_census_exit(report: report) }
+          }
       }
   }
 }
