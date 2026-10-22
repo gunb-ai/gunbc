@@ -35,6 +35,7 @@ RB=$(cat /sys/fs/cgroup/ver575d/memory.max)
 { [ "$RB" != "max" ] && [ -n "$RB" ]; } || { echo "MEMORY_BOUND_READBACK_FAIL got=$RB -- STOP"; exit 9; }
 echo "CGROUP_WRAPPER=/sys/fs/cgroup/ver575d memory.max=$RB (read-back, bounded)"
 exec 11>>/sys/fs/cgroup/ver575d/cgroup.procs; echo $BASHPID >&11
+cd $WT
 export CARGO_TARGET_DIR=/root/workspace/repo-root/.t14575d CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
 CB=/root/workspace/repo-root/.t14575d/release/claim_batch
