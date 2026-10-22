@@ -1,5 +1,7 @@
 module v2.test.claim.manual.infer_emit_compile_anchor
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 
 
 data anchor_stub_empty_conj: Node = Node {
@@ -40,7 +42,8 @@ data anchor_stub_empty_facts_map: PartialFunction<Node, InferredFacts> = Partial
 
 data anchor_stub_inferred_tree: InferredTree = InferredTree {
   root: anchor_stub_empty_conj,
-  facts: anchor_stub_empty_facts_map
+  facts: anchor_stub_empty_facts_map,
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn anchor_infer_rejects() -> Outcome<InferredTree> {
