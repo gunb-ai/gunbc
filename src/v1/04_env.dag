@@ -228,6 +228,7 @@ type SymbolIndex {
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
   transparent_alias_rep: Map<String, String>
+  alias_cycles: Map<String, List<String>>
   type_head_exposures: Map<String, TypeHeadExposure>
   file_modules: Map<String, String>
   module_named_imports: Map<String, Map<String, String>>
@@ -238,7 +239,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), module_named_imports: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), alias_cycles: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), module_named_imports: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -410,6 +411,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
     global_bare: index.global_bare,
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
+    alias_cycles: index.alias_cycles,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
     module_named_imports: index.module_named_imports
@@ -422,6 +424,7 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
     global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
+    alias_cycles: index.alias_cycles,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
     module_named_imports: index.module_named_imports
@@ -434,6 +437,7 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     global_bare: index.global_bare,
     services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
     transparent_alias_rep: index.transparent_alias_rep,
+    alias_cycles: index.alias_cycles,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
     module_named_imports: index.module_named_imports
