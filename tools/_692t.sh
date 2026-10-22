@@ -25,5 +25,5 @@ git worktree remove --force /tmp/w692t 2>/dev/null || true; git worktree prune >
 rm -rf /tmp/w692t; git worktree add --detach /tmp/w692t $OID 2>&1 | tail -1 | sed 's/^/  WT| /'
 cd /tmp/w692t || exit 9
 export CARGO_TARGET_DIR=/root/workspace/repo-root/.t692t
-timeout 2400 cargo test --release -p v1-compiler --bin claim_batch batch_exit_code 2>&1 | tail -6 | sed 's/^/  T| /'
+timeout 2400 cargo test --release -p v1-compiler --bin claim_batch exit_composition_is_failed_over_unobserved_over_clean 2>&1 | tail -6 | sed 's/^/  T| /'
 echo "DONE_692T $(date -u +%H:%M:%S)Z"
