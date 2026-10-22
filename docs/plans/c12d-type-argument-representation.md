@@ -52,7 +52,7 @@ Classification of the 80 functions in `/tmp/ec804/readers_04_infer.dag.txt`. All
 | census_upgrade_sig_binding | UNAFFECTED | Whole-node `resolve_node` of the return type. |
 | census_upgrade_type_expr | UNAFFECTED | Recurses only over record/coproduct children; applied types go through `resolve_node` whole. |
 | classify_field_recursion | WANTS_AUTHORED | Compares authored names of the field type and of `type_expr.children[i]` to the parent and recursive-type set (name identity). An alias to the parent would be missed. |
-| classify_let_value | WANTS_AUTHORED | Only the final `_` arm reads the expression type, `is_container_type(name)`, then `rt.children[0]` by authored name. |
+| classify_let_value | WANTS_SETTLED (reclassified by review) | Final arm asks "is it a container, what is its element": a structure question. An alias to a container must still classify as a container, so it calls `settled_type` before `is_container_type` / `rt.children[0]`. |
 | conformance_ground_element_collection | WANTS_SETTLED | `conformance_ground_kernel_scalar(child_type_node(el))` needs no children, Required, and `is_kernel_type(authored name)`. `List<MyInt>` with `type MyInt = Int` passes today only because the arg is the expansion. |
 | container_element_nominal_brand_mismatch | WANTS_AUTHORED | Brand check on authored names via `nominal_call_arg_brand_mismatch`; it keys on name difference and `alias_identity_in_judgment`. |
 | coproduct_applied_type_arguments_conflict_scan | WANTS_AUTHORED | Authored name of `child_type_node(p)` against "Unit", then `applied_type_argument_conflicts`. |
@@ -74,7 +74,7 @@ Classification of the 80 functions in `/tmp/ec804/readers_04_infer.dag.txt`. All
 | fn_signature_fingerprint | WANTS_AUTHORED | Hashes `resolved_type_name(param)`, an identity name. An alias param type now hashes the alias name instead of the expansion name, so fingerprint values change. |
 | grounded_arm_body | UNAFFECTED | Builds nodes from supplied types. |
 | grounded_binop | UNAFFECTED | `resolved_type(left)` of an expression. |
-| grounded_constructor_shapes | WANTS_AUTHORED | `type_reference_declaration_ref(child_type_node(f))` then `declaration_is_grounded_natural`. A field typed by an alias of a grounded natural would now miss. |
+| grounded_constructor_shapes | WANTS_SETTLED (reclassified by review) | Decides whether a field type is a grounded natural (inhabitance). A field typed by an alias of a grounded natural is grounded; reading the authored ref alone misses it, so settle first, then `declaration_is_grounded_natural`. |
 | grounded_int_literal | UNAFFECTED | Literal constructor. |
 | grounded_reflect | UNAFFECTED | Builds nodes; passes `carrier_type` whole to `infer_binop_type_node`. |
 | grounded_signed_construct | UNAFFECTED | Builds nodes. |
@@ -218,7 +218,7 @@ One fact shapes most rows. `child_type_node` in `04_types.dag` is `resolved_type
 | alias_names_identity_in_judgment | UNAFFECTED | Already settles through `alias_names_settled_agree`. |
 | applied_argument_declared_agrees | UNAFFECTED | Already calls `settled_type` and then `alias_settled_agree`. |
 | apply_type_substitution | WANTS_SETTLED (edge) | `ReceiverSelf` `is_bare` tests `is_kernel_type(authored name)` of the argument. An alias of a kernel type flips from not-bare to bare once the argument is authored. Everything else only passes arguments through or substitutes by template variable id. |
-| arguments_agree_in_lockstep | UNAFFECTED | Passes `child_type_node` to a callback. |
+| arguments_agree_in_lockstep | SETTLED_TRANSPARENT (reclassified by review) | Drives pairwise argument equality; the callback it is given receives the authored arguments and the callback applies the equality rule, so the lockstep walk itself must not pre-expand. |
 | bare_map_node | UNAFFECTED | Builder with type-variable wrappers. |
 | bare_set_node | UNAFFECTED | Builder with type-variable wrappers. |
 | callable_inferred | UNAFFECTED | `Resolved` here is the return type, a whole node. |
@@ -227,7 +227,7 @@ One fact shapes most rows. `child_type_node` in `04_types.dag` is `resolved_type
 | callable_signatures_agree | UNAFFECTED | The same return-type shape. |
 | child_type_node | UNAFFECTED | The accessor itself. Its result changes meaning from the expansion to the authored reference, and its callers are the readers that matter. |
 | collection_carrier_node | WANTS_SETTLED | For a childless node, returns the `Resolved` target as the collection carrier. For an alias this is the expansion structure (its callers then read children or fields). |
-| declaration_carried_through_resolution | WANTS_AUTHORED | Reads the declaration identity and follows the `Resolved` chain only as a fallback. |
+| declaration_carried_through_resolution | CHANGE SITE (reclassified by review) | Its `Resolved`-chain fallback reads the cached expansion as an independent value (the second representation). Remove the fallback: the carrier's own `declaration` is the only identity; a node without one is a typed refusal. |
 | for_each_element_type_node | UNAFFECTED | Returns the element as a whole node. Its callers read the structure. |
 | infer_arithmetic_binop_type_node | UNAFFECTED | The `Resolved` it reads is the algebra field's callable type. |
 | make_callable_type | UNAFFECTED | Builder. |
@@ -241,8 +241,8 @@ One fact shapes most rows. `child_type_node` in `04_types.dag` is `resolved_type
 | node_type_equals_core | WANTS_SETTLED | Compares leaf, struct and applied structure of arguments through `child_type_node` with no alias settling. An alias argument versus its expansion would disagree. It should settle at entry. |
 | node_type_shape | WANTS_AUTHORED | Produces a shape string. The `Named` or `Primitive` choice reads the `Resolved` leaf, and arguments are shaped through `child_type_node`. Edge: the string changes for alias arguments. |
 | node_type_shape_argument_list | WANTS_AUTHORED | The same shape string for each argument. |
-| optional_instance_at_payload_of | WANTS_AUTHORED | Reads the declaration identity of `std.optional`, and the argument is compared with `applied_argument_types_identical`. That function is not in the lists and I did not read it. |
-| prefer_specific_type | UNAFFECTED (edge) | Calls `is_unit_like` on the element. This differs only for an alias of unit. |
+| optional_instance_at_payload_of | SETTLED_TRANSPARENT (reclassified by review) | Equality of two instantiations via `applied_argument_types_identical`; per the rule it settles transparent aliases and stops at a brand alias. |
+| prefer_specific_type | WANTS_SETTLED (reclassified by review) | `is_unit_like` is an inhabitance/structure question; an alias of unit is unit-like. Not an edge case: settle the element before testing. |
 | resolved_type | UNAFFECTED | The accessor itself. |
 | type_reference_identity_key | WANTS_AUTHORED | Edge: it takes `Resolved rt` first. Today that gives the target's identity, and after the change the alias's own identity. |
 | type_resolution_verdict | UNAFFECTED | Only recurses over `child_type_node`. |
@@ -278,3 +278,8 @@ One fact shapes most rows. `child_type_node` in `04_types.dag` is `resolved_type
 Most of the `04_resolve.dag` entries are producers rather than readers. They write the stored expansion, so deleting the write is the change.
 
 I created nothing in the repo. The only files I wrote are scratch extracts in `/tmp/ec804` (`b_env.txt`, `b_types.txt`, `b_resolve.txt` and `rnb.txt`).
+## Identity relation (added after review; not in the original census)
+`applied_argument_types_identical`, `applied_argument_heads_identical`, `arguments_agree_in_lockstep`, `optional_instance_at_payload_of` and `whole_declaration_carried` (04_types) form the type-equality relation. Class SETTLED_TRANSPARENT: heads settle through transparent aliases only and stop at a brand alias; arguments compare recursively; `whole_declaration_carried` reads only the carrier's own `declaration`. The review's missing reader was this relation.
+
+## Mechanical closure over the remaining files
+`child_type_node(` callers in 04_items, 04_lookup, 04_emit_info, 04_patterns, 05_emit, trait_derive_emit, 05_emit_rust are being classified by the same rule; the result is appended below when complete.
