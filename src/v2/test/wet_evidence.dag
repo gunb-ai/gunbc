@@ -22,6 +22,8 @@ import v2.workflow.wet_evidence {
   wet_evidence_validate, wet_evidence_admits, wet_cross_route_overlap_causes
 }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
+import v2.std.decl_index { DeclFact }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, Returned, RuntimeErrored, BudgetRefused,
   ClaimObservation, ObservedVerdict,
@@ -57,6 +59,21 @@ fn co_resident_requirement(subject: String) -> WetEvidenceRequirement {
 
 fn transported_requirement(subject: String, executor: String) -> WetEvidenceRequirement {
   SelfHostTransportedRequirement { semantic_subject: subject, executor_contract: executor }
+}
+
+// THE DECLARATION POPULATION THE FOLD CHECKS AGAINST. The fixture entries here are SYNTHETIC paths
+// (no file of that name exists), so the population is authored beside them -- the same shape the
+// scaffold_disposition_census fixture authors (DeclFact records with the shared body-carrying leaf).
+// A row scheduled against a fixture entry is declared here if and only if it should pass; the RED
+// below removes exactly one record and nothing else.
+fn alpha_declared() -> List<DeclFact> {
+  [DeclFact {
+    qualified_name: "test.claim.fixture.alpha_holds",
+    name: "alpha_holds",
+    kind: FnItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: "dag/test/claim/fixture_test.dag"
+  }]
 }
 
 fn scheduled_alpha(expectation: ClaimExpectation) -> WetScheduledClaim {
@@ -107,6 +124,7 @@ fn cause_tag(c: WetEvidenceRefusal) -> String {
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => "host-premise-unmet"
     WetCrossRouteIdentityOverlap { identity: _ } => "cross-route-overlap"
     WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => "schedule-duplicated"
+    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => "schedule-undeclared"
   }
 }
 
@@ -135,6 +153,7 @@ fn is_prepared_subject_differs(c: WetEvidenceRefusal) -> Bool {
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
     WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
+    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
   }
 }
 
@@ -154,6 +173,7 @@ fn is_semantic_subject_differs(c: WetEvidenceRefusal) -> Bool {
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
     WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
+    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
   }
 }
 
@@ -173,6 +193,7 @@ fn is_executor_contract_differs(c: WetEvidenceRefusal) -> Bool {
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
     WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
+    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
   }
 }
 
@@ -192,6 +213,7 @@ fn is_relation_mismatch(c: WetEvidenceRefusal) -> Bool {
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
     WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
+    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
   }
 }
 
@@ -212,8 +234,8 @@ test fn the_route_is_derived_and_a_foreign_route_terminal_refuses() -> Bool {
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
   let wrong_route = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: binding, terminal: passed())]
   let right_route = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed())]
-  let refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong_route, requirement: requirement)
-  let admitted = wet_evidence_validate(scheduled: scheduled, terminals: right_route, requirement: requirement)
+  let refused = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: wrong_route, requirement: requirement)
+  let admitted = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: right_route, requirement: requirement)
   wet_route_eq_local(r: wet_route_of_antecedent(antecedent: LocalRepoAfterHermeticRouteGap {}))
     && !wet_route_eq_local(r: wet_route_of_antecedent(antecedent: SelfHostAfterDirectWetDecline {}))
     && !wet_evidence_admits(v: refused)
@@ -274,8 +296,8 @@ test fn co_resident_wrong_prepared_subject_refuses_and_names_the_axis() -> Bool 
   let wrong = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: co_resident_binding(subject: "subject-OTHER"), terminal: passed())]
   let right = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: co_resident_binding(subject: "subject-THIS"), terminal: passed())]
   let requirement = co_resident_requirement(subject: "subject-THIS")
-  let refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong, requirement: requirement)
-  let admitted = wet_evidence_validate(scheduled: scheduled, terminals: right, requirement: requirement)
+  let refused = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: wrong, requirement: requirement)
+  let admitted = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: right, requirement: requirement)
   !wet_evidence_admits(v: refused)
     && any_cause(causes: causes_of(v: refused), p: is_prepared_subject_differs)
     && wet_evidence_admits(v: admitted)
@@ -292,9 +314,9 @@ test fn transported_wrong_subject_and_wrong_executor_are_separate_reds() -> Bool
   let wrong_subject = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "semantic-OTHER", executor: "executor-THIS"), terminal: passed())]
   let wrong_executor = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "semantic-THIS", executor: "executor-OTHER"), terminal: passed())]
   let exact = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "semantic-THIS", executor: "executor-THIS"), terminal: passed())]
-  let subject_refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong_subject, requirement: requirement)
-  let executor_refused = wet_evidence_validate(scheduled: scheduled, terminals: wrong_executor, requirement: requirement)
-  let admitted = wet_evidence_validate(scheduled: scheduled, terminals: exact, requirement: requirement)
+  let subject_refused = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: wrong_subject, requirement: requirement)
+  let executor_refused = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: wrong_executor, requirement: requirement)
+  let admitted = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: exact, requirement: requirement)
   any_cause(causes: causes_of(v: subject_refused), p: is_semantic_subject_differs)
     && !any_cause(causes: causes_of(v: subject_refused), p: is_executor_contract_differs)
     && any_cause(causes: causes_of(v: executor_refused), p: is_executor_contract_differs)
@@ -312,8 +334,8 @@ test fn evidence_of_the_wrong_kind_is_its_own_cause_in_both_directions() -> Bool
   let transported_scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
   let transported_terminal = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: passed())]
   let local_terminal = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: co_resident_binding(subject: "s"), terminal: passed())]
-  let a = wet_evidence_validate(scheduled: local_scheduled, terminals: transported_terminal, requirement: co_resident_requirement(subject: "s"))
-  let b = wet_evidence_validate(scheduled: transported_scheduled, terminals: local_terminal, requirement: transported_requirement(subject: "s", executor: "x"))
+  let a = wet_evidence_validate(scheduled: local_scheduled, declared: alpha_declared(), terminals: transported_terminal, requirement: co_resident_requirement(subject: "s"))
+  let b = wet_evidence_validate(scheduled: transported_scheduled, declared: alpha_declared(), terminals: local_terminal, requirement: transported_requirement(subject: "s", executor: "x"))
   any_cause(causes: causes_of(v: a), p: is_relation_mismatch)
     && any_cause(causes: causes_of(v: b), p: is_relation_mismatch)
     && !any_cause(causes: causes_of(v: a), p: is_prepared_subject_differs)
@@ -336,9 +358,10 @@ test fn completed_over_budget_is_refused_and_carries_the_ledgers_disposition() -
   }
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
   let terminals = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: over)]
-  let v = wet_evidence_validate(scheduled: scheduled, terminals: terminals, requirement: transported_requirement(subject: "s", executor: "x"))
+  let v = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: terminals, requirement: transported_requirement(subject: "s", executor: "x"))
   let clean = wet_evidence_validate(
     scheduled: scheduled,
+    declared: alpha_declared(),
     terminals: [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: passed())],
     requirement: transported_requirement(subject: "s", executor: "x")
   )
@@ -365,7 +388,7 @@ test fn an_enrolled_red_observed_red_is_agreement() -> Bool {
   let scheduled = [scheduled_alpha(expectation: ExpectedRed {})]
   let red = Returned { observation: ObservedVerdict { holds: false } }
   let terminals = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: red)]
-  let v = wet_evidence_validate(scheduled: scheduled, terminals: terminals, requirement: transported_requirement(subject: "s", executor: "x"))
+  let v = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: terminals, requirement: transported_requirement(subject: "s", executor: "x"))
   wet_evidence_admits(v: v)
 }
 
@@ -382,9 +405,10 @@ test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool 
   let binding = transported_binding(subject: "s", executor: "x")
   let requirement = transported_requirement(subject: "s", executor: "x")
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
-  let none_run = wet_evidence_validate(scheduled: scheduled, terminals: [], requirement: requirement)
+  let none_run = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: [], requirement: requirement)
   let twice_run = wet_evidence_validate(
     scheduled: scheduled,
+    declared: alpha_declared(),
     terminals: [
       terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed()),
       terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed())
@@ -393,6 +417,7 @@ test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool 
   )
   let unscheduled = wet_evidence_validate(
     scheduled: [],
+    declared: alpha_declared(),
     terminals: [terminal_alpha(route: SelfHostTransportedRoute {}, binding: binding, terminal: passed())],
     requirement: requirement
   )
@@ -449,8 +474,8 @@ test fn a_terminal_that_resolved_elsewhere_refuses() -> Bool {
       binding: binding
     }
   ]
-  let a = wet_evidence_validate(scheduled: scheduled, terminals: foreign_entry, requirement: requirement)
-  let b = wet_evidence_validate(scheduled: scheduled, terminals: foreign_function, requirement: requirement)
+  let a = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: foreign_entry, requirement: requirement)
+  let b = wet_evidence_validate(scheduled: scheduled, declared: alpha_declared(), terminals: foreign_function, requirement: requirement)
   !wet_evidence_admits(v: a) && !wet_evidence_admits(v: b)
 }
 
@@ -492,6 +517,7 @@ fn is_foreign_entry(c: WetEvidenceRefusal) -> Bool {
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
     WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
+    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
   }
 }
 
@@ -512,12 +538,14 @@ fn is_foreign_function(c: WetEvidenceRefusal) -> Bool {
     WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
     WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
+    WetScheduledFunctionNotDeclared { identity: _, entry: _, function: _ } => false
   }
 }
 
 fn one_cause_satisfying(row: WetTerminalRow, p: fn(WetEvidenceRefusal) -> Bool) -> Bool {
   let cs = causes_of(v: wet_evidence_validate(
     scheduled: [scheduled_alpha(expectation: ExpectedToHold {})],
+    declared: alpha_declared(),
     terminals: [row],
     requirement: co_resident_requirement(subject: "tree-aaaa")
   ))
@@ -556,6 +584,7 @@ test fn an_unmet_host_premise_refuses_as_the_runner_and_a_met_premise_failure_as
   let words = "tree /home/ghrunner/.local/share/gunbc-browser-toolchain/abc absent"
   let unmet = wet_evidence_validate(
     scheduled: scheduled,
+    declared: alpha_declared(),
     terminals: [
       WetTerminalRow {
         route: LocalRepoCoResidentRoute {},
@@ -570,6 +599,7 @@ test fn an_unmet_host_premise_refuses_as_the_runner_and_a_met_premise_failure_as
   )
   let met_then_failed = wet_evidence_validate(
     scheduled: scheduled,
+    declared: alpha_declared(),
     terminals: [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: binding, terminal: Returned { observation: ObservedVerdict { holds: false } })],
     requirement: requirement
   )
@@ -610,11 +640,13 @@ test fn a_scheduled_identity_written_twice_refuses_naming_it() -> Bool {
   let one_terminal = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: binding, terminal: passed())]
   let duplicated = wet_evidence_validate(
     scheduled: [alpha, alpha],
+    declared: alpha_declared(),
     terminals: one_terminal,
     requirement: requirement
   )
   let single = wet_evidence_validate(
     scheduled: [alpha],
+    declared: alpha_declared(),
     terminals: one_terminal,
     requirement: requirement
   )
@@ -631,4 +663,46 @@ test fn a_scheduled_identity_written_twice_refuses_naming_it() -> Bool {
     && names_it
     && !wet_evidence_admits(v: duplicated)
     && wet_evidence_admits(v: single)
+}
+
+// THE DISCRIMINATING RED FOR THE UNDECLARED-FUNCTION CHECK. One row; the ONLY difference between the
+// two validations is the declaration census handed to the fold -- the full fixture census admits, the
+// empty one refuses as the SOLE cause, naming the identity, the entry file, and the function. A row
+// whose entry never declares its function passed every check before this fold existed: the forward
+// join compares the row to itself (both sides read s.identity), so a fictional function name is
+// invisible to it, and the enumerating witness fails to lower rather than refusing. Flipping the
+// census rather than the row is what keeps the other three cause sources provably uninvolved: same
+// schedule, same terminals, same requirement in both cells.
+test fn a_scheduled_function_not_declared_by_its_entry_refuses_naming_it() -> Bool {
+  let binding = co_resident_binding(subject: "s")
+  let requirement = co_resident_requirement(subject: "s")
+  let alpha = scheduled_alpha(expectation: ExpectedToHold {})
+  let one_terminal = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: binding, terminal: passed())]
+  let undeclared = wet_evidence_validate(
+    scheduled: [alpha],
+    declared: [],
+    terminals: one_terminal,
+    requirement: requirement
+  )
+  let declared = wet_evidence_validate(
+    scheduled: [alpha],
+    declared: alpha_declared(),
+    terminals: one_terminal,
+    requirement: requirement
+  )
+  let names_it = match first(causes_of(v: undeclared)) {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        WetScheduledFunctionNotDeclared { identity: i, entry: e, function: f } =>
+          i == "test.claim.fixture.alpha_holds"
+            && e == "dag/test/claim/fixture_test.dag"
+            && f == "alpha_holds"
+        _ => false
+      }
+  }
+  sole_cause_tag(v: undeclared) == "schedule-undeclared"
+    && names_it
+    && !wet_evidence_admits(v: undeclared)
+    && wet_evidence_admits(v: declared)
 }

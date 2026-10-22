@@ -1,6 +1,7 @@
 module v2.workflow.local_repo_wet_terminal
 
 import std.types { List }
+import v2.std.decl_index { DeclFact }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, length }
@@ -3528,6 +3529,7 @@ type LocalRepoWetFinalization
 // one run-level one.
 fn local_repo_wet_finalize(
   scheduled: List<WetScheduledClaim>,
+  declared: List<DeclFact>,
   execution: LocalRepoWetExecution,
   candidate: String,
 ) -> LocalRepoWetFinalization {
@@ -3548,6 +3550,7 @@ fn local_repo_wet_finalize(
       } else {
         match wet_evidence_validate(
           scheduled: scheduled,
+          declared: declared,
           terminals: terminals,
           requirement: local_repo_wet_requirement(candidate: candidate)
         ) {
