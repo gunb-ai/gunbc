@@ -27,6 +27,14 @@ for p in census_new_head census_p1 census_p2 census_p3; do
 done
 [ "$(sha tools/stage/census_new_head.dag)" = "$HEAD_CEN_SHA" ] || { echo "PLANT_SOURCE_NOT_HEAD_BYTES"; exit 9; }
 
+[ -d /sys/fs/cgroup ] || { echo "NO_CGROUP2 -- STOP"; exit 9; }
+echo +memory > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+rm -rf /sys/fs/cgroup/ver575d 2>/dev/null || true; mkdir -p /sys/fs/cgroup/ver575d
+echo 51539607552 > /sys/fs/cgroup/ver575d/memory.max
+RB=$(cat /sys/fs/cgroup/ver575d/memory.max)
+{ [ "$RB" != "max" ] && [ -n "$RB" ]; } || { echo "MEMORY_BOUND_READBACK_FAIL got=$RB -- STOP"; exit 9; }
+echo "CGROUP_WRAPPER=/sys/fs/cgroup/ver575d memory.max=$RB (read-back, bounded)"
+exec 11>>/sys/fs/cgroup/ver575d/cgroup.procs; echo $BASHPID >&11
 export CARGO_TARGET_DIR=/root/workspace/repo-root/.t14575d CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
 CB=/root/workspace/repo-root/.t14575d/release/claim_batch
