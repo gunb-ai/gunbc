@@ -137,3 +137,36 @@ fn declaration_ref_display_key(ref: DeclarationRef) -> String {
       )
   }
 }
+
+// THE IDENTITY OF A MODULE, as distinct from any path that stores it. A record rather than a bare
+// String so a path cannot be passed where an identity is required: the confusion is unwritable rather
+// than merely labelled. It lives here, beside DeclarationRef, as the one authority for naming a module;
+// it moved down from v2.lens.module_impact_query because std.decl_ref sits inside that lens's import
+// closure (through v2.lens.module_graph), so the lens could not be imported from here.
+type ModuleIdentity {
+  name: String
+}
+
+// WHAT A DOCUMENT CITES: a declaration (optionally a field or type parameter of it) or a whole module.
+// The rendered spelling is one function of the carrier, so a document holds no second spelling of
+// the name it cites.
+type CitedSymbol
+  = DeclarationSymbol { reference: DeclarationRef }
+  | ModuleSymbol { module: ModuleIdentity }
+
+// THE ONE CANONICAL SPELLING of a cited symbol: the module path, then the declaration after a space,
+// then a field or type parameter after a dot. One spelling, the spaced form: never a
+// per-site choice between ::, . and space, which would be a second name for one citation.
+fn cited_symbol_spelling(symbol: CitedSymbol) -> String {
+  match symbol {
+    ModuleSymbol { module: m } => m.name
+    DeclarationSymbol { reference: r } =>
+      match r.field {
+        WholeDeclaration => concat(r.module_path as String, concat(" ", r.decl_name as String))
+        NamedField { field_name: f } =>
+          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat(".", f as String))))
+        TypeParameter { name: t } =>
+          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat(".", t as String))))
+      }
+  }
+}

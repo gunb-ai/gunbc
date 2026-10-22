@@ -2,7 +2,7 @@ module gunbc.plans.v2_complexity_capability_parity
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, CodeBlock, AlignNone }
+import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, CodeBlock, CodeText, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
@@ -86,7 +86,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
     p(text: "**Table corrected 2026-08-05 (operator review).** Two rows were wrong in the merged revision and are fixed above, read off the live contract rather than recalled: `lens_contract_complexity_linearity_audit` showed no boundary when it carries a real `WallAfterGrounding` dissolving to `SubstrateMandatoryTag`, and `lens_contract_complexity_lowering` was omitted entirely though it carries `WallAfterGrounding` dissolving to `SingleAuthority` — a *distinct* dissolution mechanism, which matters because it means the specialized layer is not one undifferentiated block. Understating these boundaries understated how much of the complexity layer is already classified as decidable-but-unbuilt, which is the same direction of error as the `RatchetForever` mis-declaration below."),
     p(text: "So the generic structural engine `v2.lens.cost` is a real, enrolled, blocking wall — it is not a stub, and this program does not touch its kernel. Everything *above* it is audit-only with no consumer: the projection lens and all three specialized complexity lenses. That is the DESIGN §6 **coverage-by-illusion tier**, stated by the repo about itself."),
     p(text: "A second, sharper tell sits inside the projection lens: `v2.lens.complexity` `complexity_variables_admits` is"),
-    CodeBlock { code: "fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool \{\n  true\n\}\n" },
+    CodeBlock { segments: [CodeText { text: "fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool \{\n  true\n\}\n" }] },
     p(text: "— a `Validation` whose admission predicate is the constant `true`. It refines nothing; the `Refined<List<SizeVariable>>` carrier it feeds is a type name standing where a constraint was supposed to be. DESIGN §4b names this class exactly: *'richer type names are not safety — a brand, wrapper, or `Validated<T>` is cosmetic until construction and acceptance enforce the distinction.'*"),
 
     h2(text: "3. Capability comparison (verified, not recalled)"),
@@ -127,7 +127,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
 
     h2(text: "5. The authority ruling (content; signed as C0's first deliverable — §7)"),
     p(text: "Do **not** port `src/v1/complexity.dag` wholesale. It is powerful but coupled to the v1 AST, to parser implementation details, and to string-keyed identity throughout — porting it would cement the seed into the new architecture, which is the one move the project spirit forbids. The split:"),
-    CodeBlock { code: "v2.lens.cost              cost + size expressions, work/span composition,\n                          output-size and space expressions, effect demand\n\nv2.lens.complexity        asymptotic projection of cost; dominance and\n                          complexity-class comparison. Nothing else.\n\nstd.realization_schedule  predicted / derived / measured resource accounts\n                          and scheduling consumption\n\nv1.compiler.complexity    legacy realization, capability inventory,\n                          parity oracle, deletion target\n" },
+    CodeBlock { segments: [CodeText { text: "v2.lens.cost              cost + size expressions, work/span composition,\n                          output-size and space expressions, effect demand\n\nv2.lens.complexity        asymptotic projection of cost; dominance and\n                          complexity-class comparison. Nothing else.\n\nstd.realization_schedule  predicted / derived / measured resource accounts\n                          and scheduling consumption\n\nv1.compiler.complexity    legacy realization, capability inventory,\n                          parity oracle, deletion target\n" }] },
     p(text: "**`SymbolicCost` stays** as the normalized asymptotic projection of the richer `CostExpr` — one authority with two levels of detail, never two competing cost types. The existing `Blocking` cost wall and its bound consumer witness keep working throughout; no phase below may regress them."),
 
     h2(text: "6. What must NOT be carried across"),

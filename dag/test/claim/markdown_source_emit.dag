@@ -5,7 +5,7 @@ import std.markdown {
   MarkdownTableCell, MarkdownTableRow, HeadingLevel,
   H1, H2, H3, H4, H5, H6,
   HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, TaskListBlock,
-  CodeBlock, BlockquoteBlock, TableBlock,
+  CodeBlock, CodeText, BlockquoteBlock, TableBlock,
   TextInline, EmphasisInline, StrongInline, CodeInline, LinkInline, ImageInline,
   CheckboxState, Checked, Unchecked,
   MarkdownAlignment, AlignNone, AlignLeft, AlignCenter, AlignRight,
@@ -74,7 +74,7 @@ fn sample_doc() -> MarkdownDocument {
           MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "two" } ] } ] },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
+      CodeBlock { segments: [CodeText { text: "let x = 1;\n" }] },
       TableBlock {
         header: MarkdownTableRow {
           cells: [
@@ -138,7 +138,7 @@ test fn witness_exact_bytes() -> Bool {
 }
 
 fn code_only_doc(code: String) -> MarkdownDocument {
-  MarkdownDocument { blocks: [ CodeBlock { code: code } ] }
+  MarkdownDocument { blocks: [ CodeBlock { segments: [CodeText { text: code }] } ] }
 }
 
 test fn witness_code_block_closing_fence_on_own_line() -> Bool {

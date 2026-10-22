@@ -2,7 +2,7 @@ module gunbc.design_document
 
 import std.markdown {
   MarkdownDocument, MarkdownBlock,
-  HeadingBlock, TextInline, H1, CodeBlock,
+  HeadingBlock, TextInline, H1, CodeBlock, CodeText,
 }
 import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
@@ -124,7 +124,7 @@ fn section_3_blocks() -> List<MarkdownBlock> {
     p(text: "The full doctrine (operative loop, consumer-relative root, disposition census, root-first cut search, terminal receipt): → [replacement migration doctrine](docs/plans/replacement-migration-doctrine.md); cut programs → [floor-cut](docs/plans/floor-cut-replacement-plan.md) · [namespace-cut](docs/plans/namespace-cut-replacement-plan.md)."),
     h3(text: "External upstream decomposition"),
     p(text: "One concept, one authority unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit it. Each independently versioned upstream product, implementation, engine, vendor or specification has its own extdeps module. A generic hub may define agnostic shapes but may not enumerate concrete products, dispatch among them, carry product version rows, or store consumer coverage state. Observations this repository makes are receipts in the observing layer, not facts of the observed upstream; a missing observation is a downstream coverage obligation, never an `Unobserved` property inside the upstream module."),
-    CodeBlock { code: "extdeps.whatwg.html_navigation        shared standard\nextdeps.browser.chromium              Chromium implementation\nextdeps.browser.google_chrome         Chrome distribution\nextdeps.automation.playwright         automation dependency\ngunbc.served_surface_browser_support  support policy and evidence join" },
+    CodeBlock { segments: [CodeText { text: "extdeps.whatwg.html_navigation        shared standard\nextdeps.browser.chromium              Chromium implementation\nextdeps.browser.google_chrome         Chrome distribution\nextdeps.automation.playwright         automation dependency\ngunbc.served_surface_browser_support  support policy and evidence join" }] },
     p(text: "A Chrome change must not require editing Safari’s module. Adding Opera must not widen a generic browser-product enum."),
   ]
 }

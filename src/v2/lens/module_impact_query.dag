@@ -10,6 +10,7 @@ import v2.lens.common.construction_justification {
   WallAfterGrounding,
 }
 import std.disposition { SingleAuthority }
+import std.decl_ref { ModuleIdentity }
 import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureEstablished,
@@ -38,15 +39,11 @@ import v2.lens.module_graph {
 // cycle partition and standing operate on ModuleIdentity. Paths are attached as PRESENTATION and as
 // an adapter for file-shaped questions, never as the semantic authority: a file-level question may
 // conservatively resolve to SEVERAL semantic seeds, which is why the adapter returns a list.
-// ModuleIdentity is a record rather than a bare String so a path cannot be passed where an identity
+// ModuleIdentity (std.decl_ref, its one authority) is a record rather than a bare String so a path cannot be passed where an identity
 // is required - the confusion is unwritable rather than merely labelled. The earlier revision keyed
 // the core on paths and normalized INTO path space, the inverse of the ruled direction, which
 // silently changes meaning under the module-identity-storage lane's staged many-to-many path/module
 // relation.
-
-type ModuleIdentity {
-  name: String
-}
 
 type ImpactDirection
   = DependenciesOf
