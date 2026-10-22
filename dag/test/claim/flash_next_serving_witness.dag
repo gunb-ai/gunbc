@@ -31,6 +31,9 @@ import gunbc.serving.flash_next_maxq_fork_measurements {
   two_card_pcie_interconnect, fork_unobserved_layouts, fork_prefill_readings, layout, flash_next_maxq_fork_measurements_frontier,
 }
 import gunbc.serving.flash_next_buying_model {
+  RankingInputs, OptionPrices, RankedLayout, LayoutMaxQTp1, LayoutMaxQTp2Pair, LayoutH200Tp1, LayoutB200Tp1, LayoutWorkstationTp2Pair,
+  rank_configurations, ranked_outcomes, OptionDropped, OptionRanked, DroppedPriceAbsent, DroppedPriceZero, RankedRow, layout_index,
+  curve_at, layout_facts, gpus_per_replica, seats_at, replicas_for, flash_next_conclusion_provisional, flash_next_conclusion_gates, flash_next_ranking_unobserved, SafeSessionsOverride, RowMeasured, RowModelOutput,
   PurchasableUnit, UnitB200, UnitRtxPro6000MaxQ, ShipsAsStandardNode, ExistenceIsAQuoteFact, purchasable_unit,
   flash_next_candidate_units, scale_out, ScaleOutPrediction, flash_next_measured_knees, rho_milli, duty_mean_basis_points,
   duty_p95_basis_points, DutyCycleP95BasisPoints, DutyCycleUnreachable, BuyingParameters, ConfigurationInputs,
@@ -565,4 +568,81 @@ test fn w_fork_rows_counts() -> Bool {
     && count(fork_unobserved_layouts) == 2
     && count(fork_prefill_readings) == 4
     && !dissolution_is_bound(condition: flash_next_maxq_fork_measurements_frontier)
+}
+
+fn synthetic_ranking(maxq: Nat?, h200: Nat?, ws: Nat?) -> RankingInputs {
+  RankingInputs {
+    prices: OptionPrices { maxq_cents_per_gpu: maxq, workstation_cents_per_gpu: ws, h200_cents_per_gpu: h200, b200_cents_per_gpu: none },
+    safe_overrides: [], agentic_efficiency_basis_points: 5000,
+    budget_cents: 100000, host_cost_cents: 12000, gpus_per_server: 8, context_tokens: 175000, duty_basis_points: 3000,
+    site_watts: 100000, host_watts: 0, energy_milli_cents_per_kwh: 0, years: 1 }
+}
+
+fn ranked_row_count(rows: List<RankedRow>, l: RankedLayout) -> Nat {
+  count(rows |> filter(r => layout_index(l: r.layout) == layout_index(l: l)))
+}
+data rank_zero_seed: Nat = 0
+
+
+fn rank_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
+  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.rank } else { acc })
+}
+
+fn tok_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
+  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.expected_agentic_tokens_per_second } else { acc })
+}
+
+fn seats_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
+  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.seats } else { acc })
+}
+
+fn units_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
+  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.units } else { acc })
+}
+
+fn cents_per_tok_of(rows: List<RankedRow>, l: RankedLayout) -> Nat? {
+  fold(rows, init: none, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.cents_per_token_per_second } else { acc })
+}
+
+test fn w_ranking_pro_layouts_beat_h200_at_a_synthetic_ratio() -> Bool {
+  let rows = rank_configurations(i: synthetic_ranking(maxq: Present { value: 15000 }, h200: Present { value: 32000 }, ws: none))
+  count(rows) == 3
+    && units_of(rows: rows, l: LayoutMaxQTp1) == 5
+    && units_of(rows: rows, l: LayoutMaxQTp2Pair) == 2
+    && units_of(rows: rows, l: LayoutH200Tp1) == 2
+    && seats_of(rows: rows, l: LayoutMaxQTp1) == 15
+    && seats_of(rows: rows, l: LayoutMaxQTp2Pair) == 24
+    && tok_of(rows: rows, l: LayoutMaxQTp1) > 480 && tok_of(rows: rows, l: LayoutMaxQTp1) < 520
+    && tok_of(rows: rows, l: LayoutMaxQTp2Pair) > 450 && tok_of(rows: rows, l: LayoutMaxQTp2Pair) < 480
+    && tok_of(rows: rows, l: LayoutH200Tp1) > 240 && tok_of(rows: rows, l: LayoutH200Tp1) < 300
+    && rank_of(rows: rows, l: LayoutMaxQTp1) == 1
+    && rank_of(rows: rows, l: LayoutMaxQTp2Pair) == 2
+    && rank_of(rows: rows, l: LayoutH200Tp1) == 3
+    && count(flash_next_conclusion_gates) == 5
+    && count(flash_next_ranking_unobserved) == 5
+    && count(flash_next_conclusion_provisional) == 1
+}
+
+test fn w_ranking_absent_or_zero_price_drops_the_option() -> Bool {
+  let rows = rank_configurations(i: synthetic_ranking(maxq: Present { value: 10000 }, h200: Present { value: 21300 }, ws: none))
+  let dropped_absent = count(ranked_outcomes(i: synthetic_ranking(maxq: Present { value: 10000 }, h200: Present { value: 21300 }, ws: none))
+    |> filter(o => match o { OptionDropped { layout: _, cause: DroppedPriceAbsent } => true, _ => false }))
+  let zero = count(ranked_outcomes(i: synthetic_ranking(maxq: Present { value: 10000 }, h200: Present { value: 0 }, ws: none))
+    |> filter(o => match o { OptionDropped { layout: _, cause: DroppedPriceZero } => true, _ => false }))
+  let no_maxq = rank_configurations(i: synthetic_ranking(maxq: none, h200: Present { value: 21300 }, ws: none))
+  dropped_absent == 2 && zero == 1 && ranked_row_count(rows: rows, l: LayoutB200Tp1) == 0 && ranked_row_count(rows: rows, l: LayoutWorkstationTp2Pair) == 0
+    && count(no_maxq) == 1 && ranked_row_count(rows: no_maxq, l: LayoutH200Tp1) == 1
+}
+
+test fn w_ranking_curve_and_whatifs() -> Bool {
+  let tp2 = layout_facts(l: LayoutMaxQTp2Pair).curve
+  curve_at(c: tp2, x: 6) == 625
+    && curve_at(c: tp2, x: 99) == 975
+    && gpus_per_replica(weights_bytes: 300, gpu_memory_bytes: 100) == Present { value: 4 }
+    && gpus_per_replica(weights_bytes: 300, gpu_memory_bytes: 0) == none
+    && seats_at(kv_tokens: 750850, context_tokens: 175000) == 4
+    && replicas_for(sessions: 10, seats_per_replica: 4) == Present { value: 3 }
+    && replicas_for(sessions: 10, seats_per_replica: 0) == none
+    && match layout_facts(l: LayoutMaxQTp1).standing { RowMeasured => true, _ => false }
+    && match layout_facts(l: LayoutH200Tp1).standing { RowModelOutput => true, _ => false }
 }
