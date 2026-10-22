@@ -576,7 +576,13 @@ fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
 // the check-that-cannot-fail that row warned about, so the paired falsifiers are named instead.
 //
 // The observe phase must not end the ensure, and ownership comes from the endpoint SURVEY, not from
-// `--show-stats` — the same conclusion the receipt's own server_placement paragraph already reached.
+// `--show-stats` — the same conclusion the receipt's own server_placement paragraph already reached. The
+// survey is NOT called here: it is called one rung UP, in gunbc.host.host_effect_realize
+// realize_provision_build_cache_body, which surveys the endpoint and admits through
+// gunbc.build_cache.build_cache_ensure.admit_ensure_build_cache_instance BEFORE this module's fold runs — a
+// LISTENING endpoint converges or refuses there, so this predicate only ever decides for an ADMITTED
+// instance whose endpoint is absent or a currency-checked stale socket. Within that admitted route the
+// predicate decides only whether the ensure legs and the read-back run at all.
 fn build_cache_ensure_is_needed(observe: BuildCacheObserve) -> Bool {
   match observe {
     // REPAIRED by this PR (was `=> false`, the pinned defect). `--show-stats` returning rc 0 with a table
