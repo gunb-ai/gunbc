@@ -2933,40 +2933,42 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
       match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: denotation.declaration) {
         Absent => CoproductNotDeclared
         Present { value: declared } =>
-          match declared.kind {
-            TypeNode { connective: Disj } =>
-              if is_empty(xs: declared.children) {
-                UninhabitedScrutinee
-              } else {
-                let params = symbol_index_declared_type_params_at(
-                  index: resolved.resolved_declarations,
-                  qualified_path: denotation.declaration
-                )
-                if length(xs: params) != length(xs: denotation.type_arguments) {
-                  CoproductArityMismatch
+          // NEVER IS DECIDED BY DECLARATION IDENTITY, BEFORE ANY SHAPE. An opaque `type Never` lowers to
+          // the opaque wrapper (v2.std.type_binder type_opaque_wrapper, a Conj), not an Atom, so keying
+          // this on an Atom arm never reached the real declaration and std.error_primitives absurd refused
+          // infer_match_scrutinee_not_coproduct.
+          if infer_match_path_is_never_type(
+            path: denotation.declaration,
+            constructing_module: resolved.constructing_module
+          ) {
+            UninhabitedScrutinee
+          } else {
+            match declared.kind {
+              TypeNode { connective: Disj } =>
+                if is_empty(xs: declared.children) {
+                  UninhabitedScrutinee
                 } else {
-                  CoproductRead {
-                    coproduct: InferMatchCoproduct {
-                      path: denotation.declaration,
-                      variants: declared,
-                      instances: zip_map(a: params, b: denotation.type_arguments, f: fn(p, arg) {
-                        TypeVariableInstance { binder: p, instance: arg }
-                      })
+                  let params = symbol_index_declared_type_params_at(
+                    index: resolved.resolved_declarations,
+                    qualified_path: denotation.declaration
+                  )
+                  if length(xs: params) != length(xs: denotation.type_arguments) {
+                    CoproductArityMismatch
+                  } else {
+                    CoproductRead {
+                      coproduct: InferMatchCoproduct {
+                        path: denotation.declaration,
+                        variants: declared,
+                        instances: zip_map(a: params, b: denotation.type_arguments, f: fn(p, arg) {
+                          TypeVariableInstance { binder: p, instance: arg }
+                        })
+                      }
                     }
                   }
                 }
-              }
-            TypeNode { connective: Atom { identity: _ } } =>
-              if infer_match_path_is_never_type(
-                path: denotation.declaration,
-                constructing_module: resolved.constructing_module
-              ) {
-                UninhabitedScrutinee
-              } else {
-                CoproductNotDeclared
-              }
-            TypeNode { connective: _ } => CoproductNotDeclared
-            ComputationNode { behavior: _ } => CoproductNotDeclared
+              TypeNode { connective: _ } => CoproductNotDeclared
+              ComputationNode { behavior: _ } => CoproductNotDeclared
+            }
           }
       }
   }
