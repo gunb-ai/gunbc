@@ -79,8 +79,21 @@ fn lasf_is_file_refused(v: NcrVerdict) -> Bool {
   }
 }
 
-test fn probe_ctl_absent() -> Bool { lasf_is_absent(v: lasf_verdict(module_name: "v2.lasf_name_control")) }
-test fn probe_ctl_file_refused() -> Bool { lasf_is_file_refused(v: lasf_verdict(module_name: "v2.lasf_name_control")) }
-test fn probe_ctl_reason_unbound() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_unbound_symbol) }
-test fn probe_red_reason_unbound() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_unbound_symbol) }
-test fn probe_red_file_refused() -> Bool { lasf_is_file_refused(v: lasf_verdict(module_name: "v2.lasf_red")) }
+test fn probe_ctl_resolve_reason_declarer_refused() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_declarer_refused) }
+test fn probe_ctl_resolve_duplicate_module_name() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_duplicate_module_name) }
+test fn probe_ctl_resolve_module_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_module_not_found) }
+test fn probe_ctl_resolve_reason_malformed_imported_root() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_malformed_imported_root) }
+test fn probe_ctl_resolve_reason_ambiguous_symbol() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_ambiguous_symbol) }
+test fn probe_ctl_resolve_reason_reference_category_mismatch() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_reference_category_mismatch) }
+test fn probe_red_resolve_reason_declarer_refused() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_declarer_refused) }
+test fn probe_red_resolve_duplicate_module_name() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_duplicate_module_name) }
+test fn probe_red_resolve_module_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_module_not_found) }
+test fn probe_red_resolve_reason_malformed_imported_root() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_malformed_imported_root) }
+test fn probe_red_resolve_reason_ambiguous_symbol() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_ambiguous_symbol) }
+test fn probe_red_resolve_reason_reference_category_mismatch() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_reference_category_mismatch) }
+test fn probe_tys_resolve_reason_declarer_refused() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_declarer_refused) }
+test fn probe_tys_resolve_duplicate_module_name() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_duplicate_module_name) }
+test fn probe_tys_resolve_module_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_module_not_found) }
+test fn probe_tys_resolve_reason_malformed_imported_root() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_malformed_imported_root) }
+test fn probe_tys_resolve_reason_ambiguous_symbol() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_ambiguous_symbol) }
+test fn probe_tys_resolve_reason_reference_category_mismatch() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_reference_category_mismatch) }
