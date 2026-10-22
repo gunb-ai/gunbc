@@ -153,6 +153,7 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   PrimitiveRealizationsWired,
   target_bind_let_separator_present,
   IntLiteralDecimal,
+  ListIntroductionDelimited,
   TargetCapabilityKey,
   ProducedDeclSupport,
   ProducedDeclUnwired,
@@ -1231,6 +1232,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^rust_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^rust_token_int_literal },
+    list_introduction_form: ListIntroductionDelimited { open: ^rust_token_vec_open, separator: ^rust_token_comma, close: ^rust_token_list_close },
     block_evaluation_mode: ValueProducing
   }
 }
@@ -2487,7 +2489,9 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_path_sep, text: "::"),
     rust_lex_rule(token_class: ^rust_token_box_new, text: "new"),
     rust_lex_rule(token_class: ^rust_token_fn_type_lt, text: "<"),
-    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">")
+    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">"),
+    rust_lex_rule(token_class: ^rust_token_vec_open, text: "vec!["),
+    rust_lex_rule(token_class: ^rust_token_list_close, text: "]")
   ]
 }
 
