@@ -256,6 +256,7 @@ type DemandFactWalk {
   value_call: Bool
   sites: List<FactCallSite>
   bodies: List<FactBodySites>
+  tick: Int
 }
 
 // ADDITIVE, FOR v2.compiler.effect_pair_census; THIS CENSUS IGNORES BOTH FIELDS. A call-site is the
@@ -264,6 +265,8 @@ type DemandFactWalk {
 type FactCallSite {
   occurrence: Optional<OccurrenceId>
   callee: QualifiedName
+  enter: Int
+  exit: Int
 }
 
 type FactBodySites {
@@ -276,7 +279,7 @@ type FactBodySites {
 // containment inside the declaration that holds it.
 fn demand_census_module_facts(resolved: ResolvedTree, module_qn: QualifiedName) -> DemandCensusModuleFacts {
   let w = demand_fact_node(
-    w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false, sites: Empty, bodies: Empty },
+    w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false, sites: Empty, bodies: Empty, tick: 0 },
     position: module_qn,
     node: resolved.root,
     resolved: resolved
@@ -299,9 +302,32 @@ fn demand_fact_children(node: Node) -> List<Edge> {
 fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   match declaration_reference_path_optional(node: node) {
     Present { value: target } =>
-      DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: list_snoc_item(xs: w.current, item: target), value_call: w.value_call, sites: list_snoc_item(xs: w.sites, item: FactCallSite { occurrence: node_occurrence_id_optional(node: node), callee: target }), bodies: w.bodies }
+      DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: list_snoc_item(xs: w.current, item: target), value_call: w.value_call, sites: w.sites, bodies: w.bodies, tick: w.tick + 1 }
     Absent =>
-      fold(demand_fact_children(node: node), init: demand_fact_note_call(w: w, node: node, resolved: resolved), f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+      demand_fact_note_site(
+        before: w,
+        node: node,
+        after: fold(demand_fact_children(node: node), init: demand_fact_note_call(w: w, node: node, resolved: resolved), f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+      )
+  }
+}
+
+// A CALL SITE is a node headed by a declaration reference; its extent is the preorder interval the
+// walk spent on it, so a consumer can ask which sites a value or an arm contains. Additive: nothing
+// in this census reads it.
+fn demand_fact_note_site(before: DemandFactWalk, node: Node, after: DemandFactWalk) -> DemandFactWalk {
+  match first(node.children) {
+    Present { value: e } =>
+      match declaration_reference_path_optional(node: e.target) {
+        Present { value: callee } =>
+          DemandFactWalk {
+            functions: after.functions, operations: after.operations, audited: after.audited, current: after.current, value_call: after.value_call,
+            sites: list_snoc_item(xs: after.sites, item: FactCallSite { occurrence: node_occurrence_id_optional(node: node), callee: callee, enter: before.tick, exit: after.tick }),
+            bodies: after.bodies, tick: after.tick + 1
+          }
+        Absent => after
+      }
+    Absent => after
   }
 }
 
@@ -321,7 +347,7 @@ fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, reso
 // positional child is a parameter reference is a function-value call too (review of gunbc#12992).
 fn demand_fact_note_call(w: DemandFactWalk, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   if demand_fact_is_value_call(node: node) {
-    DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: true, sites: w.sites, bodies: w.bodies }
+    DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: true, sites: w.sites, bodies: w.bodies, tick: w.tick }
   } else {
     w
   }
@@ -420,7 +446,7 @@ fn demand_fact_declaration(w: DemandFactWalk, path: QualifiedName, node: Node, r
         demand_fact_with_declared_operation(w: w, op: OperationFact { path: path, requirement: demand_census_requirement(arrow: node) })
       } else {
         let inner = demand_fact_node(
-          w: DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: Empty, value_call: false, sites: Empty, bodies: w.bodies },
+          w: DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: Empty, value_call: false, sites: Empty, bodies: w.bodies, tick: w.tick },
           position: path,
           node: node,
           resolved: resolved
@@ -432,14 +458,15 @@ fn demand_fact_declaration(w: DemandFactWalk, path: QualifiedName, node: Node, r
           current: w.current,
           value_call: w.value_call,
           sites: w.sites,
-          bodies: list_snoc_item(xs: inner.bodies, item: FactBodySites { function: path, sites: inner.sites })
+          bodies: list_snoc_item(xs: inner.bodies, item: FactBodySites { function: path, sites: inner.sites }),
+          tick: inner.tick
         }
       }
   }
 }
 
 fn demand_fact_with_operation(w: DemandFactWalk, op: OperationFact) -> DemandFactWalk {
-  DemandFactWalk { functions: w.functions, operations: list_snoc_item(xs: w.operations, item: op), audited: w.audited, current: w.current, value_call: w.value_call, sites: w.sites, bodies: w.bodies }
+  DemandFactWalk { functions: w.functions, operations: list_snoc_item(xs: w.operations, item: op), audited: w.audited, current: w.current, value_call: w.value_call, sites: w.sites, bodies: w.bodies, tick: w.tick }
 }
 
 // A DECLARED operation: its requirement is the authority the audited vocabulary is read from.
@@ -447,7 +474,7 @@ fn demand_fact_with_declared_operation(w: DemandFactWalk, op: OperationFact) -> 
   let with_op = demand_fact_with_operation(w: w, op: op)
   match op.requirement {
     RequiresResources { resources: rs } =>
-      DemandFactWalk { functions: with_op.functions, operations: with_op.operations, audited: fold_list(xs: rs, empty: with_op.audited, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }), current: with_op.current, value_call: with_op.value_call, sites: with_op.sites, bodies: with_op.bodies }
+      DemandFactWalk { functions: with_op.functions, operations: with_op.operations, audited: fold_list(xs: rs, empty: with_op.audited, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }), current: with_op.current, value_call: with_op.value_call, sites: with_op.sites, bodies: with_op.bodies, tick: with_op.tick }
     RequiresNone => with_op
     RequiresOpaque => with_op
     RequiresUndeclared => with_op
