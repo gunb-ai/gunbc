@@ -1,11 +1,10 @@
 module gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data declaration_reference_cites_a_declaration_nothing_resolved: RecurringFailureMode = RecurringFailureMode {
   identity: "declaration_reference_cites_a_declaration_nothing_resolved" as NonEmptyStr,
-  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**a DeclarationRef literal, or a backtick symbol in ledger prose, names a module or declaration that does not exist, and nothing refuses it** (module_path, decl_name and field are three unchecked strings at construction, so an invented or stale citation is as writable as a real one).",
