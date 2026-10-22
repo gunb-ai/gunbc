@@ -1,0 +1,79 @@
+module extdeps.electronic_component.intel_10cx085
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.intel { intel }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, ProgrammableLogicSpec, ProgrammableLogicSpecification, VolatileConfiguration,
+  ActiveSerial, AvalonStreaming, JtagDownload, ConfigurationSignal, ConfigurationRequest, ConfigurationStatus,
+  ConfigurationDone, InitializationDone, ModeSelect, PullUpByStrap,
+}
+
+// Intel's Cyclone 10 GX Core Fabric and General Purpose I/Os Handbook, C10GX51003 (document 683775),
+// configuration chapter, read 2026-10-21 through a search index's excerpts of its pages (the pages
+// refuse automated reads; a direct read is owed): the device is SRAM-based and loads its configuration
+// at every power-up; the schemes are active serial x1 and x4, in which "the FPGA controls the
+// configuration process and reads data from the EPCQ-L device", Avalon-ST, and JTAG; "pulling the
+// nCONFIG pin low ... pulls nSTATUS and CONF_DONE low and ties all I/O pins to an internal weak
+// pull-up" (whether unconfigured user pins pull up is the nIO_PULLUP strap's choice, so the row names the
+// strap rather than asserting the pull-up); under JTAG "CONF_DONE high indicates success", and INIT_DONE,
+// optional, reports initialization complete. The device datasheet's recommended operating conditions
+// (683828, read 2026-10-21 through a review's citation of it) make VCCBAT a supply the power-on reset
+// monitors even when no volatile key is used. The ordering code 10CX085YF672E6G reads
+// by Intel's code convention as family 10CX (Cyclone 10 GX), member 085 (85,000 logic elements, a
+// distributor figure for the same member on 2026-10-21), package F (FineLine BGA) with 672 pins,
+// temperature grade E (extended), speed grade 6, G (RoHS); the field Y is not decoded here and is owed
+// to the device overview, C10GX51001 (document 683485). Supply rails and ball positions are not carried.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/www/us/en/docs/programmable/683775/current/configuration-sequence.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.intel_10cx085",
+      decl_name: "cyclone_10_gx_10cx085yf672e6g",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "www.intel.com/content/www/us/en/docs/programmable/683775/current/active-serial-configuration.html" } },
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "www.intel.com/content/www/us/en/docs/programmable/683485/current/" } },
+  ]
+}
+
+data cyclone_10_gx_10cx085yf672e6g: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: intel,
+  ordering_code: "10CX085YF672E6G",
+  package: "FBGA-672 (F672)",
+  top_marking: "intel (logo) / Cyclone 10 / 10CX085YF672E6G / P <lot line> / TAIWAN, with a two-line trace code and a circled e1 below",
+  specification: ProgrammableLogicSpec { logic: ProgrammableLogicSpecification {
+    logic_elements: 85000,
+    memory: VolatileConfiguration,
+    schemes: [
+      ActiveSerial { data_lanes: 1, flash_family: "EPCQ-L" },
+      ActiveSerial { data_lanes: 4, flash_family: "EPCQ-L" },
+      AvalonStreaming,
+      JtagDownload,
+    ],
+    signals: [
+      ConfigurationSignal { name: "nCONFIG", role: ConfigurationRequest },
+      ConfigurationSignal { name: "nSTATUS", role: ConfigurationStatus },
+      ConfigurationSignal { name: "CONF_DONE", role: ConfigurationDone },
+      ConfigurationSignal { name: "INIT_DONE", role: InitializationDone },
+      ConfigurationSignal { name: "MSEL", role: ModeSelect },
+    ],
+    io_before_configuration: PullUpByStrap { strap: "nIO_PULLUP" },
+    por_monitored_supplies: ["VCCBAT"],
+  } },
+  vendor_application_statements: [
+    "Cyclone 10 GX: an SRAM-based FPGA that loads its configuration at every power-up from a serial flash it masters, from a host over Avalon-ST, or over JTAG",
+    "CONF_DONE high indicates a successful configuration; while nCONFIG is held low, nSTATUS and CONF_DONE are low and every user I/O sits on an internal weak pull-up where nIO_PULLUP enables it",
+    "VCCBAT must be powered for the power-on reset to release, whether or not the volatile key is used",
+  ],
+}

@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_payload_admits_a_variant_its_producer_never_makes
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_payload_admits_a_variant_its_producer_never_makes: RecurringFailureMode = RecurringFailureMode {
   identity: "a_payload_admits_a_variant_its_producer_never_makes" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "A CARRIER ADMITS A VARIANT ITS ONLY PRODUCER NEVER EMITS, so the fold over that carrier grows an arm for a state no run reaches -- and that arm is written without the care the reachable ones get, because nothing exercises it and nothing can. The invalid state is a case analysis whose unreachable arm CONTRADICTS a rule the same module states for the reachable ones, while remaining perfectly constructible by the next caller. It is not dead code: dead code is unreachable from every caller, and this is unreachable from the CURRENT ONE.",

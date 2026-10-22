@@ -103,6 +103,7 @@ import v2.std.fold_assembly {
 }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
+  ConcreteSyntaxLayoutItem,
   TargetValueExpression,
   TargetTypeExprFieldSlot,
   TargetTypeExpressionProjection,
@@ -225,6 +226,7 @@ import v2.compiler.target_serialize {
   list_head_and_tail,
   node_atom_identity,
   serialize_concrete_syntax_tokens_to_source_string,
+  serialize_concrete_syntax_layout_to_source_string,
   serialize_type_expr_emitted_positional_head_tail,
   target_bundle_child,
   target_bundle_child_lookup_step,
@@ -313,7 +315,7 @@ fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<G
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: n } =>
+        GroundingNotDerived { node: n, site: _ } =>
           outcome_rejected(d: translate_grounding_not_derived_diagnostic(node: n))
         DerivedGrounding { grounding: _ } =>
           outcome_accepted(GroundingGatePassed {})
@@ -492,6 +494,17 @@ fn serialize_concrete_syntax_tokens_to_source(
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
+    f: fn(carrier) {
+      target_source_medium(text: render_target_text(t: carrier), target: target)
+    }
+  )
+}
+fn serialize_concrete_syntax_layout_to_source(
+  target: TargetModel,
+  items: List<ConcreteSyntaxLayoutItem>
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: serialize_concrete_syntax_layout_to_source_string(target: target, items: items),
     f: fn(carrier) {
       target_source_medium(text: render_target_text(t: carrier), target: target)
     }
