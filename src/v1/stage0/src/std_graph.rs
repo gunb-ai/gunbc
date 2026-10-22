@@ -7,6 +7,7 @@ pub use crate::std_algebra::{
 pub use crate::std_optional::Optional;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
 pub use crate::std_termination::{DescentEvidence, ProofEdge, TerminationProof};
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
