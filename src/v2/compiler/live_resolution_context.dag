@@ -6,7 +6,7 @@ import std.optional { Absent, Present }
 import std.occurrence_identity { OccurrenceIdAllocator }
 import std.types { List, Map }
 import v2.compiler.name_resolve { ResolutionContext, resolution_context }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_imported_modules }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_import_bindings, normalized_tree_imported_modules }
 import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.program_assembly { program_assembly_read_to_normalized_root_seeded }
 import v2.compiler.source_authority { DagSourceReadWitness }
@@ -17,7 +17,8 @@ import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty, 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { symbol_lexeme }
-import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.qualified_name { QualifiedName, qualified_name_owning_module, qualified_name_to_dotted_string }
 import v2.std.resolution_policy { NameResolutionPolicy }
 
 // THE LIVE-TREE RESOLUTION CONTEXT: the one ResolutionContext a caller whose subject is the tree
@@ -31,7 +32,8 @@ import v2.std.resolution_policy { NameResolutionPolicy }
 //
 // ONE RE-EXPORT HOP. A cited module that only imports a name (a relay) declares nothing: the resolver
 // answers for the name under its HOME, which is an import target of the relay. So after the named
-// targets, the modules each loaded root imports are loaded too, once and not transitively: a chain
+// targets, the home of each import that binds a name in `names` (the declaration names the caller cites)
+// is loaded too, once and not transitively: a chain
 // of relays longer than one hop is a module absent from the roots, which the resolver already
 // answers as ModuleAbsent rather than a wrong resolution.
 //
@@ -97,9 +99,21 @@ fn live_context_load_unattempted(
   }
 }
 
+fn live_context_hop_home(acc: List<String>, row: AliasBindingRow, homes: FreeMonoid<QualifiedName>, names: Map<String, Bool>) -> List<String> {
+  match map_lookup(m: names, key: symbol_lexeme(sym: row.binding)) {
+    Absent => acc
+    Present { value: _ } =>
+      match qualified_name_owning_module(roster: homes, target: row.target) {
+        Absent => acc
+        Present { value: home } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: home))
+      }
+  }
+}
+
 fn live_resolution_context(
   by_name: Map<String, DagSourceReadWitness>,
   targets: List<String>,
+  names: Map<String, Bool>,
   lm: LanguageModel,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
@@ -117,10 +131,15 @@ fn live_resolution_context(
     xs: named.roots,
     empty: [],
     cons: fn(acc, root) {
-      fold_list(
+      let homes = fold_list(
         xs: normalized_tree_imported_modules(tree: root),
+        empty: Empty,
+        cons: fn(h, imp) { list_snoc_item(xs: h, item: imp.target) }
+      )
+      fold_list(
+        xs: normalized_tree_import_bindings(tree: root),
         empty: acc,
-        cons: fn(inner, row) { list_snoc_item(xs: inner, item: qualified_name_to_dotted_string(qn: row.target)) }
+        cons: fn(inner, row) { live_context_hop_home(acc: inner, row: row, homes: homes, names: names) }
       )
     }
   )

@@ -270,7 +270,7 @@ import v2.compiler.dependency_demand {
   OperationFact,
 }
 import v2.compiler.live_resolution_context { live_resolution_context }
-import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
+import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, prose_target_names, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
   AuthoredTypeUnresolved,
@@ -3289,6 +3289,7 @@ type NativeDeclRefCensusScan {
   literals: LiteralScan
   targets: Map<String, Bool>
   target_list: List<String>
+  names: Map<String, Bool>
   aliases: List<String>
   refused_files: List<String>
   bare_heads: Int
@@ -3303,6 +3304,7 @@ fn native_decl_ref_census_scan_target(scan: NativeDeclRefCensusScan, module: Str
         literals: scan.literals,
         targets: map_insert(scan.targets, module, true),
         target_list: list_snoc_item(xs: scan.target_list, item: module),
+        names: scan.names,
         aliases: scan.aliases,
         refused_files: scan.refused_files,
         bare_heads: scan.bare_heads,
@@ -3311,11 +3313,25 @@ fn native_decl_ref_census_scan_target(scan: NativeDeclRefCensusScan, module: Str
   }
 }
 
+fn native_decl_ref_census_scan_name(scan: NativeDeclRefCensusScan, name: String) -> NativeDeclRefCensusScan {
+  NativeDeclRefCensusScan {
+    literals: scan.literals,
+    targets: scan.targets,
+    target_list: scan.target_list,
+    names: map_insert(scan.names, name, true),
+    aliases: scan.aliases,
+    refused_files: scan.refused_files,
+    bare_heads: scan.bare_heads,
+    alloc: scan.alloc
+  }
+}
+
 fn native_decl_ref_census_scan_refused(scan: NativeDeclRefCensusScan, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator) -> NativeDeclRefCensusScan {
   NativeDeclRefCensusScan {
     literals: scan.literals,
     targets: scan.targets,
     target_list: scan.target_list,
+    names: scan.names,
     aliases: scan.aliases,
     refused_files: list_snoc_item(xs: scan.refused_files, item: symbol_lexeme(sym: read.compilation_unit)),
     bare_heads: scan.bare_heads,
@@ -3348,12 +3364,13 @@ fn native_decl_ref_census_scan_speller(
             literals: LiteralScan { cited: list_append(left: scan.literals.cited, right: found.cited), unreadable: list_append(left: scan.literals.unreadable, right: found.unreadable) },
             targets: scan.targets,
             target_list: scan.target_list,
+            names: scan.names,
             aliases: if root_aliases_declaration_ref(root: root.root) { list_snoc_item(xs: scan.aliases, item: dotted) } else { scan.aliases },
             refused_files: scan.refused_files,
             bare_heads: scan.bare_heads + native_decl_ref_census_bare_heads(literals: found),
             alloc: result.alloc
           }
-          fold_list(xs: found.cited, empty: merged, cons: fn(acc, c) { native_decl_ref_census_scan_target(scan: acc, module: c.ref.module_path as String) })
+          fold_list(xs: found.cited, empty: merged, cons: fn(acc, c) { native_decl_ref_census_scan_name(scan: native_decl_ref_census_scan_target(scan: acc, module: c.ref.module_path as String), name: c.ref.decl_name as String) })
       }
   }
 }
@@ -3364,7 +3381,7 @@ fn native_decl_ref_census_scan_prose(scan: NativeDeclRefCensusScan, read: DagSou
     Accepted { value: t, diagnostics: _ } =>
       fold_list(
         xs: prose_target_modules(tokens: t.all, namespaces: namespaces, known: plan.known),
-        empty: scan,
+        empty: fold_list(xs: prose_target_names(tokens: t.all, namespaces: namespaces, known: plan.known), empty: scan, cons: fn(acc, n) { native_decl_ref_census_scan_name(scan: acc, name: n) }),
         cons: fn(acc, m) { native_decl_ref_census_scan_target(scan: acc, module: m) }
       )
   }
@@ -3405,7 +3422,7 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
           let namespaces = top_level_namespaces(all: layout_namespaces())
           let spelled = fold_list(
             xs: plan.spellers,
-            empty: NativeDeclRefCensusScan { literals: LiteralScan { cited: [], unreadable: [] }, targets: empty_map(), target_list: [], aliases: [], refused_files: [], bare_heads: 0, alloc: occurrence_id_allocator_initial() },
+            empty: NativeDeclRefCensusScan { literals: LiteralScan { cited: [], unreadable: [] }, targets: empty_map(), target_list: [], names: empty_map(), aliases: [], refused_files: [], bare_heads: 0, alloc: occurrence_id_allocator_initial() },
             cons: fn(acc, read) { native_decl_ref_census_scan_speller(scan: acc, read: read, front: front, ingest_scope: ingest_scope) }
           )
           let scanned = fold_list(
@@ -3416,6 +3433,7 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
           let loaded = live_resolution_context(
             by_name: plan.by_name,
             targets: scanned.target_list,
+            names: scanned.names,
             lm: front.lm,
             lex: front.lex,
             prepared: front.prepared,

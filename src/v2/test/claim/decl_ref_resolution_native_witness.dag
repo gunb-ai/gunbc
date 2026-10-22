@@ -1,6 +1,6 @@
 module v2.test.claim.decl_ref_resolution_native_witness
 
-import std.algebra { Cons, Empty, FreeMonoid, contains, empty_map, length, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, contains, empty_map, fold_list, length, map_insert }
 import std.occurrence_identity { occurrence_id_allocator_initial }
 import v2.compiler.live_resolution_context { live_resolution_context }
 import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
@@ -180,7 +180,7 @@ test fn duplicate_declaration_is_refused_at_ingest_not_contested() -> Bool {
 // reference cannot resolve under its home.
 data dr_relay_ingest: SourceRootIngest = Cons { head: ncr_relay_read(), tail: Cons { head: ncr_home_a_read(), tail: Empty } }
 
-fn dr_live_resolution(targets: List<String>, ref: DeclarationRef) -> Optional<DeclarationRefResolution> {
+fn dr_live_resolution(targets: List<String>, names: List<String>, ref: DeclarationRef) -> Optional<DeclarationRefResolution> {
   match native_test_front_end_prepare() {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: front, diagnostics: _ } =>
@@ -190,6 +190,7 @@ fn dr_live_resolution(targets: List<String>, ref: DeclarationRef) -> Optional<De
           let live = live_resolution_context(
             by_name: map_insert(map_insert(empty_map(), "v2.ncr_relay", ncr_relay_read()), "v2.ncr_home_a", ncr_home_a_read()),
             targets: targets,
+            names: fold_list(xs: names, empty: empty_map(), cons: fn(acc, n) { map_insert(acc, n, true) }),
             lm: front.lm,
             lex: front.lex,
             prepared: front.prepared,
@@ -207,15 +208,23 @@ fn dr_live_resolution(targets: List<String>, ref: DeclarationRef) -> Optional<De
 }
 
 test fn cited_relay_resolves_under_its_home_in_the_live_context() -> Bool {
-  match dr_live_resolution(targets: ["v2.ncr_relay"], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
+  match dr_live_resolution(targets: ["v2.ncr_relay"], names: ["NcrTwin"], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
     Present { value: DeclarationRefResolved { declaration_identity: i } } => i.qualified_name == "v2.ncr_home_a.NcrTwin"
     _ => false
   }
 }
 
 test fn live_context_loads_only_the_cited_modules_and_one_hop() -> Bool {
-  match dr_live_resolution(targets: ["v2.ncr_home_a"], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
+  match dr_live_resolution(targets: ["v2.ncr_home_a"], names: ["NcrTwin"], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
     Present { value: DeclarationRefModuleAbsent { reference: _ } } => true
     _ => false
+  }
+}
+
+test fn live_context_hops_only_for_cited_names() -> Bool {
+  match dr_live_resolution(targets: ["v2.ncr_relay"], names: [], ref: dr_ref(module_path: "v2.ncr_relay", decl_name: "NcrTwin")) {
+    Present { value: DeclarationRefResolved { declaration_identity: _ } } => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
