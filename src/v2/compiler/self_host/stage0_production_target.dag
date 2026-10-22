@@ -9,7 +9,7 @@ import v2.extdeps.languages.rust {
   rust_visibility_public_lex_rule
 }
 import v2.std.compilers.lexing { LexRules, ModeledLexRules }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclRenderRows,
   ProducedDeclSignatureSegment,
   ProducedDeclSupport,
@@ -123,6 +123,7 @@ fn stage0_production_lex() -> LexRules {
 fn stage0_production_target_model() -> TargetModel {
   let base = rust_target_model()
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: stage0_production_decl_support(base: base.produced_decl_support),
     bundle: base.bundle,
     lex: stage0_production_lex(),

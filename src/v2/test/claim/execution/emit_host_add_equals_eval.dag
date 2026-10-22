@@ -1,5 +1,7 @@
 module v2.test.claim.execution.emit_host_add_equals_eval
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
@@ -218,7 +220,8 @@ fn emit_eval_composed_facts(node: Node) -> Optional<InferredFacts> {
 fn emit_eval_subject_tree() -> InferredTree {
   InferredTree {
     root: rust_fixture_emitted_add_fn,
-    facts: PartialFunction { lookup: emit_eval_composed_facts }
+    facts: PartialFunction { lookup: emit_eval_composed_facts },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

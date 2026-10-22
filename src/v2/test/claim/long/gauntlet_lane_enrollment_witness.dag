@@ -2,6 +2,7 @@ module v2.test.claim.long.gauntlet_lane_enrollment_witness
 
 import std.types { List }
 import gunbc.ci.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
+import gunbc.rung_drop.falsifier_rehomed_rows_unexecuted { falsifier_rehomed_rows_unexecuted_population }
 import gunbc.ci.ci_gate { Gate, CheapClaimPoolGate, GeneratedArtifactDriftGate }
 import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
@@ -10,7 +11,6 @@ import gunbc.commit_workflow {
   GitPrePushHook, FalsifierCadenceJob,
   roster_has_no_bare_deenrolled_witness,
   live_roster_has_no_bare_deenrolled_witness,
-  live_roster_falsifier_witness_entries,
   roster_has_no_bare_deenrolled_gate,
   live_roster_has_no_bare_deenrolled_gate
 }
@@ -20,7 +20,10 @@ import std.realization_schedule {
 import std.algebra { length }
 import v2.std.text { String }
 
-// Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow
+// Executing consumer for the per-PR half of the FalsifierCadenceJob lane -- the lane itself is
+// declared but UNREALIZED (its executor falsifier.yml was deleted at 611fd02770/#8283; the loss is
+// carried by the typed frontier and gunbc.rung_drop.falsifier_rehomed_rows_unexecuted, #14615)
+// (gunbc.commit_workflow
 // falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole
 // value is the difference between 're-homed' and 'dropped', and that difference is invisible in a
 // diff: both look like a surface list edit. Three claims, the third a RED control so the first two
@@ -65,8 +68,8 @@ fn synthetic_bare_deenrolled_row() -> CommitCheckEnrollment {
   }
 }
 
-fn falsifier_entries_contain(entries: List<ScheduleWitnessEntry>, f: String) -> Bool {
-  any(entries, e => e.function == f)
+fn falsifier_entries_contain(entries: List<String>, f: String) -> Bool {
+  any(entries, id => id == f)
 }
 
 // wave1_gate1_d_census_subsumption_witness_holds moved off FalsifierCadenceJob onto
@@ -98,26 +101,30 @@ fn substrate_long_lane_contains(f: String) -> Bool {
 // needs a fresh claim naming the new home, not this one resurrected.
 
 test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
-  let entries = live_roster_falsifier_witness_entries()
+  let entries = falsifier_rehomed_rows_unexecuted_population()
   substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
-    && falsifier_entries_contain(entries: entries, f: "bind_census_ingested_executes_holds")
-    && falsifier_entries_contain(entries: entries, f: "bind_census_ingested_wrong_value_red_holds")
-    && falsifier_entries_contain(entries: entries, f: "loop_census_ingested_executes_holds")
-    && falsifier_entries_contain(entries: entries, f: "loop_census_ingested_wrong_value_red_holds")
-    && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_executes_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag::bind_census_ingested_wrong_value_red_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag::loop_census_ingested_executes_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag::loop_census_ingested_wrong_value_red_holds")
+    && falsifier_entries_contain(entries: entries, f: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag::witness_parse_binding_fidelity_distinct_identifiers_holds")
 }
 
 test fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
-  let cadence = live_roster_falsifier_witness_entries()
+  let cadence = falsifier_rehomed_rows_unexecuted_population()
   !falsifier_entries_contain(entries: cadence, f: "lens_affected_set_provenance_producer_git_diff_wire_holds")
     && !falsifier_entries_contain(entries: cadence, f: "witness_resolve_distinct_param_bindings_holds")
 }
 
 test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {
   live_roster_has_no_bare_deenrolled_witness()
-    && roster_has_no_bare_deenrolled_witness(
-         roster: [synthetic_pr_row(), synthetic_rehomed_row()]
-       )
+    && roster_has_no_bare_deenrolled_witness(roster: [synthetic_pr_row()])
+}
+
+// FalsifierCadenceJob executes nothing (falsifier.yml deleted at 611fd02770, #8283), so a row
+// enrolled only on it is a bare de-enrollment and the gate refuses it.
+test fn falsifier_cadence_only_row_is_refused_RED_control_holds() -> Bool {
+  !roster_has_no_bare_deenrolled_witness(roster: [synthetic_pr_row(), synthetic_rehomed_row()])
 }
 
 test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
@@ -175,8 +182,14 @@ fn synthetic_bare_deenrolled_gate_row() -> CommitCheckEnrollment {
 test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
   live_roster_has_no_bare_deenrolled_gate()
     && roster_has_no_bare_deenrolled_gate(
-         roster: [synthetic_cadence_gate_row(), synthetic_enrolled_gate_row()]
+         roster: [synthetic_enrolled_gate_row()]
        )
+}
+
+test fn falsifier_cadence_only_gate_is_refused_RED_control_holds() -> Bool {
+  !roster_has_no_bare_deenrolled_gate(
+    roster: [synthetic_cadence_gate_row(), synthetic_enrolled_gate_row()]
+  )
 }
 
 test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> Bool {

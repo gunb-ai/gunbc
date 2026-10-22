@@ -11,7 +11,7 @@ import v2.extdeps.languages.rust {
 }
 
 import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty,
@@ -76,6 +76,7 @@ fn wrap_decision_fixture_type_expression_projection_edge() -> Edge {
 
 fn wrap_decision_fixture_model(bundle: Node) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: VoidLexRules,

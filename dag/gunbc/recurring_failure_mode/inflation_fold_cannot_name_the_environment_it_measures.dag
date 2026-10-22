@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.inflation_fold_cannot_name_the_environment_it_measures
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data inflation_fold_cannot_name_the_environment_it_measures: RecurringFailureMode = RecurringFailureMode {
   identity: "inflation_fold_cannot_name_the_environment_it_measures" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an analysis holds WORK constant so that only ENVIRONMENT can differ, and carries no field naming which environment either side ran in** (INVALID STATE: `identity_inflation_permille_at_equal_work` pairs rows across two runs by identity AND by equal `eval_steps`, precisely so that a difference in CPU denotes environment rather than work. `RunCost` carries `run: NonEmptyStr` -- WHICH run, never WHERE. `FloorCostRow` carries identity, module, verdict_reached, cost, eval_steps, reachability. `claim_cost_required_columns` names eight columns and none is a runner, host class or architecture. So two runs from different machine populations pair and produce a confident permille figure, and nothing in the fold can notice. HARM: the one variable the analysis exists to isolate is the one it cannot express, so its output is a number about an unnamed mixture.",

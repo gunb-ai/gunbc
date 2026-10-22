@@ -838,9 +838,9 @@ pub fn atomic_factors_growth_in_param(
         param_growth_zero(),
         |acc: Rc<ParamGrowth>, c: Rc<AtomicCost>| {
             if (atomic_cost_param(c.clone()) == param.clone()) {
-                param_growth_multiply(acc.clone(), atomic_cost_growth(c.clone()))
+                param_growth_multiply(acc, atomic_cost_growth(c.clone()))
             } else {
-                acc.clone()
+                acc
             }
         },
     )

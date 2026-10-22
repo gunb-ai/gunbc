@@ -3,6 +3,7 @@ module test.claim.std_commit_sha_text_witness
 import std.logic { Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, List, commit_sha_text_holds }
+import std.host_text { chars }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -19,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // in this module: a step count is a property of the evaluator, and the contract is the answer.
 
 fn reference_per_character_spelling(head: String) -> Bool {
-  head.length() == 40 && all(chars(s: head), cp =>
+  head.length() == 40 && all(chars(text: head), cp =>
     (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
   )
 }

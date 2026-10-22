@@ -1,0 +1,30 @@
+module gunbc.auth.bmc_assimilator_cells
+
+import std.types { List, String }
+import std.list { distinct_by_key }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.secret_access_grant { SecretAccessGrant, grant_member }
+
+// THE BMC ASSIMILATOR'S GRANTS AS CELLS AND MEMBERS, read in a module that names only
+// gunbc.auth.secret_access_grant SecretAccessGrant: gunbc.auth.gcp_iam_converge also imports the
+// same-named gunbc.auth.gcp_secret_access type, and a field read on this one there binds the wrong
+// declaration (gunbc.recurring_failure_mode a_secret_iam_cell_declarer_outside_a_hand_listed_universe
+// names the two-type nickname this bridges). A cell is (secret, role); the member is each grant's own
+// principal (grant_member), distinct.
+type BmcCell { target: SecretRef, role: String }
+
+type BmcAssimilatorCells { cells: List<BmcCell>, members: List<String> }
+
+fn bmc_cell_of(grant: SecretAccessGrant) -> BmcCell {
+  BmcCell { target: grant.secret_ref, role: grant.role }
+}
+
+fn bmc_cell_key(cell: BmcCell) -> String {
+  concat(concat(cell.target.secret as String, " "), cell.role)
+}
+
+fn bmc_assimilator_cells_over(grants: List<SecretAccessGrant>) -> BmcAssimilatorCells {
+  let cells: List<BmcCell> = map(grants, g => bmc_cell_of(grant: g))
+  let members: List<String> = map(grants, g => grant_member(grant: g))
+  BmcAssimilatorCells { cells: distinct_by_key(xs: cells, key: c => bmc_cell_key(cell: c)), members: distinct_by_key(xs: members, key: m => m) }
+}

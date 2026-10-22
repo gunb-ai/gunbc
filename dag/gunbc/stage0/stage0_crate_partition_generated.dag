@@ -39,6 +39,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       modules: [
         "std_content_hash",
         "std_coercion",
+        "std_host_text",
         "extdeps_currency_currency",
         "std_decl_ref",
         "std_keyed_row",
@@ -47,6 +48,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_dissolution",
         "std_disposition",
         "std_error_primitives",
+        "std_float",
         "std_emit_model",
         "std_measure",
         "std_decimal",
@@ -75,6 +77,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "extdeps_units_iso8601",
         "extdeps_units_iso_80000_3",
         "std_occurrence_identity",
+        "std_generated_provider",
         "std_source_annotation",
         "std_kernel_type_name",
         "std_target_representation",

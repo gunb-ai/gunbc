@@ -598,17 +598,6 @@ pub mod v1_compiler_tokenize;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod v1_compiler_trace;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod v1_compiler_trait_bound_witness;
 #[allow(
     unused_imports,
@@ -665,17 +654,6 @@ pub mod v1_gunbc_occurrence_binding_parser_walk;
     clippy::all
 )]
 pub mod v1_gunbc_parsed_import_statements;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod v1_probe_emit_interp;
 #[allow(
     unused_imports,
     unused_variables,
@@ -796,6 +774,17 @@ pub mod v1_tests_claim_keyword_pattern_binder_refusal_test;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod v1_tests_claim_parse_allocator_postcondition_test;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod v1_tests_claim_parse_source_extent_control_test;
 #[allow(
     unused_imports,
@@ -903,6 +892,7 @@ pub mod closure_identity;
 pub mod codex_app_server_stdio_session;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
+pub mod emitted_build_seed_constants_generated;
 pub mod evaluation_budget_consequence_generated;
 pub mod gunbc_file_transport_generated;
 pub mod memory_governor;

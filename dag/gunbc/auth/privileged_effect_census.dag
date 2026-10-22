@@ -32,16 +32,18 @@ import gunbc.auth.managed_host_boot_federation {
 import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
+import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
-  MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential,
+  MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential, MintsHostRootReach,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
   WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
   InterlockPending, InterlockedBy, StandingRulingInterlock,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
-  OperatorOwnSession,
+  OperatorOwnSession, AdministratorEdge,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
@@ -86,6 +88,7 @@ type RealizedAuthorization
   | RealizedRunSelected
   | RealizedApprovalCapability
   | RealizedHumanStep
+  | RealizedAdministratorEdge
   | RealizedOperatorSession { arm: OperatorSessionArm }
   | RealizedUnauthorized
 
@@ -132,6 +135,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
       }
     OperatorApprovedCapability =>
       match realized {
@@ -141,6 +145,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
       }
     HumanOnlyStep { step: _ } =>
       match realized {
@@ -148,6 +153,17 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedFederatedGrant => false
         RealizedRunSelected => false
         RealizedApprovalCapability => false
+        RealizedOperatorSession { arm: _ } => false
+        RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
+      }
+    AdministratorEdge =>
+      match realized {
+        RealizedAdministratorEdge => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
         RealizedUnauthorized => false
       }
@@ -159,6 +175,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedApprovalCapability => false
         RealizedHumanStep => false
         RealizedUnauthorized => false
+        RealizedAdministratorEdge => false
       }
   }
 }
@@ -579,8 +596,25 @@ data gcp_iam_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceRe
 
 // STRUCTURAL, AND BOUND TO THE THING THAT MAKES IT STRUCTURAL: the reason retires only if the
 // approval loop stops having a provisioned submission MAC key to bootstrap.
+// THE GUNBAI-CI APP KEY IS A CEREMONY TRUST ROOT (gunbc.auth.gcp_iam_trust_roots gate_app_root_reason,
+// ceremony OrgAdminAppKeyAccessConverge), so its binder is the ceremony's and no approval adapter may
+// replace it: the dissolution is the gate App decision, not an adapter landing.
+data gate_app_key_ceremony_trust_root: DivergenceReason = DivergenceReason {
+  statement: "the gunbai-ci App private key may answer the gcp-iam-bootstrap deployment protection rule, so it is a ceremony trust root and only the first-time root ceremony binds its accessor cell; an approval-gated route binding it could open the gate it answers" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "gunbc.auth.deployment_gate_authorization names the gate App on main; if that App is not gunbai-ci, this key leaves gunbc.auth.gcp_iam_trust_roots and its cell joins the converge's grant sets, and this row's site is deleted" as NonEmptyStr),
+}
+
+// THE ROOT CEREMONY IS STRUCTURALLY THE OPERATOR'S: it binds the identities and cells every approval
+// is checked against or answered by (gunbc.auth.gcp_iam_trust_roots IamBootstrapApply), so no
+// approval-gated route may perform it; it binds only root cells (gunbc.auth.gcp_iam_bootstrap_model
+// iam_bootstrap_root_ceremony_bindings), and every other cell is the delta's.
+data iam_bootstrap_root_ceremony_residual: DivergenceReason = DivergenceReason {
+  statement: "the first-time root ceremony binds the cells that verify and answer approvals, so it cannot itself run under an approval; it binds only root cells, never a delta cell" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "residual by construction (gunbc.auth.gcp_iam_bootstrap header); it narrows, cell by cell, as a root cell gains a tag-conditioned deny the delta identity cannot cross (gunbc.rung_drop gcp_iam_bootstrap_trust_root_wall_in_code)" as NonEmptyStr),
+}
+
 data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
-  statement: "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17" as NonEmptyStr,
+  statement: "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17. All three are ceremony trust roots (gunbc.auth.gcp_iam_trust_roots, ceremony ApprovalMacKeyProvision), so no approval-gated route may bind their readers" as NonEmptyStr,
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "approval_submission_mac_key_secret_ref")),
 }
 
@@ -743,6 +777,40 @@ fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) ->
   }
 }
 
+// ── THE srv1 JOB USER'S WHOLE-BINARY SUDO GRANTS (gunbc.plans.srv1_deploy_principal_split) ─────────
+// Each row below is an effect the deploy performs through ghrunner's whole-binary NOPASSWD sudo
+// (gunbc.ci.ci_deploy_sudoers rendering gunbc.fleet.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants).
+// The effect is characterized by the reach IT needs, not by the reach of the grant that happens to
+// carry it; the grant is what makes the realization RealizedUnauthorized (no credential names the
+// effect) and is the divergence this reason states. One reason covers the rows because one
+// transition retires them all.
+data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
+  statement: "the effect runs under the CI job user's path-only whole-binary sudo grant, which is root-equivalent and held by the account every srv1 job runs as, so the effect is authorized by no credential that names it (rung drop the_job_user_holds_a_path_unrestricted_root_grant)" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the srv1 deploy route runs its host-root effects under the administrator edge from a main-pinned dispatch and the whole-binary rows are deleted from ci_runner_sudo_binaries (plan stage 2), gated by deploy_route_switch_admitted. SUFFICIENT FOR overlaying these rows as RealizedAdministratorEdge (host-root rows) or RealizedFederatedGrant (the argv-pinned systemctl row)" as NonEmptyStr),
+}
+
+// THE CONTROLLER INSTALL HAS NO GRANT AT ALL, which is not the whole-binary case: dd and install into
+// /etc/systemd/system are named by no rendered or live sudoers line, so the effect is refused at its
+// first write (recurring failure mode a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize,
+// run 39284886844). Granting it to the job user would make that account root-equivalent.
+data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
+  statement: "the effect's root writes (dd/install into /etc/systemd/system and /usr/local) are authorized by no grant, so the apply is refused at its first privileged line; the only realization that exists is the operator running it locally" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install runs its host-root writes under the administrator edge from the main-pinned deploy slot, gated by deploy_route_switch_admitted (plan gunbc.plans.srv1_deploy_principal_split, controller-install scope addition). Sufficient only when the install's argv are emitted through the edge and no job-user sudoers line names them." as NonEmptyStr),
+}
+
+fn srv1_host_root_effect(subject: NonEmptyStr) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+    minted_reach: MintsHostRootReach,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
@@ -785,6 +853,60 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_install_command"),
+    effect: srv1_host_root_effect(subject: "install a staged unit or file under /etc or /usr/local as root (live_deploy preamble, dashboard_deploy, approval_broker_dark_install)" as NonEmptyStr),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "microvm_controller_staged_write_steps"),
+    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice and release files under /etc/systemd/system and /usr/local as root (host_effect_apply MicrovmControllerInstall, run 39284886844 refused at 'controller slice unit (stage)')" as NonEmptyStr),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: controller_install_holds_no_grant },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_visudo_check_command"),
+    effect: srv1_host_root_effect(subject: "validate and install a sudoers drop-in as root, including the grant that authorizes the installer (visudo -cf, install into /etc/sudoers.d)" as NonEmptyStr),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.ci.ci_deploy_access", decl_name: "deploy_access_apt_get_privileged_command"),
+    effect: srv1_host_root_effect(subject: "install host packages as root (apt-get)" as NonEmptyStr),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.live_deploy.operations", decl_name: "systemctl_restart_command"),
+    effect: PrivilegedEffect {
+      subject: "daemon-reload, enable, start, restart or stop one named unit the deploy owns" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on the host, the dispatched deploy's host principal" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_stall_rearm_at"),
+    effect: PrivilegedEffect {
+      subject: "reset-failed and start the one belt-exit path unit the stalled exit spool tripped (operator release verb)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "the operator's host principal running the release verb" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
@@ -855,7 +977,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
     effect: PrivilegedEffect {
-      subject: "in the service_runner_lost_boot_sweep fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity, mint the controller installation token, and delete every runner registration of the swept managed host whose embedded boot id is not the current admitted one, confirming each absent from the organization listing; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03) and ruling mtcollins1_ci_runner_enrolment_approved. GATED: the current boot is admitted only through a host-observed boot (lost_boot_observe_current_boot, no route until the mtcollins1 enrolment supplies a host transport), so no run performs this deletion until then" as NonEmptyStr as NonEmptyStr,
+      subject: "in the service_runner_lost_boot_sweep fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity, mint the controller installation token, and delete every runner registration of the swept managed host whose embedded boot id is not the current admitted one, confirming each absent from the organization listing; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03) and ruling mtcollins1_ci_runner_enrolment_approved. GATED: the current boot is admitted only through a host-observed boot (lost_boot_observe_current_boot reads boot_id over a HostEffectTransport it is handed; no run holds a host-authenticated transport to mtcollins1 until one is supplied from an executed selection), so no run performs this deletion until then" as NonEmptyStr as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1032,7 +1154,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.managed_host_boot_federation_provision", decl_name: "managed_host_boot_federation_provision_with_supplied_token"),
     effect: PrivilegedEffect {
-      subject: "create each provisioned managed-host boot's dedicated pool, provider and service account, bind who may act as it, and its version-pinned accessor cells" as NonEmptyStr,
+      subject: "create each provisioned managed-host boot's dedicated pool, provider and service account, and bind who may act as it; its version-pinned accessor cells are the converge's (no secret IAM written here)" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1066,27 +1188,30 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
-    effect: accessor_grant(subject: "the fleet accessor roster: spark administrator password, mtcollins1 BMC credential, both approval MAC keys, the OpenRouter free-tier key" as NonEmptyStr),
+    site: site(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_bootstrap_apply"),
+    effect: PrivilegedEffect {
+      subject: "the first-time root ceremony: project roles and cells, the converge, observe and bootstrap identities' own pools, accounts and trust, the deny policies, and the root secret cells (iam-observe's read of the submission MAC key); never a delta cell" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
-    effect: accessor_grant(subject: "spark administrator password accessor cell (interactive entry)" as NonEmptyStr),
-    realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+    divergence_reason: Present { value: iam_bootstrap_root_ceremony_residual },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_admin_app_key_access_converge_with_supplied_token"),
     effect: accessor_grant(subject: "gunbai-ci App key accessor cell" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
-    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+    divergence_reason: Present { value: gate_app_key_ceremony_trust_root },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "heal_publisher_federation_provision_with_supplied_token"),
     effect: PrivilegedEffect {
-      subject: "create the heal publisher's pool, provider and service account, then bind its one accessor cell" as NonEmptyStr,
+      subject: "create the heal publisher's pool, provider and service account, and bind who may act as it; its accessor cell is the converge's (no secret IAM written here)" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1101,7 +1226,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.approval_mac_key_provision", decl_name: "provision_approval_mac_keys"),
     effect: PrivilegedEffect {
-      subject: "create the two approval MAC key secrets, add their first versions, bind their accessor cells" as NonEmptyStr,
+      subject: "create the three approval MAC key secrets (capability, submission, store receipt), add their first versions, bind their accessor cells" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1199,7 +1324,16 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.assimilate.bmc_bootstrap_provision", decl_name: "bmc_bootstrap_provision_srv3"),
-    effect: accessor_grant(subject: "srv3 BMC secret IAM bindings, written on every run (the known converge bypass)" as NonEmptyStr),
+    effect: PrivilegedEffect {
+      subject: "create the BMC assimilator's service account, WIF pool and provider; no secret IAM (its cells are the converge's, from the declarer's signed grants)" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: Present { value: eager_bootstrap_fork_declared },
   },
@@ -1281,6 +1415,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       billing: NoBillingConsequence,
       witness_discharge: NoWitnessDischarge,
     },
+    realized: RealizedFederatedGrant,
+    divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
+  },
+  // MIRRORS gcp_iam_converge_apply_wet AND DIVERGES IN THE SAME SHAPE, not a realization of (b): the
+  // selection's OperatorApprovedCapability is "one capability bound to that request's revision
+  // (approval_capability), redeemed once (approval_broker), the effect executed by the authority
+  // adapter under ITS identity". This site files and is tapped like (b), but no capability is
+  // redeemed through the broker; the job's own federated token, minted after its reviewed code admits
+  // the recorded approval, performs the effect. That is the converge's realization and its reason.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.gcp_iam_bootstrap_delta_run", decl_name: "gcp_iam_bootstrap_delta_apply_wet"),
+    effect: bootstrap_delta_privileged_effect,
     realized: RealizedFederatedGrant,
     divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
   },
@@ -1517,4 +1663,27 @@ data human_intervention_frequency_frontier_rows: List<FrontierRow> = [
       description: "NAMED CAPABILITY: HumanInterventionFrequency is split into the two questions it conflates, so burden multiplicity and attendance premise are separate declared facts and every consumer names which one it reads. SUFFICIENT FOR a privileged-effect row and the human step it embeds to agree by construction rather than by a stated divergence, and for select_authorization_pattern to evaluate unattended_required against the attendance fact instead of against a multiplicity count. NOT satisfied by adopting the step's value on this row, which would assert that an effect GitHub requires an owner to perform must run unattended; nor by widening divergence_reason, which carries realized-vs-selected and answers a different question"
     )
   )
+]
+
+// ── THE SECRET-IAM WRITER CENSUS (gunbc#14360, side chat, 2026-10-19) ──────────────────────────
+// Every executing route that reaches gcp.SecretManager.SetSecretIamPolicy, directly or through the
+// gunbc.auth.gcp_secret_access secret_access_reconcile_* / secret_access_ensure_* family, classified
+// as the converge, the delta apply or a trust-root ceremony. CUT routes are absent: their legs were
+// deleted (gunbc.assimilate.bmc_bootstrap_provision's secret-policy leg, gunbc.auth.heal_publisher_provision
+// grant_secret_reads, gunbc.auth.secret_access_admission secret_access_ensure_admitted). This list is
+// hand-enumerated by writer; its next rung is gunbc.recurring_failure_mode
+// a_secret_iam_cell_declarer_outside_a_hand_listed_universe (declarers AND writers).
+type SecretIamWriterArm
+  = SecretIamWriterConverge
+  | SecretIamWriterDeltaApply
+  | SecretIamWriterTrustRootCeremony { ceremony: TrustRootCeremony }
+
+type SecretIamWriter { site: DeclarationRef, arm: SecretIamWriterArm }
+
+data secret_iam_writer_census: List<SecretIamWriter> = [
+  SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"), arm: SecretIamWriterConverge },
+  SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_bootstrap_delta_run", decl_name: "gcp_iam_bootstrap_delta_apply_wet"), arm: SecretIamWriterDeltaApply },
+  SecretIamWriter { site: site(module_path: "gunbc.auth.gcp_iam_bootstrap", decl_name: "iam_bootstrap_apply"), arm: SecretIamWriterTrustRootCeremony { ceremony: IamBootstrapApply } },
+  SecretIamWriter { site: site(module_path: "gunbc.auth.approval_mac_key_provision", decl_name: "provision_approval_mac_keys"), arm: SecretIamWriterTrustRootCeremony { ceremony: ApprovalMacKeyProvision } },
+  SecretIamWriter { site: site(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_admin_app_key_access_converge_with_supplied_token"), arm: SecretIamWriterTrustRootCeremony { ceremony: OrgAdminAppKeyAccessConverge } },
 ]

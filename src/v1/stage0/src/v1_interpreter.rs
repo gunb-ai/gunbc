@@ -9940,7 +9940,7 @@ fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
     })
 }
 
-/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// The BoundOperationInvocation (`std.operation_argv`) of one dispatched operation: its resolved
 /// identity -- declaring file, service, operation -- and each declared input by name.
 fn bound_operation_invocation_value(
     service_name: &str,
@@ -10880,10 +10880,6 @@ fn match_pattern(
                         }
                         _ => None,
                     },
-                    // GroupCompletion{pos,neg} destructuring against a native Value::Int is
-                    // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
-                    // unmatched pattern name falls through to `_ => None` below, refusing rather
-                    // than fabricating a (pos, neg) pair.
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -13336,14 +13332,9 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
-        if type_name == "GroupCompletion" {
-            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
-                fields_get(&fields, ctx.sym("pos")),
-                fields_get(&fields, ctx.sym("neg")),
-            ) {
-                return Ok(Value::Int(pos - neg));
-            }
-        }
+        // No record is collapsed into an integer by its spelling. A GroupCompletion<Nat> is a pair --
+        // std.integer int_of_group_completion is the declared mapping onto the integers -- and the
+        // emitted Rust keeps it a record, so the interpreter must too.
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -15434,7 +15425,7 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
-/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
+/// `dag/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
 /// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
 /// (DESIGN §5).
 #[derive(Debug, Clone)]
@@ -21859,6 +21850,10 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
 /// The largest decimal exponent an i64-unit decimal can carry: i64::MAX has 19 digits, 18 of them free.
 const EXACT_DECIMAL_MAX_DECIMAL_EXPONENT: u64 = 18;
 
+/// The largest scale (fraction digits) a decoded ExactDecimal may carry: 18 free significant digits whose
+/// leading digit lies at most 18 places past the point.
+const EXACT_DECIMAL_MAX_SCALE: i64 = 2 * EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64;
+
 /// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
 /// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
 /// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
@@ -21876,6 +21871,12 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     // exponent beyond that either overflows the units or names a scale no Int-unit decimal carries. Without
     // the bound a zero mantissa (`0e9223372036854775807`) never overflows and the scaling loop below does
     // not return, and `1e-999999999` would be accepted with a billion fraction digits (review 82479).
+    // The scale is capped separately, because the exponent bound does not limit it: `parse::<i64>` accepts
+    // leading zeros, so `0.` followed by ten thousand zeros and a `1` has exponent 0 and scale 10001
+    // (review 82586). The cap is EXACT_DECIMAL_MAX_SCALE (36): at most 18 free significant digits whose
+    // leading digit lies at most 18 places past the point. An earlier cap at 19 refused a live price with 17
+    // significant digits at 20 fraction digits (`0.00026041666666666666`, fleet-converge run 39222150650)
+    // and with it the whole offer page.
     if exponent.unsigned_abs() > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT {
         return None;
     }
@@ -21892,7 +21893,7 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     let digits = format!("{}{}", int_part, frac_part);
     let mut units: i64 = digits.parse::<i64>().ok()?;
     let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
-    if fraction_digits > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64 + 1 {
+    if fraction_digits > EXACT_DECIMAL_MAX_SCALE {
         return None;
     }
     while fraction_digits < 0 {
@@ -24747,6 +24748,15 @@ macro_rules! v1_builtin_arms {
                                 $ctx.sym("argv_input_refs"),
                                 list_value(
                                     row.argv_input_refs
+                                        .into_iter()
+                                        .map(str_value)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
+                            (
+                                $ctx.sym("executable_input_refs"),
+                                list_value(
+                                    row.executable_input_refs
                                         .into_iter()
                                         .map(str_value)
                                         .collect::<Vec<_>>(),

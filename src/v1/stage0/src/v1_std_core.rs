@@ -24,10 +24,12 @@ use self::NodeFieldRole::*;
 use self::OperationModifier::*;
 use self::ParsedModuleItemKind::*;
 use self::ServiceConfigField::*;
+use self::SpanLocation::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
 use self::UnaryOpKind::*;
+use self::UnlocatedCause::*;
 use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
@@ -48,6 +50,10 @@ pub use crate::std_coercion::{
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
+use crate::std_generated_provider::GeneratedProviderUnavailableCause::*;
+pub use crate::std_generated_provider::{
+    generated_provider_unavailable_message, GeneratedProviderUnavailableCause,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -639,6 +645,11 @@ pub enum CompilerDiagnostic {
         route: String,
         span: Rc<SourceSpan>,
     },
+    GeneratedProviderUnavailable {
+        declaration: Rc<DeclarationRef>,
+        cause: GeneratedProviderUnavailableCause,
+        span: Rc<SourceSpan>,
+    },
     AlgebraApplicationEvidenceUnavailable {
         receiver_type: String,
         argument_index: i64,
@@ -1020,6 +1031,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { span: s, .. } => s.clone(),
+        CompilerDiagnostic::GeneratedProviderUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
@@ -1099,6 +1111,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text crossing with no implicit route: expected ".to_string(), e.clone()), ", got ".to_string()), g.clone()), " -- host text and a code-point sequence meet only through a declared conversion plan; call ".to_string()), r.clone()), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)".to_string()),
+    CompilerDiagnostic::GeneratedProviderUnavailable { declaration: d, cause: c, .. } => crate::std_generated_provider::generated_provider_unavailable_message(d.clone(), c.clone()),
     CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { position: p, .. } => v1_rt::concat(v1_rt::concat("text boundary unjudged at ".to_string(), p.clone()), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), v1_rt::concat(v1_rt::concat("' no longer matches what this module contains: the row declares ".to_string(), (d.clone()).to_string()), v1_rt::concat(" occurrence(s) and ".to_string(), (o.clone()).to_string()))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
@@ -1264,6 +1277,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::GeneratedProviderUnavailable { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -2343,10 +2360,6 @@ pub fn variant_node_fields(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
 }
 
-pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
-    n.span.clone()
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChildRole {
     pub name: String,
@@ -2419,10 +2432,6 @@ pub fn is_child_accessor_in_model(name: String) -> bool {
         }
         __found
     })
-}
-
-pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
-    v1_rt::map_get(&expr_child_roles(), variant_name.clone())
 }
 
 #[derive(
@@ -3582,10 +3591,6 @@ pub fn transport_verb(
     )
 }
 
-pub fn transport_has_argv(t: Rc<Node>) -> bool {
-    ((t.children.clone().len() as i64) > 0)
-}
-
 pub fn is_rest_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4303,24 +4308,6 @@ pub fn service_config_properties(
     }
 }
 
-pub fn has_service_config(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let mut __found = false;
-        for p in n.properties.clone().iter().cloned() {
-            if (field_init_node_name_at(p.clone(), source_indices.clone())
-                == "svc_endpoint".to_string())
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
 pub fn service_config_endpoint(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4339,17 +4326,6 @@ pub fn service_config_auth(
     find_property(
         n.properties.clone(),
         "svc_auth".to_string(),
-        source_indices.clone(),
-    )
-}
-
-pub fn service_config_rate_limit(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    find_property(
-        n.properties.clone(),
-        "svc_rate_limit".to_string(),
         source_indices.clone(),
     )
 }
@@ -4998,9 +4974,9 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         .cloned()
         .fold(Rc::new(vec![]), |acc: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.1.clone() == 10) {
-                v1_rt::rc_list_push(acc.clone(), pair.0.clone())
+                v1_rt::rc_list_push(acc, pair.0.clone())
             } else {
-                acc.clone()
+                acc
             }
         });
         Rc::new(NewlineIndex {
@@ -5049,6 +5025,175 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
             line: line.clone(),
             col: col.clone(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LocatedSpan {
+    pub file: String,
+    pub start_line: i64,
+    pub start_col: i64,
+    pub end_line: i64,
+    pub end_col: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UnlocatedCause {
+    FileHasNoLexemes { file: String },
+    NoSourceIndex { file: String },
+    SpanOutsideIndexedSource { file: String },
+    SynthesizedNode { authored_file: String },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SpanLocation {
+    Located { at: Rc<LocatedSpan> },
+    Unlocated { cause: Rc<UnlocatedCause> },
+}
+
+pub fn unlocated_position_phrase() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "(no position:".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn synthetic_span_file() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "<synthetic>".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_has_no_lexemes(file: String) -> Rc<SpanLocation> {
+    Rc::new(SpanLocation::Unlocated {
+        cause: Rc::new(UnlocatedCause::FileHasNoLexemes { file: file.clone() }),
+    })
+}
+
+pub fn locate_span(
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SpanLocation> {
+    if (span.file.clone() == synthetic_span_file()) {
+        Rc::new(SpanLocation::Unlocated {
+            cause: Rc::new(UnlocatedCause::SynthesizedNode {
+                authored_file: synthetic_span_file(),
+            }),
+        })
+    } else {
+        match v1_rt::map_get(&source_indices, span.file.clone()) {
+            std::option::Option::None => Rc::new(SpanLocation::Unlocated {
+                cause: Rc::new(UnlocatedCause::NoSourceIndex {
+                    file: span.file.clone(),
+                }),
+            }),
+            Some(index) => {
+                let src_len = (index.char_codes.clone().len() as i64);
+                if (((span.start.clone() < 0) || (span.end.clone() < span.start.clone()))
+                    || (span.end.clone() > src_len.clone()))
+                {
+                    Rc::new(SpanLocation::Unlocated {
+                        cause: Rc::new(UnlocatedCause::SpanOutsideIndexedSource {
+                            file: span.file.clone(),
+                        }),
+                    })
+                } else {
+                    {
+                        let from = byte_to_line_col(index.clone(), span.start.clone());
+                        let to = byte_to_line_col(index.clone(), span.end.clone());
+                        Rc::new(SpanLocation::Located {
+                            at: Rc::new(LocatedSpan {
+                                file: span.file.clone(),
+                                start_line: from.line.clone(),
+                                start_col: from.col.clone(),
+                                end_line: to.line.clone(),
+                                end_col: to.col.clone(),
+                            }),
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn unlocated_cause_phrase(cause: Rc<UnlocatedCause>) -> String {
+    match (*cause.clone()).clone() {
+        UnlocatedCause::FileHasNoLexemes { file: _, .. } => "file has no lexemes)".to_string(),
+        UnlocatedCause::NoSourceIndex { file: _, .. } => {
+            "no source index for this file)".to_string()
+        }
+        UnlocatedCause::SpanOutsideIndexedSource { file: _, .. } => {
+            "the span lies outside the indexed source)".to_string()
+        }
+        UnlocatedCause::SynthesizedNode {
+            authored_file: _, ..
+        } => "the node is synthesized, not read from a file)".to_string(),
+    }
+}
+
+pub fn unlocated_cause_file(cause: Rc<UnlocatedCause>) -> String {
+    match (*cause.clone()).clone() {
+        UnlocatedCause::FileHasNoLexemes { file: file, .. } => file.clone(),
+        UnlocatedCause::NoSourceIndex { file: file, .. } => file.clone(),
+        UnlocatedCause::SpanOutsideIndexedSource { file: file, .. } => file.clone(),
+        UnlocatedCause::SynthesizedNode {
+            authored_file: _, ..
+        } => "".to_string(),
+    }
+}
+
+pub fn render_span_location(
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    render_span_location_of(locate_span(span.clone(), source_indices.clone()))
+}
+
+pub fn render_span_location_of(location: Rc<SpanLocation>) -> String {
+    match (*location.clone()).clone() {
+        SpanLocation::Located { at: at, .. } => v1_rt::concat(
+            at.file.clone(),
+            v1_rt::concat(
+                ":".to_string(),
+                v1_rt::concat(
+                    (at.start_line.clone()).to_string(),
+                    v1_rt::concat(":".to_string(), (at.start_col.clone()).to_string()),
+                ),
+            ),
+        ),
+        SpanLocation::Unlocated { cause: cause, .. } => {
+            let about = unlocated_cause_file(cause.clone());
+            let phrase = v1_rt::concat(
+                v1_rt::concat(unlocated_position_phrase(), " ".to_string()),
+                unlocated_cause_phrase(cause.clone()),
+            );
+            if (about.clone() == "".to_string()) {
+                phrase.clone()
+            } else {
+                v1_rt::concat(
+                    about.clone(),
+                    v1_rt::concat(": ".to_string(), phrase.clone()),
+                )
+            }
+        }
+    }
+}
+
+pub fn located_span_of(
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<LocatedSpan>> {
+    match (*locate_span(span.clone(), source_indices.clone())).clone() {
+        SpanLocation::Located { at: at, .. } => Some(at.clone()),
+        SpanLocation::Unlocated { cause: _, .. } => std::option::Option::None,
     }
 }
 
@@ -5121,12 +5266,30 @@ pub fn intern_table_with_authored_token_ordinals(
     table: Rc<InternTable>,
     authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
 ) -> Rc<InternTable> {
-    Rc::new(InternTable {
-        strings: table.strings.clone(),
-        index: table.index.clone(),
-        next_id: table.next_id.clone(),
-        authored_token_ordinals: authored_token_ordinals.clone(),
-    })
+    {
+        let __rb_0_0 = table.strings.clone();
+        let __rb_1_0 = table.index.clone();
+        let __rb_2_0 = table.next_id.clone();
+        let __rb_3_0 = authored_token_ordinals.clone();
+        let mut __rb_h = table;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.strings = __rb_0_0;
+                __rb_r.index = __rb_1_0;
+                __rb_r.next_id = __rb_2_0;
+                __rb_r.authored_token_ordinals = __rb_3_0;
+            }
+            None => {
+                __rb_h = Rc::new(InternTable {
+                    strings: __rb_0_0,
+                    index: __rb_1_0,
+                    next_id: __rb_2_0,
+                    authored_token_ordinals: __rb_3_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
@@ -5164,13 +5327,6 @@ pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     }
 }
 
-pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
-    match v1_rt::map_get(&table.index.clone(), s.clone()) {
-        Some(id) => id.clone(),
-        std::option::Option::None => 0,
-    }
-}
-
 pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> {
     tables.iter().cloned().fold(
         empty_intern_table(),
@@ -5190,9 +5346,9 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
                 merged.clone(),
                 |m: Rc<InternTable>, s: String| {
                     if (s.clone() == "".to_string()) {
-                        m.clone()
+                        m
                     } else {
-                        intern(m.clone(), s.clone()).table.clone()
+                        intern(m, s.clone()).table.clone()
                     }
                 },
             )
@@ -5214,9 +5370,9 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
         .cloned()
         .fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| {
             if is_internable_token(tok.shape.clone()) {
-                intern(t.clone(), tok.text.clone()).table.clone()
+                intern(t, tok.text.clone()).table.clone()
             } else {
-                t.clone()
+                t
             }
         })
 }

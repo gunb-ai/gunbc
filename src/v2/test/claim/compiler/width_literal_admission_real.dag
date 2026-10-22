@@ -1,0 +1,84 @@
+module v2.test.claim.compiler.width_literal_admission_real
+
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { Cons, Empty, fold_list, list_snoc_item }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_list_has_reason }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PAIRING CLAIM FOR v2.test.claim.compiler.width_literal_admission (DESIGN section 3: a supplied boundary owes ONE
+// inhabitance claim that the real producer reaches it). That file restates std.integer's Int, UInt, UInt8 and Int8 as
+// peers; THIS file assembles the REAL std.integer import closure from dag/ and infers a call that passes 300 to a
+// UInt8 formal, so the real producer's Compose<UInt, MachineWidth<8>> is what reaches infer. Deleting the
+// restated-peer route leaves this one; deleting the real route leaves the peers, and this goes red.
+// The closure is the transitive imports of std.integer; a change to them that this list omits refuses at assembly
+// (a located unresolved-import diagnostic), never a silent pass.
+data wlr_closure: List<String> = ["dag/extdeps/currency/currency.dag", "dag/extdeps/external_authority.dag", "dag/extdeps/units/dimensionless.dag", "dag/extdeps/units/iec_80000_13.dag", "dag/extdeps/units/iso8601.dag", "dag/extdeps/units/iso_80000_3.dag", "dag/extdeps/uri.dag", "dag/std/algebra.dag", "dag/std/checked_arithmetic.dag", "dag/std/computation.dag", "dag/std/constructors.dag", "dag/std/decimal.dag", "dag/std/decl_ref.dag", "dag/std/dissolution.dag", "dag/std/error_primitives.dag", "dag/std/induction.dag", "dag/std/integer.dag", "dag/std/keyed_roster.dag", "dag/std/keyed_row.dag", "dag/std/machine_constraints.dag", "dag/std/measure.dag", "dag/std/nat.dag", "dag/std/optional.dag", "dag/std/render_repeat_string_bootstrap.dag", "dag/std/roster_frontier.dag", "dag/std/termination.dag", "dag/std/types.dag", "dag/std/unicode/types.dag"]
+
+fn wlr_witness(path: String, root: Symbol) -> DagSourceReadWitness {
+  let read = Filesystem.Read(path: path)
+  DagSourceReadWitness {
+    source: Medium { carried: read.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: DagTree
+  }
+}
+
+fn wlr_ingest(src: String) -> List<DagSourceReadWitness> {
+  fold_list(
+    xs: wlr_closure,
+    empty: [DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: Artifact { kind: SourceFile, id: ^width_literal_admission_real_p, file_path: "src/v2/pilot/width_literal_admission_real_p.dag" },
+      compilation_unit: ^width_literal_admission_real_p_cu,
+      source_root: V2Tree
+    }],
+    cons: fn(acc, path) { list_snoc_item(xs: acc, item: wlr_witness(path: path, root: ^dag)) }
+  )
+}
+
+// The width refusal is looked for among ALL of infer's diagnostics: the real closure is 28 modules and infer judges
+// every one of them, so the program as a whole may be Rejected for reasons that are not this literal's. The claim
+// is about the literal, so it asks whether THIS refusal is present, not whether the program is accepted.
+fn wlr_has(literal: String, reason: Symbol) -> Bool {
+  wlr_has_src(src: concat(concat("module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  g(n: ", literal), ")\n}\n"), reason: reason)
+}
+
+fn wlr_has_src(src: String, reason: Symbol) -> Bool {
+  match assemble_program_from_ingest(
+    ingest: wlr_ingest(src: src),
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => reason == ^accepted
+        Rejected { diagnostics: d } => diagnostics_list_has_reason(xs: concat([d.head], d.tail), reason: reason)
+      }
+  }
+}
+
+// The baseline (the same program with no call) is Accepted, so on the real closure "accepted" is a sound reading of
+// the call alone: 255 at the real UInt8 is admitted and the program stays accepted; 300 draws the width's refusal.
+// BOTH DISCRIMINATE the pre-fix route: with std.machine_constraints Compose unfolded to Phantom (infer_type_alias_unfolded_at),
+// every literal -- 255 included -- was refused application_argument_does_not_inhabit before the width was read.
+test fn wlr_real_uint8_255_is_admitted() -> Bool { wlr_has(literal: "255", reason: ^accepted) }
+
+test fn wlr_real_uint8_300_refuses_at_the_width() -> Bool { wlr_has(literal: "300", reason: ^infer_reason_literal_outside_machine_width) }
+
+test fn wlr_real_uint8_baseline_without_the_call_is_accepted() -> Bool {
+  wlr_has_src(src: "module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  true\n}\n", reason: ^accepted)
+}

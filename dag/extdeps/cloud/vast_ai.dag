@@ -221,6 +221,7 @@ type VastAiOfferQuery {
   cpu_ram_min: ByteSize
   inet_down_min: Bandwidth
   verified: Bool
+  num_gpus: Nat
 }
 
 // THE WIRE UNITS of Vast's search and offer vocabulary, converted only here: RAM counts are MB, taken as
@@ -257,12 +258,14 @@ service vast_ai.SearchOffers {
       // 🟡 feature:vast-search-wire-units dissolve-on: the REST transport encodes a typed ByteSize or
       // Bandwidth input into a declared wire unit. Until then these three are the wire integers (MB, MB,
       // Mb/s) of the POST body, produced only by vast_ai_wire_mb and vast_ai_wire_mbps from the typed
-      // VastAiOfferQuery; no other module spells them.
+      // VastAiOfferQuery here and, on Templates.Create, from the typed template spec; no module outside the
+      // typed callers spells them.
       gpu_ram_min_mb: Int
       cuda_max_good_min: Int
       cpu_ram_min_mb: Int
       inet_down_min_mbps: Int
       verified: Bool
+      num_gpus: Int
     }
     output {
       offers: List<VastAiOffer> from "offers"
@@ -280,6 +283,7 @@ service vast_ai.SearchOffers {
         cpu_ram: { gte: cpu_ram_min_mb },
         inet_down: { gte: inet_down_min_mbps },
         verified: { eq: verified },
+        num_gpus: { eq: num_gpus },
         rentable: { eq: true }
       }
     }
@@ -299,7 +303,9 @@ data vast_ai_search_type_bid: String = "bid"
 data vast_ai_search_type_ondemand: String = "ondemand"
 data vast_ai_search_limit_default: Int = 100
 
-// ONE INSTANCE from GET /api/v1/instances. id is the contract (create-instance returns it as
+// ONE INSTANCE from GET /api/v1/instances/ (the trailing slash is the served path: a live flex_pass on srv1,
+// fleet-converge run 39214273788, read /api/v1/instances without it and the walk refused, while a manual
+// GET of /api/v1/instances/ on 2026-10-18 answered the account's instances). id is the contract (create-instance returns it as
 // new_contract). machine_id is the host the offer named. gpu_ram is MB. min_bid / dph_total are
 // ExactDecimal for the same reason offers are. actual_status is optional: the document types it
 // string | null. No create or destroy operation is declared in this module.
@@ -354,7 +360,7 @@ service vast_ai.Instances {
     readonly
     transport rest {
       method: GET,
-      path: "/instances",
+      path: "/instances/",
       query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {
@@ -558,6 +564,9 @@ service vast_ai.Asks {
     auth_input: api_key
   }
 
+  // env is a STRING in Docker flag format ("-e NAME=value -p 8000:8000"), merged by key into the
+  // template's env with the request winning (docs.vast.ai create-instance, PUT /asks/{id}/). It is a
+  // Secret because the caller puts a per-rental password in it.
   operation Create {
     requires Network
     input {
@@ -567,6 +576,7 @@ service vast_ai.Asks {
       disk: Int
       template_hash_id: NonEmptyStr
       label: NonEmptyStr
+      env: Secret
     }
     output {
       success: Bool from "success"
@@ -575,7 +585,7 @@ service vast_ai.Asks {
     transport rest {
       method: PUT,
       path: "/asks/\{offer_id\}/",
-      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label }
+      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label, env: env }
     }
     response {
       200 => VastAiCreateAskResult
@@ -642,6 +652,108 @@ service vast_ai.InstanceLifecycle {
       404 => VastAiApiError
       429 => VastAiApiError
       5xx => VastAiApiError
+    }
+  }
+}
+
+// TEMPLATES (docs.vast.ai create-template POST /api/v0/template; search-templates GET /api/v0/template).
+// create answers template.{id,name,hash_id}; the list answers id, name, image, and (read with
+// select_cols ["*"]) the rest. env is a Docker-flag STRING, not an object. The template this module
+// is asked to create is secret-free by its caller (product.fabric.flex_vast_template): env here is a
+// plain String, and the credential-bearing path is the per-create Secret on Asks.Create.
+type VastAiTemplateCreated {
+  id: Int
+  name: String
+  hash_id: String
+}
+
+type VastAiTemplateCreateResult {
+  success: Bool
+  msg: String
+  template: VastAiTemplateCreated
+}
+
+type VastAiTemplateRow {
+  id: Int
+  name: String
+  image: String
+  hash_id: String?
+  env: String?
+}
+
+type VastAiTemplateList {
+  success: Bool
+  templates: List<VastAiTemplateRow>
+}
+
+service vast_ai.Templates {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Create {
+    requires Network
+    input {
+      api_key: Secret
+      name: NonEmptyStr
+      image: NonEmptyStr
+      tag: NonEmptyStr
+      env: String
+      runtype: String
+      recommended_disk_space: Int
+      private: Bool
+      onstart: String
+      ssh_direct: Bool
+      jup_direct: Bool
+      use_jupyter_lab: Bool
+      // 🟡 feature:vast-search-wire-units dissolve-on: the same transport encoding as SearchOffers above;
+      // these three are the wire integers (MB, MB, Mb/s) of the template body, produced only by
+      // vast_ai_wire_mb and vast_ai_wire_mbps from the typed FlexTemplateSpec.
+      min_cuda_max_good: Int
+      min_cpu_ram_mb: Int
+      min_gpu_ram_mb: Int
+      min_inet_down_mbps: Int
+      verified_only: Bool
+    }
+    output {
+      template: VastAiTemplateCreated from "template"
+    }
+    transport rest {
+      method: POST,
+      path: "/template",
+      body: { name: name, image: image, tag: tag, env: env, runtype: runtype, recommended_disk_space: recommended_disk_space, private: private, onstart: onstart, ssh_direct: ssh_direct, jup_direct: jup_direct, use_jupyter_lab: use_jupyter_lab, extra_filters: { cuda_max_good: { gte: min_cuda_max_good }, cpu_ram: { gte: min_cpu_ram_mb }, gpu_ram: { gte: min_gpu_ram_mb }, inet_down: { gte: min_inet_down_mbps }, verified: { eq: verified_only } } }
+    }
+    response {
+      200 => VastAiTemplateCreateResult
+      400 => VastAiApiError
+      401 => VastAiApiError
+      429 => VastAiApiError
+    }
+  }
+
+  operation Search {
+    requires Network
+    input {
+      api_key: Secret
+      select_filters: String
+      select_cols: String
+    }
+    output {
+      templates: List<VastAiTemplateRow> from "templates"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/template",
+      query: { select_filters: select_filters, select_cols: select_cols }
+    }
+    response {
+      200 => VastAiTemplateList
+      400 => VastAiApiError
+      401 => VastAiApiError
+      429 => VastAiApiError
     }
   }
 }

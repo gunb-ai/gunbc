@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.shadowing_body_local_bypassed_by_global_call_fallback
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data shadowing_body_local_bypassed_by_global_call_fallback: RecurringFailureMode = RecurringFailureMode {
   identity: "shadowing_body_local_bypassed_by_global_call_fallback" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a call through a non-callable body local silently binds to the global it shadows** (in the v1 seed's direct-call seam in `v1.compiler.infer`, a bare-name call whose callee is a body-scope binding -- parameter, let, match binder -- that the seam judges not callable is not refused: resolution falls through to variant-constructor and GLOBAL lookup under the same spelling, so when a module-scope declaration of that name exists, the call is typed and accepted against the declaration the local was supposed to shadow.)",

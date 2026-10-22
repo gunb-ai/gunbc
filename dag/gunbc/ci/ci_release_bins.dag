@@ -103,6 +103,28 @@ fn release_bin_is_enrolled(bin_name: String) -> Bool {
   release_bin_list_contains(xs: ci_floor_required_artifact_names(), needle: bin_name)
 }
 
+// AN EMITTED RELEASE BIN IS A PACK MEMBER WHOSE EXECUTABLE IS EMITTED FROM A .dag ENTRY AND BUILT BY
+// CARGO, NOT A CARGO BIN OF v1-compiler. The pack job runs `gunbc compile --target rust` over `entry`
+// (the verb the seed's probe route also ends in: cli_run write_emitted_workspace), builds the emitted
+// crate under gunbc.repo.repo_self_emitted_build, and installs the one executable at
+// target/release/<name>. It is a roster member for the pack (digest, listing, regular-file and
+// executable checks, promotion) but is never a --bin of the cargo build line and is not handed to
+// claim_executor --verify-build-artifacts, which verifies only v1-compiler bins.
+type EmittedReleaseBin {
+  name: String
+  entry: String
+}
+
+// The device-crypto verifier sidecar (gunbc.auth.approval_device_crypto_serve). Its name is a row for
+// the reason gunbc_release_bin_name is: gunbc.live_deploy installs the pack's file of this name, and
+// a deploy copying a name the pack does not verify would install nothing.
+data approval_device_crypto_serve_release_bin_name: String = "approval_device_crypto_serve"
+data approval_device_crypto_serve_entry_file: String = "dag/gunbc/auth/approval_device_crypto_serve.dag"
+
+fn ci_emitted_release_bins() -> List<EmittedReleaseBin> {
+  [EmittedReleaseBin { name: approval_device_crypto_serve_release_bin_name, entry: approval_device_crypto_serve_entry_file }]
+}
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

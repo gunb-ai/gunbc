@@ -13,6 +13,7 @@ pub use crate::extdeps_version::{
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_algebra::{trim, Ordering};
 pub use crate::std_coercion::unicode_scalar_fold;
+pub use crate::std_host_text::chars;
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
@@ -289,12 +290,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
                     std::option::Option::None => std::option::Option::None,
                     Some(minor) => {
                         if ((parts.clone().len() as i64) == 2) {
-                            match semver_numeric_field(Rc::new(
-                                "0".to_string()
-                                    .chars()
-                                    .map(|c| c as i64)
-                                    .collect::<Vec<_>>(),
-                            )) {
+                            match semver_numeric_field(v1_rt::chars(&"0".to_string())) {
                                 std::option::Option::None => std::option::Option::None,
                                 Some(zero) => Some(Rc::new(SemVerVersion {
                                     major: major.clone(),
@@ -326,9 +322,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
 pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<Rc<SemVerNumericField>> {
     match parts.clone().get((index.clone()) as usize).cloned() {
         std::option::Option::None => std::option::Option::None,
-        Some(w) => semver_numeric_field(Rc::new(
-            w.clone().chars().map(|c| c as i64).collect::<Vec<_>>(),
-        )),
+        Some(w) => semver_numeric_field(v1_rt::chars(&w.clone())),
     }
 }
 
@@ -425,7 +419,7 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Rc<VersionComp
 }
 
 pub fn semver_identity_code_points(label: NonEmptyStr) -> Rc<Vec<i64>> {
-    Rc::new(label.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+    v1_rt::chars(&label.clone())
 }
 
 pub fn semver_is_ascii_digit(cp: i64) -> bool {

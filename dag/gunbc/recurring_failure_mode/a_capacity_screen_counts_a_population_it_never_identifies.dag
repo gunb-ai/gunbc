@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_capacity_screen_counts_a_population_it_never_identifies
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_capacity_screen_counts_a_population_it_never_identifies: RecurringFailureMode = RecurringFailureMode {
   identity: "a_capacity_screen_counts_a_population_it_never_identifies" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a capacity screen counts a population it never identifies** (INVALID STATE: a screen whose job is to rule out shapes too large for the resources available compares a requirement to the CARDINALITY of a resource population -- `needed <= host_count`, `replicas <= seat_count` -- while the corpus already carries that population's MEMBERS and already carries, in other authorities, which members are spoken for. The screen is then arithmetic over a number that no longer denotes what it is being read as: the count of resources that EXIST, standing in for the count of resources AVAILABLE. ",

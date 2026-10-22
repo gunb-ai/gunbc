@@ -55,6 +55,16 @@ data native_serve_program_seed_growth_justification: SeedGrowthJustification = S
       module_path: "v1.compiler.emit_rust",
       decl_name: "native_serve_declares_startup",
       field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1.compiler.emit_rust",
+      decl_name: "native_serve_startup_bound_name",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1.compiler.emit_rust",
+      decl_name: "native_serve_declares_startup_bound",
+      field: WholeDeclaration
     }
   ],
 
