@@ -137,3 +137,30 @@ test fn sh_callee_coproduct_at_its_own_formal_is_accepted() -> Bool {
 test fn sh_same_declaration_at_a_coproduct_field_is_accepted() -> Bool {
   sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "type ShHolderC { c: Choice }\nfn sh_use() -> ShHolderC { ShHolderC { c: make_a_choice() } }\n")))
 }
+
+// RED: the JOIN seats, where two values of one position must agree: if branches, match arms and list literal
+// elements, each holding one module's `Box` beside the other's.
+test fn sh_same_named_record_across_if_branches_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = if true { make_box() } else { make_a_box() }\n  1\n}\n")))
+}
+
+test fn sh_same_named_record_across_match_arms_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = match true {\n    true => make_box()\n    false => make_a_box()\n  }\n  1\n}\n")))
+}
+
+test fn sh_same_named_record_across_list_elements_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let xs = [make_box(), make_a_box()]\n  1\n}\n")))
+}
+
+// Controls: one declaration at every join.
+test fn sh_same_declaration_across_if_branches_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = if true { make_a_box() } else { Box { v: 2 } }\n  1\n}\n")))
+}
+
+test fn sh_same_declaration_across_match_arms_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = match true {\n    true => make_a_box()\n    false => Box { v: 2 }\n  }\n  1\n}\n")))
+}
+
+test fn sh_same_declaration_across_list_elements_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let xs = [make_a_box(), Box { v: 2 }]\n  1\n}\n")))
+}
