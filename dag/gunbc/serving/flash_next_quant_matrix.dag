@@ -265,17 +265,65 @@ data long_context_reported_pools: List<ReportedPoolAtLength> = [
   ReportedPoolAtLength { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), max_model_len_tokens: 1000000, kv_tokens: 3068862 },
 ]
 
-// A HYPOTHESIS, pre-registered by the operator before the B200 bisect (single requests 400k..900k, CUDA_LAUNCH_BLOCKING=1);
-// not a cause. int32 index overflow at tokens x hidden 2560 >= 2^31 predicts a threshold near 838,861 tokens.
+// A HYPOTHESIS, pre-registered by the operator before the B200 bisect: int32 index overflow at tokens x hidden 2560 >= 2^31
+// predicts a threshold near 838,861 tokens. FALSIFIED: on B200 (upstream 0.32.0, YaRN x4, max-model-len 1,000,000, FP8 KV,
+// CUDA_LAUNCH_BLOCKING=1, no MTP, max-num-seqs 4, fresh prompts, max_tokens 16) single requests passed at 400k, 600k, 800k,
+// 830k, 845k, 870k and 900k (16.2-39.3 s). The cause is unknown.
+type HypothesisStanding
+  = HypothesisPreRegistered
+  | HypothesisFalsified { evidence: NonEmptyStr }
+
 type CrashThresholdHypothesis {
   hidden_size: Nat
   index_limit: Nat
+  standing: HypothesisStanding
 }
 
-data crash_int32_overflow_hypothesis: CrashThresholdHypothesis = CrashThresholdHypothesis { hidden_size: 2560, index_limit: 2147483648 }
+data crash_int32_falsifying_evidence: NonEmptyStr = "B200 bisect, no MTP, fresh prompts: single requests passed at 400k/600k/800k/830k/845k/870k/900k tokens, past the 838860-token threshold" as NonEmptyStr
+
+data crash_int32_overflow_hypothesis: CrashThresholdHypothesis = CrashThresholdHypothesis { hidden_size: 2560, index_limit: 2147483648, standing: HypothesisFalsified { evidence: crash_int32_falsifying_evidence } }
 
 fn hypothesized_threshold_tokens(h: CrashThresholdHypothesis) -> Nat {
   h.index_limit / h.hidden_size
+}
+
+// The crashing runs differed from the passing bisect in exactly two named ways; neither is a cause yet.
+data crash_open_candidates: List<NonEmptyStr> = [
+  "MTP-3 enabled at long context" as NonEmptyStr,
+  "continuation from a cached ~900k prefix (+16k new tokens, 1100 output)" as NonEmptyStr,
+]
+
+// MEASURED CEILINGS (server-counted tok/s in tenths, max over the batch sweep, preemptions 0 everywhere): decode at the batch
+// that peaked, prefill warm (+8k at B8 / +32k) and cold (32k at B8 / 128k). Raw rows /root/bench/ceil-*/results.jsonl with
+// gpu-bench/request/v2 records beside them; not yet through gpu_bench_warm_run_admission.
+type CeilingReading {
+  variant: ServingVariant
+  cell: QuantCell
+  decode_deci_tokens_per_second: Nat
+  decode_peak_batch: Nat
+  warm_prefill_8k_deci: Nat
+  warm_prefill_32k_deci: Nat
+  cold_prefill_32k_deci: Nat
+  cold_prefill_128k_deci: Nat
+}
+
+data flash_next_measured_ceilings: List<CeilingReading> = [
+  CeilingReading { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), decode_deci_tokens_per_second: 9845, decode_peak_batch: 32, warm_prefill_8k_deci: 145450, warm_prefill_32k_deci: 144390, cold_prefill_32k_deci: 153220, cold_prefill_128k_deci: 150030 },
+  CeilingReading { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), decode_deci_tokens_per_second: 11107, decode_peak_batch: 32, warm_prefill_8k_deci: 143490, warm_prefill_32k_deci: 144990, cold_prefill_32k_deci: 157540, cold_prefill_128k_deci: 153740 },
+  CeilingReading { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), decode_deci_tokens_per_second: 24545, decode_peak_batch: 64, warm_prefill_8k_deci: 395590, warm_prefill_32k_deci: 410000, cold_prefill_32k_deci: 455510, cold_prefill_128k_deci: 449280 },
+  CeilingReading { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), decode_deci_tokens_per_second: 29694, decode_peak_batch: 64, warm_prefill_8k_deci: 370600, warm_prefill_32k_deci: 417570, cold_prefill_32k_deci: 492800, cold_prefill_128k_deci: 470520 },
+  CeilingReading { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), decode_deci_tokens_per_second: 13032, decode_peak_batch: 16, warm_prefill_8k_deci: 327850, warm_prefill_32k_deci: 328040, cold_prefill_32k_deci: 368600, cold_prefill_128k_deci: 358840 },
+]
+
+// BF16 KV beats FP8 KV on the decode ceiling on both cards (H200 +13%, B200 +21%): a software-path effect (FA2 fallback for
+// fp8 KV at head size 256), recorded as an observation about the stack, not a property of the dtype.
+fn decode_ceiling_deci(rows: List<CeilingReading>, v: ServingVariant, c: QuantCell) -> Nat? {
+  let hits = rows |> filter(r => serving_variant_eq(a: r.variant, b: v) && quant_cell_eq(a: r.cell, b: c))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, r) => Present { value: r.decode_deci_tokens_per_second })
+  } else {
+    none
+  }
 }
 
 data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(

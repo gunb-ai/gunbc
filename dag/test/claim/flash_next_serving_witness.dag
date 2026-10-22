@@ -21,7 +21,7 @@ import gunbc.serving.flash_next_experiment_identity {
 }
 import gunbc.serving.flash_next_quant_matrix {
   QuantCell, QuantMatrixRow, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
-  CellRefusedWeightsExceedUsableMemory, CellRefusedOther, CellUnobserved, ConcurrencyReading, upstream_defect_observations, long_context_reported_pools, crash_int32_overflow_hypothesis, hypothesized_threshold_tokens, flash_next_quant_matrix, quant_matrix_outcome,
+  CellRefusedWeightsExceedUsableMemory, CellRefusedOther, CellUnobserved, ConcurrencyReading, upstream_defect_observations, long_context_reported_pools, crash_int32_overflow_hypothesis, hypothesized_threshold_tokens, HypothesisFalsified, flash_next_measured_ceilings, decode_ceiling_deci, crash_open_candidates, flash_next_quant_matrix, quant_matrix_outcome,
   flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_centi_gib,
   WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
@@ -434,4 +434,23 @@ test fn w_sweep_levels_are_unadmitted_and_boundary_levels_are_flagged() -> Bool 
     && count(upstream_defect_observations) == 3
     && count(long_context_reported_pools) == 3
     && hypothesized_threshold_tokens(h: crash_int32_overflow_hypothesis) == 838860
+    && match crash_int32_overflow_hypothesis.standing { HypothesisFalsified { evidence: _ } => true, _ => false }
+    && count(crash_open_candidates) == 2
+}
+
+fn ceiling_for(v: ServingVariant, kv: KvDtype) -> Nat? {
+  decode_ceiling_deci(rows: flash_next_measured_ceilings, v: v, c: QuantCell { weights: WeightNvfp4LilQad, kv: kv })
+}
+
+fn nat_greater(a: Nat?, b: Nat?) -> Bool {
+  match a {
+    Present { value: x } => match b { Present { value: y } => x > y, none => false }
+    none => false
+  }
+}
+
+test fn w_bf16_kv_decode_ceiling_exceeds_fp8_on_both_cards() -> Bool {
+  count(flash_next_measured_ceilings) == 5
+    && nat_greater(a: ceiling_for(v: H200UpstreamV032, kv: KvBf16), b: ceiling_for(v: H200UpstreamV032, kv: KvFp8))
+    && nat_greater(a: ceiling_for(v: B200UpstreamV032, kv: KvBf16), b: ceiling_for(v: B200UpstreamV032, kv: KvFp8))
 }
