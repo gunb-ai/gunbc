@@ -68,6 +68,15 @@ fn ordering_type_node() -> Node {
 }
 }
 
+// THE ORDERING PREDICATE'S SIGNATURE: Ordering -> Bool, declared once. An ordering comparison (`<`, `<=`, `>`,
+// `>=`) reads the ordered structure's compare field, whose declared codomain is Ordering, and its value is a
+// predicate over that answer (v2.std.compilers.target_model ordering_predicate_accepts names which orderings
+// each predicate accepts). Every OrderingPredicate inhabits this one signature, so the comparison's Bool is
+// read from here, never assumed by the checker. Its Bool is v2.std.logic bool_node, as equivalence's eq.
+fn ordering_predicate_signature_node() -> Node {
+  algebra_unary_fn_node(domain: ordering_type_node(), codomain: bool_node())
+}
+
 fn magma_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },

@@ -329,10 +329,10 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     },
     WetScheduledClaim {
       identity: WitnessIdentity {
-        module_path: "test.claim.examples.blackjack_shuffle_wet_witness_test",
+        module_path: "test.claim.examples.blackjack_shuffle_wet_witness",
         function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       },
-      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness_test.dag",
+      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness.dag",
       function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       expectation: ExpectedToHold {},
     },
@@ -358,6 +358,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
       function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3178,6 +3196,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness", function: "a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution" },
       entry: "dag/test/claim/fleet/site_pxe_edge_chainloader_real_execution_witness.dag",
       function: "a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "a_missing_file_is_the_real_unreadable_arm" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "a_missing_file_is_the_real_unreadable_arm",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

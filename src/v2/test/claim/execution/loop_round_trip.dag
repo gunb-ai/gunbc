@@ -1,5 +1,7 @@
 module v2.test.claim.execution.loop_round_trip
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -170,7 +172,8 @@ data loop_inferred_tree: InferredTree = InferredTree {
   root: loop_emitted_root,
   facts: PartialFunction {
     lookup: loop_round_trip_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn loop_emit_accepts() -> Outcome<Medium<String>> {

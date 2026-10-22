@@ -1,5 +1,7 @@
 module v2.test.claim.manual.loop_emit
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
   table_fixture_loop_wrong_value_arrow_with_body
@@ -54,7 +56,8 @@ fn loop_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn loop_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: loop_emit_facts_lookup }
+    facts: PartialFunction { lookup: loop_emit_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 
