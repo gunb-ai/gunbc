@@ -902,11 +902,11 @@ test fn w_the_identity_the_executed_route_reported_came_from_writing_the_control
 // mtcollins1_boot_fan_gate after power-on and before the census watch (main #14263): it reads the chassis
 // and the fan sensors and post_power_fan_verdict decides. The boot route's world answers those reads the
 // way the committed healthy observation prints them (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix),
-// so the gate ADMITS through its own verdict and the run is not stopped at it. The selected medium is the runner image, whose terminal is runner_host_up_readback, so the world's census console is not that terminal and the exit past the gate is the terminal's, not this claim's.
+// so the gate ADMITS through its own verdict and the boot reaches the census.
 test fn w_the_fan_gate_admits_the_executed_boot_route_on_a_healthy_reading() -> Bool {
   match run_boot_route(world: world_for_boot_route()) {
     WitnessReturned { value: a, route: _, state: _ } => match a.fan_gate {
-      PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: r } => !string_contains(s: r, pattern: "chassis fan function not established") }
+      PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false }
       _ => false
     }
     _ => false
