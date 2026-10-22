@@ -2035,7 +2035,9 @@ fn floor_route_gap_expectation_chunk_42() -> List<FloorRouteGapExpectation> {
     FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.same_size_real_content_at_the_placeholder_path_is_refused_by_digest_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     FloorRouteGapExpectation { identity: "test.claim.workspace_source_pack_archive_real_execution.one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     FloorRouteGapExpectation { identity: "test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness.the_committed_image_satisfies_the_pin_by_real_execution", operation: "Run", ground: NoMockResponse {} },
-    FloorRouteGapExpectation { identity: "test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness.a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution", operation: "Dir", ground: NoMockResponse {} }
+    FloorRouteGapExpectation { identity: "test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness.a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    FloorRouteGapExpectation { identity: "test.claim.base64_tool_real_execution_witness.the_committed_chainloader_round_trips_through_the_real_base64_to_the_pin_digest", operation: "Dir", ground: NoMockResponse {} },
+    FloorRouteGapExpectation { identity: "test.claim.base64_tool_real_execution_witness.a_missing_file_is_the_real_unreadable_arm", operation: "Run", ground: NoMockResponse {} }
   ]
 }
 
