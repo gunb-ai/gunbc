@@ -4,7 +4,7 @@ import v2.compiler.source_root_eval { native_lane_file_refusal_index, native_tes
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.test.claim.resolve.namespace_candidate_rule { NcrAbsent, NcrRefused, NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of }
+import v2.test.claim.resolve.namespace_candidate_rule { NcrAbsent, NcrFileRefused, NcrRefused, NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of, ncr_verdict_refuses_with }
 import v2.std.text { String }
 import v2.std.node { Symbol }
 
@@ -64,3 +64,23 @@ test fn importing_a_declared_name_from_the_same_module_resolves() -> Bool {
 test fn importing_source_span_from_std_types_resolves() -> Bool {
   ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.lasf_types_control"))
 }
+
+fn lasf_is_absent(v: NcrVerdict) -> Bool {
+  match v {
+    NcrAbsent => true
+    _ => false
+  }
+}
+
+fn lasf_is_file_refused(v: NcrVerdict) -> Bool {
+  match v {
+    NcrFileRefused => true
+    _ => false
+  }
+}
+
+test fn probe_ctl_absent() -> Bool { lasf_is_absent(v: lasf_verdict(module_name: "v2.lasf_name_control")) }
+test fn probe_ctl_file_refused() -> Bool { lasf_is_file_refused(v: lasf_verdict(module_name: "v2.lasf_name_control")) }
+test fn probe_ctl_reason_unbound() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_unbound_symbol) }
+test fn probe_red_reason_unbound() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_unbound_symbol) }
+test fn probe_red_file_refused() -> Bool { lasf_is_file_refused(v: lasf_verdict(module_name: "v2.lasf_red")) }
