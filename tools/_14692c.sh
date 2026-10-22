@@ -49,6 +49,9 @@ cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
 CB=/root/workspace/repo-root/.t692c/release/claim_batch
 [ -x $CB ] || { echo "NO BINARY"; exit 9; }
 echo "BUILD_COMMIT=$(git rev-parse HEAD) CB_SHA=$(sha $CB) built $(date -u +%H:%M:%S)Z"
+mkdir -p target/release
+cp -f $CB target/release/claim_batch   # the exit witness SPAWNS <root>/target/release/claim_batch
+[ "$(sha target/release/claim_batch)" = "$(sha $CB)" ] && echo "STAGED_CHILD_BIN=OK" || { echo "CHILD_BIN_COPY_FAIL -- STOP"; exit 9; }
 runf() { # entry names tag
   local entry=$1 names=$2 tag=$3
   timeout 2400 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $entry --functions "$names" > /tmp/s692_${tag}.out 2>&1
@@ -89,7 +92,8 @@ assert n==1, n
 open(p,'w').write(s.replace(old,new))
 PY
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
-echo "  mut CB_SHA=$(sha $CB)"
+cp -f $CB target/release/claim_batch
+echo "  mut CB_SHA=$(sha $CB) child_sha=$(sha target/release/claim_batch)"
 echo "  -- expect $RED1 FAIL (expects 1, gets 2), $RED2 PASS (expects 2 unchanged):"
 runf $WIT "$RED1,$RED2" collapse
 for n in $RED1 $RED2; do
@@ -99,7 +103,8 @@ echo "=== D. restore byte-exact + rebuild + re-PASS both:"
 cp -f /tmp/cbr_head_orig $CBR
 [ "$(sha $CBR)" = "$(sha /tmp/cbr_head_orig)" ] && echo "  RESTORE_BYTE_EXACT=YES" || echo "  RESTORE_BYTE_EXACT=NO -- STOP"
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
-echo "  post CB_SHA=$(sha $CB)"
+cp -f $CB target/release/claim_batch
+echo "  post CB_SHA=$(sha $CB) child_sha=$(sha target/release/claim_batch)"
 runf $WIT "$RED1,$RED2" post
 echo "=== E. statics: format_error_nodes sites + String error path in entry_resolve.rs:"
 grep -acn 'format_error_nodes' $ER | sed 's/^/  format_error_nodes total mentions: /'
