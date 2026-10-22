@@ -1138,3 +1138,13 @@ CI //gunbc/instruments:self-host @cf726db: 21 distinct spans / ~51 lines. Contai
 PRED-SH1: own-form guard removes ALL ~29 algebra.dag:1412:56 lines (biggest gate block).
 PRED-SH2: leaf-identity (#14056) removes seedgen 2,12 + CI 114:15,177:49 (4 sites; NOT remote_shell 106:22? NO -- 106:22 is seedgen-only but same class; removes there too).
 PRED-SH3: wrapper Node-form family needs its own mechanism decision after debug renders; do NOT bundle with eager-cat wrapper without render evidence.
+
+## DEBUG-RENDER GROUND TRUTH (round 3, /tmp/gc16dbg/census_dbg2.txt, 16 refusals at seedgen closure)
+ALL nodes at refusals: p=0 (params empty; own=F everywhere -- call-site nodes carry no params, CONFIRMED), sp=S (spans present even on <kernel:*> lines? kernel sites print their OWN span S), inf as noted:
+- Sites 2,12 (identical print): bound=Primitive(PosixRedirection/StandardIntegerType) inf=resolved, actual=Primitive(SAME) inf=resolved, both c=0. leaf-vs-leaf arm -> type_name_compatible(authored_a, authored_b) MUST be the refusal point: hypothesis = AUTHORED names differ by qualification (both contain '.' -> false branch) while node_type_shape prints bare last segment. Round-4 diag (EQ/TXT/APP1/APP2 + unfolded shapes U=) decides.
+- Sites 3,4 (own-form): bound=Map(Primitive(K),Primitive(V)) inf=resolved (K,V leaves), actual=Map(Symbol,String/Symbol). tvleaf(bound)=F!! -- binding_has_type_variable_leaf does NOT see K,V as tv leaves (their inferred is Resolved, not TypeVariable; leaf check tests inferred TypeVariable or bare-name-with-children... c>0 on Map children). THIS is why the REPLACE arm misses: tvleaf=F, own=F (p=0) -> refusal. Fix candidate: own-form recognition for call-site nodes = compare leaf authored names against callee's generic_names (in scope at fold) -- NOT node.params.
+- Wrapper sites: Primitive(List)(resolved) vs Primitive(String)(none) x3 (kernel String family); Primitive(Int)(none) vs UnresolvedDecl(Int<Nat>)(none); Primitive(QualifiedName)/Node(...) pairs in CI closure.
+- Placeholder sites: Node(Outcome<Product(Unit<>)>) vs Node(Outcome<Coproduct(FreeMonoid)>) x2 + vs Outcome<Container(FreeMonoid,Product(CliArgument<String>)>); Node(Outcome<Map(Symbol,UnresolvedDecl(...)>>) x2 identical-ish pair.
+- Alias-shadow: Node(String<Product(Char<Int>)>) vs Node(FreeMonoid<Product(Char<Int>)>) x2 (mirror directions).
+- kernel-Int: Product(Char<Int>)(none) vs Primitive(Int)(none).
+ROUND-4 PROBE: gc16_unify_diag prints EQ/TXT/APP1/APP2 on UNFOLDED pair + unfolded shapes.
