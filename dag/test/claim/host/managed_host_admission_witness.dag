@@ -276,7 +276,6 @@ fn drop_with_standing(standing: RungDropStanding) -> RungDrop {
     subject: base.subject,
     declared: base.declared,
     standing: standing,
-    declaration: base.declaration,
   }
 }
 
