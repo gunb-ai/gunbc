@@ -574,7 +574,7 @@ test fn a_failed_refused_or_malformed_boot_id_read_establishes_no_boot() -> Bool
 // No transport is no observation: the production wet entry holds none today, so the sweep stays gated.
 test fn no_transport_leaves_the_current_boot_unobserved() -> Bool {
   match lost_boot_observe_current_boot(transport: none) {
-    CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "no host-authenticated transport")
+    CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "no host-bound transport")
     CurrentBootObserved { evidence: _ } => false
   }
 }
