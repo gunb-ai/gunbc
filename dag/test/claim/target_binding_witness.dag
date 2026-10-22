@@ -30,6 +30,7 @@ import gunbc.build_target {
   target_standing_verdict,
 }
 import std.types { Bool }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

@@ -1,6 +1,7 @@
 module extdeps.bmc.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
+import std.types { List }
 
 data redfish_http_mock_case_get_system: PublishedMockCase = PublishedMockCase {
   operation_key: "redfish.Http.GetSystem",

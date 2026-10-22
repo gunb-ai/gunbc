@@ -1,4 +1,10 @@
 module test.claim.roadmap.roadmap_launch_deployment_observe_witness
+import gunbc.live_deploy.deployed_tree_observation { DeployedTreeObserved }
+import gunbc.roadmap.roadmap_belt_actuate { BeltTickReceipt, BeltTickReceiptPresent, TickExecuted }
+import gunbc.roadmap.roadmap_launch_deployment_observe { EventBacklogEntry, EventSpoolStalled }
+import std.live_tree { LiveTreeDisposition }
+import std.nat { Nat }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

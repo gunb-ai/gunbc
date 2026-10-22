@@ -1,4 +1,9 @@
 module test.claim.fleet.fleet_converge_cli_witness
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import gunbc.fleet.fleet_converge_cli { ComputeInventoryAbsent, ConvergeCliReceipt, KnobFrontier, UnknownHost }
+import gunbc.fleet.origin_main_revision_observe { RevisionConverged, RevisionDrifted, RevisionUnobserved }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

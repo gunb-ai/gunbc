@@ -1,4 +1,5 @@
 module test.claim.dag_compile_clean_seam_witness
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

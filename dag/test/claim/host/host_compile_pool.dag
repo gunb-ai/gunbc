@@ -1,4 +1,10 @@
 module test.claim.host.host_compile_pool
+import gunbc.build_cache.build_cache_instance { CgroupMemoryLimits }
+import gunbc.fleet.fleet_host_budget { CompilePoolDerived, CompilePoolResolution, CompilePoolUnresolved }
+import gunbc.host.host_compile_pool { CompilePoolObservation, CompilePoolObservationUnavailable, CompilePoolSliceAbsent, CompilePoolSliceObserved }
+import gunbc.host.host_layout { CompilePoolPlacement, CompilePoolSliceDeclared }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

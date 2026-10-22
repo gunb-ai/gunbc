@@ -12,6 +12,7 @@ import gunbc.artifact_acquisition {
   AcquisitionKey, UpstreamRevision, AcquisitionSource, AcquisitionSubject,
   AcquisitionOutcome, AcquisitionRefused, AcquisitionRefusal, NoSourceDeclared,
   acquisition_refusal_text, acquisition_succeeded,
+  SourceArgv,
 }
 
 // MODEL WEIGHT ACQUISITION FOR THE SPARK SERVING GROUPS: which snapshot a group must hold, and the

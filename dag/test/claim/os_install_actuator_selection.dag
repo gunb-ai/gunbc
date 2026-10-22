@@ -1,4 +1,8 @@
 module test.claim.os_install_actuator_selection
+import gunbc.os_install_actuator_selection { ActuatorUnsatisfiable, OsInstallActuatorSelection }
+import gunbc.provisioning.seeded_install_media_publish { SeededImageResolution, SeededImageResolved }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,6 +1,7 @@
 module gunbc.host.host_identity_knob
 
 import product.host_identity { HostIdentity }
+import std.change { KeyedLeafVerdict }
 
 type HostIdentityHostnameField
   = HostnameShort

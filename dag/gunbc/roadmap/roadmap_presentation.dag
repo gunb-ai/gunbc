@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_issue_status {
   DisplayReturned, DisplayDone, DisplaySuperseded, DisplayUnknown,
   issue_display_status_label, issue_display_status_sort_rank,
 }
-import std.types { Map }
+import std.types { Map, List }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
   readiness_is_dispatchable, readiness_gap_blockers,

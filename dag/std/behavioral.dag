@@ -1,4 +1,5 @@
 module std.behavioral
+import std.types { List }
 
 
 type SideEffects = ReadOnly | WritesState | WritesExternal

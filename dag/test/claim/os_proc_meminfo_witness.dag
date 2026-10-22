@@ -1,4 +1,8 @@
 module test.claim.os_proc_meminfo_witness
+import extdeps.linux.proc_meminfo { MemoryMetric, ProcMeminfo }
+import std.live_tree { LiveTreeDisposition }
+import std.measure { Kibibyte }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

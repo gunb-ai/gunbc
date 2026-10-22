@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_workflow_command {
   attempt_lineage_row_label,
   worker_turn_row_label,
   attempt_key_short_form,
+  WorkflowModeledStateUnreadable,
 }
 import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreeUnobserved,

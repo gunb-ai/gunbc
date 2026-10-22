@@ -2,6 +2,9 @@ module extdeps.languages.typescript.program
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.render { Block }
+import std.syntax { BinOp }
+import std.types { List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

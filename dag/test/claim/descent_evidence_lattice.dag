@@ -1,4 +1,6 @@
 module test.claim.descent_evidence_lattice
+import std.live_tree { LiveTreeDisposition }
+import std.termination { DescentEvidence }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

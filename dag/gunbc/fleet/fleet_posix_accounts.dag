@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_posix_accounts
 
-import extdeps.access.posix { PosixUser, PosixLoginName }
+import extdeps.access.posix { PosixUser, PosixLoginName, LoginShellObserved }
 import std.nat { Nat }
 import std.types { Timestamp, brand }
 import gunbc.fleet.fleet_lifecycle_observation { ProcessReceipt }

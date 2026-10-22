@@ -10,6 +10,7 @@ import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_effort_rendering_iq3s_split_vllm, deepseek_v4_rendering_distinguishes_max,
   deepseek_v4_replay_rendering_chat_tool_loop, deepseek_v4_replay_rendering_messages_endpoint, deepseek_v4_endpoint_renders_replayed_reasoning,
 }
+import std.live_tree { LiveTreeDisposition }
 
 // These pin a TRANSCRIPTION against the shape the source has. The preamble is read from the cited
 // encoder at the cited revision; a re-transcription that dropped a sentence, or a tier that grew a

@@ -1,4 +1,7 @@
 module test.claim.time_scale_factor_derivation
+import std.live_tree { LiveTreeDisposition }
+import std.measure { Scale }
+import std.nat { Nat }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

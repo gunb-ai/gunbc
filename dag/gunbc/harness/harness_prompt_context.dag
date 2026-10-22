@@ -4,6 +4,8 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { content_hash_atom }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import test.claim.deployment_gate_evidence_forged_probe_witness { refusals }
+import test.claim.roadmap.roadmap_belt_obligation_witness { segments }
 
 // A PROMPT IS A PROJECTION OF AN ADMITTED CONTEXT SNAPSHOT, not an authority and never an authored
 // string handed across a boundary (scoped review against 81e7c779, 2026-09-29; invariant repairs

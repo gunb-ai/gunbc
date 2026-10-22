@@ -1,4 +1,5 @@
 module test.claim.ci.ci_exclusion_proof
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

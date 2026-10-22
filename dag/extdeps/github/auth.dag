@@ -7,7 +7,7 @@ import std.types { NonEmptyStr, Timestamp }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, DeclaredMetadata, Subject }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

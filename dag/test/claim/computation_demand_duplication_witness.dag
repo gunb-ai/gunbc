@@ -1,4 +1,7 @@
 module test.claim.computation_demand_duplication_witness
+import std.live_tree { LiveTreeDisposition }
+import std.types { List }
+import v2.lens.duplicate_computation { ComputationDemandFact, ReplicationIntent, TypedArgvInvocation }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

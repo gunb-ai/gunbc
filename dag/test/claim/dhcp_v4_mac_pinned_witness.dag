@@ -1,4 +1,5 @@
 module test.claim.dhcp_v4_mac_pinned_witness
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

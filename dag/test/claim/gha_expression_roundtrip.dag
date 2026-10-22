@@ -1,4 +1,7 @@
 module test.claim.gha_expression_roundtrip
+import extdeps.github.expressions { ContextAccess, Equals, Expression, ExpressionSpellings, ExpressionTemplate, GithubPathResolution, Interpolation, LiteralText, LogicalAnd, LogicalOr, NotEquals, StringLiteral }
+import std.live_tree { LiveTreeDisposition }
+import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

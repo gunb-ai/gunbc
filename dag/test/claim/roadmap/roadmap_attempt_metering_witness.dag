@@ -24,6 +24,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
   metered_role_seat_owner, metering_record_from_usage, metering_record_inadmissible, metering_token_total, metering_seat_time_total,
   attempt_metering_json, metering_observe_from_text,
 }
+import std.live_tree { LiveTreeDisposition }
 
 // PLANTED FIXTURES, answers computed by hand. Attempt node-x-a7 launched a worker and one reviewer
 // (criterion r1-c1 at head h1). The worker's stream: two rounds (in 10+20, out 100+200), then

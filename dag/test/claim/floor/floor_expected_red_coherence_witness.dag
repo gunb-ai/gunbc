@@ -1,6 +1,6 @@
 module test.claim.floor.floor_expected_red_coherence_witness
 
-import std.algebra { count_where, length, list_flat_map }
+import std.algebra { count_where, length, list_flat_map, Cons }
 import std.types { Bool, Int, List, String }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.workflow.floor_expected_red {

@@ -1,6 +1,6 @@
 module gunbc.instruments.emission_entry_instrument
 
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, String, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.gunbc

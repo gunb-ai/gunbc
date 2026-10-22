@@ -1,4 +1,9 @@
 module test.claim.hostname_allocation_witness
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.hostname_allocation { DrawnHumanName, FirstLast, HostnameAllocation, HumanName, HumanNameDraw, LegacyHostname }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

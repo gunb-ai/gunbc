@@ -30,7 +30,7 @@ import gunbc.runner.runner_activation {
   admit_runner_activation, runner_activate_command,
 }
 import gunbc.build_cache.build_cache_instance { BuildCacheInstance, ProcessIdentity, ci_cache_instance, runner_slot_index_suffix }
-import gunbc.host.host_layout { gunbc_managed_compile_pool_slice }
+import gunbc.host.host_layout { gunbc_managed_compile_pool_slice, CompilePoolSliceDeclared }
 import product.host_identity { HostIdentity }
 import std.types { NonEmptyStr, String }
 import gunbc.fleet.fleet_intent { fleet_intent_execution_surface }

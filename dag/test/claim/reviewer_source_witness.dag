@@ -1,4 +1,7 @@
 module test.claim.reviewer_source_witness
+import gunbc.review_verdict { AgentReviewer, PolicyRef, PolicyReviewer, UnattributedReviewer }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

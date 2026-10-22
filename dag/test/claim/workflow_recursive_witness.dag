@@ -1,4 +1,9 @@
 module test.claim.workflow_recursive_witness
+import gunbc.idea_pr_spine { Review, StageStep }
+import std.live_tree { LiveTreeDisposition }
+import std.reducible { Irreducible, Reduced }
+import std.types { List, NonEmptyStr }
+import std.workflow_recursive { Decomposed, VerdictTree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

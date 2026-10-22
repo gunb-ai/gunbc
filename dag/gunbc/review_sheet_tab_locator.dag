@@ -28,6 +28,7 @@ import extdeps.google.sheets {
   sheets_field_sheet_index,
 }
 import std.algebra { fold_list }
+import gunbc.serving.replica_incarnation { CandidateRead }
 
 // A FILE IS NOT A TAB, AND UNTIL THIS MODULE THE CORPUS ONLY EVER ESTABLISHED THE FILE.
 // gunbc.review_sheet_spreadsheet_actuator converge_review_spreadsheet finds or creates the Drive

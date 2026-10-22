@@ -128,7 +128,8 @@ import gunbc.auth.deployment_gate_authorization {
   gate_app_permission_set_is_admissible,
   gate_app_permission_set_is_exact,
   GateInstallationClaim,
-
+  JoinWasRefused,
+  OwnershipWasNotEstablished,
 }
 // THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (§3c).
 import gunbc.auth.deployment_gate_operator_steps {
@@ -141,6 +142,7 @@ import gunbc.auth.deployment_gate_operator_steps {
 import extdeps.github.github { Repository }
 import gunbc.repository { gunbc_repository }
 import std.optional { Optional, Present, Absent }
+import extdeps.github.deployment_environments { SelectedBranchesAndTags }
 
 data gate_env: NonEmptyStr = srv1_production_environment_name
 

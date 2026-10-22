@@ -1,7 +1,7 @@
 module v2.extdeps.languages.rust_fixtures
 
 import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
-import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel, Atom, ComputationNode, TypeNode }
 
 import std.algebra { Cons, Empty }
 
@@ -52,12 +52,15 @@ import v2.extdeps.languages.rust {
   rust_value_expression_family_lex_rules,
   rust_value_semantics_carrier_atoms,
   rust_whitespace_trivia_rule,
-  rust_semantic_decl_emission_bundle_node
+  rust_semantic_decl_emission_bundle_node,
+  RustGramBuild1StateReady,
 }
 import v2.std.logic { bool_boolean_algebra }
-import v2.std.grammar { derive_grammar_relation_row_for_lhs }
-import v2.std.compilers.target_model { ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs, Sequence }
+import v2.std.compilers.target_model { ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote, BoundToken, FixedToken }
 import std.host_text { chars }
+import v2.std.compilers.lexing { ModeledLexRules }
+import v2.std.host_transport { EmittedWithSuffix, FixedText, FixedWidthBytes, HostRuntimeRowPresent, HostToolProgram, LiteralArg }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
 // resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated

@@ -1,5 +1,9 @@
 module gunbc.ci.ci_input_envelope
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition }
+import std.measure { Count, Measure, One }
+import std.nat { Nat }
+import std.types { List }
 
 
 type InputSizeAxis

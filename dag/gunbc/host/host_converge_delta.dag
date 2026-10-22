@@ -1,5 +1,10 @@
 module gunbc.host.host_converge_delta
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.host.host_converge { ConvergeKnob, ConvergeSlice, HostConverge }
+import std.change { KeyedLeafVerdict, KeyedPatch, KeyedThreeWayPatch }
+import std.disposition { Disposition }
+import std.keyed_row { KeyedRow }
+import std.types { List }
 
 
 data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {

@@ -1,4 +1,8 @@
 module test.claim.merge_admission_producer_witness
+import extdeps.git.object_store { GitObjectId }
+import gunbc.merge_admission { MergeAdmissionReceipt }
+import std.live_tree { LiveTreeDisposition }
+import std.types { CommitSha }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

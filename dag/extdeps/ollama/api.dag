@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, Residue, Subject }
 import extdeps.llm.anthropic_messages_api {
   MessagesApiImplementation,
   VersionHeaderAcceptedUnused,

@@ -13,6 +13,7 @@ import gunbc.instruments.e0599_probe_census {
   e0599_mechanistic_root_family_labels_blob,
   e0599_canonical_seven_module_count,
 }
+import gunbc.primitive_egress.disposition { UnresolvedCause }
 
 data e0599_measured_producer: String = "V1SeedEmitter"
 

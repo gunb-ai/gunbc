@@ -18,6 +18,7 @@ import gunbc.instruments.layout_migration_rewrite {
   rewrite_text,
   sentinel
 }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

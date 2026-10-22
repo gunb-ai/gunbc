@@ -53,6 +53,7 @@ import v2.std.node {
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
+import std.realization_reconcile { Application }
 
 fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {

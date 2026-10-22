@@ -5,6 +5,7 @@ import std.measure { Second, second, second_count, ByteSize, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.xcodegen.project_spec { ConfigFile }
 
 // The OpenSSH CLIENT option vocabulary, modeled once.
 //

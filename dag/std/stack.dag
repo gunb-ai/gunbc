@@ -1,4 +1,5 @@
 module std.stack
+import std.types { List }
 
 type Stack<T>
   = Empty

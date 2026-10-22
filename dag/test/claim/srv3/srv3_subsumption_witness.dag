@@ -1,4 +1,11 @@
 module test.claim.srv3.srv3_subsumption_witness
+import extdeps.ssh.keys { SshPublicKey }
+import gunbc.host.host_authorized_keys_reconcile { HostAuthorizedKeysMemberAt }
+import gunbc.host.host_toolchain_ensure { HostToolchainKind, HostToolchainReach, ResolvedHostToolchainReach }
+import gunbc.membership_reconcile { MembershipPlan }
+import gunbc.ownership { Ownership }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

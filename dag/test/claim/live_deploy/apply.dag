@@ -56,6 +56,7 @@ import gunbc.host.host_effect {
   HostOs,
   LiveDeployDigestReadback,
   host_effect_identity_evidence,
+  EmitArtifactThenThinRun,
 }
 import gunbc.fleet.fleet_intent { srv1_host }
 import std.algebra { string_contains }

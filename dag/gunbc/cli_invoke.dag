@@ -2,7 +2,7 @@ module gunbc.cli_invoke
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String }
+import std.types { String, List }
 
 // NARROWED 2026-08-26 with the plan/walk residue cut. What stood here named four
 // claim_executor shell builders; three of them (claim_executor_run_plan_shell and the

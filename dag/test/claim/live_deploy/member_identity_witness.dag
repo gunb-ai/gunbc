@@ -16,6 +16,7 @@ import gunbc.live_deploy.member_identity {
   decide_member, decide_release_members, release_member_roster, derive_member_plan, ReleaseTarget,
   converged_member_eq, DirectoryRoot,
   EffectDerivation, EffectsDerived, EffectsRefused, effect_labels, plan_publishes_tree,
+  InstalledReleaseUnobserved,
 }
 
 fn rev_a() -> CommitSha { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }

@@ -1,6 +1,7 @@
 module test.claim.sorted_map_keys_interpreter_order_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { List, Map }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

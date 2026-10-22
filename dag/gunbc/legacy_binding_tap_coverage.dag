@@ -5,6 +5,7 @@ import gunbc.rust_item_identity {
   RustItemDeclarationRef, RustItemDeclField, RustItemWhole,
   rust_item_declaration_ref_key,
 }
+import std.algebra { Cons }
 
 // SLICE 0B.1a OF THE ROUTER-AUTHORITY MIGRATION: THE DECISION-SITE RETENTION CENSUS. IT MEASURES
 // WHERE A TAP COULD BE PLACED AND TAPS NOTHING.

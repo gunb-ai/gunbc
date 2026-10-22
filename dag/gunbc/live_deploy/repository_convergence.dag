@@ -40,7 +40,7 @@ import std.workspace_artifact {
   SupersededAuthority,
 }
 import gunbc.repository { gunbc_repository }
-import std.algebra { trim }
+import std.algebra { trim, Cons }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.git.enumeration {

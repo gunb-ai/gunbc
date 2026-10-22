@@ -3,6 +3,7 @@ module v2.std.artifact
 import v2.std.diagnostic { Accepted, Locus, Outcome, Rejected }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
+import v2.std.refinement { Validation }
 
 type ArtifactKind
   = SourceFile

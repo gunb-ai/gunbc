@@ -1,4 +1,7 @@
 module test.claim.crosstree_probe
+import std.access { AccessDecision }
+import std.live_tree { LiveTreeDisposition }
+import v2.std.lens_verdict { LensVerdict }
 
 
 data live_tree_disposition: LiveTreeDisposition = std.live_tree.SubstrateInputsOnly

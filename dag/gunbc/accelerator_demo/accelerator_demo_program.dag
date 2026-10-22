@@ -6,6 +6,7 @@ import extdeps.languages.simd.kernel {
   elemwise_add_wire_op_code,
   elemwise_relu_wire_op_code,
 }
+import std.types { List }
 
 type ElementwiseArrayOp
   = ElemwiseMul

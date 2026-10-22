@@ -84,6 +84,8 @@ import gunbc.roadmap.roadmap_publish {
   PullRequestsRead, PullRequestsUnreadable,
   RemoteBranchesRead,
   RemoteBranch,
+  ReceiptSourcePresent,
+  ReceiptSourceUnreadable,
 }
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }

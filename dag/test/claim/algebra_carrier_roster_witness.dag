@@ -8,6 +8,7 @@ import std.algebra {
 }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

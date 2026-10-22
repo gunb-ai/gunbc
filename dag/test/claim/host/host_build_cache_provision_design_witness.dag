@@ -1,4 +1,8 @@
 module test.claim.host.host_build_cache_provision_design_witness
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ServerManagedUnitOwned, ServerRunnerOwned }
+import gunbc.build_cache.build_cache_provision_verdict { BuildCacheDaemonObservation, DaemonPathShadowed, DaemonStatsOk, DaemonUnsupervised }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

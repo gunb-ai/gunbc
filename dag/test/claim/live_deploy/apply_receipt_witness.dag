@@ -1,4 +1,9 @@
 module test.claim.live_deploy.apply_receipt_witness
+import gunbc.actions_run_binding { ActionsRunBinding }
+import gunbc.live_deploy.apply_receipt { FleetTransactionProvenance, LiveDeployApplyNotConverged, LiveDeployApplyReceipt, LiveDeployFleetProvenance, LiveDeployReadinessObserved, LiveDeployReadinessRefused, OperatorLocalApply, RoleSingletonsInPlace }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -193,6 +193,7 @@ import gunbc.runner.runner_slot_retirement {
   CgroupAbsent,
 }
 import gunbc.host.host_operation_exec { HostOperationObserved }
+import gunbc.executor_privileged_operation { EnsureOwnedDirectory, RemoveDirectoryTree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

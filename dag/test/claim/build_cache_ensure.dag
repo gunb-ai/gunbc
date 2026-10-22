@@ -5,6 +5,9 @@ import gunbc.build_cache.build_cache_ensure {
   build_cache_ensure_is_converged
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.build_cache.build_cache_endpoint_path { EndpointListening, EndpointPathConflict, EndpointPathObservationUnavailable, EndpointStaleSocket, ObservationCurrencyUnknown }
+import gunbc.build_cache.build_cache_instance { EndpointPathUnreadable, ServerManagedUnitOwned, ServerPlacementUnknown, ServerRunnerOwned }
+import gunbc.host.host_layout { CompilePoolSliceDeclared }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

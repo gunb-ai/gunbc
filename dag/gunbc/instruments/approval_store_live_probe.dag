@@ -22,6 +22,7 @@ import gunbc.auth.approval_decision_store {
   grant_from_store, GrantDerived, GrantStillPending, GrantEscalationNotFiled, GrantForAnotherIntent, GrantStoreUnreadable,
 }
 import extdeps.ietf.http_semantics { POST }
+import test.claim.diverging_match_arm_join_witness { ProbeOther }
 
 // THE LIVE RECEIPT FOR THE EFFECTFUL HALF OF THE APPROVAL DECISION STORE, which the hermetic
 // witness (test.claim.approval_decision_store_witness) cannot reach: a request filed into a

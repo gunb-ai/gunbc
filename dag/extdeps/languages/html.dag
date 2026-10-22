@@ -6,7 +6,7 @@ import std.algebra { Cons, Empty, FreeSemigroup }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.markup {
   Fragment, Element, FragmentText, RawNode, Attribute, attr, MarkupDocument,
   MarkupBracket, MarkupMedium, CommentGrammar, DocumentGrammar, DeclaresDocument, EscapeHtml,

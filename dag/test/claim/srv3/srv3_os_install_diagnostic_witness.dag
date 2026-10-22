@@ -1,4 +1,10 @@
 module test.claim.srv3.srv3_os_install_diagnostic_witness
+import extdeps.bmc.types { RedfishBootSourceOverrideEnabled }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
+import gunbc.srv3.srv3_os_install_diagnostic { BmcVirtualMediaObservation, IsoPresent, IsoServeReadinessObservation, KvmObservation, NbdServePortObservation, NbdServeProcessObservation, OsInstallActuationObservations, OsInstallAttemptIntent, RedfishSystemBootObservation, ServePortListening, SolConsoleContentObservation }
+import std.live_tree { LiveTreeDisposition }
+import std.types { Milliseconds, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

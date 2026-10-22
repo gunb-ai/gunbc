@@ -1,4 +1,7 @@
 module test.claim.pareto_dominance
+import std.live_tree { LiveTreeDisposition }
+import std.pareto { AxisComparison, DominanceVerdict }
+import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -39,7 +39,17 @@ import gunbc.spark.bootstrap_provision {
   SecretConsumer, SecretDemandStanding, SecretDemandActive, SecretDemandRetainedForRecovery,
   SecretDemandRetiredAfterOobe, SecretDemandUnobserved, secret_demand_is_active,
   HostPrivilegeObservation, ServiceInstallScope, SystemUnitScope, ContainerScope,
-  UserUnitScope, InstallScopeUnobserved, derive_install_scope
+  UserUnitScope, InstallScopeUnobserved, derive_install_scope,
+  GeneratedInRun,
+  ObservedFromDevice,
+  SparkAttemptConfirmed,
+  SparkAttemptIssuedUnconfirmed,
+  SparkAttemptJournaled,
+  SparkContainerPresent,
+  SparkContainerUnreadable,
+  SparkReadbackMatched,
+  SparkReadbackMismatched,
+  SparkReadbackUnavailable,
 }
 
 import extdeps.cloud.gcp.secret_manager {

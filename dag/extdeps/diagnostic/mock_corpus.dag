@@ -18,6 +18,7 @@ import extdeps.bmc.mock_corpus {
   bmc_ipmi_tool_mock_case_sdr_list,
   bmc_ipmi_tool_mock_case_sel_list,
 }
+import std.types { List }
 
 data diagnostic_published_mock_corpus: List<PublishedMockCase> = [
   ssh_session_mock_case_exec,

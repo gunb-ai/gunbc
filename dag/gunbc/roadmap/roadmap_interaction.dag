@@ -37,6 +37,7 @@ import gunbc.site.moodboard {
   RealizedBehavior, RealizedRules, UnrealizedBehavior,
   approach_triggers,
 }
+import extdeps.languages.css.selectors { ClassSelector, ElementSelector }
 
 // The roadmap dashboard's interaction rows (slice 2 of roadmap-onto-register, manager-signed): the
 // dispatch button declares Approach and Dispatch, and its stylesheet responses are DERIVED from

@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_model
 
-import std.types { NonEmptyStr, brand, Map }
+import std.types { NonEmptyStr, brand, Map, List }
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap.roadmap_status {

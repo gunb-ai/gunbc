@@ -1,4 +1,5 @@
 module test.claim.measure_lifted_algebra
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,7 @@
 module v2.lens.registry
+import std.types { List }
+import v2.lens.common.construction_justification { ConstructionJustification }
+import v2.std.node { Symbol }
 
 
 type LensIdV0

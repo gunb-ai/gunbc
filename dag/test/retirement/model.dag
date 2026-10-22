@@ -1,7 +1,7 @@
 module test.retirement.model
 
 import std.types { String, NonEmptyStr, Bool, Int }
-import std.dissolution { DissolutionCondition }
+import std.dissolution { DissolutionCondition, UnboundDissolution }
 
 // THE RETENTION BOUNDARY FOR HAND-WRITTEN v1 RUST TESTS, inverted from the
 // deletion-classification scheme it replaces.

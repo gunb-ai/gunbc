@@ -7,6 +7,7 @@ module examples.blackjack.hand
 // first modeling lesson of that section.
 
 import examples.blackjack.cards { Card, Rank, Ace, rank_pips, is_ace }
+import std.types { List }
 
 type Hand {
     cards: List<Card>

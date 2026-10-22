@@ -2,7 +2,7 @@ module gunbc.spark.collective_transport_plan
 
 import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
-import extdeps.nvidia.nccl { NcclRoceGidSelection, nccl_roce_gid_selection_env }
+import extdeps.nvidia.nccl { NcclRoceGidSelection, nccl_roce_gid_selection_env, NcclGidByAddressFamily }
 
 // ── ONE SEMANTIC CHOICE, NOT SEVEN INDEPENDENT CONTAINER FIELDS ───────────────────────────────
 //

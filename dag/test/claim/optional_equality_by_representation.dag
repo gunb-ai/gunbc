@@ -1,6 +1,7 @@
 module test.claim.optional_equality_by_representation
 
 import std.live_tree { LiveTreeDisposition }
+import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

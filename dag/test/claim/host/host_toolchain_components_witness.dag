@@ -1,4 +1,8 @@
 module test.claim.host.host_toolchain_components_witness
+import gunbc.host.host_toolchain_components { NotReachableOnSpawnPath, ReachableOnSpawnPath }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

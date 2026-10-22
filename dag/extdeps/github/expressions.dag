@@ -7,6 +7,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Lossless }
 import std.algebra { fold_list, list_head, skip, length }
 import std.types { Bool, List, String, Int }
+import extdeps.llm.openai { FunctionCall }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

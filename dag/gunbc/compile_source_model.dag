@@ -1,4 +1,5 @@
 module gunbc.compile_source_model
+import std.types { List }
 
 
 type DependencyPoolIndex

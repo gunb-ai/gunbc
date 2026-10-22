@@ -1,6 +1,6 @@
 module gunbc.auth.github_apps
 
-import std.types { NonEmptyStr, String, EpochSecs, HttpStatus }
+import std.types { NonEmptyStr, String, EpochSecs, HttpStatus, List }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

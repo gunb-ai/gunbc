@@ -39,6 +39,7 @@ import gunbc.tools.bmc_onboard {
   reset_body
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.bmc.types { RedfishBootSourceOverrideMode }
 
 data srv3_boot_once_apply_read_back_sleep: Second = second(count: 45)
 

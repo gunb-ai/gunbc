@@ -1,4 +1,6 @@
 module std.determinism
+import std.decl_ref { DeclarationRef }
+import std.perturbation { PerturbationVerdict }
 
 
 type Determinism

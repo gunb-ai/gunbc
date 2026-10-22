@@ -1,4 +1,5 @@
 module test.claim.v1_dag_parse_witness
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

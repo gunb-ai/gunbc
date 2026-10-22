@@ -1,4 +1,5 @@
 module examples.weather
+import std.types { List }
 
 type Temperature {
   celsius: Float

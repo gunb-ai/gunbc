@@ -1,4 +1,7 @@
 module test.claim.srv3.srv3_os_install_actuate_witness
+import gunbc.provisioning.seeded_install_media_publish { SeededImageResolution, SeededImageResolved }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

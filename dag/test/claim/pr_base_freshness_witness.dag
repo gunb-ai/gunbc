@@ -1,4 +1,8 @@
 module test.claim.pr_base_freshness_witness
+import extdeps.github.commits { CommitParentRef, ComparisonStatus }
+import gunbc.pr_base_freshness { TestedBaseProvenance }
+import std.live_tree { LiveTreeDisposition }
+import std.types { CommitSha, Timestamp }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

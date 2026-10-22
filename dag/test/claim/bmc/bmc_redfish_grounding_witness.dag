@@ -1,4 +1,7 @@
 module test.claim.bmc.bmc_redfish_grounding_witness
+import extdeps.bmc.types { BmcTelemetrySnapshot, PowerSensor, RedfishChassisSensorCollection, RedfishPowerControl, RedfishPowerSubsystem, RedfishSystemInventory }
+import std.live_tree { LiveTreeDisposition }
+import std.measure { Gibi }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

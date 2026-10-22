@@ -30,6 +30,8 @@ import gunbc.executor_privileged_operation {
   executor_managed_directory_mode,
   executor_privileged_operations_sudoers_body,
   runner_slot_privileged_operations,
+  EnsureSupplementaryGroupMembership,
+  RemoveDirectoryTree,
 }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }

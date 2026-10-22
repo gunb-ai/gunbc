@@ -19,6 +19,7 @@ import gunbc.emit_diagnostic_observation {
   EmitPopulationComplete,
   EmitPopulationCompletenessUnestablished
 }
+import v2.compiler.module_acquisition { PopulationRead }
 
 data emit_stage_blocking_population_census_disposition: Disposition = Terminal {
   reason: "THE RECEIPT OF ONE WHOLE-CORPUS EMIT-STAGE CENSUS, taken to satisfy the bounded-population requirement DESIGN section 4b(3) places on the declared drop titled A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED PHASE THAT FAILS. That row states its own defect plainly -- POPULATION: UNCOUNTED AND UNBOUNDED -- and names two specimens found by tripping over them rather than by searching. This module carries the measurement that replaces the word UNCOUNTED with a figure, and it carries nothing else: it is a receipt, not a gate, not an instrument, and not a repair."

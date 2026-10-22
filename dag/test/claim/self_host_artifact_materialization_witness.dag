@@ -1,4 +1,8 @@
 module test.claim.self_host_artifact_materialization_witness
+import extdeps.tools.sha512sum { Sha512FileObservation, Sha512FileObservationRefused, Sha512FileObserved }
+import gunbc.self_host_artifact_materialization { ArtifactPathOutcome }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,5 @@
 module test.claim.frontend_literal_and_compile_witness
+import std.types { Map }
 
 // Migrated from src/v1/tests/claim/ordinary_frontend_observation_test.dag (dead witness tree
 // triage, dashboard node adhoc-9b80ec49-d63). That file mixed two unrelated subjects under one v1

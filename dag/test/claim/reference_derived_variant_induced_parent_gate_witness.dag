@@ -1,4 +1,5 @@
 module test.claim.reference_derived_variant_induced_parent_gate_witness
+import std.types { List, Map }
 
 // Discriminating controls for the variant-induced half of the authored-source gate inside
 // reference_derived_use_lines (production authority: v1.compiler.emit_rust

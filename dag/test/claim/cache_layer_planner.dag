@@ -1,4 +1,7 @@
 module test.claim.cache_layer_planner
+import std.cache_interface { CacheDeploymentBackends }
+import std.live_tree { LiveTreeDisposition }
+import std.realization_schedule { CostAccount }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

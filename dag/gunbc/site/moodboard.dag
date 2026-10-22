@@ -32,6 +32,7 @@ import gunbc.design.interaction {
 }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
 import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
+import extdeps.languages.css.selectors { ClassSelector, ElementSelector, RawSelector }
 
 // Layer 6: the page. Everything visible projects from the layers below — principles (laws) ->
 // tokens (themes/materials/timing) -> interaction (behavior rows) -> constellation (figures)

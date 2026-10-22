@@ -27,6 +27,7 @@ import gunbc.artifact_acquisition {
   AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused,
   PublishFailed, VerifyMechanismFailed,
   acquire_artifact,
+  SourceUrl,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

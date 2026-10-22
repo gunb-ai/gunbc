@@ -1,6 +1,7 @@
 module extdeps.google.sheets_mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
+import std.types { List }
 
 data sheets_spreadsheets_mock_case_get_values: PublishedMockCase = PublishedMockCase {
   operation_key: "sheets.Spreadsheets.GetValues",

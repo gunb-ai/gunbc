@@ -8,6 +8,7 @@ import gunbc.generated_artifact { GeneratedArtifact, artifact_path, artifact_loc
 import gunbc.generated_artifact_registry { generated_artifact_registry }
 import std.optional { Optional, Absent, Present }
 import gunbc.instruments.docs_projection_agreement { docs_projection_bytes_agree }
+import std.types { List }
 
 data docs_projection_directory: String = "docs"
 

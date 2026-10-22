@@ -25,6 +25,7 @@ import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.auth.session { AuthenticatedSession }
+import test.claim.machine_intake.mtcollins1_boot_phase_timing_witness { skipped }
 
 // THE PROFILE PROJECTION (Cut 4 plan, docs/plans/google-workspace-identity-convergence.md
 // C4.2): a durable, revisioned per-principal profile record — name, email, picture — with one

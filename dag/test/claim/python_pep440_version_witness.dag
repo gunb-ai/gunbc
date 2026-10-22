@@ -1,4 +1,6 @@
 module test.claim.python_pep440_version_witness
+import extdeps.version.pep440 { Pep440LocalLexicographic, Pep440LocalNumeric, Pep440PreRelease, Pep440PublicVersion, Pep440ReleaseSegments, Pep440Version }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

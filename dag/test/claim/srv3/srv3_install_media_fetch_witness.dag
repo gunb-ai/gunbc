@@ -1,4 +1,6 @@
 module test.claim.srv3.srv3_install_media_fetch_witness
+import gunbc.srv3.srv3_install_media_fetch { AlreadyPresent, HashMismatchRefusal, InstallMediaPresent }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

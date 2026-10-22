@@ -10,7 +10,7 @@ import gunbc.roadmap.roadmap_model {
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
   section_group, roadmap_nodes_by_id, roadmap_nodes_with_id, roadmap_parent_index, roadmap_parent_ids_in,
 }
-import std.types { Map }
+import std.types { Map, List }
 import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_lineage { lineage_index, lineage_walk_in }
 import gunbc.roadmap.roadmap_sizing {

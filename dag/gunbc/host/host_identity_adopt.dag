@@ -1,6 +1,15 @@
 module gunbc.host.host_identity_adopt
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.deployed_intent_v0 { DeployedIntentV0 }
+import gunbc.fleet.fleet_intent { ComputeHost }
+import gunbc.host.host_effect { HostEffectTransport, HostOs, NodeControlPlane, Srv3ReceiptEmit, SshShell }
+import gunbc.host.host_identity_knob { HostIdentityKnobKey }
+import gunbc.host.host_identity_observation { HostIdentityObservation }
+import product.host_identity { HostIdentity }
+import std.content_hash { ContentHash }
+import std.disposition { Disposition }
+import std.types { NonEmptyStr }
 
 
 type HostIdentityAdoptReceipt {

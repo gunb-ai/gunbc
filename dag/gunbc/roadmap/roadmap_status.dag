@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of
 // ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow

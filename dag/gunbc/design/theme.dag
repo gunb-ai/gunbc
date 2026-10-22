@@ -11,7 +11,7 @@ import gunbc.design.material {
   paint, paint_alpha,
   decl, css_block, CssDecl,
 }
-import extdeps.languages.css.properties { CssPropertyName }
+import extdeps.languages.css.properties { CssPropertyName, CustomProperty }
 import extdeps.languages.css.media_queries {
   MediaPrefersColorScheme, ColorSchemePreference, SchemeLight, SchemeDark,
   color_scheme_preference_token, css_media_rule_wire,

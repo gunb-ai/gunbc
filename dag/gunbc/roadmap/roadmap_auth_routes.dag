@@ -22,7 +22,7 @@ import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctets
 import std.encoding { base64_decode, base64_encode, UrlSafe, Standard }
 import gunbc.principal_projection { principal_ref_label }
 import gunbc.clock_read { clock_now_probed_at }
-import std.algebra { trim }
+import std.algebra { trim, Cons }
 import std.types { String, Int, Bool, List, NonEmptyStr, HttpStatus }
 import extdeps.uri_path { uri_query_param }
 import extdeps.http.server { MediaType, text_plain_utf8, application_json_utf8, ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore }

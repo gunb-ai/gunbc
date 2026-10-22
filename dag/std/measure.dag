@@ -11,7 +11,7 @@ import std.checked_arithmetic {
   checked_int_multiply, checked_int_to_nat, CheckedIntReady, CheckedIntOverflow,
 }
 import std.algebra { FieldOfFractions }
-import std.types { Int, Bool, String, NonEmptyStr }
+import std.types { Int, Bool, String, NonEmptyStr, M }
 import std.decl_ref { DeclarationRef }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
@@ -27,6 +27,9 @@ import extdeps.units.dimensionless {
   percent_unity_hundred_count,
   parts_per_million_unity_count,
 }
+import examples.weather { Temperature }
+import gunbc.roadmap.roadmap_sizing { Volume }
+import test.fixture.phantom_marker_identity.plain_provider { Time }
 
 type Quantity =
     Time

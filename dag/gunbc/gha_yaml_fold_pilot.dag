@@ -1,6 +1,7 @@
 module gunbc.gha_yaml_fold_pilot
 
 import gunbc.action_use_admission { checkout_action }
+import extdeps.github.actions { RunStep, SelfHosted, UsesStep }
 
 data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job {
   id: "pilot",

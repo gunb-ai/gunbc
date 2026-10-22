@@ -60,6 +60,7 @@ import gunbc.design.catalog {
   island_pastel, island_mint, island_aqua, island_ivory, island_butter, island_loam,
   okabe_ito, solarized,
 }
+import extdeps.languages.css.selectors { ClassSelector, ElementSelector, PseudoSuffix, RawSelector }
 
 // The srv1 roadmap dashboard re-grounded on the register (operator, tenth pass 2026-07-21: refactor
 // the roadmap visualization to the visual themes). This makes the dashboard the SECOND CONSUMER of
