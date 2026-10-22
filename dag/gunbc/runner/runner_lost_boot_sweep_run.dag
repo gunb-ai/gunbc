@@ -20,7 +20,7 @@ import gunbc.fleet.organization_runner_roster_read { OrganizationRunnerRosterRep
 import extdeps.github.pagination { github_max_page_size }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
 import std.algebra { trim }
-import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.host.host_bound_transport { HostBoundTransport }
 import extdeps.uuid { uuid_of }
 import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved, HostOperationRefused, host_operation_exec, ProcfsReadBootId }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
@@ -78,9 +78,10 @@ import gunbc.runner.runner_jit_deregistration {
 // credential, so lost_boot_sweep_wet passes no transport and the mode stays gated at the join until a
 // host-authenticated transport to the swept host (a known-hosts anchor plus an SSH credential, both from an
 // executed selection) is supplied. The read, its refusals and the mint are exercised in
-// test.claim.runner.runner_lost_boot_sweep_run_witness. HOST BINDING IS A DECLARED CONDITION, NOT YET
-// STRUCTURE: HostEffectTransport names no managed host, so the caller must supply a transport that reaches
-// `host`; see lost_boot_sweep_effect_pairing_frontier.
+// test.claim.runner.runner_lost_boot_sweep_run_witness. HOST BINDING IS STRUCTURE: the observer takes a
+// gunbc.host.host_bound_transport HostBoundTransport, whose host is derived from the transport's address
+// through the managed-host join and cannot be stated, so evidence for a host other than the one reached is
+// unwritable; see lost_boot_sweep_effect_pairing_frontier for what remains.
 //
 // THE CREDENTIAL IS THE RUN'S OWN: the gunbai-ci App key is staged from Secret Manager under the
 // run's federated identity, signs the installation-token mint and the control-plane observation, and
@@ -111,8 +112,8 @@ type LostBootCurrentInput
 // WHAT THE HOST'S OWN ROUTE SAYS ITS BOOT IS NOW, of one named host.
 // The successful reading is a sole_constructor record, so a UUID alone cannot become evidence: a literal
 // outside its one mint is refused, and the mint is admitted only to the observation authority
-// (lost_boot_observe_current_boot, which answers unobserved until the enrolment supplies the host
-// transport) and to the witness fixture, which is itself restricted to its named terminal claims.
+// (lost_boot_observed_over, reached only from lost_boot_observe_current_boot, which answers unobserved until the
+// enrolment supplies a host-bound transport) and to the witness fixture, which is itself restricted to its named terminal claims.
 type CurrentBootEvidence sole_constructor {
   host: String
   boot: ServiceBootId
@@ -123,7 +124,7 @@ type CurrentBootObservation
   | CurrentBootUnobserved { cause: String }
 
 fn mint_current_boot_evidence(host: String, boot: ServiceBootId) -> CurrentBootEvidence admit_callers: [
-  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_observe_current_boot"),
+  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "lost_boot_observed_over"),
   decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "observed_on"),
 ] {
   CurrentBootEvidence { host: host, boot: boot }
@@ -136,14 +137,22 @@ fn mint_current_boot_evidence(host: String, boot: ServiceBootId) -> CurrentBootE
 // at the join. That transport is the declared frontier the live dry run waits on
 // (lost_boot_sweep_effect_pairing_frontier). A refused operation, a failed exit or stdout that is not a kernel
 // boot id is unobserved with its own cause, never a boot.
-fn lost_boot_observe_current_boot(host: String, transport: HostEffectTransport?) -> CurrentBootObservation {
+fn lost_boot_observe_current_boot(transport: HostBoundTransport?) -> CurrentBootObservation {
   match transport {
-    Absent => CurrentBootUnobserved { cause: join(["no host-authenticated transport to ", host, " is held by this run, so its current kernel boot id is not observed"], "") }
-    Present { value: t } =>
-      match boot_id_read_verdict(host: host, read: host_operation_exec(transport: t, operation: ProcfsReadBootId)) {
-        BootIdReadUnreadable { cause: c } => CurrentBootUnobserved { cause: c }
-        BootIdReadEstablished { boot: b } => CurrentBootObserved { evidence: mint_current_boot_evidence(host: host, boot: b) }
-      }
+    Absent => CurrentBootUnobserved { cause: "no host-bound transport is held by this run, so its current kernel boot id is not observed" }
+    Present { value: t } => lost_boot_observed_over(bound: t, read: host_operation_exec(transport: t.transport, operation: ProcfsReadBootId))
+  }
+}
+
+// THE EVIDENCE'S HOST IS THE TRANSPORT'S HOST. There is no host parameter to disagree with the bound
+// transport, so the only way to ask a machine about a different host is to hold a transport to that host;
+// a sweep of host A over a transport to B then reads B's evidence and is refused at the join
+// (lost_boot_current_joined). The read outcome is the supplied boundary of the hermetic witnesses; the
+// production route is lost_boot_observe_current_boot, and this is its only continuation.
+fn lost_boot_observed_over(bound: HostBoundTransport, read: HostOperationOutcome) -> CurrentBootObservation {
+  match boot_id_read_verdict(host: bound.host as String, read: read) {
+    BootIdReadUnreadable { cause: c } => CurrentBootUnobserved { cause: c }
+    BootIdReadEstablished { boot: b } => CurrentBootObserved { evidence: mint_current_boot_evidence(host: bound.host as String, boot: b) }
   }
 }
 
@@ -287,7 +296,7 @@ fn lost_boot_sweep_wet() -> ProcessExit
   uses net: Network
 {
   let host_name = actions_variable_trimmed(name: lost_boot_sweep_host_env_name)
-  match lost_boot_current_input(host: host_name, capture_path: actions_variable_trimmed(name: lost_boot_sweep_capture_path_env_name), observed: lost_boot_observe_current_boot(host: host_name, transport: none)) {
+  match lost_boot_current_input(host: host_name, capture_path: actions_variable_trimmed(name: lost_boot_sweep_capture_path_env_name), observed: lost_boot_observe_current_boot(transport: none)) {
     LostBootCurrentRefused { cause } => exit_failure(reason: cause)
     LostBootCurrentPresent { host: admitted, boot } => {
       let wif = actions_variable_trimmed(name: lost_boot_sweep_wif_access_token_env_name)
