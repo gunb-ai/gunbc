@@ -1,0 +1,158 @@
+module v2.compiler.effect_pair_census
+
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
+import std.types { Bool, List, Map }
+import std.optional { Absent, Optional, Present }
+import v2.std.integer { Int }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+
+// THE EFFECT-PAIR CENSUS (DESIGN D16 TRIGGER, gunbc.plans.demand_engine_program): per function body,
+// every pair of effect-reaching call occurrences that no derived relation orders. It is MEASUREMENT
+// ONLY and changes no behaviour. THE COUNT OVER-COUNTS ON PURPOSE: resource identity is not modelled
+// (D16 part 3), so every unordered pair of reaching sites is a possible conflict, whatever resources
+// its sites touch. "Not ordered by a derived relation" is not "independent": the derivations'
+// not-derived rows are reported beside each body with a pair.
+
+// WHY A SITE REACHES AN EFFECT. The leaf predicate is v2.compiler.effect_demand's
+// PrimitiveExecutionSemantics (ObservesHost | ActuatesHost | ExecutionSemanticsUnknown reach; Pure |
+// ReadsBoundInput do not); the rest is v2.compiler.dependency_demand's call facts, propagated over its
+// FunctionFact callees.
+type ReachReason
+  = ReachesHostObservation
+  | ReachesHostActuation
+  | ReachesExecutionSemanticsUnknown
+  | ReachesOpaqueOperation { operation: QualifiedName }
+  | ReachesUndeclaredOperation { operation: QualifiedName }
+  | ReachesFunctionValueCall { function: QualifiedName }
+  | ReachesUnresolvedCallee { callee: QualifiedName }
+  | ReachesThroughCallee { callee: QualifiedName }
+
+// One effect-reaching call OCCURRENCE (nested ones included; containment in an effectful parent
+// orders nothing).
+type EffectSite {
+  occurrence: Int
+  callee: QualifiedName
+  reason: ReachReason
+}
+
+// What the derivations say about the two sites' resources. Distinct never means independent.
+type SharedPathStanding
+  = SharedDeclaredPath { paths: List<QualifiedName> }
+  | DistinctDeclaredPaths
+  | AliasUnknown
+
+type EffectPairRow {
+  module: QualifiedName
+  function: QualifiedName
+  first: EffectSite
+  second: EffectSite
+  resource_standing: SharedPathStanding
+}
+
+// A pair the body orders by construction: the two sites are alternatives of one Branch/Match.
+type ExclusivePairRow {
+  module: QualifiedName
+  function: QualifiedName
+  first: EffectSite
+  second: EffectSite
+}
+
+// A reaching site that runs more than once (enclosing Loop or lambda-argument template).
+type RepeatedEffectSite {
+  module: QualifiedName
+  function: QualifiedName
+  site: EffectSite
+  repetition_source: String
+}
+
+type ModuleEffectPairTotals {
+  module: QualifiedName
+  bodies_scanned: Int
+  bodies_with_pairs: Int
+  pairs: Int
+  exclusive_pairs: Int
+}
+
+// ONE BODY'S EXTRACTED FACTS. `sites` are the effect-reaching call occurrences in preorder; `orders`
+// are the derived relations between occurrences (value use, activation, operand-to-consuming-call),
+// each from an earlier occurrence to the one that depends on it; `exclusive` are alternatives of one
+// Branch/Match. An ambiguous endpoint never contributes an order (the over-count direction).
+type OrderEdge {
+  from: Int
+  to: Int
+}
+
+type BodyEffectFacts {
+  module: QualifiedName
+  function: QualifiedName
+  sites: List<EffectSite>
+  orders: List<OrderEdge>
+  exclusive: List<OrderEdge>
+}
+
+type BodyPairs {
+  pairs: List<EffectPairRow>
+  exclusive_pairs: List<ExclusivePairRow>
+}
+
+fn pair_adjacency(edges: List<OrderEdge>) -> Map<Int, List<Int>> {
+  fold_list(xs: edges, empty: empty_map(), cons: fn(m, e) {
+    match map_lookup(m: m, key: e.from) {
+      Present { value: tos } => map_insert(m: m, key: e.from, value: list_snoc_item(xs: tos, item: e.to))
+      Absent => map_insert(m: m, key: e.from, value: list_snoc_item(xs: Empty, item: e.to))
+    }
+  })
+}
+
+// Is `target` reachable from `start` along orders? Fuel is the edge count, so the walk is bounded.
+fn pair_reaches(adj: Map<Int, List<Int>>, frontier: List<Int>, target: Int, fuel: Int) -> Bool {
+  if fuel < 0 {
+    false
+  } else {
+    if fold_list(xs: frontier, empty: false, cons: fn(hit, n) { hit || (n == target) }) {
+      true
+    } else {
+      let next = fold_list(xs: frontier, empty: Empty, cons: fn(acc, n) {
+        match map_lookup(m: adj, key: n) {
+          Present { value: tos } => fold_list(xs: tos, empty: acc, cons: fn(a, t) { list_snoc_item(xs: a, item: t) })
+          Absent => acc
+        }
+      })
+      if length(xs: next) == 0 { false } else { pair_reaches(adj: adj, frontier: next, target: target, fuel: fuel - 1) }
+    }
+  }
+}
+
+fn pair_ordered(adj: Map<Int, List<Int>>, a: Int, b: Int, fuel: Int) -> Bool {
+  pair_reaches(adj: adj, frontier: list_snoc_item(xs: Empty, item: a), target: b, fuel: fuel)
+    || pair_reaches(adj: adj, frontier: list_snoc_item(xs: Empty, item: b), target: a, fuel: fuel)
+}
+
+fn pair_exclusive(exclusive: List<OrderEdge>, a: Int, b: Int) -> Bool {
+  fold_list(xs: exclusive, empty: false, cons: fn(hit, e) { hit || ((e.from == a) && (e.to == b)) || ((e.from == b) && (e.to == a)) })
+}
+
+// The per-body reducer. Cost is per body (sites^2 over reaching sites only), never over a module.
+fn body_effect_pairs(facts: BodyEffectFacts) -> BodyPairs {
+  let adj = pair_adjacency(edges: facts.orders)
+  let fuel = length(xs: facts.orders)
+  let seed = BodyPairs { pairs: Empty, exclusive_pairs: Empty }
+  fold_list(xs: facts.sites, empty: seed, cons: fn(acc, a) {
+    fold_list(xs: facts.sites, empty: acc, cons: fn(inner, b) {
+      if a.occurrence < b.occurrence {
+        if pair_exclusive(exclusive: facts.exclusive, a: a.occurrence, b: b.occurrence) {
+          BodyPairs { pairs: inner.pairs, exclusive_pairs: list_snoc_item(xs: inner.exclusive_pairs, item: ExclusivePairRow { module: facts.module, function: facts.function, first: a, second: b }) }
+        } else {
+          if pair_ordered(adj: adj, a: a.occurrence, b: b.occurrence, fuel: fuel) {
+            inner
+          } else {
+            BodyPairs { pairs: list_snoc_item(xs: inner.pairs, item: EffectPairRow { module: facts.module, function: facts.function, first: a, second: b, resource_standing: AliasUnknown }), exclusive_pairs: inner.exclusive_pairs }
+          }
+        }
+      } else {
+        inner
+      }
+    })
+  })
+}
