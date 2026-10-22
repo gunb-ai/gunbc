@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.construct_tag_read_by_label_equality_after_r
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data construct_tag_read_by_label_equality_after_resolve_rewrote_the_target: RecurringFailureMode = RecurringFailureMode {
   identity: "construct_tag_read_by_label_equality_after_resolve_rewrote_the_target" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "INVALID STATE: a reader recognises a record construct (or a fielded constructor pattern) by comparing the construct's first edge LABEL with the identity of the Atom it targets (v2.std.node_query construct_tag_optional: label == atom identity), while an earlier stage has already replaced that target. body lowering builds Conj { R: Atom(R), fields } (v2.std.node_query construct_node), and v2.compiler.resolve rewrites the tag Atom through resolve_atom and resolved_reference_node into declaration_reference_node(path), leaving the label as the leaf Symbol. After resolve the label names a spelling and the target names a declaration, so the equality the reader keys on can no longer hold for any user constructor.",

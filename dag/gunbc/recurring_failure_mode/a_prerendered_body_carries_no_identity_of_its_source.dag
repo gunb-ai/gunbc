@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data a_prerendered_body_carries_no_identity_of_its_source: RecurringFailureMode = RecurringFailureMode {
   identity: "a_prerendered_body_carries_no_identity_of_its_source" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "**a pre-rendered body carries no identity of its source** (one deployment parameterizes a fold by the authority it should answer from, and the parameter reaches every surface that renders at REQUEST time -- but a surface rendered EARLIER, by a different process, and merely read back at request time, answers from whatever authority THAT process was given. The request-time parameter is real and the read-back is real; what does not exist is any record, on the bytes, of which authority produced them.",

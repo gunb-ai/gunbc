@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.wet_witness_stand_in_process_is_the_init_it_signals
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data wet_witness_stand_in_process_is_the_init_it_signals: RecurringFailureMode = RecurringFailureMode {
   identity: "wet_witness_stand_in_process_is_the_init_it_signals" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a wet witness that executes a real signalling or release path over a STAND-IN process it did not create -- pid 1, chosen as 'a live process this user can neither signal nor reap' -- where the stand-in's safety is an unchecked premise about the executing user. The premise holds only for a non-root user who does not own pid 1. As root (CAP_KILL, CAP_DAC_OVERRIDE), or as the user that owns a container's pid 1, the path's `kill` / `kill -9` land on init, and a permission the claim relies on to make a record unreadable (`chmod 000`) does not bind, so a release script reads the stand-in record and judges, and may signal, pid 1.",

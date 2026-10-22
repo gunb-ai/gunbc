@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.readiness_read_as_a_single_probe
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 data readiness_read_as_a_single_probe: RecurringFailureMode = RecurringFailureMode {
   identity: "readiness_read_as_a_single_probe" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable -- readiness is an external fact." as NonEmptyStr } },
 
   receipts: [
     "A READINESS FACT WAS READ AS ONE PROBE, so a correctly launching subject read as a failed one. The native apply's front-door readback asked `curl /v1/models` once with a 30 s budget, while the engine it asked is allowed VLLM_ENGINE_READY_TIMEOUT_S (3600 s for the GLM arms) to load before the port listens at all. A connection refused during load is 'not yet', not 'no'; the single probe had no way to say the difference, and the transaction rolled the arm back.",

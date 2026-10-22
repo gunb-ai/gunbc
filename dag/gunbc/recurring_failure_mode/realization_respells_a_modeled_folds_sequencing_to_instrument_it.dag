@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequenc
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data realization_respells_a_modeled_folds_sequencing_to_instrument_it: RecurringFailureMode = RecurringFailureMode {
   identity: "realization_respells_a_modeled_folds_sequencing_to_instrument_it" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a realization re-spells a modeled fold's sequencing because the fold cannot be instrumented in place** INVALID STATE: a driver that owns a clock needs per-phase cost from a fold whose phases are modeled in `.dag`; `.dag` is pure and cannot read a clock, so the driver enters the phases one at a time and the ORDER and the DIAGNOSTIC PROPAGATION between them exist a second time, in the target language, equivalent to the modeled composition only by assertion.",
@@ -36,6 +38,6 @@ data realization_respells_a_modeled_folds_sequencing_to_instrument_it: Recurring
   evidence: [
     DeclarationRef { module_path: "v2.compiler.program_assembly", decl_name: "program_assembly_read_to_normalized_root_seeded", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.staged_front_end", decl_name: "run_front_end_to", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.compiler.compile", decl_name: "native_test_context_absorb", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.source_root_eval", decl_name: "native_test_context_absorb", field: WholeDeclaration },
   ],
 }
