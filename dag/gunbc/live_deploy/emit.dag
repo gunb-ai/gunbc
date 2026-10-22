@@ -343,6 +343,7 @@ import v2.workflow.effect_plan_bash_materialize { BashPlanEffect }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command, systemctl_restart_effect,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -1905,7 +1906,7 @@ fn approval_broker_release_revision_argument(revision: ReleaseRevisionBinding) -
 // The deploying checkout's build, the one source the install copies from; the same path the planner
 // digests (gunbc.live_deploy.member_observe release_executable_source_path) so the verification
 // line above and the planned identity name one file.
-data release_executable_install_source: String = "target/release/gunbc"
+data release_executable_install_source: String = concat(cargo_default_release_dir_rel, "/gunbc")
 
 // REALIZATION FOR THE BUILD SERVICE'S ARTIFACT STORE, which is an ENSURED host directory rather
 // than an owned artifact, and the difference is the whole safety content. Ensured means converged

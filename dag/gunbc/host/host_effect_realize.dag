@@ -600,6 +600,7 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
+import extdeps.rust.cargo { cargo_default_release_dir }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -6274,7 +6275,7 @@ fn tree_executables_disagreement(executables: List<String>, source_root: String,
       Present { value: _ } => acc
       Absent =>
         match sha256_disagreement_text(agreement: tree_binary_agreement(
-          source_path: join([source_root, "/target/release/", name], ""),
+          source_path: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
           installed_path: join([locus, "/", name], ""),
           transport: transport)) {
           Present { value: why } => Present { value: join([name, ": ", why], "") }
@@ -6305,7 +6306,7 @@ fn approval_broker_tree_install_observed(
     tree_run_step(state: st, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
       command: coreutils_install_file_owned_argv(
         mode: install_executable_shared_mode, owner: owner, group: owner,
-        source: join([source_root, "/target/release/", name], ""),
+        source: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
         dest: join([locus, "/", name], "")))))
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
