@@ -7588,6 +7588,7 @@ fn infer_gather_with_branch_hold(acc: InferGatherFoldAcc, hold: InferBranchHold)
     await_transform_row: acc.await_transform_row,
     children_remaining: acc.children_remaining,
     declared_position_expected: acc.declared_position_expected,
+    rigid_binders: acc.rigid_binders,
     branch_hold: hold
   }
 }
