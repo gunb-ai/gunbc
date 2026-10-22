@@ -304,3 +304,16 @@ test fn rc5_declared_formal_list_absent_accepts() -> Bool { ers_infer_accepted(o
 test fn rc6_declared_formal_empty_list_accepts() -> Bool { ers_infer_accepted(o: rc6()) }
 test fn rc7_declared_formal_absent_accepts() -> Bool { ers_infer_accepted(o: rc7()) }
 test fn rc8_declared_formal_bare_literal_refuses() -> Bool { ers_fatal_is(o: rc8(), reason: ^infer_literal_at_optional_is_not_present) }
+fn rc_box() -> String { "type Box<T> {\n  items: List<T>\n}\n\n" }
+fn rc9() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Box<Int> { Box { items: [] } }\n")) }
+fn rc10() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Box<Int> { Box { items: [1] } }\n")) }
+fn rc11() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Box<Int> { Box { items: [true] } }\n")) }
+fn rc12() -> Outcome<ResolvedTree> { ers_assemble(body: concat(rc_box(), "fn r() -> Bool { let b = Box { items: [] }\n true }\n")) }
+test fn rc9_record_construct_empty_list_takes_expected_instance_accepts() -> Bool { ers_infer_accepted(o: rc9()) }
+test fn rc10_record_construct_matching_list_accepts() -> Bool { ers_infer_accepted(o: rc10()) }
+test fn rc11_record_construct_wrong_element_refuses() -> Bool { ers_fatal_is(o: rc11(), reason: ^record_field_value_does_not_inhabit) }
+test fn rc12_record_construct_empty_list_without_expected_refuses() -> Bool { ers_fatal_is(o: rc12(), reason: ^infer_unsolved_constructor_type_variable) }
+fn rc13() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r() -> List<Int> { collection_concat_shape([], []) }\n") }
+fn rc14() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r() -> Bool { let x = collection_concat_shape([], [])\n true }\n") }
+test fn rc13_roster_call_empty_lists_take_expected_instance_accepts() -> Bool { ers_infer_accepted(o: rc13()) }
+test fn rc14_roster_call_empty_lists_without_expected_refuses() -> Bool { ers_fatal_is(o: rc14(), reason: ^infer_unsolved_constructor_type_variable) }

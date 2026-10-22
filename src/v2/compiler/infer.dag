@@ -5461,11 +5461,13 @@ fn infer_row_inhabitant_matched_optional(row_inhabitant: Node, wanted: Node, dec
 type InferJudgedSite
   = JudgedAtApplication { application: Node }
   | JudgedAtEachActual
+  | JudgedAtConstruct { pattern: Node }
 
 fn infer_judged_site_node(site: InferJudgedSite, actual: Node) -> Node {
   match site {
     JudgedAtApplication { application: application } => application
     JudgedAtEachActual => actual
+    JudgedAtConstruct { pattern: _ } => actual
   }
 }
 
@@ -5487,6 +5489,11 @@ fn infer_expected_return_seed(site: InferJudgedSite, entries: Map<Node, List<Inf
     Present { value: declared } =>
       match site {
         JudgedAtEachActual => infer_no_type_variable_instances()
+        JudgedAtConstruct { pattern: pattern } =>
+          match infer_match_generic_formal(formal: pattern, produced: infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings), type_params: type_params, instances: infer_no_type_variable_instances(), declarations: declarations) {
+            InferFormalMatched { instances: seeded } => seeded
+            InferFormalShapeMismatch => infer_no_type_variable_instances()
+          }
         JudgedAtApplication { application: application } =>
           match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
             Absent => infer_no_type_variable_instances()
@@ -8089,6 +8096,27 @@ fn infer_record_field_binding(node: Node, record: Node, formals: InferRecordForm
 // every field obligation was decided and every binder was instantiated: a construct with a counted
 // field obligation, or a binder no field value fixed, stays on the frontier, exactly as an
 // application does (infer_transform_derived_optional arguments_decided).
+// THE CONSTRUCTED TYPE WITH EACH TYPE PARAMETER LEFT AS ITS OWN VARIABLE: `Box<T>` for `Box { .. }`. The
+// expected type at the construct's position matches against it (infer_match_generic_formal) to seed
+// the instantiation, so `Box { items: [] }` at `Box<Int>` fixes T before any field is judged -- the same
+// walk an application's declared return takes (infer_expected_return_seed).
+fn infer_record_construct_pattern(type_path: QualifiedName, type_params: List<Symbol>) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: fold(
+      type_params,
+      init: [Edge { label: Positional, target: declaration_reference_node(qn: type_path, occurrence_id: OccurrenceSynthetic) }],
+      f: fn(edges, binder) {
+        list_snoc_item(
+          xs: edges,
+          item: Edge { label: Positional, target: Node { kind: TypeNode { connective: Atom { identity: binder } }, children: [], occurrence_id: OccurrenceSynthetic } }
+        )
+      }
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn infer_record_construct_type(
   type_path: QualifiedName,
   type_params: List<Symbol>,
@@ -8235,6 +8263,7 @@ fn infer_record_construct_facts(
   declarations: SymbolIndex,
   bindings: SymbolIndex,
   partials: List<Node>,
+  expected: Optional<Node>,
 ) -> Outcome<InferConstructedFacts> {
   infer_construct_facts_on_entries(
     node: node,
@@ -8245,7 +8274,8 @@ fn infer_record_construct_facts(
     entries: entries,
     declarations: declarations,
     bindings: bindings,
-    partials: partials
+    partials: partials,
+    expected: expected
   )
 }
 
@@ -8259,6 +8289,7 @@ fn infer_variant_construct_facts(
   declarations: SymbolIndex,
   bindings: SymbolIndex,
   partials: List<Node>,
+  expected: Optional<Node>,
 ) -> Outcome<InferConstructedFacts> {
   infer_construct_facts_on_entries(
     node: node,
@@ -8269,7 +8300,8 @@ fn infer_variant_construct_facts(
     entries: entries,
     declarations: declarations,
     bindings: bindings,
-    partials: partials
+    partials: partials,
+    expected: expected
   )
 }
 
@@ -8283,6 +8315,7 @@ fn infer_construct_facts_on_entries(
   declarations: SymbolIndex,
   bindings: SymbolIndex,
   partials: List<Node>,
+  expected: Optional<Node>,
 ) -> Outcome<InferConstructedFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -8311,13 +8344,13 @@ fn infer_construct_facts_on_entries(
                 RecordFormalsResolved { payload: _ } =>
                   match infer_judge_formal_args(
                     position: position_record_field(record: record),
-                    site: JudgedAtEachActual,
+                    site: JudgedAtConstruct { pattern: infer_record_construct_pattern(type_path: type_path, type_params: type_params) },
                     entries: infer_entries_with_construct_callback_signatures(pairs: pairs, type_params: type_params, entries: entries, declarations: declarations, bindings: bindings),
                     declarations: declarations,
                     bindings: bindings,
                     pairs: infer_pairs_callbacks_last(pairs: pairs),
                     type_params: type_params,
-                    expected: Absent
+                    expected: expected
                   ) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                     Accepted { value: instances, diagnostics: jd } =>
@@ -8422,10 +8455,11 @@ fn infer_gather_record_construct_row_on_entries(
   bindings: SymbolIndex,
   pending: Diagnostics,
   partials: List<Node>,
+  expected: Optional<Node>,
 ) -> InferGatherFoldAcc {
   infer_gather_constructed_facts_row(
     node: node,
-    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, bindings: bindings, partials: partials),
+    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, bindings: bindings, partials: partials, expected: expected),
     pending: pending
   )
 }
@@ -8438,10 +8472,11 @@ fn infer_gather_variant_construct_row_on_entries(
   bindings: SymbolIndex,
   pending: Diagnostics,
   partials: List<Node>,
+  expected: Optional<Node>,
 ) -> InferGatherFoldAcc {
   infer_gather_constructed_facts_row(
     node: node,
-    formed: infer_variant_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, bindings: bindings, partials: partials),
+    formed: infer_variant_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, bindings: bindings, partials: partials, expected: expected),
     pending: pending
   )
 }
@@ -8691,7 +8726,8 @@ fn infer_gather_settled_unannotated_row(
               declarations: resolved.resolved_declarations,
               bindings: resolved.symbol_index,
               pending: merged_pending,
-              partials: partials
+              partials: partials,
+              expected: acc.declared_position_expected
             )
           ConstructIsVariantArm { construct: construct } =>
             infer_gather_variant_construct_row_on_entries(
@@ -8701,7 +8737,8 @@ fn infer_gather_settled_unannotated_row(
               declarations: resolved.resolved_declarations,
               bindings: resolved.symbol_index,
               pending: merged_pending,
-              partials: partials
+              partials: partials,
+              expected: acc.declared_position_expected
             )
           ConstructVariantArmIdentityUnavailable =>
             infer_gather_fold_acc_failed(
