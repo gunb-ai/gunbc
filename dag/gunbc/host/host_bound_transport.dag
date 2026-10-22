@@ -53,15 +53,17 @@ fn host_bound_transport_of(transport: HostEffectTransport) -> HostBoundTransport
     LocalShell => HostBoundTransportRefused { cause: "a local shell reaches whichever machine executes it and names no managed host" }
     SshShell { ssh_host: h } => HostBoundTransportRefused { cause: join(["an SshShell to ", h as String, " carries a bare endpoint with no trust context, so it is not bound to a managed host"], "") }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => HostBoundTransportRefused { cause: "an emitted bootstrap run names no managed host" }
-    FleetSsh { target: t, context: _ } =>
-      match first(managed_hosts_reached_at(target: t)) {
+    FleetSsh { target: t, context: _ } => {
+      let reached = managed_hosts_reached_at(target: t)
+      match first(reached) {
         Absent => HostBoundTransportRefused { cause: join(["the address ", ssh_target_wire(target: t) as String, " is not the endpoint of any managed host"], "") }
         Present { value: h } =>
-          if count(managed_hosts_reached_at(target: t)) == 1 {
+          if count(reached) == 1 {
             HostBoundTransportResolved { bound: HostBoundTransport { host: h, transport: transport } }
           } else {
             HostBoundTransportRefused { cause: join(["the address ", ssh_target_wire(target: t) as String, " is the endpoint of more than one managed host"], "") }
           }
       }
+    }
   }
 }
