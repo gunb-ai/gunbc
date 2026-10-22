@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.healed_head_leaves_its_own_required_check_unsatisfied
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data healed_head_leaves_its_own_required_check_unsatisfied: RecurringFailureMode = RecurringFailureMode {
   identity: "healed_head_leaves_its_own_required_check_unsatisfied" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "Invalid state: the head that satisfies the generated-artifact gate is the one head on which that gate's job does not run, so a pull request sits at BLOCKED with every executed check green and nothing left for its author to do.",

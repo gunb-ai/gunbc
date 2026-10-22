@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded: RecurringFailureMode = RecurringFailureMode {
   identity: "an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "E0004 on gunbc#14084: the seed-emitter lowers each match arm whose pattern nests a variant under a variant to an Outcome::Accepted arm with a matches-guard on the inner variant, so a source match that is exhaustive (Accepted over BoundInFrame over TypeParameterFrame, Accepted over BoundInFrame with a wildcard kind, Accepted over BoundAtRoot, Accepted over ScopeUnbound, Rejected) has no unguarded Accepted arm; rustc refuses E0004 non-exhaustive patterns, Outcome::Accepted not covered, at stage0/src/v2_compiler_resolve.rs:3366 (CI receipt: head f7f2d34). Matching Accepted once, then matching the binding in a second fn, emitted and compiled (head 0cbc094).",

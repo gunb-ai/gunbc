@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.create_only_writer_used_for_reconcilable_staging
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data create_only_writer_used_for_reconcilable_staging: RecurringFailureMode = RecurringFailureMode {
   identity: "create_only_writer_used_for_reconcilable_staging" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "2026-10-09, PR #13607: the local network apply at 682c32644e8 refused File exists for its prior root-owned staging artifacts. No network install operation ran. Filesystem.WriteOwnerOnly creates an exclusive 0600 file; the caller chose it for its custody contract but also assumed replacement semantics it does not provide. A fresh staging directory would hide the defect until the next converge.",
     "Repair at the write realization: mktemp creates a unique 0600 inode inside the already-verified staging directory, Filesystem.Write fills that inode, and the existing mv_exact_destination_command atomically publishes it on the same filesystem. Scope admission applies to the destination and temporary path. Failures remove only this invocation's temporary inode and report cleanup refusal; final exact byte readback and the outer root-custody readback remain required.",

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_constant_enforces_a_law_narrower_than_its_own_annotation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_constant_enforces_a_law_narrower_than_its_own_annotation: RecurringFailureMode = RecurringFailureMode {
   identity: "a_constant_enforces_a_law_narrower_than_its_own_annotation" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "A SCALAR STANDS WHERE A RELATION BELONGS, so the law it enforces is the one its TYPE can express rather than the one its annotation states -- and the two differ by exactly the discriminant the scalar cannot carry. The invalid state is a guard that is simultaneously correct where it was measured and over-applied everywhere else, with nothing in the program able to tell the two populations apart.",
