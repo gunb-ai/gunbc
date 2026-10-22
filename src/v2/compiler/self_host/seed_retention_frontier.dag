@@ -276,6 +276,12 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_support_dir_member(path: "src/cli_run/complexity_gates.rs"),
   retained_support_dir_member(path: "src/cli_run/declared_refs.rs"),
   retained_support_dir_member(path: "src/cli_run/demand_acquire.rs"),
+  retained_reason_elsewhere(
+    path: "src/cli_run/provider_acquire.rs",
+    cause: SupportDirectoryMemberSource,
+    module_path: "gunbc.generated_provider_acquire_seed_growth",
+    decl_name: "generated_provider_acquire_seed_growth_justification"
+  ),
   retained_support_dir_member(path: "src/cli_run/derived_row_roster.rs"),
   retained_support_dir_member(path: "src/cli_run/doc_graph.rs"),
   retained_support_dir_member(path: "src/cli_run/emit_host.rs"),
