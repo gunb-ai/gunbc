@@ -1,5 +1,7 @@
 module v2.test.claim.body_lowering.arrow_body_form_semantic_helpers
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -269,7 +271,8 @@ fn arrow_body_form_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn arrow_body_form_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: arrow_body_form_eval_facts_lookup }
+    facts: PartialFunction { lookup: arrow_body_form_eval_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

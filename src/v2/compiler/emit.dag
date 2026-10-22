@@ -4,9 +4,13 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.translate { translate }
 import v2.compiler.target_serialize { TargetNodeTree, target_serialize_source_from_model }
+import v2.compiler.arm_resolution { arm_test_realization_refusal }
+import std.optional { Absent, Present }
 import v2.std.diagnostic {
   Outcome,
-  bind_outcome
+  Rejected,
+  bind_outcome,
+  diagnostics_singleton
 }
 import v2.std.compilers.target_model { TargetModel }
 
@@ -23,10 +27,14 @@ fn emit(
   tree: InferredTree,
   target: TargetModel
 ) -> Outcome<Medium<String>> {
-  bind_outcome(
-    o: translate(tree: tree, target: target),
-    f: fn(target_tree) {
-      serialize_target(tree: target_tree, target: target)
-    }
-  )
+  match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, decided: tree.arm_resolutions.decided) {
+    Present { value: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Absent =>
+      bind_outcome(
+        o: translate(tree: tree, target: target),
+        f: fn(target_tree) {
+          serialize_target(tree: target_tree, target: target)
+        }
+      )
+  }
 }
