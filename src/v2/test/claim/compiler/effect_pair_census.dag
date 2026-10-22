@@ -1,0 +1,39 @@
+module v2.test.claim.compiler.effect_pair_census
+
+import std.algebra { Cons, Empty, length, list_snoc_item }
+import std.types { Bool, List }
+import v2.std.integer { Int }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.compiler.effect_pair_census {
+  BodyEffectFacts,
+  EffectSite,
+  OrderEdge,
+  ReachesHostActuation,
+  body_effect_pairs
+}
+
+// The reducer's controls over supplied body facts. The extraction that produces such facts from a
+// resolved tree is exercised by the source-snippet controls beside these.
+fn epc_site(occurrence: Int) -> EffectSite {
+  EffectSite { occurrence: occurrence, callee: qualified_name_from_dotted_string(dotted: "t.shell"), reason: ReachesHostActuation }
+}
+
+fn epc_facts(orders: List<OrderEdge>) -> BodyEffectFacts {
+  BodyEffectFacts {
+    module: qualified_name_from_dotted_string(dotted: "t"),
+    function: qualified_name_from_dotted_string(dotted: "t.f"),
+    sites: list_snoc_item(xs: list_snoc_item(xs: Empty, item: epc_site(occurrence: 1)), item: epc_site(occurrence: 2)),
+    orders: orders,
+    exclusive: Empty
+  }
+}
+
+// POSITIVE CONTROL: two effects nothing orders are listed.
+test fn two_unrelated_effects_are_one_pair_holds() -> Bool {
+  length(xs: body_effect_pairs(facts: epc_facts(orders: Empty)).pairs) == 1
+}
+
+// NEGATIVE CONTROL: the second effect depends on the first, so the pair is not listed.
+test fn a_second_effect_using_the_first_is_not_a_pair_holds() -> Bool {
+  length(xs: body_effect_pairs(facts: epc_facts(orders: list_snoc_item(xs: Empty, item: OrderEdge { from: 1, to: 2 }))).pairs) == 0
+}
