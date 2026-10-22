@@ -21,12 +21,17 @@ echo "CGROUP_WRAPPER=/sys/fs/cgroup/ver668n memory.max=$RB (read-back, bounded)"
 exec 11>>/sys/fs/cgroup/ver668n/cgroup.procs; echo $BASHPID >&11
 export CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
 git worktree prune >/dev/null 2>&1 || true
+git fetch -q --unshallow origin 2>/dev/null || true
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 WIT=dag/test/claim/record_emission_candidate_set_witness.dag
 EMIT=src/v1/stage0/src/v1_compiler_emit_rust.rs
 git fetch -q origin +refs/pull/14668/head:refs/verifier/668n || { echo FETCH_FAIL; exit 9; }
 [ "$(git rev-parse refs/verifier/668n)" = "$OID" ] || { echo "PR_REF_MOVED fetched=$(git rev-parse refs/verifier/668n) want=$OID -- STOP"; exit 9; }
-rm -rf /tmp/w668n; git worktree add -q --detach /tmp/w668n $OID || { echo WT_FAIL; exit 9; }
+git worktree remove --force /tmp/w668n 2>/dev/null || true
+git worktree prune >/dev/null 2>&1 || true
+rm -rf /tmp/w668n
+git worktree add --detach /tmp/w668n $OID 2>&1 | tail -3 | sed "s/^/  WT| /"
+[ -d /tmp/w668n ] || { echo WT_FAIL; exit 9; }
 cd /tmp/w668n || exit 9
 for f in $WIT $EMIT; do
   [ "$(git cat-file blob $OID:$f | sha256sum | cut -d' ' -f1)" = "$(sha $f)" ] || { echo "NOT_HEAD_BLOB $f -- STOP"; exit 9; }
