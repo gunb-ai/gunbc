@@ -28,7 +28,7 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, BmcVirtualMediaInstall }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, Bmc, InstalledViaVirtualMedia }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_key_standing,
   mtcollins1_assembly,
@@ -70,7 +70,8 @@ data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_mtcollins1,
   participation: [],
   backing: OwnedMachine {
-    provisioning: BmcVirtualMediaInstall,
+    control: Bmc,
+    delivery: InstalledViaVirtualMedia,
     unit: Present { value: UnitKeyBound { key: unit_b } },
   },
 }

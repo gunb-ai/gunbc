@@ -16,7 +16,7 @@ import gunbc.host.host_assimilation_program {
   step_in_program,
   step_serves_participation,
 }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot }
 import gunbc.fleet.fleet_host_identity { operator_host_183527 }
 import gunbc.fleet.fleet_enrollment {
   enrollment_for_host,
@@ -329,13 +329,13 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
 data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: inference_serving_enrollment_participation,
-  backing: OwnedMachine { provisioning: ApplianceFirstBoot, unit: Absent },
+  backing: OwnedMachine { control: NoOutOfBand, delivery: ApplianceImage, unit: Absent },
 }
 
 data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: ci_runner_enrollment_participation,
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent },
 }
 
 fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
@@ -381,7 +381,7 @@ test fn witness_ci_program_selects_the_whole_spine() -> Bool {
   let both = HostEnrollmentIntent {
     host: synthetic_ci_enrollment.host,
     participation: ci_runner_and_session_enrollment_participation,
-    backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+    backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent },
   }
   let ci_only = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
   program_step_count(program: assimilation_program_for(intent: both)) == owned_bmc_full_program_length()
@@ -396,19 +396,19 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
 data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [InferenceServingParticipation, CiRunnerParticipation],
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent },
 }
 
 data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent },
 }
 
 data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent },
 }
 
 // Participation is a set wearing a list's carrier, so the three enrollments below must be one

@@ -204,7 +204,7 @@ data mtcollins1_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
+data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer, mtcollins1_offer]
 
 data fleet_intent_offers: List<ComputeOffer> = filter(
   fleet_owned_compute_offer_catalog,

@@ -43,14 +43,25 @@ type ProviderResourceBinding
   = ProviderResourceAwaited { read_obligation: NonEmptyStr }
   | ProviderResourceAcquired { acquisition: ProviderResourceAcquisition }
 
-// HOW AN OWNED MACHINE'S OPERATING SYSTEM ARRIVES. This is not implied by ownership: an Ampere
-// Altra server is installed over its BMC's virtual media, while an appliance such as a DGX Spark has
-// no BMC to converge and provisions itself through its own first boot. A provider guest has no arm
-// here because its OS always arrives as the provider's image -- that is what ProviderGuest means --
-// so a rented guest owing a BMC operation has no constructor.
-type OwnedProvisioning
-  = BmcVirtualMediaInstall
-  | ApplianceFirstBoot
+// TWO INDEPENDENT FACTS ABOUT AN OWNED MACHINE, which one fused enum used to state as one. HOW IT IS
+// CONTROLLED and HOW ITS OPERATING SYSTEM ARRIVES are separate: an Ampere Altra server is controlled
+// over a BMC and installed over that BMC's virtual media; a DGX Spark appliance has no BMC and
+// provisions itself through its own first boot; and a diskless Altra board is controlled over a BMC
+// yet receives no install at all, because its OS is a RAM image it boots from. The fused arms could
+// not say the third (a BMC-controlled host owing no install), and a consumer keyed on the fused arm
+// answered one fact from the other. Each consumer keys on exactly the fact it asks about: BMC
+// credential convergence and the enrolled control route on the control route, the install phases on
+// the delivery. A provider guest has no arm in either because its OS always arrives as the provider's
+// image and its control is the provider's API -- that is what ProviderGuest means -- so a rented guest
+// owing a BMC operation has no constructor.
+type OwnedControlRoute
+  = Bmc
+  | NoOutOfBand
+
+type OwnedOsDelivery
+  = InstalledViaVirtualMedia
+  | ApplianceImage
+  | RamImageBoot
 
 type HostBacking
   // The `unit` fact is the host-to-hardware allocation: the UnitKey this owned machine
@@ -61,7 +72,7 @@ type HostBacking
   // UnitKeyBound from UnitKeyRefused (a read serial that duplicates or contradicts is a
   // different fact from a never-read one). An owned machine whose serial was read and found
   // duplicated is not the same fact as one never read.
-  = OwnedMachine { provisioning: OwnedProvisioning, unit: UnitKeyStanding? }
+  = OwnedMachine { control: OwnedControlRoute, delivery: OwnedOsDelivery, unit: UnitKeyStanding? }
   | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }
 
 // THE ONE RULE FOR WHETHER A BACKING CAN HOST THE FLEET'S MICROVM EXECUTION PATH, before anything is
@@ -70,7 +81,7 @@ type HostBacking
 // fabric supply and the runner-executor population all read this, so no consumer restates it.
 fn backing_microvm_forbidding_offer(backing: HostBacking) -> DeclarationRef? {
   match backing {
-    OwnedMachine { provisioning: _ } => none
+    OwnedMachine { control: _, delivery: _ } => none
     ProviderGuest { route: _, entitlement: e, resource: _ } =>
       if e.nested_virtualization { none } else { Present { value: e.offer } }
   }

@@ -9,13 +9,15 @@ import product.fabric.provider_route { ProviderRoute }
 import gunbc.fleet.fleet_host_backing {
   HostBacking,
   OwnedMachine,
-  BmcVirtualMediaInstall,
-  ApplianceFirstBoot,
+  Bmc,
+  InstalledViaVirtualMedia,
+  RamImageBoot,
   ProviderGuest,
   ProviderResourceAcquired,
   ProviderResourceBinding,
   backing_microvm_forbidding_offer,
 }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
 import gunbc.fleet.fleet_host_identity {
@@ -23,6 +25,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv2,
   operator_host_srv3,
   operator_host_srv4,
+  operator_host_mtcollins1,
   operator_host_183527,
   operator_host_3dde7f,
 }
@@ -128,10 +131,17 @@ fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostB
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
 data fleet_enrollments: List<HostEnrollmentIntent> = [
-  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent } },
-  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent } },
-  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent } },
-  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent } },
+  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent } },
+  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent } },
+  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent } },
+  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { control: Bmc, delivery: InstalledViaVirtualMedia, unit: Absent } },
+  // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Its
+  // unit is the bind_unit_key standing over the FRU and SMBIOS board serials already observed.
+  HostEnrollmentIntent {
+    host: operator_host_mtcollins1,
+    participation: ci_runner_enrollment_participation,
+    backing: OwnedMachine { control: Bmc, delivery: RamImageBoot, unit: Present { value: mtcollins1_unit_key_standing } },
+  },
   HostEnrollmentIntent {
     host: operator_host_183527,
     participation: ci_runner_enrollment_participation,
