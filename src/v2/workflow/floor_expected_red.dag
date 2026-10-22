@@ -1260,19 +1260,23 @@ fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<St
 // those binds were removed on 2026-08-25 — but only AFTER the three g1-cited-symbol discriminating
 // controls were rehomed as machine planted controls for the cited-symbol lens, the ordering DESIGN
 // §4b(4) requires before a green may be trusted. So it can no longer fail for the reason it was
-// written for. Its full accounting — the typed closure receipt (the durable account is cited in the
-// receipt, not by commit hash: the 2026-10 history rewrite left those objects unreachable from this
-// head) and the 2026-10-21 re-measurement executed through the claim's own route (declared 27 ==
-// admitted 27, claim PASS) — is DATA in `floor_expected_red_retired_rows` above, checked on this lane
-// by `test.claim.floor_expected_red_retirement_witness`. THE CARRIER THAT DESCRIBED THIS DEFECT IS
-// UPDATED IN THIS SAME CHANGE, not left as stale prose:
-// `gunbc.declined_live_tree_defect_classification` `doc_reachability_rows` now records
-// `ClosedByPriorChange { receipt }` with the re-measured count, replacing `NeedsOperatorRuling` and
-// the 2026-08-24 census figures (228 declared / 209 admitted); the ruling question the deletion of
-// the g1 doc binds had needed was answered by the rehoming, and its text survives in
-// `dag/test/claim/doc_graph_reference_partition_witness.dag`
-// `cited_symbol_partition_third_bucket_note` rather than as a readerless String here (DESIGN §4c).
-// That module's owner, gunbai-bot[bot], is named in this PR so the new `ClassificationDisposition`
+// written for. Its full accounting — the typed closure receipt and the 2026-10-21 re-measurement executed
+// through the claim's own route (declared 27 == admitted 27, claim PASS) — is DATA in
+// `floor_expected_red_retired_rows` above, checked on this lane by
+// `test.claim.floor_expected_red_retirement_witness`. The closure is `AttributedToChange { change:
+// PullRequest { number: 9181 }, ... }` and its prior commit 0df5b4170c51 IS reachable from this head
+// (`git merge-base --is-ancestor 0df5b4170c51 HEAD` is true — an earlier draft claimed the 2026-10
+// mega-squash left it unreachable; that was false and is corrected). THE CARRIER THAT DESCRIBED THIS DEFECT
+// IS UPDATED IN THIS SAME CHANGE, not left as stale prose:
+// `gunbc.declined_live_tree_defect_classification` `doc_reachability_rows` now records the SAME shared
+// `doc_graph_roots_rehoming_closure`, replacing `NeedsOperatorRuling` and the 2026-08-24 census figures
+// (228 declared / 209 admitted). SAID PLAINLY, PER REVIEW 84372: the g1-cited-symbol controls #9181 rehomed
+// have NO surviving typed record in this tree — the v2.lens.cited_symbol_resolution module that held
+// `cited_symbol_planted_controls` was removed and never carried across, so their account is lost, not
+// moved. This row is closed only on what resolves: the three gunbc.doc_graph_roots declarations in the
+// closure's durable_account (the witness resolves each), and this claim's re-enrollment ExpectedToHold on
+// the wet schedule. No phantom `cited_symbol_partition_third_bucket_note` is cited (that declaration does
+// not exist). That module's owner, gunbai-bot[bot], is named in this PR so the new `ClassificationDisposition`
 // variant reaches them. The chunk keeps its two doc-graph siblings
 // (`doc_graph_has_no_dangling_links`, `doc_graph_has_no_orphan_docs`), which still discriminate the
 // carrier on live content, and this claim itself RUNS AS A PERMANENT REGRESSION CONTROL on the wet

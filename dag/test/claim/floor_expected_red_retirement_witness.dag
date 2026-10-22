@@ -60,7 +60,7 @@ module test.claim.floor_expected_red_retirement_witness
 // records). Each control perturbs ONE field of one synthetic row and demands that exactly the named arm
 // appears while the control row's list stays empty.
 
-import std.types { Bool, List, NonEmptyStr, CommitSha, commit_sha_text_holds, string_non_empty }
+import std.types { Bool, List, NonEmptyStr, CommitSha, commit_sha_text_holds }
 import std.algebra { Cons, Empty, fold_list, list_append, length, list_map }
 import std.optional { Optional, Present, Absent }
 import std.execution_mode { Wet, Hermetic }
@@ -179,7 +179,6 @@ fn refusal_labels_for_row(
     "instrument-is-not-the-row-itself",
     "instrument-module-not-declared",
     "trigger-declaration-does-not-resolve",
-    "unattributed-closure-states-no-reason",
   ]
   fold_list(
     xs: reasons,
@@ -264,12 +263,6 @@ fn refusal_fires(
       Absent => false
       Present { value: t } =>
         cited_declaration_ref_refusal_count_live(refs: [t], pool_roots: pool_roots) != 0
-    }
-  } else if label == "unattributed-closure-states-no-reason" {
-    match r.closure {
-      AttributedToChange { change: _, durable_account: _, re_measured: _ } => false
-      RestsOnExecutedCheck { why_no_change: w, durable_account: _, re_measured: _ } =>
-        !(string_non_empty(value: w as String))
     }
   } else {
     // An unlabelled obligation. Refusing rather than passing keeps the label list and the check list
@@ -496,12 +489,12 @@ test fn the_enrolment_arm_refuses_a_still_enrolled_identity() -> Bool {
     )
   ) >= 1)
     && arm_appears(
-      reasons: refusal_labels_for_row(r: control_row(), enrolled: [control_identity], schedule: scheduled(), pool_roots: pool()
+      labels: refusal_labels_for_row(r: control_row(), enrolled: [control_identity], schedule: scheduled(), pool_roots: pool()
       ),
       arm: "still-enrolled"
     )
     && !(arm_appears(
-      reasons: refusal_labels_for_row(r: control_row(), enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
+      labels: refusal_labels_for_row(r: control_row(), enrolled: Empty {}, schedule: scheduled(), pool_roots: pool()
       ),
       arm: "still-enrolled"
     ))
@@ -692,24 +685,13 @@ test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool 
     && arm_refuses_exactly(arm: "trigger-declaration-does-not-resolve", row: phantom_trigger)
 }
 
-// ARM: unattributed-closure-states-no-reason. An unattributed closure that says nothing about why
-// nothing is attributed. The reason is not itself checkable -- that is what the durable account is for --
-// but it cannot be blank.
-test fn the_reason_arm_refuses_a_blank_explanation() -> Bool {
-  let base = control_row()
-  let blank = RetiredExpectedRedRow {
-    identity: base.identity,
-    standing_before: base.standing_before,
-    enrolled_on: base.enrolled_on,
-    trigger: base.trigger,
-    closure: RestsOnExecutedCheck {
-      why_no_change: "" as NonEmptyStr,
-      durable_account: control_account(),
-      re_measured: control_remeasurement(),
-    },
-  }
-  arm_refuses_exactly(arm: "unattributed-closure-states-no-reason", row: blank)
-}
+// NO "BLANK REASON" ARM, AND WHY: `why_no_change` is a `NonEmptyStr` (`String where string_non_empty`,
+// std/types.dag), so a blank reason is UNCONSTRUCTABLE -- the refinement refuses it at the literal. A claim
+// that tried to build one either failed to resolve (`"" as NonEmptyStr`) or, past that, tested
+// `!(string_non_empty(w))` on a value the type already proved non-empty: a refusal that can never fire. Per
+// DESIGN §4b(1), a check whose forbidden state is expressible nowhere it runs is a decoration that reads as
+// coverage. The type is the real, stronger check; the durable account is what the closure is held to, and
+// `the_durable_account_arms_refuse_empty_and_phantom` (below) is the executing check that enforces it.
 
 // ARM: carrier-holds-no-rows. The empty-list refusal has its own control, because the other way the live
 // claim could go quiet is by the carrier holding nothing.

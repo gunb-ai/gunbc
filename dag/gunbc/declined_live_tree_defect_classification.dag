@@ -185,17 +185,21 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // it invisible, while restoring the three files from history reversed part of an
 // operator cut -- only the second is reversible by anyone other than the operator,
 // which is why the question was theirs and no lane may have quietly taken the
-// first. #9181 (0df5b4170c51) took a third path that answers it: the three
-// controls were machine discriminators, not documents, so they were REHOMED as
-// `cited_symbol_planted_controls` in v2.lens.cited_symbol_resolution -- the
-// permanent evidence was moved, not finished -- and only then were their orphan
-// binds deleted atomically. The account survives in data too, at
-// dag/test/claim/doc_graph_reference_partition_witness.dag
-// `cited_symbol_partition_third_bucket_note`; it is deliberately not repeated as a
-// String here, because a String whose only purpose is commentary is misplaced data
-// (DESIGN 4c) and this row's only reader was the NeedsOperatorRuling this change
-// replaced. The other sixteen dead binds carried ordinary retirements and needed
-// no ruling.
+// first. #9181 (0df5b4170c51, reachable from this head -- verified) took a third path: the three
+// controls were machine discriminators, not documents, so #9181 rehomed them into
+// `v2.lens.cited_symbol_resolution` as `cited_symbol_planted_controls` and only then deleted their
+// orphan binds atomically. THAT RE-HOMING HAS NO SURVIVING RECORD IN THIS TREE. The module it lived in
+// (v2.lens.cited_symbol_resolution) and the `cited_symbol_planted_controls` data it held are GONE: `git
+// grep` finds that name only in comments, and the module was removed after the 2026-08-25 operator
+// ruling and never carried across the 2026-10 mega-squash. So the g1 planted controls are lost evidence,
+// stated plainly, with no surviving typed record to cite. (An earlier draft of this comment claimed the
+// account "survives in data at ...cited_symbol_partition_third_bucket_note"; no declaration of that name
+// exists anywhere in the tree -- the citation was phantom and is removed.) The closure below therefore
+// rests only on what DOES survive and resolves: the three gunbc.doc_graph_roots declarations in its
+// durable_account, and this row's claim re-enrolled ExpectedToHold on the wet schedule -- not on the
+// vanished g1 controls. That the g1 controls have no account is the honest deficit; it is not repaired
+// with a String (DESIGN 4c) nor with a reference that does not resolve (DESIGN §3). The other sixteen
+// dead binds carried ordinary retirements and needed no ruling.
 // ---------------------------------------------------------------------------
 
 // THE ONE CLOSURE FOR doc_graph_registered_plan_roots_all_admitted. Its two consumers -- this file's
@@ -206,9 +210,12 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // `cited_symbol_planted_controls`: review 84276 checked `git grep` and no declaration of that name exists
 // anywhere in this tree -- the v2.lens.cited_symbol_resolution module it lived in is gone (removed after
 // the 2026-08-25 operator ruling, and not carried across the 2026-10 mega-squash), so a ref to it would
-// be a promise the witness cannot keep. The permanent evidence the ruling moved is recorded where its
-// data actually survives: dag/test/claim/doc_graph_reference_partition_witness.dag
-// `cited_symbol_partition_third_bucket_note`, named by the ruling comment above rather than re-typed here.
+// be a promise the witness cannot keep. What is NOT in this closure, said plainly: the g1 planted controls
+// the ruling rehomed have NO surviving typed record in this tree -- the module that held them is gone and
+// nothing carries their account forward. This closure therefore rests only on the three gunbc.doc_graph_roots
+// refs above (which the witness resolves) plus this row's re-enrollment ExpectedToHold on the wet schedule;
+// it does NOT claim the g1 controls still run or that their note survives. (A prior draft cited a
+// `cited_symbol_partition_third_bucket_note` here; that declaration does not exist -- phantom, removed.)
 data doc_graph_roots_rehoming_closure: Closure = AttributedToChange {
   change: PullRequest { number: 9181 },
   durable_account: [
