@@ -2113,7 +2113,7 @@ fn alias_rhs_applied(d: DeclarationRef, rhs: Node, use_args: List<Node>, source_
     Absent => if (use_args |> count) == 0 { Present { value: rhs } } else { none }
     Present { value: decl } =>
       let names = decl.params |> map(p => param_node_name_at(n: p, source_indices: source_indices))
-      if (names |> count) == 0 { if (use_args |> count) == 0 { Present { value: rhs } } else { none } }
+      if (names |> count) == 0 { Present { value: rhs } }
       else if (names |> count) != (use_args |> count) { none }
       else {
         let subst = fold(names |> enumerate, init: empty_map(), f: (acc, pair) =>
