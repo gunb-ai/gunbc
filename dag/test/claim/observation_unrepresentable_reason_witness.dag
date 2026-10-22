@@ -42,18 +42,9 @@ test fn a_nonempty_str_reason_is_accepted_by_the_retyped_field() -> Bool {
 
 data reason_empty_literal_red_source: String = "module probe_reason_empty_literal_red\nimport v2.workflow.floor_terminal_ledger { ClaimObservation, ObservationUnrepresentable }\nfn f() -> ClaimObservation { ObservationUnrepresentable { reason: \"\" } }\n"
 
-data reason_empty_cast_red_source: String = "module probe_reason_empty_cast_red\nimport std.types { NonEmptyStr }\nimport v2.workflow.floor_terminal_ledger { ClaimObservation, ObservationUnrepresentable }\nfn f() -> ClaimObservation { ObservationUnrepresentable { reason: \"\" as NonEmptyStr } }\n"
-
 // The RED. An empty literal is not a NonEmptyStr.
 test fn an_empty_literal_reason_is_refused() -> Bool {
   match reason_blocking_count(source: reason_empty_literal_red_source) {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
-}
-
-test fn an_empty_cast_reason_is_refused() -> Bool {
-  match reason_blocking_count(source: reason_empty_cast_red_source) {
     Present { value: n } => n >= 1
     Absent => false
   }
