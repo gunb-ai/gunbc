@@ -889,17 +889,29 @@ fn type_head_is_declared_carrier_alias(name: String) -> Bool {
 // keeps the refusal - there is no name-spelling fallback path (gunbc.recurring_failure_mode
 // stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes; PR-2 measurement, lands as #14056).
 fn type_heads_agree(left: Node, right: Node, left_name: String, right_name: String, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
-  if type_head_is_declared_carrier_alias(name: left_name) || type_head_is_declared_carrier_alias(name: right_name) {
-    type_head_carrier(name: left_name) == type_head_carrier(name: right_name)
-  } else {
-    match left.declaration {
-      Present { value: ld } =>
-        match right.declaration {
-          Present { value: rd } => ld.module_path == rd.module_path && ld.decl_name == rd.decl_name
-          Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
-        }
-      Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
-    }
+  // DECLARATION IDENTITY DECIDES FIRST (measurement at 70a9996f5930: src/v2/std/text.dag:7:15 carried
+  // decl=std.algebra#FreeMonoid#W on BOTH sides - one declaration - and still refused, because the
+  // carrier-alias table below keys on PRINTED head names and a transparent alias (String = FreeMonoid<Char>)
+  // is not the table's own key. Same stamp, same declaration, must join (gunbc.rung_drop
+  // text_boundary_identity_wall; the alias-shadow class of gunbc.recurring_failure_mode
+  // stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes). When the stamps disagree or are
+  // missing, the carrier table and the settled-env resolution below decide exactly as before.
+  match left.declaration {
+    Present { value: ld } =>
+      match right.declaration {
+        Present { value: rd } =>
+          if ld.module_path == rd.module_path && ld.decl_name == rd.decl_name { true }
+          else if type_head_is_declared_carrier_alias(name: left_name) || type_head_is_declared_carrier_alias(name: right_name) {
+            type_head_carrier(name: left_name) == type_head_carrier(name: right_name)
+          }
+          else { false }
+        Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
+      }
+    Absent =>
+      if type_head_is_declared_carrier_alias(name: left_name) || type_head_is_declared_carrier_alias(name: right_name) {
+        type_head_carrier(name: left_name) == type_head_carrier(name: right_name)
+      }
+      else { settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text) }
   }
 }
 
