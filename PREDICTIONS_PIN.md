@@ -1056,3 +1056,68 @@ E (build->regen->claims, NO rebuild): SEEDGEN_RC=0, CLAIM1 FAIL box_int member. 
 Gate F (strict C-order + fresh binaries everywhere + payload) predicted: BUILD1/REGEN1/BUILD2 RC=0; SEEDGEN_RC=1 w/ distinct list ~<=47 lines, classes = 'bound as ... (first argument)/(later argument)' + applied-descent mismatches; CLAIM1 3 PASS; CLAIM2 28 PASS; CLAIM3 (fnval probe) c_fnval_refused FIRES (>=1 -> arm 2 descends into callable-typed args? NO: f/g are fn values; Arrow-vs-Arrow descend compares T vs U leaves -> distinct binders NOT equal by binder -> refuse) or 0 (Arrow arm compares by name-spelling). PREDICTION: FIRES >=1 (ruling-i: #14056 lands w/ claim home). CONTROL self-accept PASS (not blanket).
 ### CENSUS JUDGMENT PLAN (post-F, the parent decision)
 The ~40 corpus refusal sites = my change's two_closures population on the grown corpus. For each: (a) TRUE closure (types genuinely mismatch; row silently accepted wrong types) -> corpus-side fix by row owner / suppression via the known-red instrument (gate_two_closures_14152.sh family); (b) OVER-REJECTION (types genuinely equal; arm too strict) -> qualify my arms (e.g. settled-alias, optional-leaf identity per ruling (b) msg_d6165e53). Deliver classified list to parent: PR-2 cannot land while seedgen red (CI v2-bootstrap enforces). Runner push-less: payload arrives via F_B64 block; commit seed locally + push from container.
+
+## PRED-Q (pre-registered 2026-10-21 ~22:52Z) — Gate K2 @ bb508febb23e (claim files committed)
+- K2_CLAIM1_RC=0 with 3 PASS (incl box_int_against_box_bool_is_refused).
+- K2_CLAIM2_RC=0 with 28 PASS.
+- K2_CLAIM3 (gc16_fnval_probe): RC=0, 2 PASS iff c_fnval_refused FIRES (>=1) and control accepts.
+  RULING-(i): FIRES -> #14056 claim-home lands; NOT FIRES (c_fnval_refused FAIL, rc=1) -> propose close #14056 + fold VACANT (parent ack).
+- CI (#14711 v2-bootstrap @fe60d18f/heads): expect fail with the ~13 'bound as' seedgen sites (fold-attributable; main control 0). Spans authoritative from CI log.
+
+## PRED-R (pre-registered 2026-10-22 ~01:40Z) — measurement head with runner-only row patch
+- Root cause of N2-N6 regen RC=124 hangs + claim RC=1: the witnesses_red_on_main row lacks required rung: (resolve fail), same defect reding CI heal-generated-artifacts. Debug regen also too slow; use RELEASE.
+- D1 (release): build ~15min, regen round timeout 1200, expect R_REGEN_RC=0 or (0 with MODIFIED>0 then rebuild once), payload b64 chunks MD5-labeled. Row patched working-tree-ONLY in runner clone (never pushed; parent ruling: Charter 3 #14713 owns the row).
+- PRED-R1: D1_R_REGEN_RC=0, D1_MODIFIED>=4 (five stage0 mirrors at stale gen per F), payload non-empty (~40-60KB b64 gz).
+- D2 (after applying payload locally + push): claims at regen'd head: C1 3 PASS incl box member; C2 28 PASS; probe decision (FIRES->#14056 claim-home; 0->close+fold proposal); seedgen site list authoritative (release bins, regen'd mirrors).
+
+## PRED-S (pre-registered 2026-10-22 ~02:25Z) — S gate @0e6320f51286 (no regen; CI proved convergence)
+- Evidence: CI heal workflow regen step printed "regen-round-cost: convergence_stages=1 [stage-1]" at 0e6320f -> mirrors ALREADY CONVERGED at this head (changed=0). F's "refused" lines = refuse-unchanged feature, not failure. v2-bootstrap PASS at 0e6320f (32m4s).
+- S1 expectations (release bins, no row patch): S_CLAIM1_RC + PASS lines: 3 PASS iff row does NOT break claim corpus (CI claim steps passed -> expect RC=0); S_CLAIM2 28 PASS; S_PROBE: c_fnval_refused PASS(FIRES)/FAIL(NOT) + control PASS; S_SEEDGEN_RC=0 + sites list (expect ~0-2; the 19-site list was a294d9cd-era pre-revert).
+- If S_CLAIM_RC=1 with row resolve error -> claim corpus DOES need the row; then runner-only patch variant.
+
+## GATE U RESULT (2026-10-22 ~03:25Z) @0e6320f51286 (release, per-function claim invocation — CORRECT form)
+- applied_constructor: same_applied_box_int_is_accepted PASS, list_int_equals_freemonoid_int PASS, box_int_against_box_bool_is_refused **FAIL** (F said 3 PASS at a294d9cd; U authoritative: post-merge head; fold does NOT refuse Box<Int> vs Box<Bool>).
+- arity witness: 27 PASS, 1 rc=1-no-PASS/FAIL-line = MY TYPO (dispatch used arity_n_else_map_formal_pairbox_actual; real name arity_n_else_pair_formal_mapbox_actual) -> re-run fixed.
+- fnval probe: c_fnval_refused **FAIL (NOT FIRES)**, control PASS. Ruling (i) branch (b): #14056 leaf/binder has NO observable consumer on today's routes -> close #14056 + fold leaf/binder into PR-2 w/ VACANT-labelled tests OR drop (parent's ruling msg_d6381674 wording; needs my report + parent ack).
+- PRED-V2 pre-reg: V1 dump rows for Box<Int>/Box<Bool> same_arm site; expect rows reveal WHICH authority (if any) sees the pair — fold never refuses => per parent msg_d6381674 "if arm 2 doesn't refuse it, FILE IT AS A FAILURE-MODE ROW". V2 arity_n_else_pair_formal_mapbox_actual rc=0 PASS.
+
+## PRED-W (pre-registered 2026-10-22 ~03:30Z) — mirror-generation confound; W1/W2
+- ROOT CONFOUND: committed stage0 mirrors at 0e6320f are the MAIN wholesale take (my fold NOT realized in v1_compiler_infer.rs). F ran claims AFTER its regen rewrote 4 mirrors -> F CLAIM1 3 PASS = my fold refusing. U/V ran claims on COMMITTED (main) mirrors = green-by-vacancy for fold-dependent members -> U FAIL box member + FAIL fnval probe are VOID measurements, not flips. (CI heal 'convergence_stages=1' = one regen stage RUN, not converged-at-head.)
+- REGEN HANG (N2-N6, D1): corpus at 0e6320f contains the resolve-broken witnesses row (#14384); regen loops on it. F head a294d9cd predated #14384 -> regen worked. Runner-only row patch (verify PATCH_APPLIED echoed) should unhang.
+- W1: build1 release -> row patch (echo PATCH_APPLIED) -> regen rounds timeout 1500 until changed=0 (max 3, echo MODIFIED + mirror md5s per round) -> payload b64 chunks (md5 per chunk).
+- W2 (after local apply on scratch branch + checkout in rehearse worktree so mirror follows): build release -> claims box member (expect PASS per F), full arity 28 (28 PASS), probe c_fnval_refused (decision! expect ???), control PASS; seedgen 0 sites (per S).
+
+## PRED-X (pre-registered 2026-10-22 ~04:50Z) — X gate: REALIZED-MIRROR decision run (release)
+- Story reconciled: committed stage0 mirrors at head = MAIN's realization (my wholesale take at M4; fold NOT realized). F's regen rewrote 4 mirrors -> F ran WITH fold (box PASS, arity 28 PASS, seedgen 13-19 sites). U/V/W2 claims on committed = green/red-by-vacancy for fold semantics. Fold-realized head = F's generation (04_infer/04_types identical modulo slot-readers/payload-arm hunks that don't touch unify/apply).
+- X gate (release bins, regen 3000s single round w/ one rebuild loop max 2, claims 600s each): row patched in-clone (PATCH_APPLIED echoed; never pushed).
+- PRED-X1: X_REGEN_RC=0 with MODIFIED>=4 (mirror rewrite; debug 700s was too short; CI heal uses release ~15min).
+- PRED-X2: box member PASS (F reproduced); arity 2 sample PASS; probe c_fnval_refused DECISION (FIRES=PASS -> #14056 claim-home; FAIL -> close+fold VACANT; rc=124 -> inconclusive, rerun claim with 1200s); control PASS.
+- PRED-X3: seedgen RC=1 with ~13 sites (F's population at realized mirrors) OR RC=0 0 sites (fold-clean). EITHER outcome reported to parent with spans.
+
+## SITE CLASSIFICATION (fold-realized seedgen @a294d9cd, F's 13 distinct; parent msg rubric DESIGN §4 text_crossings + gunbc.rung_drop.text_boundary_identity_wall)
+CORRECT REFUSALS (true closure; previously green-by-vacancy under name-equality):
+- F1/F2 Map(Primitive(K),Primitive(V)) vs Map(Primitive(Symbol),Primitive(String|Symbol)) @ dag/std/algebra.dag:1411 (map_insert same_arm sites): JUDGMENT PENDING Z DUMP -- the bound side prints K/V as PRIMITIVE leaves, the same own-form/wrapper signature as F13; if the formal's unsubstituted own form is reaching the comparison, these are over-rejections (binding_is_generic_declaration_own_form should REPLACE/KEEP before refusal). Do NOT call correct-closure without the row dump. (This is the population fierce-bee-518 asked about: their 59/76 Map identities @d3c1f182 -- answer: at fold head these REFUSE; PR-2 arm-2 compares applied constructors by DECLARATION identity + childwise equality, Map(K,V) != Map(Symbol,Symbol).)
+- F5 Outcome<Product(Unit>) vs Outcome<Container(FreeMonoid,Product(CliArgument<String>)>) @ src/v2/cli (arg parse): distinct.
+- F6 Outcome<Product(Unit>) vs Outcome<Coproduct(FreeMonoid)> @ cli: distinct.
+- F12 Product(Char<Primitive(Int)>) vs Primitive(Int): distinct shapes.
+- F3/F4 Node(Outcome<Map(Symbol,UnresolvedDecl(TargetDerive...)>>) pair @ derive/target-requirement path: distinct generic payloads (verify spans when Z replays).
+OVER-REJECTIONS (fold compares what §4 says is ONE declaration, or compares an unresolved form):
+- F7/F9 String<Product(Char<Int>)> vs FreeMonoid<Product(Char<Int>)> @ src/v2/std/text.dag:7 region: THE ALIAS-SHADOW CASE -- String is v2.std.text's own alias for FreeMonoid<Char>; alias vs its own RHS = same declaration (parent msg: "genuinely the same declaration"). NOT a kernel/text crossing.
+- F10/F11 Primitive(PosixRedirection) vs Primitive(PosixRedirection), Primitive(StandardIntegerType) vs itself: identical print, refused -> leaf identity compared by something other than declaration (node-local/positional); ruling (b): must resolve by existing leaf identity, NEVER printed text (#14612 renderer defect). Candidate: wrapper-vs-resolved (eager-cat-804 unify_child_actual ce999e8e) -- their probe showed actuals arriving as wrappers (name=V, children=0, real type in inferred.Resolved).
+- F13 Primitive(List) vs Primitive(String) @ dag/std/algebra.dag:169-172: 'Primitive(List)' is itself an artifact of a WRAPPER node being treated as a primitive leaf -> wrapper class again.
+- F8 Primitive(Int) vs UnresolvedDecl(Int<Nat>) @ algebra.dag:169-172: comparing an unresolved form; fold already skips unsettled formal annotations (binding_is_unsettled_formal_annotation) -- UnresolvedDecl at the actual side needs the same treatment or resolve-before-compare (eager-cat's wrapper resolution may cover).
+DECISION RUN (Z): claims+probe+seedgen MUST run on regen'd (fold-realized) head; F numbers stand unless Z at 0e6320f differs (slot-readers #14679/C1.4 hunks do not touch unify region -> expect same 13).
+
+## PRED-LR (pre-registered 2026-10-22 ~05:25Z) — LOCAL ROUTE (parent msg_9c1de018; vivid-ant-730 route)
+- Container: memory.max=25769803776 (24 GiB), 128 cores; CARGO_TARGET_DIR=/cargo-target/gentle-carp-16 CTRL_BUILD_MODE=local, -j10 nice. Report memory.max/memory.peak in receipt.
+- Sequence (rehearse worktree @0e6320f): build1 -> ROW PATCH UNCOMMITTED (measurement enablement; row file NEVER committed, per parent) -> regen round-cost -> if MODIFIED: rebuild -> claims per-fn (3 applied + arity 28 + probe 2, release, timeout>=600) -> seedgen spans + F1/F2 census-row dump.
+- PRED-LR1: build1 RC=0 (~15-25 min at -j10).
+- PRED-LR2: regen completes (CI heal proved regen completes at this head: changed_paths=3). Expect MODIFIED >= 3 incl v1_compiler_infer.rs + v1_compiler_infer_types.rs (fold realization) + seed artifacts in dag/gunbc/instruments.
+- PRED-LR3 (THE DECISION, realized bin): box member PASS (F repro = fold realized); arity 28 PASS; c_fnval_refused PASS(FIRES)->#14056 claim-home lands / FAIL(NOT FIRES)->close+fold VACANT proposal to parent; control PASS; seedgen RC=1 with ~13 sites (spans captured) or RC=0 (fold-clean).
+- COMMIT RULE: regen commit carries ONLY src/v1/stage0/src + dag/gunbc/instruments; row patch stays uncommitted; if regen output would depend on row-patched corpus in instruments/, HOLD the instruments part until Charter 3's row fix lands (no meaning fork on one row).
+
+## LOCAL ROUTE OPERATIONS (updated 2026-10-22 ~07:15Z)
+- Long jobs MUST use setsid nohup ... < /dev/null > /dev/null 2>&1 & disown (plain nohup & dies with the tool call's process group at timeout). Sequence file /tmp/lr_seq.log is the completion channel; monitors poll it.
+- REGEN COMPLETE (round 1, no env overrides, ~25 min): 3 mirrors modified (v1_compiler_infer.rs +1063, v1_compiler_infer_types.rs +519, v1_tests_claim_generic_identity_census.rs +19) = THE FOLD REALIZATION (43x UnifyGenericsAcc in mirror; fold diagnostic strings present). cgroup peak 24 GiB, oom_kill=0, memory.events max=719 throttles. GUNBC_MEMORY_BUDGET_BYTES=10GiB = footgun (budget-below-demand refusal at compile.emit) — do NOT set it for regen locally; CI parity = no overrides.
+- Census mirror gained 19 lines from regen = seed artifact regenerated at claim corpus (probe file untracked => NOT in regen'd census; safe).
+- Battery /tmp/lr_battery.sh staged (3 applied + 28 arity + 2 probe + seedgen; results /tmp/lr_results.txt; probe file untracked; row patch uncommitted (Charter 3 owns); regen commit will stage ONLY src/v1/stage0/src + instruments if instruments change (none so far)).
