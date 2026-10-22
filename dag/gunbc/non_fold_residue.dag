@@ -243,4 +243,14 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       reason: nfr_reason_wildcard_landed_after_join_measurement,
       dissolution: nfr_dissolve_owning_fold,
     },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_listener_admitted" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::listener_restart_refusal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
 ]
