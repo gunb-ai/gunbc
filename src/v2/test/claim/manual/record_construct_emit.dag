@@ -1,5 +1,7 @@
 module v2.test.claim.manual.record_construct_emit
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -135,7 +137,8 @@ fn record_construct_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data record_construct_inferred_tree: InferredTree = InferredTree {
   root: record_construct_emitted_root,
-  facts: PartialFunction { lookup: record_construct_facts_lookup }
+  facts: PartialFunction { lookup: record_construct_facts_lookup },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 test fn record_construct_emit_holds() -> Bool {
