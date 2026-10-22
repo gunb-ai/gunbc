@@ -7708,7 +7708,7 @@ fn call_function_inner(
             msg: format!("'{}' has no body", fn_node.name),
         })?;
 
-    let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str());
+    let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str(), args);
 
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
@@ -19610,11 +19610,12 @@ fn dispatch_file(
     // clusters can be attributed to their requesting fold. Gated by QC503_READ_PROBE=1; the frame
     // stack itself needs GUNBC_FLATTEN_SITE_DUMP_SECS (existing forensics gate for CURRENT_DAG_FN).
     if qc503_read_probe_enabled() && path.ends_with(".dag") {
+        qc503_proclaim_process();
         let stack = CURRENT_DAG_FN.with(|s| {
             s.borrow()
                 .iter()
                 .rev()
-                .take(4)
+                .take(12)
                 .map(|f| f.to_string())
                 .collect::<Vec<_>>()
                 .join(" <- ")
@@ -25755,8 +25756,27 @@ thread_local! {
 
 pub(crate) struct DagFnGuard(bool);
 impl DagFnGuard {
-    pub(crate) fn enter(name: &str) -> Self {
+    pub(crate) fn enter(name: &str, args: &[(Option<String>, Value)]) -> Self {
         if residual_hunt_forensics_enabled() {
+            // MEASUREMENT-ONLY (v2, never lands): the acquisition DOOR is dedup-complete within one
+            // start (known/absent memos), so a substrate cluster re-read means a fresh door start.
+            // Name every start with its full caller stack + pid, so the 21 producers are identified.
+            if qc503_read_probe_enabled() && name == "acquisition_start" {
+                qc503_proclaim_process();
+                let stack = CURRENT_DAG_FN.with(|s| {
+                    s.borrow()
+                        .iter()
+                        .rev()
+                        .map(|f| f.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" <- ")
+                });
+                eprintln!(
+                    "[qc503-read-probe] DOOR-START pid={} args=[{}] VIA {stack}",
+                    std::process::id(),
+                    qc503_door_arg_summary(args)
+                );
+            }
             CURRENT_DAG_FN.with(|s| s.borrow_mut().push(Rc::from(name)));
             DagFnGuard(true)
         } else {
@@ -25849,6 +25869,86 @@ fn residual_hunt_forensics_enabled() -> bool {
 fn qc503_read_probe_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var("QC503_READ_PROBE").is_ok())
+}
+
+// MEASUREMENT-ONLY (v2): proclaim each PROCESS printing probe lines exactly once, so a log where
+// several processes' lines interleave can be split by pid+argv without ambiguity. Never lands.
+fn qc503_proclaim_process() {
+    static PROCLAIMED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    PROCLAIMED.get_or_init(|| {
+        let argv: Vec<String> = std::env::args().take(5).collect();
+        let cwd = std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "<unknown>".to_string());
+        eprintln!(
+            "[qc503-read-probe] PROC pid={} argv={} cwd={}",
+            std::process::id(),
+            argv.join(" "),
+            cwd
+        );
+    });
+}
+
+// MEASUREMENT-ONLY (v2): summarize the door-start call's args (host dir + entries) so each of the
+// 21 starts carries its entry list. Never lands.
+fn qc503_door_arg_summary(args: &[(Option<String>, Value)]) -> String {
+    fn summarize(v: &Value, depth: usize) -> String {
+        match v {
+            Value::Str(s) => {
+                let s: &str = s;
+                format!("\"{}\"", s.chars().take(96).collect::<String>())
+            }
+            Value::List(items) => {
+                let items: &[Value] = items;
+                if depth > 2 {
+                    return format!("[..{}..]", items.len());
+                }
+                let head = items
+                    .iter()
+                    .take(12)
+                    .map(|i| summarize(i, depth + 1))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("[{}{}]", head, if items.len() > 12 { ",.." } else { "" })
+            }
+            Value::Record { type_name, fields } => {
+                if depth > 2 {
+                    return format!("{:?}{{..}}", type_name);
+                }
+                let inner = fields
+                    .iter()
+                    .take(6)
+                    .map(|(k, v)| format!("{:?}={}", k, summarize(v, depth + 1)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!("{:?}{{{}}}", type_name, inner)
+            }
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => {
+                if depth > 2 {
+                    return format!("{:?}.{:?}", type_name, variant_name);
+                }
+                let inner = fields
+                    .iter()
+                    .take(4)
+                    .map(|(k, v)| format!("{:?}={}", k, summarize(v, depth + 1)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!("{:?}.{:?}{{{}}}", type_name, variant_name, inner)
+            }
+            Value::Int(i) => format!("{i}"),
+            Value::Bool(b) => format!("{b}"),
+            _ => "<v>".to_string(),
+        }
+    }
+    args.iter()
+        .take(6)
+        .map(|(name, v)| format!("{}={}", name.as_deref().unwrap_or("?"), summarize(v, 0)))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn record_flatten(items: usize) {
