@@ -10,7 +10,7 @@ cd /root/workspace/repo-root 2>/dev/null || true
 #     3 deferred skippers with triggers; (6) one decl_facts consumer over [dag, src/v2] at head
 #     does NOT refuse.
 # ALL claim_batch runs execute inside this dispatch's bounded cgroup subtree (read-back asserted).
-OID=540449ac80adce5210c79162c5e2122499c4f1b5
+OID=1d0fe03d58f0a4f549922046d65c9f3cbfa64c08   # gh-resolved
 BASE=201fe0bd10da30ff0eeabaf2eabfc1b42f5e02f1
 WIT=dag/test/claim/decl_facts_walk_refusal_witness.dag
 CP=src/v1/stage0/src/coproduct_reflection.rs
