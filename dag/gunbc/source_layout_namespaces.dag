@@ -391,6 +391,7 @@ fn layout_namespaces() -> List<String> {
     "test.fixture.rostered_row_join",
     "test.fixture.scaffold_disposition_census",
     "test.fixture.scaffold_disposition_census.pool",
+    "test.fixture.sole_constructor_arm_seal",
     "test.fixture.sole_constructor_order_probe",
     "test.fixture.sole_constructor_sealed",
     "test.fixture.sole_constructor_variant_probe",
