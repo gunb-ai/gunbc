@@ -50,6 +50,10 @@ data identity_cast_source: String = "module probe_nominal_cast_identity\nimport 
 
 data declared_conversion_source: String = "module probe_nominal_cast_declared\nimport std.types { String, Int }\ntype P { value: Int }\nfn p_wire_text(p: P) -> String { p.value as String }\nfn text(p: P) -> String { p_wire_text(p: p) }\n"
 
+data nat_as_int_source: String = "module probe_nominal_cast_nat\nimport std.types { Int }\nimport std.nat { Nat }\nfn widen(n: Nat) -> Int { n as Int }\n"
+
+data none_as_optional_source: String = "module probe_nominal_cast_none\nimport std.types { Int }\nfn absent() -> Int? { none as Int? }\n"
+
 test fn a_record_cast_to_string_with_no_declared_route_is_refused() -> Bool {
   refusals(
     source: record_as_string_source,
@@ -69,4 +73,6 @@ test fn the_kernel_refinement_identity_and_declared_routes_still_compile() -> Bo
     && blocking_total(source: refinement_as_string_source) == 0
     && blocking_total(source: identity_cast_source) == 0
     && blocking_total(source: declared_conversion_source) == 0
+    && blocking_total(source: nat_as_int_source) == 0
+    && blocking_total(source: none_as_optional_source) == 0
 }

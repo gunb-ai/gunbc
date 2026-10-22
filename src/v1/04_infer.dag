@@ -7372,6 +7372,23 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
+// A cast source is a nominal value with no declared conversion only when its declaration is not
+// grounded onto a kernel type and is not the solver's `Unit` placeholder. Nat is grounded onto Int
+// (std.coercion: a Nat IS an Int; gunbc.structural_realization_bindings kernel_grounding_rows), so
+// `n as Int` is a declared identity; the answer is keyed on the declaration's provenance through
+// provenance_realizes_natively, never on the spelling. `Unit` is what the call-site generic solve
+// answers for a parameter it did not solve (see the produced-Unit note on the argument check
+// above) and what an absent-literal operand infers as, so it is no established nominal identity
+// and abstains, as an unresolvable source does.
+fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let provenance = type_reference_provenance(n: source_node)
+  !provenance_realizes_natively(p: provenance)
+    && !(match provenance {
+      CorpusDeclared { decl_file: f } => contains(f, "std/types.dag") && authored_name_at(source_indices: source_indices, node: source_node) == "Unit"
+      _ => false
+    })
+}
+
 // A NOMINAL PRODUCT OR COPRODUCT HAS NO IMPLICIT ROUTE THROUGH `as`
 // (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text,
 // chain (i)). std.coercion dag_cast_rules rosters only Int, Float and Bool, so a nominal source
@@ -10365,8 +10382,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let source_is_nominal = match inner_typed.inferred {
         Present { value: Resolved { node: source_node } } =>
-          type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
-            || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
+          (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
+            || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: source_node, scope: scope)))
+            && cast_source_is_declared_nominal(source_node: source_node, source_indices: si)
         _ => false
       }
       let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
