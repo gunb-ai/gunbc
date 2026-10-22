@@ -1,6 +1,6 @@
 set -uo pipefail
 REPO=/root/workspace/repo-root
-HEADSHA=$1
+HEADSHA=f6030923ad79163132a78a45cc18d0d05875bbd7  # gh pr view 14613 headRefOid (manager-confirmed final)
 WIT=dag/test/claim/instruments/instrument_dispatch_workflow_witness.dag
 GATE=dag/gunbc/instruments/generated_artifact_gate.dag
 YML=.github/workflows/instrument_dispatch.yml
@@ -31,6 +31,9 @@ echo "=== REGEN idempotency/NO-DRIFT for $YML ==="
 cp $YML /tmp/committed613j.yml
 timeout 1500 $GB run --source-root dag --source-root src/v2 --entry $GATE --function main_wet_one --arg path=$YML > /tmp/c613j_regen.out 2>&1; echo "[regen] rc=$?"; grep -aE 'Filesystem.Write|refus|error' /tmp/c613j_regen.out | tail -3 | cut -c1-200 | sed 's/^/  | /'
 if diff -q /tmp/committed613j.yml $YML >/dev/null 2>&1; then echo "NO-DRIFT=YES"; else echo "DRIFT=YES:"; diff /tmp/committed613j.yml $YML | head -15 | sed 's/^/  D| /'; fi
-echo "=== DESIGN.md delta check (local file present; hash for cross-check) ==="
+echo "=== REGEN idempotency/NO-DRIFT for DESIGN.md (declared route, same gate) ==="
+cp DESIGN.md /tmp/committed613j_design.md
+timeout 1500 $GB run --source-root dag --source-root src/v2 --entry $GATE --function main_wet_one --arg path=DESIGN.md > /tmp/c613j_regen_design.out 2>&1; echo "[regen DESIGN.md] rc=$?"; grep -aE 'Filesystem.Write|refus|error' /tmp/c613j_regen_design.out | tail -3 | cut -c1-200 | sed 's/^/  | /'
+if diff -q /tmp/committed613j_design.md DESIGN.md >/dev/null 2>&1; then echo "DESIGN_NO_DRIFT=YES"; else echo "DESIGN_DRIFT=YES:"; diff /tmp/committed613j_design.md DESIGN.md | head -20 | sed 's/^/  D| /'; fi
 sha256sum DESIGN.md | sed 's/^/DESIGN_SHA=/'
 echo DONE_613J $(date -u +%H:%M:%SZ)
