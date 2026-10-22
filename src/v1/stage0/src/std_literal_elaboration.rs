@@ -77,18 +77,25 @@ pub enum LiteralUnfolding {
         prev_field: NonEmptyStr,
     },
     UnicodeScalarSequenceUnfold,
+    NonEmptyUnicodeScalarSequenceUnfold,
 }
 impl LiteralUnfolding {
     pub fn zero(&self) -> Rc<DeclarationRef> {
         match self {
             LiteralUnfolding::PeanoUnfold { zero: __val, .. } => __val.clone(),
             LiteralUnfolding::UnicodeScalarSequenceUnfold => panic!("no zero on unit variant"),
+            LiteralUnfolding::NonEmptyUnicodeScalarSequenceUnfold => {
+                panic!("no zero on unit variant")
+            }
         }
     }
     pub fn succ(&self) -> Rc<DeclarationRef> {
         match self {
             LiteralUnfolding::PeanoUnfold { succ: __val, .. } => __val.clone(),
             LiteralUnfolding::UnicodeScalarSequenceUnfold => panic!("no succ on unit variant"),
+            LiteralUnfolding::NonEmptyUnicodeScalarSequenceUnfold => {
+                panic!("no succ on unit variant")
+            }
         }
     }
     pub fn prev_field(&self) -> NonEmptyStr {
@@ -97,6 +104,9 @@ impl LiteralUnfolding {
                 prev_field: __val, ..
             } => __val.clone(),
             LiteralUnfolding::UnicodeScalarSequenceUnfold => {
+                panic!("no prev_field on unit variant")
+            }
+            LiteralUnfolding::NonEmptyUnicodeScalarSequenceUnfold => {
                 panic!("no prev_field on unit variant")
             }
         }
@@ -187,26 +197,19 @@ pub enum LiteralElaborationRefusal {
         destination: Rc<DeclarationRef>,
         row_count: i64,
     },
+    EmptyLiteralHasNoNonEmptyImage {
+        destination: Rc<DeclarationRef>,
+    },
 }
 impl LiteralElaborationRefusal {
-    pub fn source_kind(&self) -> LiteralSourceKind {
-        match self {
-            LiteralElaborationRefusal::HomomorphismDuplicated {
-                source_kind: __val, ..
-            } => __val.clone(),
-        }
-    }
     pub fn destination(&self) -> Rc<DeclarationRef> {
         match self {
             LiteralElaborationRefusal::HomomorphismDuplicated {
                 destination: __val, ..
             } => __val.clone(),
-        }
-    }
-    pub fn row_count(&self) -> i64 {
-        match self {
-            LiteralElaborationRefusal::HomomorphismDuplicated {
-                row_count: __val, ..
+            LiteralElaborationRefusal::EmptyLiteralHasNoNonEmptyImage {
+                destination: __val,
+                ..
             } => __val.clone(),
         }
     }
@@ -215,7 +218,29 @@ impl LiteralElaborationRefusal {
 pub fn literal_elaboration_refusal_message(cause: Rc<LiteralElaborationRefusal>) -> String {
     match (*cause.clone()).clone() {
     LiteralElaborationRefusal::HomomorphismDuplicated { source_kind: k, destination: d, row_count: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("literal elaboration: ".to_string(), literal_source_kind_label(k.clone())), " into ".to_string()), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " has more than one declared homomorphism (gunbc.structural_realization_bindings authoring defect)".to_string()),
+    LiteralElaborationRefusal::EmptyLiteralHasNoNonEmptyImage { destination: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("literal elaboration: the empty string literal has no image in ".to_string(), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " (a non-empty sequence: nonemptiness is constructed or proved, and an empty literal proves the opposite)".to_string()),
 }
+}
+
+pub fn literal_unfolding_refusal_for_scalar_count(
+    row: Rc<LiteralHomomorphism>,
+    scalar_count: i64,
+) -> Option<Rc<LiteralElaborationRefusal>> {
+    match (*row.producer.clone()).clone() {
+        LiteralUnfolding::NonEmptyUnicodeScalarSequenceUnfold => {
+            if (scalar_count.clone() == 0) {
+                Some(Rc::new(
+                    LiteralElaborationRefusal::EmptyLiteralHasNoNonEmptyImage {
+                        destination: row.destination.clone(),
+                    },
+                ))
+            } else {
+                std::option::Option::None
+            }
+        }
+        LiteralUnfolding::UnicodeScalarSequenceUnfold => std::option::Option::None,
+        LiteralUnfolding::PeanoUnfold { .. } => std::option::Option::None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

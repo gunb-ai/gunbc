@@ -55,6 +55,7 @@ pub enum TypeDeclarationProvenance {
 pub enum TextRepresentation {
     HostText,
     CodePointSequence,
+    NonEmptyCodePointSequence,
     NotText,
     TextRepresentationUnidentified,
 }
@@ -558,10 +559,35 @@ pub fn text_plan_endpoint(rep: TextRepresentation) -> Rc<TextPlanEndpoint> {
         TextRepresentation::CodePointSequence => Rc::new(TextPlanEndpoint::TextPlanEndpointKeyed {
             endpoint: code_point_sequence_endpoint(),
         }),
+        TextRepresentation::NonEmptyCodePointSequence => {
+            Rc::new(TextPlanEndpoint::TextPlanEndpointUnkeyed)
+        }
         TextRepresentation::NotText => Rc::new(TextPlanEndpoint::TextPlanEndpointUnkeyed),
         TextRepresentation::TextRepresentationUnidentified => {
             Rc::new(TextPlanEndpoint::TextPlanEndpointUnkeyed)
         }
+    }
+}
+
+pub fn text_crossing_source_after_forget(rep: TextRepresentation) -> TextRepresentation {
+    match rep.clone() {
+        TextRepresentation::NonEmptyCodePointSequence => TextRepresentation::CodePointSequence,
+        TextRepresentation::HostText => TextRepresentation::HostText,
+        TextRepresentation::CodePointSequence => TextRepresentation::CodePointSequence,
+        TextRepresentation::NotText => TextRepresentation::NotText,
+        TextRepresentation::TextRepresentationUnidentified => {
+            TextRepresentation::TextRepresentationUnidentified
+        }
+    }
+}
+
+pub fn text_representation_is_non_empty_sequence(rep: TextRepresentation) -> bool {
+    match rep.clone() {
+        TextRepresentation::NonEmptyCodePointSequence => true,
+        TextRepresentation::HostText => false,
+        TextRepresentation::CodePointSequence => false,
+        TextRepresentation::NotText => false,
+        TextRepresentation::TextRepresentationUnidentified => false,
     }
 }
 
@@ -611,64 +637,70 @@ pub fn select_text_crossing_plan(
     source: TextRepresentation,
     target: TextRepresentation,
 ) -> Rc<CrossingPlanSelection> {
-    match (*text_plan_endpoint(source.clone())).clone() {
-        TextPlanEndpoint::TextPlanEndpointUnkeyed => {
-            Rc::new(CrossingPlanSelection::CrossingPlanJudged {
-                judgment: Rc::new(ConversionPlanJudgment::ConversionPlanEndpointNotText {
-                    source: source.clone(),
-                    target: target.clone(),
-                }),
-            })
-        }
-        TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: se, .. } => {
-            match (*text_plan_endpoint(target.clone())).clone() {
-                TextPlanEndpoint::TextPlanEndpointUnkeyed => {
-                    Rc::new(CrossingPlanSelection::CrossingPlanJudged {
-                        judgment: Rc::new(ConversionPlanJudgment::ConversionPlanEndpointNotText {
-                            source: source.clone(),
-                            target: target.clone(),
-                        }),
-                    })
-                }
-                TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: te, .. } => {
-                    let between = Rc::new({
-                        let mut __result = Vec::new();
-                        for r in rows.iter().cloned() {
-                            if (conversion_endpoint_eq(
-                                conversion_plan_source(r.clone()),
-                                se.clone(),
-                            ) && conversion_endpoint_eq(
-                                conversion_plan_target(r.clone()),
-                                te.clone(),
-                            )) {
-                                __result.push(r);
-                            }
-                        }
-                        __result
-                    });
-                    if ((between.clone().len() as i64) > 1) {
-                        Rc::new(CrossingPlanSelection::CrossingPlanSeveral {
-                            routes: Rc::new({
-                                let mut __result = Vec::new();
-                                for r in between.iter().cloned() {
-                                    __result.push(r.route.clone());
-                                }
-                                __result
-                            }),
+    if text_representation_is_non_empty_sequence(target.clone()) {
+        Rc::new(CrossingPlanSelection::CrossingPlanNone)
+    } else {
+        match (*text_plan_endpoint(text_crossing_source_after_forget(source.clone()))).clone() {
+            TextPlanEndpoint::TextPlanEndpointUnkeyed => {
+                Rc::new(CrossingPlanSelection::CrossingPlanJudged {
+                    judgment: Rc::new(ConversionPlanJudgment::ConversionPlanEndpointNotText {
+                        source: source.clone(),
+                        target: target.clone(),
+                    }),
+                })
+            }
+            TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: se, .. } => {
+                match (*text_plan_endpoint(target.clone())).clone() {
+                    TextPlanEndpoint::TextPlanEndpointUnkeyed => {
+                        Rc::new(CrossingPlanSelection::CrossingPlanJudged {
+                            judgment: Rc::new(
+                                ConversionPlanJudgment::ConversionPlanEndpointNotText {
+                                    source: source.clone(),
+                                    target: target.clone(),
+                                },
+                            ),
                         })
-                    } else {
-                        match between.clone().first().cloned() {
-                            std::option::Option::None => {
-                                Rc::new(CrossingPlanSelection::CrossingPlanNone)
-                            }
-                            Some(plan) => Rc::new(CrossingPlanSelection::CrossingPlanJudged {
-                                judgment: judge_conversion_plan(
-                                    rows.clone(),
-                                    plan.route.clone(),
+                    }
+                    TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: te, .. } => {
+                        let between = Rc::new({
+                            let mut __result = Vec::new();
+                            for r in rows.iter().cloned() {
+                                if (conversion_endpoint_eq(
+                                    conversion_plan_source(r.clone()),
                                     se.clone(),
+                                ) && conversion_endpoint_eq(
+                                    conversion_plan_target(r.clone()),
                                     te.clone(),
-                                ),
-                            }),
+                                )) {
+                                    __result.push(r);
+                                }
+                            }
+                            __result
+                        });
+                        if ((between.clone().len() as i64) > 1) {
+                            Rc::new(CrossingPlanSelection::CrossingPlanSeveral {
+                                routes: Rc::new({
+                                    let mut __result = Vec::new();
+                                    for r in between.iter().cloned() {
+                                        __result.push(r.route.clone());
+                                    }
+                                    __result
+                                }),
+                            })
+                        } else {
+                            match between.clone().first().cloned() {
+                                std::option::Option::None => {
+                                    Rc::new(CrossingPlanSelection::CrossingPlanNone)
+                                }
+                                Some(plan) => Rc::new(CrossingPlanSelection::CrossingPlanJudged {
+                                    judgment: judge_conversion_plan(
+                                        rows.clone(),
+                                        plan.route.clone(),
+                                        se.clone(),
+                                        te.clone(),
+                                    ),
+                                }),
+                            }
                         }
                     }
                 }
@@ -689,6 +721,8 @@ pub fn unicode_scalar_fold(xs: Rc<Vec<i64>>) -> String {
 pub struct HostText;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CodePointSequence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonEmptyCodePointSequence;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NotText;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

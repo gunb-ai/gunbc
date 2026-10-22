@@ -8,7 +8,9 @@ use crate::std_literal_elaboration::KernelGroundingView::{
     PeanoGroundingView, SignedGroundingView,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral, KernelStringLiteral};
-use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
+use crate::std_literal_elaboration::LiteralUnfolding::{
+    NonEmptyUnicodeScalarSequenceUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
+};
 pub use crate::std_literal_elaboration::{
     KernelGrounding, KernelGroundingArm, KernelGroundingView, KernelMintDeclaration,
     LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
@@ -45,7 +47,7 @@ pub fn peano_literal_homomorphism(
 pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
-            Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), unicode_scalar_literal_homomorphism()])
+            Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), unicode_scalar_literal_homomorphism(), nonempty_unicode_scalar_literal_homomorphism()])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<LiteralHomomorphism>>>| c.clone())
@@ -59,6 +61,20 @@ pub fn unicode_scalar_literal_homomorphism() -> Rc<LiteralHomomorphism> {
         destination: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
         element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
         producer: Rc::new(LiteralUnfolding::UnicodeScalarSequenceUnfold),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<LiteralHomomorphism>| c.clone())
+}
+
+pub fn nonempty_unicode_scalar_literal_homomorphism() -> Rc<LiteralHomomorphism> {
+    thread_local! {
+            static CACHED: Rc<LiteralHomomorphism> = {
+                Rc::new(LiteralHomomorphism {
+        source_kind: LiteralSourceKind::KernelStringLiteral,
+        destination: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeSemigroup".to_string()),
+        element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
+        producer: Rc::new(LiteralUnfolding::NonEmptyUnicodeScalarSequenceUnfold),
     })
             };
         }

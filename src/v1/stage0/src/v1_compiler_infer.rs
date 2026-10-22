@@ -43,7 +43,7 @@ use crate::std_coercion::CrossingPlanSelection::{
 };
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
 use crate::std_coercion::TextRepresentation::{
-    CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
+    CodePointSequence, HostText, NonEmptyCodePointSequence, NotText, TextRepresentationUnidentified,
 };
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
@@ -115,17 +115,21 @@ use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
 use crate::std_literal_elaboration::LiteralElaborationOutcome::{
     DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
 };
+use crate::std_literal_elaboration::LiteralElaborationRefusal::*;
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
-use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
+use crate::std_literal_elaboration::LiteralUnfolding::{
+    NonEmptyUnicodeScalarSequenceUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
+};
 use crate::std_literal_elaboration::SignedViewDisagreement::*;
 use crate::std_literal_elaboration::SignedViewReading::{SignedViewAgrees, SignedViewDisagrees};
 pub use crate::std_literal_elaboration::{
     declaration_is_grounded_natural, elaborate_literal_at, kernel_grounding_for,
     kernel_mint_declaration_for, literal_elaboration_refusal_message, literal_source_kind_of,
-    signed_view_disagreement_message, signed_view_reading, GroundedConstructorShape,
-    GroundedDeclaredForm, GroundedFieldDeclaration, GroundedFieldShape, KernelGrounding,
-    KernelGroundingArm, KernelGroundingLookup, KernelGroundingView, KernelMintDeclarationLookup,
-    LiteralElaboration, LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind,
+    literal_unfolding_refusal_for_scalar_count, signed_view_disagreement_message,
+    signed_view_reading, GroundedConstructorShape, GroundedDeclaredForm, GroundedFieldDeclaration,
+    GroundedFieldShape, KernelGrounding, KernelGroundingArm, KernelGroundingLookup,
+    KernelGroundingView, KernelMintDeclarationLookup, LiteralElaboration,
+    LiteralElaborationOutcome, LiteralElaborationRefusal, LiteralHomomorphism, LiteralSourceKind,
     LiteralUnfolding, SignedViewDisagreement, SignedViewReading,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
@@ -2106,29 +2110,19 @@ pub fn text_crossing_or_type_mismatch_error(
             got.clone(),
             env.clone(),
         ) {
-            match crate::v1_compiler_infer_env::text_representation_by_identity(
-                got.clone(),
-                env.clone(),
-            ) {
-                TextRepresentation::HostText => text_crossing_route_error(
-                    expected.clone(),
-                    got.clone(),
-                    "unicode_scalar_unfold".to_string(),
-                    si.clone(),
-                    span.clone(),
-                    module_name.clone(),
-                ),
-                TextRepresentation::CodePointSequence => text_crossing_route_error(
-                    expected.clone(),
-                    got.clone(),
-                    "unicode_scalar_fold".to_string(),
-                    si.clone(),
-                    span.clone(),
-                    module_name.clone(),
-                ),
-                TextRepresentation::NotText => plain,
-                TextRepresentation::TextRepresentationUnidentified => plain,
-            }
+            match crate::v1_compiler_infer_env::text_representation_by_identity(got.clone(), env.clone()) {
+    TextRepresentation::HostText => match crate::v1_compiler_infer_env::text_representation_by_identity(expected.clone(), env.clone()) {
+    TextRepresentation::NonEmptyCodePointSequence => text_crossing_route_error(expected.clone(), got.clone(), "the checked constructor over unicode_scalar_unfold (host text into a non-empty sequence is partial)".to_string(), si.clone(), span.clone(), module_name.clone()),
+    TextRepresentation::HostText => text_crossing_route_error(expected.clone(), got.clone(), "unicode_scalar_unfold".to_string(), si.clone(), span.clone(), module_name.clone()),
+    TextRepresentation::CodePointSequence => text_crossing_route_error(expected.clone(), got.clone(), "unicode_scalar_unfold".to_string(), si.clone(), span.clone(), module_name.clone()),
+    TextRepresentation::NotText => text_crossing_route_error(expected.clone(), got.clone(), "unicode_scalar_unfold".to_string(), si.clone(), span.clone(), module_name.clone()),
+    TextRepresentation::TextRepresentationUnidentified => text_crossing_route_error(expected.clone(), got.clone(), "unicode_scalar_unfold".to_string(), si.clone(), span.clone(), module_name.clone()),
+},
+    TextRepresentation::CodePointSequence => text_crossing_route_error(expected.clone(), got.clone(), "unicode_scalar_fold".to_string(), si.clone(), span.clone(), module_name.clone()),
+    TextRepresentation::NonEmptyCodePointSequence => text_crossing_route_error(expected.clone(), got.clone(), "std.algebra non_empty_to_list, then unicode_scalar_fold".to_string(), si.clone(), span.clone(), module_name.clone()),
+    TextRepresentation::NotText => plain,
+    TextRepresentation::TextRepresentationUnidentified => plain,
+}
         } else {
             plain
         }
@@ -9933,6 +9927,10 @@ pub fn text_representations_both_code_point(a: TextRepresentation, b: TextRepres
             TextRepresentation::CodePointSequence => true,
             _ => false,
         },
+        TextRepresentation::NonEmptyCodePointSequence => match b.clone() {
+            TextRepresentation::NonEmptyCodePointSequence => true,
+            _ => false,
+        },
         _ => false,
     }
 }
@@ -10051,6 +10049,7 @@ if !{ let mut __found = false; for n in host_params.iter().cloned() { if (n.clon
 match value.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: _, .. }) => match argument_text_representation(value.clone(), scope.type_env.clone()) {
     TextRepresentation::CodePointSequence => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text representation crossing: argument '".to_string(), bound_name.clone()), "' of ".to_string()), func_name.clone()), " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence".to_string()), value.span.clone(), scope.module_name.clone())]),
+    TextRepresentation::NonEmptyCodePointSequence => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text representation crossing: argument '".to_string(), bound_name.clone()), "' of ".to_string()), func_name.clone()), " is host text, and the value passed is a non-empty code-point sequence (FreeSemigroup<Char>); its route out is std.algebra non_empty_to_list, then unicode_scalar_fold -- or use the structural operation on the sequence".to_string()), value.span.clone(), scope.module_name.clone())]),
     TextRepresentation::HostText => Rc::new(vec![]),
     TextRepresentation::NotText => Rc::new(vec![]),
     TextRepresentation::TextRepresentationUnidentified => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary {
@@ -10849,6 +10848,34 @@ pub fn categorized_error(
         }),
         module_name.clone(),
     )
+}
+
+pub fn non_empty_text_cast_diags(
+    inner_typed: Rc<Node>,
+    target_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match crate::v1_compiler_infer_env::text_representation_by_identity(target_type.clone(), scope.type_env.clone()) {
+    TextRepresentation::NonEmptyCodePointSequence => match (*inner_typed.expr_data.clone()).clone() {
+    ExprData::ExprLiteral { value: lit, .. } => match (*literal_boundary_elaboration(lit.clone(), Some(target_type.clone()), scope.clone())).clone() {
+    LiteralBoundary::LiteralBoundaryRefused { message: m, .. } => Rc::new(vec![inference_error(m.clone(), inner_typed.span.clone(), scope.module_name.clone())]),
+    LiteralBoundary::LiteralBoundaryElaborated { .. } => Rc::new(vec![]),
+    LiteralBoundary::LiteralBoundaryPlain => Rc::new(vec![]),
+},
+    _ => match argument_text_representation(inner_typed.clone(), scope.type_env.clone()) {
+    TextRepresentation::HostText => Rc::new(vec![inference_error("text representation crossing: a runtime host-text value cast into a non-empty code-point sequence; host text into a non-empty sequence is partial, so its only route is the checked constructor over unicode_scalar_unfold (a string literal is proved by its row instead)".to_string(), span.clone(), scope.module_name.clone())]),
+    TextRepresentation::CodePointSequence => Rc::new(vec![]),
+    TextRepresentation::NonEmptyCodePointSequence => Rc::new(vec![]),
+    TextRepresentation::NotText => Rc::new(vec![]),
+    TextRepresentation::TextRepresentationUnidentified => Rc::new(vec![]),
+},
+},
+    TextRepresentation::CodePointSequence => Rc::new(vec![]),
+    TextRepresentation::HostText => Rc::new(vec![]),
+    TextRepresentation::NotText => Rc::new(vec![]),
+    TextRepresentation::TextRepresentationUnidentified => Rc::new(vec![]),
+}
 }
 
 pub fn validate_cast(
@@ -12244,6 +12271,7 @@ pub fn host_text_unfolded_at_code_point_boundary(
                     }
                 }
                 TextRepresentation::CodePointSequence => ok_infer(value.clone()),
+                TextRepresentation::NonEmptyCodePointSequence => ok_infer(value.clone()),
                 TextRepresentation::NotText => ok_infer(value.clone()),
                 TextRepresentation::TextRepresentationUnidentified => ok_infer(value.clone()),
             }
@@ -12899,6 +12927,29 @@ pub fn code_point_sequence_structure_ref() -> Rc<DeclarationRef> {
     crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string())
 }
 
+pub fn literal_unfolding_refusal_for_literal(
+    row: Rc<LiteralHomomorphism>,
+    lit: Rc<LiteralValue>,
+) -> Option<Rc<LiteralElaborationRefusal>> {
+    match (*lit.clone()).clone() {
+        LiteralValue::LitStr { value: v, .. } => {
+            crate::std_literal_elaboration::literal_unfolding_refusal_for_scalar_count(
+                row.clone(),
+                v1_rt::string_length(&v),
+            )
+        }
+        LiteralValue::LitInt { value: _, .. } => std::option::Option::None,
+        LiteralValue::LitFloat { value: _, .. } => std::option::Option::None,
+        LiteralValue::LitBool { value: _, .. } => std::option::Option::None,
+        LiteralValue::LitSymbol { value: _, .. } => std::option::Option::None,
+        LiteralValue::LitNull => std::option::Option::None,
+    }
+}
+
+pub fn non_empty_code_point_sequence_structure_ref() -> Rc<DeclarationRef> {
+    crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeSemigroup".to_string())
+}
+
 pub fn literal_boundary_elaboration(
     lit: Rc<LiteralValue>,
     expected: Option<Rc<Node>>,
@@ -12911,24 +12962,36 @@ pub fn literal_boundary_elaboration(
                 Rc::new(LiteralBoundary::LiteralBoundaryPlain)
             } else {
                 {
-                    let is_code_point_sequence =
-                        match crate::v1_compiler_infer_env::text_representation_by_identity(
-                            exp.clone(),
-                            scope.type_env.clone(),
-                        ) {
-                            TextRepresentation::CodePointSequence => true,
-                            TextRepresentation::HostText => false,
-                            TextRepresentation::NotText => false,
-                            TextRepresentation::TextRepresentationUnidentified => false,
-                        };
-                    let identified = if is_code_point_sequence.clone() {
-                        Some(code_point_sequence_structure_ref())
+                    let text_rep = crate::v1_compiler_infer_env::text_representation_by_identity(
+                        exp.clone(),
+                        scope.type_env.clone(),
+                    );
+                    let is_non_empty_sequence = match text_rep.clone() {
+                        TextRepresentation::NonEmptyCodePointSequence => true,
+                        TextRepresentation::CodePointSequence => false,
+                        TextRepresentation::HostText => false,
+                        TextRepresentation::NotText => false,
+                        TextRepresentation::TextRepresentationUnidentified => false,
+                    };
+                    let is_code_point_sequence = match text_rep.clone() {
+                        TextRepresentation::CodePointSequence => true,
+                        TextRepresentation::NonEmptyCodePointSequence => true,
+                        TextRepresentation::HostText => false,
+                        TextRepresentation::NotText => false,
+                        TextRepresentation::TextRepresentationUnidentified => false,
+                    };
+                    let identified = if is_non_empty_sequence.clone() {
+                        Some(non_empty_code_point_sequence_structure_ref())
                     } else {
-                        crate::v1_compiler_infer_env::type_reference_declaration_ref(
-                            exp.clone(),
-                            scope.type_env.source_indices.clone(),
-                            scope.type_env.clone(),
-                        )
+                        if is_code_point_sequence.clone() {
+                            Some(code_point_sequence_structure_ref())
+                        } else {
+                            crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                                exp.clone(),
+                                scope.type_env.source_indices.clone(),
+                                scope.type_env.clone(),
+                            )
+                        }
                     };
                     match identified.clone() {
                         std::option::Option::None => Rc::new(LiteralBoundary::LiteralBoundaryPlain),
@@ -12962,7 +13025,11 @@ pub fn literal_boundary_elaboration(
                             };
                             match (*crate::std_literal_elaboration::elaborate_literal_at(literal_homomorphism_rows(), kind.clone(), destination.clone(), element.clone(), natively.clone())).clone() {
     LiteralElaborationOutcome::DirectLiteral => Rc::new(LiteralBoundary::LiteralBoundaryPlain),
-    LiteralElaborationOutcome::ViaHomomorphism { homomorphism: h, .. } => Rc::new(LiteralBoundary::LiteralBoundaryElaborated {
+    LiteralElaborationOutcome::ViaHomomorphism { homomorphism: h, .. } => match literal_unfolding_refusal_for_literal(h.clone(), lit.clone()) {
+    Some(refusal) => Rc::new(LiteralBoundary::LiteralBoundaryRefused {
+    message: crate::std_literal_elaboration::literal_elaboration_refusal_message(refusal.clone()),
+}),
+    std::option::Option::None => Rc::new(LiteralBoundary::LiteralBoundaryElaborated {
     elaboration: Rc::new(LiteralElaboration {
     source_kind: kind.clone(),
     destination: destination.clone(),
@@ -12970,6 +13037,7 @@ pub fn literal_boundary_elaboration(
 }),
     destination_type: exp.clone(),
 }),
+},
     LiteralElaborationOutcome::LiteralElaborationRefused { cause: c, .. } => Rc::new(LiteralBoundary::LiteralBoundaryRefused {
     message: crate::std_literal_elaboration::literal_elaboration_refusal_message(c.clone()),
 }),
@@ -13116,6 +13184,42 @@ pub fn unfold_scalar_sequence_image(
     }
 }
 
+pub fn unfold_non_empty_scalar_sequence_image(
+    s: String,
+    destination_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    {
+        let scalar_nodes = Rc::new({
+            let mut __result = Vec::new();
+            for cp in crate::std_coercion::unicode_scalar_unfold(s.clone())
+                .iter()
+                .cloned()
+            {
+                __result.push(crate::v1_std_core::make_expr_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    Rc::new(ExprData::ExprLiteral {
+                        value: Rc::new(LiteralValue::LitInt { value: cp.clone() }),
+                    }),
+                    Rc::new(vec![]),
+                    Some(Rc::new(InferredNode::Resolved { node: int_type() })),
+                    span.clone(),
+                ));
+            }
+            __result
+        });
+        match scalar_nodes.clone().first().cloned() {
+    std::option::Option::None => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: the non-empty sequence unfold reached the empty literal, which its boundary refuses (std.literal_elaboration literal_unfolding_refusal_for_scalar_count)".to_string(), span.clone()),
+    Some(head) => {
+            let tail = elaborated_expr_node("<unicode-scalar-sequence>".to_string(), Rc::new(ExprData::ExprListLit), Rc::new(v1_rt::list_skip(&scalar_nodes.clone(), 1)), destination_type.clone(), span.clone());
+elaborated_expr_node("FreeSemigroup".to_string(), Rc::new(ExprData::ExprRecordLit {
+    parent_enum: std::option::Option::None,
+}), Rc::new(vec![crate::v1_std_core::make_field_init_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "head".to_string(), head.clone(), span.clone(), elaborated_span("head".to_string())), crate::v1_std_core::make_field_init_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "tail".to_string(), tail.clone(), span.clone(), elaborated_span("tail".to_string()))]), destination_type.clone(), span.clone())
+},
+}
+    }
+}
+
 pub fn unfold_literal_image(
     lit: Rc<LiteralValue>,
     elaboration: Rc<LiteralElaboration>,
@@ -13126,6 +13230,10 @@ pub fn unfold_literal_image(
     LiteralUnfolding::UnicodeScalarSequenceUnfold => match (*lit.clone()).clone() {
     LiteralValue::LitStr { value: s, .. } => unfold_scalar_sequence_image(s.clone(), destination_type.clone(), span.clone()),
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)".to_string(), span.clone()),
+},
+    LiteralUnfolding::NonEmptyUnicodeScalarSequenceUnfold => match (*lit.clone()).clone() {
+    LiteralValue::LitStr { value: s, .. } => unfold_non_empty_scalar_sequence_image(s.clone(), destination_type.clone(), span.clone()),
+    _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a non-empty Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)".to_string(), span.clone()),
 },
     LiteralUnfolding::PeanoUnfold { zero, succ, prev_field, .. } => match (*lit.clone()).clone() {
     LiteralValue::LitInt { value: n, .. } => unfold_peano_image(n.clone(), zero.decl_name.clone(), succ.decl_name.clone(), prev_field.clone(), elaboration.destination.decl_name.clone(), Rc::new(VariantParentIdentity::VariantParentIdentified {
@@ -16709,6 +16817,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.module_name.clone(),
                 scope.type_env.clone(),
             );
+            let cast_text_diags = non_empty_text_cast_diags(
+                inner_typed.clone(),
+                target_type.clone(),
+                span.clone(),
+                scope.clone(),
+            );
             let cast_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprCast),
@@ -16724,10 +16838,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     inner_emissions.clone(),
                     infer_emissions_of_diagnostics(v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(cast_diags.clone(), cast_optional_diags.clone()),
-                            cast_sole_ctor_diags.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(cast_diags.clone(), cast_optional_diags.clone()),
+                                cast_sole_ctor_diags.clone(),
+                            ),
+                            cast_refinement_diags.clone(),
                         ),
-                        cast_refinement_diags.clone(),
+                        cast_text_diags.clone(),
                     )),
                 ),
             })

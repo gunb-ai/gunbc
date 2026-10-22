@@ -10,7 +10,7 @@ use self::UnitVariantPhantomLookup::*;
 pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_coercion::TextRepresentation::{
-    CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
+    CodePointSequence, HostText, NonEmptyCodePointSequence, NotText, TextRepresentationUnidentified,
 };
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
@@ -3146,6 +3146,10 @@ pub fn text_identity_std_algebra_free_monoid() -> Rc<DeclarationRef> {
     crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string())
 }
 
+pub fn text_identity_std_algebra_free_semigroup() -> Rc<DeclarationRef> {
+    crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeSemigroup".to_string())
+}
+
 pub fn text_identity_std_types_char() -> Rc<DeclarationRef> {
     crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())
 }
@@ -3357,88 +3361,119 @@ pub fn text_representation_by_identity_bounded(
                                 ) {
                                     break text_element_is_char(n.clone(), env.clone());
                                 } else {
-                                    let key =
-                                        crate::std_decl_ref::declaration_ref_display_key(d.clone());
-                                    if {
-                                        let mut __found = false;
-                                        for v in visited.iter().cloned() {
-                                            if (v.clone() == key.clone()) {
-                                                __found = true;
-                                                break;
+                                    if crate::std_decl_ref::declaration_ref_eq(
+                                        d.clone(),
+                                        text_identity_std_algebra_free_semigroup(),
+                                    ) {
+                                        match text_element_is_char(n.clone(), env.clone()) {
+                                            TextRepresentation::CodePointSequence => {
+                                                break TextRepresentation::NonEmptyCodePointSequence;
                                             }
-                                        }
-                                        __found
-                                    } {
-                                        break TextRepresentation::TextRepresentationUnidentified;
-                                    } else {
-                                        match declaration_binding_of_ref(d.clone(), env.clone()) {
-                                            std::option::Option::None => {
+                                            TextRepresentation::NonEmptyCodePointSequence => {
+                                                break TextRepresentation::NonEmptyCodePointSequence;
+                                            }
+                                            TextRepresentation::HostText => {
+                                                break TextRepresentation::HostText;
+                                            }
+                                            TextRepresentation::NotText => {
+                                                break TextRepresentation::NotText;
+                                            }
+                                            TextRepresentation::TextRepresentationUnidentified => {
                                                 break TextRepresentation::TextRepresentationUnidentified;
                                             }
-                                            Some(b) => {
-                                                let decl = b.resolved.clone();
-                                                let is_alias = ((decl.connective.clone()
-                                                    == Connective::NoConnective)
-                                                    && ((decl.children.clone().len() as i64) == 0));
-                                                if is_where_refinement_node(decl.clone()) {
-                                                    {
-                                                        let __tco_0 = decl.clone();
-                                                        let __tco_1 = env;
-                                                        let __tco_2 = v1_rt::int_sub(fuel, 1);
-                                                        let __tco_3 = v1_rt::concat(
-                                                            visited,
-                                                            Rc::new(vec![key.clone()]),
-                                                        );
-                                                        __tco_loop_n = __tco_0;
-                                                        __tco_loop_env = __tco_1;
-                                                        __tco_loop_fuel = __tco_2;
-                                                        __tco_loop_visited = __tco_3;
-                                                        continue;
-                                                    }
-                                                } else {
-                                                    if !is_alias.clone() {
-                                                        break TextRepresentation::NotText;
-                                                    } else {
-                                                        match decl
-                                                            .inferred
-                                                            .clone()
-                                                            .as_deref()
-                                                            .cloned()
+                                        }
+                                    } else {
+                                        let key = crate::std_decl_ref::declaration_ref_display_key(
+                                            d.clone(),
+                                        );
+                                        if {
+                                            let mut __found = false;
+                                            for v in visited.iter().cloned() {
+                                                if (v.clone() == key.clone()) {
+                                                    __found = true;
+                                                    break;
+                                                }
+                                            }
+                                            __found
+                                        } {
+                                            break TextRepresentation::TextRepresentationUnidentified;
+                                        } else {
+                                            match declaration_binding_of_ref(d.clone(), env.clone())
+                                            {
+                                                std::option::Option::None => {
+                                                    break TextRepresentation::TextRepresentationUnidentified;
+                                                }
+                                                Some(b) => {
+                                                    let decl = b.resolved.clone();
+                                                    let is_alias = ((decl.connective.clone()
+                                                        == Connective::NoConnective)
+                                                        && ((decl.children.clone().len() as i64)
+                                                            == 0));
+                                                    if is_where_refinement_node(decl.clone()) {
                                                         {
-                                                            Some(InferredNode::Resolved {
-                                                                node: target,
-                                                                ..
-                                                            }) => {
-                                                                let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
+                                                            let __tco_0 = decl.clone();
+                                                            let __tco_1 = env;
+                                                            let __tco_2 = v1_rt::int_sub(fuel, 1);
+                                                            let __tco_3 = v1_rt::concat(
+                                                                visited,
+                                                                Rc::new(vec![key.clone()]),
+                                                            );
+                                                            __tco_loop_n = __tco_0;
+                                                            __tco_loop_env = __tco_1;
+                                                            __tco_loop_fuel = __tco_2;
+                                                            __tco_loop_visited = __tco_3;
+                                                            continue;
+                                                        }
+                                                    } else {
+                                                        if !is_alias.clone() {
+                                                            break TextRepresentation::NotText;
+                                                        } else {
+                                                            match decl
+                                                                .inferred
+                                                                .clone()
+                                                                .as_deref()
+                                                                .cloned()
+                                                            {
+                                                                Some(InferredNode::Resolved {
+                                                                    node: target,
+                                                                    ..
+                                                                }) => {
+                                                                    let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
     TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: t, .. } => crate::std_decl_ref::declaration_ref_eq(t.clone(), d.clone()),
     _ => false,
 };
-                                                                if target_is_itself.clone() {
-                                                                    break TextRepresentation::NotText;
-                                                                } else {
-                                                                    {
-                                                                        let __tco_0 =
-                                                                            target.clone();
-                                                                        let __tco_1 = env;
-                                                                        let __tco_2 =
-                                                                            v1_rt::int_sub(fuel, 1);
-                                                                        let __tco_3 = v1_rt::concat(
-                                                                            visited,
-                                                                            Rc::new(vec![
-                                                                                key.clone()
-                                                                            ]),
-                                                                        );
-                                                                        __tco_loop_n = __tco_0;
-                                                                        __tco_loop_env = __tco_1;
-                                                                        __tco_loop_fuel = __tco_2;
-                                                                        __tco_loop_visited =
-                                                                            __tco_3;
-                                                                        continue;
+                                                                    if target_is_itself.clone() {
+                                                                        break TextRepresentation::NotText;
+                                                                    } else {
+                                                                        {
+                                                                            let __tco_0 =
+                                                                                target.clone();
+                                                                            let __tco_1 = env;
+                                                                            let __tco_2 =
+                                                                                v1_rt::int_sub(
+                                                                                    fuel, 1,
+                                                                                );
+                                                                            let __tco_3 =
+                                                                                v1_rt::concat(
+                                                                                    visited,
+                                                                                    Rc::new(vec![
+                                                                                        key.clone(),
+                                                                                    ]),
+                                                                                );
+                                                                            __tco_loop_n = __tco_0;
+                                                                            __tco_loop_env =
+                                                                                __tco_1;
+                                                                            __tco_loop_fuel =
+                                                                                __tco_2;
+                                                                            __tco_loop_visited =
+                                                                                __tco_3;
+                                                                            continue;
+                                                                        }
                                                                     }
                                                                 }
-                                                            }
-                                                            _ => {
-                                                                break TextRepresentation::NotText;
+                                                                _ => {
+                                                                    break TextRepresentation::NotText;
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -3467,6 +3502,7 @@ pub fn text_representation_is_unidentified(r: TextRepresentation) -> bool {
         TextRepresentation::TextRepresentationUnidentified => true,
         TextRepresentation::HostText => false,
         TextRepresentation::CodePointSequence => false,
+        TextRepresentation::NonEmptyCodePointSequence => false,
         TextRepresentation::NotText => false,
     }
 }
@@ -3475,6 +3511,7 @@ pub fn text_representation_is_text_arm(r: TextRepresentation) -> bool {
     match r.clone() {
         TextRepresentation::HostText => true,
         TextRepresentation::CodePointSequence => true,
+        TextRepresentation::NonEmptyCodePointSequence => true,
         TextRepresentation::NotText => false,
         TextRepresentation::TextRepresentationUnidentified => false,
     }
@@ -3490,6 +3527,7 @@ pub fn host_text_into_structural_sequence(
         let unpeeled_is_structural =
             match text_representation_by_identity(unpeeled_actual.clone(), env.clone()) {
                 TextRepresentation::CodePointSequence => true,
+                TextRepresentation::NonEmptyCodePointSequence => true,
                 TextRepresentation::HostText => false,
                 TextRepresentation::NotText => false,
                 TextRepresentation::TextRepresentationUnidentified => false,
@@ -3531,6 +3569,7 @@ pub fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) 
     match a.clone() {
         TextRepresentation::HostText => match b.clone() {
             TextRepresentation::CodePointSequence => true,
+            TextRepresentation::NonEmptyCodePointSequence => true,
             TextRepresentation::TextRepresentationUnidentified => false,
             TextRepresentation::HostText => false,
             TextRepresentation::NotText => false,
@@ -3539,6 +3578,14 @@ pub fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) 
             TextRepresentation::HostText => true,
             TextRepresentation::TextRepresentationUnidentified => false,
             TextRepresentation::CodePointSequence => false,
+            TextRepresentation::NonEmptyCodePointSequence => false,
+            TextRepresentation::NotText => false,
+        },
+        TextRepresentation::NonEmptyCodePointSequence => match b.clone() {
+            TextRepresentation::HostText => true,
+            TextRepresentation::TextRepresentationUnidentified => false,
+            TextRepresentation::CodePointSequence => false,
+            TextRepresentation::NonEmptyCodePointSequence => false,
             TextRepresentation::NotText => false,
         },
         TextRepresentation::NotText => false,
