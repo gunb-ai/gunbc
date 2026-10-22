@@ -1,0 +1,176 @@
+module gunbc.serving.home_serving_power_policy
+
+import std.optional { Optional, Present, Absent }
+import std.measure { Watt, measure_le }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { CitedFigureStanding }
+
+// WHAT THIS MODULE DECIDES, AND WHY IT EXISTS.
+//
+// `main` carries TWO watt figures for one card and they mean different things.
+// `GpuModelCatalogRow.tdp_watts` (extdeps.gpu.types) is the vendor's thermal design
+// ceiling, cited to a datasheet. `ServingAcceleratorRealization.applied_power_limit`
+// (gunbc.spark.serving_performance_subject) is the ceiling an operator SET, and it
+// carries no standing at all. Before this module no rule connected the two (instrument for
+// re-checking: `git grep -i tdp` over `dag/gunbc/spark` and `dag/gunbc/serving`), so a card could print "600 W" and a
+// reader could not tell which of the two it was, and a 900 W applied limit was never refused
+// against a 600 W part. Both read 600 for the RTX PRO 6000 Workstation, which is exactly how a
+// conflation survives review.
+//
+// The ruling (operator escalation msg_2b573b87, option C): a recorded watt is BOTH, kept
+// DISTINCT, with applied > TDP refused. So this module never merges them into one number and
+// never lets a watt appear without the warrant that grounds it.
+//
+// WHY A SEAL RATHER THAN A VALIDATOR. `gunbc.recurring_failure_mode`
+// `benchmark_warm_capacity_violation_read_as_engine_performance` promises, in its CEILING
+// clause, protection "through the admitted receipt constructor". The warm-standing coproduct it
+// guards has no such constructor: `GpuBenchWarmStanding` is an unsealed coproduct, so a foreign
+// module can today write `WarmValid { working_set_tokens: ..., measured_kv_tokens: ... }`
+// literally and pair it with a subject it invented. An ARM carries its fields inline and arms are
+// not sealed; a sealed RECORD does not, so it cannot be populated outside its module at all.
+// The funded arm below therefore carries exactly one field, a `HomeServingPowerAdmission`, whose
+// type is `sole_constructor` with a single mint, and that mint admits exactly one declaration.
+//
+// WHY THE MINT IS ROSTERED AND WHY THE DEFINER MUST LIST ITSELF. `admit_callers` compares the
+// CALLER's coordinates against the list (v1_compiler_infer.rs
+// `constructor_admission_diags_from_lookup`) and carries NO definer exemption — a same-module
+// call from an unlisted declaration refuses exactly as a foreign one does. The seal's own
+// diagnostic says a type "cannot be constructed outside its defining module" while the code
+// compares FILE paths, so "defining module" is not a safe reading of either wall; the roster is
+// the file-agnostic half and it is absolute. Hence the single entry is this module's own
+// decision fold: it is the only thing that should be able to produce a funded admission, and
+// saying so is the wall, not a workaround. `test.fixture.sole_constructor_sealed` shows the two
+// shapes side by side — an unrostered mint exported to anyone, and a rostered one whose only
+// caller is a named foreign declaration; this module uses the second, with the definer's own
+// fold named where the fixture names its sibling.
+//
+// FRONTIER — WHO READS THE FUNDED ARM, AND WHAT DISSOLVES THIS. `PowerPolicyAdmitted` has no
+// consumer in this change beyond the witness that proves it is inhabitable and the accessors
+// that read it back. Its named later reader is the home-serving candidate field, which takes an
+// admitted policy as one objective axis; the obligation that opens that door is the same
+// failure-mode row's NEXT TRIGGER, "P4 selection consumes only WarmValid as a funded axis".
+// Until that selection exists an admitted policy is evidence held, not evidence spent — which is
+// the honest state, and the reason the mint admits no additional caller: a second consumer is an
+// admitting change, visible in review.
+
+// One watt together with the warrant that grounds it. An INPUT, deliberately unsealed: a caller
+// may hand over a reading it cannot stand behind, and this module's job is to refuse it. What is
+// NOT expressible is such a reading becoming a `HomeServingPowerAdmission` without the check
+// below, because that type is sealed and its mint is the only door.
+type HomeServingPowerReading {
+  limit: Watt
+  standing: CitedFigureStanding
+}
+
+// WHY A CAUSE IS A CLOSED COPRODUCT AND NOT `cause: NonEmptyStr`. The sibling warm-standing
+// folds carry a free-text cause which consumers then compare as text. Here the ways a card/limit
+// pair can fail are closed and distinct, and each names WHICH reading is at fault, so a refusal
+// is attributable rather than merely fatal.
+//
+// AND WHY THERE IS NO `home_serving_power_cause_is_unread(...) -> Bool`. The question it would
+// answer — go and read something, versus do not retry this pair — is decided ONCE, by which arm of
+// `HomeServingPowerPolicy` the result lands in: `PowerPolicyUnread` versus `PowerPolicyRefused`.
+// A Bool helper over the cause would be a second answer sitting beside the arms that already
+// answer it, and the two could drift. That is the predicate-dissolution rule the serving subject
+// module already follows for its own axis readings, so the cause is carried for attribution and
+// never interrogated for the split.
+type HomeServingPowerCause
+  = TdpUnread
+  | TdpStandingUnstated
+  | AppliedLimitUnread
+  | AppliedStandingUnstated
+  | AppliedLimitExceedsTdp { applied_watts: Watt, tdp_watts: Watt }
+
+type HomeServingPowerPolicy
+  = PowerPolicyUnread { cause: HomeServingPowerCause }
+  | PowerPolicyRefused { cause: HomeServingPowerCause }
+  | PowerPolicyAdmitted { admission: HomeServingPowerAdmission }
+
+// The funded fact. Sealed, so it cannot be written outside this module at all. Field READING is
+// not what the seal controls — fields on a sealed record are readable from any module (the repo
+// reads `observed.receipt` directly from a foreign module inside `user_manager_sandbox_enforcement`
+// in `gunbc.host.host_software_surface`) — so
+// the accessors below are the named read path rather than an enforced gate: they exist so a
+// consumer takes the pair through one spelled-out route and the field names do not scatter across
+// call sites. What is genuinely blocked is ASSEMBLY: a consumer can read this pair, cannot build
+// one, so the only admission in circulation is the one the fold checked.
+type HomeServingPowerAdmission sole_constructor {
+  tdp_watts: Watt
+  tdp_standing: CitedFigureStanding
+  applied_watts: Watt
+  applied_standing: CitedFigureStanding
+}
+
+// THE ONLY DOOR. Every input arrives carrying its standing, so a watt with no warrant cannot
+// reach an admitted policy at all — not "reaches it and gets caught", but is not a value this
+// signature accepts. The over-limit test runs on the CARRIER (`measure_le` reads `.count` on the
+// measure), never on an unwrapped scalar, so units cannot be dropped mid-fold.
+fn home_serving_power_admission(tdp_watts: Watt, tdp_standing: CitedFigureStanding, applied_watts: Watt, applied_standing: CitedFigureStanding) -> HomeServingPowerAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.home_serving_power_policy", decl_name: "compare_applied_to_tdp"),
+  ]
+  = HomeServingPowerAdmission {
+    tdp_watts: tdp_watts,
+    tdp_standing: tdp_standing,
+    applied_watts: applied_watts,
+    applied_standing: applied_standing,
+  }
+
+fn home_serving_power_admission_tdp(admission: HomeServingPowerAdmission) -> Watt {
+  admission.tdp_watts
+}
+
+fn home_serving_power_admission_applied(admission: HomeServingPowerAdmission) -> Watt {
+  admission.applied_watts
+}
+
+// WHY THERE ARE NO STANDING ACCESSORS. Each standing is carried so the admitted pair travels with
+// its own warrant, but nothing reads it apart from the fold that wrapped it — the fold hands back
+// the very standing it was given, so an accessor here would be a pass-through with no consumer,
+// which is §2 growth. The candidate field that must CITE these figures adds its accessor in the
+// same change that consumes it, so the accessor and its reader land together.
+
+// The ceiling is established first, because a refusal asserted against a ceiling nobody stated
+// would be the very conflation this module exists to remove: with no trustworthy ceiling there is
+// nothing to refuse AGAINST, so an unread TDP outranks an over-limit applied value and the honest
+// output is unread, not refused. Ordering is load-bearing and a witness pins it.
+fn home_serving_power_policy(tdp: Optional<HomeServingPowerReading>, applied: Optional<HomeServingPowerReading>) -> HomeServingPowerPolicy {
+  match tdp {
+    Absent => PowerPolicyUnread { cause: TdpUnread }
+    Present { value: t } => match t.standing {
+      TranscribedUncited { read_obligation: _ } => PowerPolicyUnread { cause: TdpStandingUnstated }
+      CitedToAuthority { authority: _ } => policy_under_grounded_tdp(t: t, applied: applied)
+      ObservedByReceipt { observed: _ } => policy_under_grounded_tdp(t: t, applied: applied)
+    }
+  }
+}
+
+// Reached only once the TDP is present and grounded. Each applied arm answers its question once;
+// the two grounded standing arms share the body rather than duplicating it.
+fn policy_under_grounded_tdp(t: HomeServingPowerReading, applied: Optional<HomeServingPowerReading>) -> HomeServingPowerPolicy {
+  match applied {
+    Absent => PowerPolicyUnread { cause: AppliedLimitUnread }
+    Present { value: a } => match a.standing {
+      TranscribedUncited { read_obligation: _ } => PowerPolicyUnread { cause: AppliedStandingUnstated }
+      CitedToAuthority { authority: _ } => compare_applied_to_tdp(t: t, a: a)
+      ObservedByReceipt { observed: _ } => compare_applied_to_tdp(t: t, a: a)
+    }
+  }
+}
+
+fn compare_applied_to_tdp(t: HomeServingPowerReading, a: HomeServingPowerReading) -> HomeServingPowerPolicy {
+  if measure_le(a: a.limit, b: t.limit) {
+    PowerPolicyAdmitted {
+      admission: home_serving_power_admission(
+        tdp_watts: t.limit,
+        tdp_standing: t.standing,
+        applied_watts: a.limit,
+        applied_standing: a.standing,
+      ),
+    }
+  } else {
+    PowerPolicyRefused {
+      cause: AppliedLimitExceedsTdp { applied_watts: a.limit, tdp_watts: t.limit },
+    }
+  }
+}
