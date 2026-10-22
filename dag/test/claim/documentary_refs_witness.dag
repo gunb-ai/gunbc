@@ -9,9 +9,10 @@ import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   generated_document_declaration_refs,
+  ruling_standing_agrees_with_citation,
 }
 import gunbc.design_document { expected_design_md }
-import gunbc.design_ruling { design_rulings }
+import gunbc.design_ruling { design_rulings, CitedInDesign, LedgerOnly }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
 // cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
@@ -140,6 +141,36 @@ test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   all(generated_document_declaration_refs(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
 }
 
+
+// THE CLASSIFICATION HALF, IN BOTH DIRECTIONS. Every ruling row declares whether the generated document
+// cites it (CitedInDesign) or is a ledger fact it does not state (LedgerOnly), and the rendered
+// document must agree with that for EVERY row: a cited row it omits and a ledger row it cites are both
+// refused. The roster claim above reads only the rows classified as cited, so without this claim a
+// LedgerOnly label could be set on a row the document in fact cites, or a row could be moved to
+// LedgerOnly to silence an omission, and nothing would notice.
+test fn documentary_refs_every_ruling_standing_agrees_with_the_document() -> Bool {
+  let md = expected_design_md()
+  all(design_rulings(), r => ruling_standing_agrees_with_citation(
+    standing: r.standing,
+    cited: string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r.reference)),
+  ))
+}
+
+// THE REDS OF THAT JUDGEMENT, driven on supplied values: the live claim above is green when the corpus
+// agrees, so these two are what make it discriminate, and the third is the positive control that both
+// agreeing combinations are admitted.
+test fn documentary_refs_a_ledger_only_row_the_document_cites_refuses() -> Bool {
+  !ruling_standing_agrees_with_citation(standing: LedgerOnly { reason: "fixture" }, cited: true)
+}
+
+test fn documentary_refs_a_cited_row_the_document_omits_refuses() -> Bool {
+  !ruling_standing_agrees_with_citation(standing: CitedInDesign {}, cited: false)
+}
+
+test fn documentary_refs_agreeing_standings_are_admitted() -> Bool {
+  ruling_standing_agrees_with_citation(standing: CitedInDesign {}, cited: true)
+    && ruling_standing_agrees_with_citation(standing: LedgerOnly { reason: "fixture" }, cited: false)
+}
 
 // THE INHABITANCE HALF. The fixture above derives the ruling facts from the rows' own references, so
 // it proves the resolver's behaviour, not that a row's reference names the row: a row whose
