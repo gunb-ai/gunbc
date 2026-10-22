@@ -199,39 +199,45 @@ pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64,
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
 pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
-            // THE MODULE-PATH INDEX IS LENT, NOT COPIED (CENSUS COST). This asked for the
-            // whole corpus index as an owned map, which clones all 9003 entries out of the
-            // thread-local memo on EVERY census call; the resolve below only ever asks it
-            // keyed questions (`module_index.get(&module_path)`), one entry at a time.
-            // `with_module_path_index` is the same memo, borrowed for the duration. A
-            // re-entrant demand on the same memo would double-borrow and panic -- that is
-            // caught here and surfaces as `NotRunnable`, so the digest equality the census
-            // control asserts is what keeps this borrow honest, not an argument.
-            let roots = default_source_roots();
-            // THE COMPILE JOINS THE BORROW TOO. A caller merged after this fix removed the
-            // index from this signature, so the compile here must take the SAME lent index
-            // the resolve got -- threading it as a borrow, never a clone: building a second
-            // owned index (build_module_path_index_from_witness_roots) would clone every
-            // corpus entry per census call, exactly the cost this change deleted. The
-            // double-borrow hazard is the one the comment above already accepts: a re-entrant
-            // demand panics and lands in NotRunnable, and the digest-equality control is what
-            // keeps the borrow honest.
-            let compiled_inner =
-                crate::cli_run::entry_resolve::with_module_path_index(&roots, |module_index| {
-                    let sources = resolve_virtual_source_with_imports(
-                        FIXTURE_SOURCE_PATH,
-                        source,
-                        module_index,
-                    )
-                    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
-                    record_fixture_closure(&sources);
-                    compile_fixture_rendering_only_what_is_read(sources, None, module_index)
-                })?;
-            compiled_inner
-        })
-    }));
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || -> Result<_, FixtureRenderRefusal> {
+            crate::v1_rt::with_type_ref_hit_ne_bind_measure(
+                || -> Result<_, FixtureRenderRefusal> {
+                    // THE MODULE-PATH INDEX IS LENT, NOT COPIED (CENSUS COST). This asked for the
+                    // whole corpus index as an owned map, which clones all 9003 entries out of the
+                    // thread-local memo on EVERY census call; the resolve below only ever asks it
+                    // keyed questions (`module_index.get(&module_path)`), one entry at a time.
+                    // `with_module_path_index` is the same memo, borrowed for the duration. A
+                    // re-entrant demand on the same memo would double-borrow and panic -- that is
+                    // caught here and surfaces as `NotRunnable`, so the digest equality the census
+                    // control asserts is what keeps this borrow honest, not an argument.
+                    let roots = default_source_roots();
+                    // THE COMPILE JOINS THE BORROW TOO. A caller merged after this fix removed the
+                    // index from this signature, so the compile here must take the SAME lent index
+                    // the resolve got -- threading it as a borrow, never a clone: building a second
+                    // owned index (build_module_path_index_from_witness_roots) would clone every
+                    // corpus entry per census call, exactly the cost this change deleted. The
+                    // double-borrow hazard is the one the comment above already accepts: a re-entrant
+                    // demand panics and lands in NotRunnable, and the digest-equality control is what
+                    // keeps the borrow honest.
+                    let compiled_inner = crate::cli_run::entry_resolve::with_module_path_index(
+                        &roots,
+                        |module_index| {
+                            let sources = resolve_virtual_source_with_imports(
+                                FIXTURE_SOURCE_PATH,
+                                source,
+                                module_index,
+                            )
+                            .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+                            record_fixture_closure(&sources);
+                            compile_fixture_rendering_only_what_is_read(sources, None, module_index)
+                        },
+                    )?;
+                    compiled_inner
+                },
+            )
+        },
+    ));
     let result = match compiled {
         Ok(Ok(r)) => r,
         Ok(Err(refusal)) => {
