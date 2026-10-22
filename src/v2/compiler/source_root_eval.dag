@@ -359,6 +359,7 @@ import std.types {
   Map,
 }
 import std.algebra {
+  list_member,
   Cons,
   Empty,
   FreeMonoid,
@@ -1555,9 +1556,7 @@ type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
-  | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
-  | NativeDriverDeclRefCensus { source_roots: FreeMonoid<String> }
-  | NativeDriverTraversalOrderCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusVerb { verb: String, source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
@@ -1574,11 +1573,10 @@ data native_driver_verb_census_resolve: String = "census-resolve"
 // stay part 1's (docs/plans/census-part-2-inference-design.md section 2a).
 data native_driver_verb_census_infer: String = "census-infer"
 
-data native_driver_verb_demand_census: String = "demand-census"
-
-data native_driver_verb_decl_ref_census: String = "decl-ref-census"
-
-data native_driver_verb_traversal_order_census: String = "traversal-order-census"
+// THE CENSUS VERBS ARE ROWS, NOT VARIANTS: one plan (NativeDriverCensusVerb), one parse state and one
+// emitted run function serve every verb here, and native_census_verb_output is the single dispatch from a
+// verb word to its fold. A new census is a row in this list plus an arm there -- no template Rust.
+data native_census_verb_names: List<String> = ["demand-census", "decl-ref-census", "traversal-order-census"]
 
 data native_driver_verb_census_scoped: String = "census-scoped"
 
@@ -1626,9 +1624,7 @@ type NativeDriverParseState
   | DriverCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
-  | DriverDemandCensusRoots { roots: FreeMonoid<String> }
-  | DriverDeclRefCensusRoots { roots: FreeMonoid<String> }
-  | DriverTraversalOrderCensusRoots { roots: FreeMonoid<String> }
+  | DriverCensusVerbRoots { verb: String, roots: FreeMonoid<String> }
   | DriverCensusScopedSeekSubject
   | DriverCensusScopedAfterSubject { subject: String, rest: List<String> }
   | DriverCensusScopedSeekAgainst { subject: String }
@@ -1660,12 +1656,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusResolveRoots { roots: [] }
       } else if word == native_driver_verb_census_infer {
         DriverCensusInferRoots { roots: [] }
-      } else if word == native_driver_verb_demand_census {
-        DriverDemandCensusRoots { roots: [] }
-      } else if word == native_driver_verb_decl_ref_census {
-        DriverDeclRefCensusRoots { roots: [] }
-      } else if word == native_driver_verb_traversal_order_census {
-        DriverTraversalOrderCensusRoots { roots: [] }
+      } else if list_member(xs: native_census_verb_names, x: word, eq: fn(a, b) { a == b }) {
+        DriverCensusVerbRoots { verb: word, roots: [] }
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
@@ -1682,12 +1674,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusInferRoots { roots: roots } =>
       DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
-    DriverDemandCensusRoots { roots: roots } =>
-      DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
-    DriverDeclRefCensusRoots { roots: roots } =>
-      DriverDeclRefCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
-    DriverTraversalOrderCensusRoots { roots: roots } =>
-      DriverTraversalOrderCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusVerbRoots { verb: verb, roots: roots } =>
+      DriverCensusVerbRoots { verb: verb, roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusScopedSeekSubject =>
       match native_census_subject_module(label: word) {
         NativeCensusSubjectModuleUnavailable { reason: reason } =>
@@ -1771,12 +1759,8 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
     DriverCensusInferRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
-    DriverDemandCensusRoots { roots: roots } =>
-      NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
-    DriverDeclRefCensusRoots { roots: roots } =>
-      NativeDriverPlanned { verb: NativeDriverDeclRefCensus { source_roots: roots } }
-    DriverTraversalOrderCensusRoots { roots: roots } =>
-      NativeDriverPlanned { verb: NativeDriverTraversalOrderCensus { source_roots: roots } }
+    DriverCensusVerbRoots { verb: verb, roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusVerb { verb: verb, source_roots: roots } }
     DriverCensusScopedSeekSubject =>
       NativeDriverPlanRefused {
         reason: ^native_driver_census_scoped_without_subject,
@@ -1829,9 +1813,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
-        NativeDriverDemandCensus { source_roots: roots } => roots
-        NativeDriverDeclRefCensus { source_roots: roots } => roots
-        NativeDriverTraversalOrderCensus { source_roots: roots } => roots
+        NativeDriverCensusVerb { verb: _, source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
@@ -7273,4 +7255,27 @@ fn native_demand_schedule_universe_step(
     compiler: compiler,
     fuel: native_demand_plan_size(plan: plan) + 1
   )
+}
+
+// THE ONE DISPATCH FROM A CENSUS VERB WORD TO ITS FOLD (the emitted driver's run function calls only this).
+// A word outside native_census_verb_names never reaches here (the parse refuses it), so the last arm is
+// the located no-observation answer, not a default.
+type NativeCensusVerbOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_census_verb_output(verb: String, ingest: SourceRootIngest) -> NativeCensusVerbOutput {
+  if verb == "demand-census" {
+    let o = native_demand_census_output(ingest: ingest)
+    NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+  } else if verb == "decl-ref-census" {
+    let o = native_decl_ref_census_output(ingest: ingest)
+    NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+  } else if verb == "traversal-order-census" {
+    let o = native_traversal_order_census_output(ingest: ingest)
+    NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+  } else {
+    NativeCensusVerbOutput { lines: [concat("[census] no observation: unknown census verb ", verb)], exit: 2 }
+  }
 }
