@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import v2.std.integer { Int }
 import std.algebra { length }
 import v2.std.text { string_all_chars_in }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.tools.base64 { Base64FileEncoded, Base64FileUnreadable, base64_encode_file_via_shell }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -30,6 +31,26 @@ data committed_image_encoded_length: Int = 450560
 test fn the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length() -> Bool {
   match base64_encode_file_via_shell(path: committed_image_path) {
     Base64FileEncoded { text: t } => string_all_chars_in(s: t, alphabet: base64_alphabet) && length(t) == committed_image_encoded_length
+    Base64FileUnreadable { stderr: _ } => false
+    _ => false
+  }
+}
+
+// CONTENT JOIN: the exact encoded text, digested by the modelled sha256sum DigestStdin, equals the digest
+// of the base64 of the committed image. The expected hex was derived once, outside this witness, from the
+// committed image by the host tools (`base64 -w 0 artifacts/ipxe/snponly-arm64.efi | sha256sum`), and that
+// image is the one whose own sha256 (18b1cbd2...7e05) test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness
+// holds to the pin; so this binds the tool's output text to the pinned bytes through a fixed encoding.
+// A single changed base64 character keeps the alphabet and the length and moves this digest.
+data committed_image_encoding_sha256: String = "0010d0eef7a5a7ffa463edbb957008d4470c4c77912dfee9370ea03f655a2d7a"
+
+test fn the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image() -> Bool {
+  match base64_encode_file_via_shell(path: committed_image_path) {
+    Base64FileEncoded { text: t } =>
+      match sha256sum_stdin_digest_via_shell(content: t) {
+        Sha256FileDigest { digest: d } => d.hex as String == committed_image_encoding_sha256
+        Sha256FileDigestUnavailable { path: _, reason: _ } => false
+      }
     Base64FileUnreadable { stderr: _ } => false
     _ => false
   }
