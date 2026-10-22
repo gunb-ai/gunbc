@@ -1,7 +1,7 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr, List }
-import std.algebra { collection_concat_shape }
+import std.types { NonEmptyStr, List, Char }
+import std.algebra { FreeMonoid, collection_concat_shape }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -142,31 +142,17 @@ fn declaration_ref_display_key(ref: DeclarationRef) -> String {
 // String so a path cannot be passed where an identity is required: the confusion is unwritable rather
 // than merely labelled. It lives here, beside DeclarationRef, as the one authority for naming a module;
 // it moved down from v2.lens.module_impact_query because std.decl_ref sits inside that lens's import
-// closure (through v2.lens.module_graph), so the lens could not be imported from here.
+// closure (through v2.lens.module_graph), so the lens could not be imported from here. The name is
+// structural text, FreeMonoid<Char>, exactly the type v2.std.text String names: the move keeps the
+// representation, so a value hashed or compared by name (gunbc.repo.repo_atlas_projection places every
+// module by a hash of it) reads the same as before.
 type ModuleIdentity {
-  name: String
+  name: FreeMonoid<Char>
 }
 
 // WHAT A DOCUMENT CITES: a declaration (optionally a field or type parameter of it) or a whole module.
-// The rendered spelling is one function of the carrier, so a document holds no second spelling of
-// the name it cites.
+// The rendered spelling is one function of the carrier (std.markdown cited_symbol_spelling), so a
+// document holds no second spelling of the name it cites.
 type CitedSymbol
   = DeclarationSymbol { reference: DeclarationRef }
   | ModuleSymbol { module: ModuleIdentity }
-
-// THE ONE CANONICAL SPELLING of a cited symbol: the module path, then the declaration after a space,
-// then a field or type parameter after a dot. One spelling, the spaced form: never a
-// per-site choice between ::, . and space, which would be a second name for one citation.
-fn cited_symbol_spelling(symbol: CitedSymbol) -> String {
-  match symbol {
-    ModuleSymbol { module: m } => m.name
-    DeclarationSymbol { reference: r } =>
-      match r.field {
-        WholeDeclaration => concat(r.module_path as String, concat(" ", r.decl_name as String))
-        NamedField { field_name: f } =>
-          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat(".", f as String))))
-        TypeParameter { name: t } =>
-          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat(".", t as String))))
-      }
-  }
-}

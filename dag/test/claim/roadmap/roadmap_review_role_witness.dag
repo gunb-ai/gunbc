@@ -17,6 +17,7 @@ import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance
 import gunbc.design_document { expected_design_md, conformance_domain_section }
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.markdown { MarkdownDocument }
+import gunbc.plans.md_helpers { tx }
 import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 
@@ -144,8 +145,8 @@ fn synthetic_domain(label: String, owns: String) -> ConformanceDomain {
     label: label,
     question: "Is this a test?",
     tells: ["a synthetic tell that exists only in this test"],
-    owns: owns,
-    boundaries: ["a synthetic boundary"],
+    owns: [tx(text: owns)],
+    boundaries: [[tx(text: "a synthetic boundary")]],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup { label: "Synthetic group", purpose: "exists only in this test", homes: synthetic_homes(head: "Bool", tail: ["Unit"]) },
       tail: [],
@@ -160,15 +161,15 @@ test fn a_one_element_conformance_home_list_renders_as_before() -> Bool {
     "**Boundary.** a synthetic boundary\n\n",
     "**Existing authorities**\n\n",
     "- **Synthetic group** — exists only in this test\n",
-    "  - `std.types::Bool`\n",
+    "  - `std.types Bool`\n",
   ], "")
   let d = ConformanceDomain {
     key: "test-one-home",
     label: "one element domain",
     question: "Is this a test?",
     tells: ["a synthetic tell that exists only in this test"],
-    owns: "one home is enough",
-    boundaries: ["a synthetic boundary"],
+    owns: [tx(text: "one home is enough")],
+    boundaries: [[tx(text: "a synthetic boundary")]],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
         label: "Synthetic group",
@@ -197,8 +198,8 @@ test fn a_synthetic_conformance_domain_produces_exactly_one_design_section() -> 
     "**Boundary.** a synthetic boundary\n\n",
     "**Existing authorities**\n\n",
     "- **Synthetic group** — exists only in this test\n",
-    "  - `std.types::Bool`\n",
-    "  - `std.types::Unit`\n",
+    "  - `std.types Bool`\n",
+    "  - `std.types Unit`\n",
   ], "")
   rendered_domain(d: synthetic_domain(label: "synthetic test domain", owns: "this domain exists only to prove the renderer is a pure function of its input")) == expected
 }

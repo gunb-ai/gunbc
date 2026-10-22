@@ -19,7 +19,7 @@ import extdeps.uri_validation {
 }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration, cited_symbol_spelling }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
   MarkupMedium,
   TagDelimiter,
@@ -29,6 +29,7 @@ import std.markup {
   Rejected,
 }
 import std.markdown {
+  cited_symbol_spelling,
   MarkdownDocument,
   MarkdownBlock,
   MarkdownInline,

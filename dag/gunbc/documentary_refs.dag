@@ -33,7 +33,7 @@ import gunbc.design_ruling { design_rulings }
 // bytes come from these rows rather than beside them. A row typed here while the paragraph
 // independently spells the same name would be two representations of one fact, which is the shape
 // this program exists to remove -- so the paragraph cites the row as a std.markdown SymbolRefInline,
-// whose one spelling is std.decl_ref cited_symbol_spelling, and a rename that moves the row moves
+// whose one spelling is std.markdown cited_symbol_spelling, and a rename that moves the row moves
 // the document.
 
 data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1.v1_maintenance_standing", decl_name: "v1_seed_standing")
