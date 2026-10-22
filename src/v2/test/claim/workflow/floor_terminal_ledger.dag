@@ -1,6 +1,8 @@
 module v2.test.claim.workflow.floor_terminal_ledger
 
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import std.types { NonEmptyStr }
+import gunbc.guarantee_measurement { ProbeObservation, ProbeNotRunnable }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity }
 import v2.workflow.required_floor { CompletedWithinSafetyLimits, SafetyInterrupted }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
@@ -118,7 +120,7 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
   claim_disposition(row: ClaimTerminalRow {
     identity: ident(f: "e"),
     expectation: ExpectedToHold,
-    terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" } }
+    terminal: Returned { observation: ObservationUnrepresentable { reason: "not-a-process-exit" as NonEmptyStr } }
   }) == ObservationUnreadableBeforeVerdict
 }
 
@@ -251,4 +253,22 @@ test fn a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger() -> B
 // producing an unbound ledger that every other test then happily exercises.
 test fn the_fixture_binding_is_candidate_bound() -> Bool {
   ledger_is_candidate_bound(binding: ledger_with(publication: LedgerPartial { reason: "probe" }).binding)
+}
+
+// A CENSUS PROBE'S COULD-NOT-MEASURE CAUSE ENTERS THE LEDGER UNTRANSLATED. `ProbeNotRunnable.cause` and
+// `ObservationUnrepresentable.reason` are the same `NonEmptyStr`, so the carrier is the cause itself
+// and no mapping function stands between them. The control is the verdict arm: a held observation
+// still projects to `Passed`, so the unreadable projection is not satisfied by every row.
+test fn a_probe_not_runnable_cause_is_carried_into_the_ledger_unchanged() -> Bool {
+  let p = ProbeNotRunnable { cause: "census-unrunnable" as NonEmptyStr }
+  match p {
+    ProbeNotRunnable { cause: c } =>
+      claim_disposition(row: ClaimTerminalRow {
+        identity: ident(f: "n"),
+        expectation: ExpectedToHold,
+        terminal: Returned { observation: ObservationUnrepresentable { reason: c } }
+      }) == ObservationUnreadableBeforeVerdict
+        && claim_disposition(row: row(f: "o", expectation: ExpectedToHold, holds: 0 == 0)) == Passed
+    _ => false
+  }
 }
