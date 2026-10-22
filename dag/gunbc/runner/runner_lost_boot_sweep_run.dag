@@ -78,7 +78,9 @@ import gunbc.runner.runner_jit_deregistration {
 // credential, so lost_boot_sweep_wet passes no transport and the mode stays gated at the join until a
 // host-authenticated transport to the swept host (a known-hosts anchor plus an SSH credential, both from an
 // executed selection) is supplied. The read, its refusals and the mint are exercised in
-// test.claim.runner.runner_lost_boot_sweep_run_witness.
+// test.claim.runner.runner_lost_boot_sweep_run_witness. HOST BINDING IS A DECLARED CONDITION, NOT YET
+// STRUCTURE: HostEffectTransport names no managed host, so the caller must supply a transport that reaches
+// `host`; see lost_boot_sweep_effect_pairing_frontier.
 //
 // THE CREDENTIAL IS THE RUN'S OWN: the gunbai-ci App key is staged from Secret Manager under the
 // run's federated identity, signs the installation-token mint and the control-plane observation, and
