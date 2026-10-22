@@ -2,7 +2,7 @@ module test.claim.live_deploy_unit_emission_oracle_witness
 
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
-import gunbc.auth.approval_device_crypto_client { device_crypto_readback_expectation }
+import gunbc.live_deploy.apply { device_crypto_readback_expectation }
 import gunbc.auth.approval_device_crypto_realization { DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, DeviceCryptoRequirement, DeviceCryptoExpectation, device_crypto_gate, approval_device_crypto_realization }
 import std.measure { ByteSize, byte_size_count, second_count }
 import std.layout { render }
@@ -34,7 +34,6 @@ import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_install_steps, device_crypto_sidecar_binary_path,
-  device_crypto_sidecar_start_steps, approval_broker_lifecycle_steps,
   emit_slice_unit_doc,
   live_deploy_protocol,
   emit_belt_service_unit_doc,
@@ -389,16 +388,6 @@ test fn the_digest_env_is_computed_from_the_installed_sidecar_binary_and_no_othe
   let text = pipeline_steps_text(steps: steps)
   string_contains(s: text, pattern: join(["sha256sum ", installed], "")) && !string_contains(s: text, pattern: join(["sha256sum ", gunbc_bin], ""))
     && string_contains(s: text, pattern: "test $\{#d} -eq 64 && ") && !string_contains(s: text, pattern: "| cut")
-}
-
-// THE SIDECAR IS STARTED AHEAD OF THE BROKER'S RESTART (run 39545280023): the sidecar's reload/enable/restart are in the plan
-// section that precedes the broker unit write, and the broker's lifecycle never names the sidecar unit. RED: moving the
-// sidecar restart back into approval_broker_lifecycle_steps puts it after the broker restart and fails the second conjunct.
-test fn the_sidecar_start_precedes_the_broker_swap_and_the_lifecycle_holds_only_the_broker() -> Bool {
-  let sidecar = pipeline_steps_text(steps: device_crypto_sidecar_start_steps())
-  let lifecycle = pipeline_steps_text(steps: approval_broker_lifecycle_steps(spec: live_spec()))
-  string_contains(s: sidecar, pattern: "gunbc-device-crypto-sidecar") && string_contains(s: sidecar, pattern: "restart")
-    && string_contains(s: lifecycle, pattern: "gunbc-approval-broker") && !string_contains(s: lifecycle, pattern: "gunbc-device-crypto-sidecar")
 }
 
 // THE BROKER INHERITS THE ROADMAP'S EVALUATION CAPS, and that is a stated divergence rather than a

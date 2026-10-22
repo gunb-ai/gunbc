@@ -35,7 +35,7 @@ import gunbc.live_deploy.release_locus {
   release_locus_dir,
   release_locus_releases_dir,
   release_locus_binary_path,
-  release_locus_member_path, approval_broker_release_locus_executables,
+  release_locus_member_path,
   release_locus_tree_receipt_path,
   release_locus_tree_subdirs,
   approval_broker_helper_root_principal,
@@ -996,9 +996,14 @@ fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRe
   let svc = spec.approval_broker
   let owner = svc.service_user
   let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
-  // The sidecar binary itself is a member of the broker's release locus (approval_broker_release_locus_executables),
-  // installed by release_locus_install_steps ahead of this step; only the runtime-valued digest write is here.
   [
+    deploy_raw(command: install_file_owned_command(
+      mode: install_executable_shared_mode,
+      owner: owner,
+      group: owner,
+      source: join([cargo_default_release_dir_rel, "/", approval_device_crypto_serve_release_bin_name], ""),
+      dest: installed,
+    )),
     deploy_raw(command: join([
       "d=$(", sha256sum_program().invocation as String, " ", installed, ") && d=$\{d%% *} && test $\{#d} -eq 64 && ",
       printf_program().invocation as String, " '", approval_device_crypto_deployed_digest_env_name as String, "=%s\\n' \"$d\" | ",
@@ -2773,10 +2778,7 @@ fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: Releas
       approval_broker_dark_install_release_steps(spec: spec, revision: revision),
       concat(
         device_crypto_sidecar_unit_write_steps(spec: spec, revision: revision),
-        concat(
-          device_crypto_sidecar_start_steps(),
-          approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
-        ),
+        approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
       ),
     )
   } else {
@@ -2787,21 +2789,11 @@ fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: Releas
 // THE LIFECYCLE STEPS FOLLOW THE SAME OWNERSHIP, and they are separate because a restart is the
 // half that actually killed the other instance's process: writing an identical unit is idempotent,
 // restarting one is not. Both are empty for a non-owner.
-// THE SIDECAR STARTS BEFORE THE BROKER'S UNIT IS WRITTEN, not after its restart: the broker unit names the sidecar's digest
-// env file and is ordered after the sidecar unit, so the sidecar unit, its reload and its start are the preconditions of
-// the broker swap and sit ahead of it in the plan (run 39545280023). Only the broker's own enable and restart remain in
-// approval_broker_lifecycle_steps.
-fn device_crypto_sidecar_start_steps() -> List<PipelineStep> {
-  [
-    deploy_effect(inv: systemctl_daemon_reload_effect()),
-    deploy_effect(inv: systemctl_enable_effect(unit: gunbc_device_crypto_sidecar_unit_name)),
-    deploy_effect(inv: systemctl_restart_effect(unit: gunbc_device_crypto_sidecar_unit_name)),
-  ]
-}
-
 fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
     [
+      deploy_effect(inv: systemctl_enable_effect(unit: gunbc_device_crypto_sidecar_unit_name)),
+      deploy_effect(inv: systemctl_restart_effect(unit: gunbc_device_crypto_sidecar_unit_name)),
       deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
     ]
@@ -2944,7 +2936,6 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
     owner: spec.service.service_user,
     base_root: spec.approval_broker.repo_root as String,
     revision: revision,
-    executables: approval_broker_release_locus_executables,
   )
 }
 
@@ -3040,13 +3031,13 @@ fn privileged_tree_files_install_command(src_sub: String, root: String, owner: N
 // THE PRIVILEGED BINARY SOURCE IS RELATIVE TO THE JOB'S WORKING DIRECTORY, not "$PWD": the argv
 // renderer single-quotes every word, so a variable there is a literal (run 35657588530: install
 // cannot stat '"$PWD"/target/release/gunbc').
-fn release_locus_binary_install_step(owner: NonEmptyStr, root: String, name: String) -> PipelineStep {
+fn release_locus_binary_install_step(owner: NonEmptyStr, root: String) -> PipelineStep {
   deploy_raw(command: install_file_owned_command(
     mode: install_executable_shared_mode,
     owner: owner,
     group: owner,
-    source: join([cargo_default_release_dir_rel, "/", name], ""),
-    dest: join([root, "/", name], ""),
+    source: join([cargo_default_release_dir_rel, "/", gunbc_release_bin_name], ""),
+    dest: join([root, "/", gunbc_release_bin_name], ""),
   ))
 }
 
@@ -3060,7 +3051,7 @@ fn release_locus_binary_install_step(owner: NonEmptyStr, root: String, name: Str
 // differs is exactly the two parameters: who owns the directories, and which root they hang under.
 // approval_broker_release_retention_note applies to every root this installs under; the microVM
 // controller inherits that named obligation rather than re-declaring it.
-fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding, executables: List<String>) -> List<PipelineStep> {
+fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let root = release_locus_dir(root: base_root, revision: revision)
   concat(
     concat(
@@ -3076,10 +3067,10 @@ fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: 
     ),
     concat(
       release_locus_tree_copy_steps(owner: owner, root: root),
-      concat(
-        map(executables, name => release_locus_binary_install_step(owner: owner, root: root, name: name)),
-        [release_locus_tree_receipt_step(owner: owner, base_root: base_root, revision: revision)],
-      ),
+      [
+        release_locus_binary_install_step(owner: owner, root: root),
+        release_locus_tree_receipt_step(owner: owner, base_root: base_root, revision: revision),
+      ],
     ),
   )
 }
