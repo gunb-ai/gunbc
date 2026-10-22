@@ -46,6 +46,11 @@ import std.types {
   commit_sha_text_holds,
 }
 
+import extdeps.github.workflow_runs {
+  GitHubWorkflowRunId,
+  github_workflow_run_id_is_positive,
+  github_workflow_run_id_wire_text,
+}
 import std.decl_ref {
   DeclarationRef,
   WholeDeclaration,
@@ -540,7 +545,7 @@ type ReviewPathSegment
   = OwnerSegment { value: NonEmptyStr }
   | RepoSegment { value: NonEmptyStr }
   // The run id lives in the route too, so a refusal that can name the run axis needs to carry one.
-  | RunIdSegment { value: Int }
+  | RunIdSegment { value: GitHubWorkflowRunId }
 
 // THE PATH, BUILT RATHER THAN ACCEPTED. Callers that take a path as an argument can pass a path that
 // merely CONTAINS the run id — the path for run 1234 satisfies a "contains 123" check, a path on another
@@ -581,7 +586,7 @@ type BuiltReviewPath =
 fn review_endpoint_path_built_for(
   owner: NonEmptyStr,
   repo: NonEmptyStr,
-  run_id: Int
+  run_id: GitHubWorkflowRunId
 ) -> BuiltReviewPath {
   let owner_text = owner as String
   let repo_text = repo as String
@@ -595,7 +600,7 @@ fn review_endpoint_path_built_for(
       refusal: HostileSegment,
       hostile_segment: RepoSegment { value: repo },
     }
-  } else if run_id <= 0 {
+  } else if !github_workflow_run_id_is_positive(id: run_id) {
     // The run id blames ITSELF: the axis is RunIdIsNotPositive and the value is the run id, not the
     // owner that was fine.
     BuiltReviewPathRefused {
@@ -614,7 +619,7 @@ fn review_endpoint_path_built_for(
               repo_text,
               concat(
                 review_endpoint_runs_anchor as String,
-                concat((run_id as String), review_endpoint_suffix as String)
+                concat(github_workflow_run_id_wire_text(id: run_id), review_endpoint_suffix as String)
               )
             )
           )
@@ -1099,9 +1104,8 @@ data enabled_rule_readback_items_field: NonEmptyStr = "custom_deployment_protect
 // buy is axis distinctness -- the fact §5 asks for. With rule_id: GitHubDeploymentProtectionRuleId, the
 // expression `rule_id: run_id` (an Int) no longer TYPE-CHECKS; the confusion the review found, where the
 // mint's RuleIsNotTheOneRequested compared a run's digits against a rule's digits, becomes unwritable
-// rather than validated. Run ids deliberately STAY Int here: their carrier is a separate replacement
-// migration over std.types.WorkflowRunId and the four extdeps.github Int run ids already on main (§3,
-// §2 -- this module must not mint a third representation of one upstream concept).
+// rather than validated. The run id has its own carrier, GitHubWorkflowRunId in extdeps.github.workflow_runs, so a
+// run id and a rule id are different axes here too (§3: one carrier per upstream concept).
 type GitHubDeploymentProtectionRuleId {
   value: Int,
 }

@@ -1,5 +1,7 @@
 module v2.test.lens_structural_resolution.module_import_out_of_scope
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 data sr_mod_claim_hash: Hash = sr_mod_claim_hash
 
 fn sr_mod_claim_atom(s: Symbol) -> Node {
@@ -60,7 +62,8 @@ fn sr_mod_claim_tree() -> InferredTree {
   let facts = sr_mod_claim_facts()
   InferredTree {
     root: sr_mod_root,
-    facts: sr_mod_claim_fact_map(facts: facts)
+    facts: sr_mod_claim_fact_map(facts: facts),
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

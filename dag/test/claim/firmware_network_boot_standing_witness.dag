@@ -14,7 +14,8 @@ import std.optional { Optional, Present, Absent }
 // THE SEAL PROBES RUN THROUGH THE CORPUS'S OWN HARNESS, never a hand-rolled compiler call: it reports
 // blocking diagnostics by class AND subject, so a probe can name WHICH mint refused rather than merely
 // that something refused.
-import gunbc.compile_census_probe { blocking_subject_count_for, census_rows_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_rows_for, census_verdict, census_verdict_all }
+import std.process { ProcessExit }
 import gunbc.compile_diagnostic_census { census_count_at_key, censuses_differ_by_exactly_the_target_key }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
@@ -2449,23 +2450,34 @@ test fn the_probe_differs_from_its_control_by_exactly_the_target_key() -> Bool {
   }
 }
 
-test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
-  blocking_subject_count_for(
-    source: direct_mint_source,
-    wanted_class: "ConstructorCallAdmissionRefused",
-    wanted_subject: "prepare",
-  ) >= 1
-    && blocking_subject_count_for(
-      source: lawful_import_source,
-      wanted_class: "ConstructorCallAdmissionRefused",
-      wanted_subject: "prepare",
-    ) == 0
+test fn no_foreign_module_may_call_the_verdict_mint_directly() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(
+        source: direct_mint_source,
+        wanted_class: "ConstructorCallAdmissionRefused",
+        wanted_subject: "prepare",
+      ),
+      holds: fn(n) { n >= 1 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: lawful_import_source,
+        wanted_class: "ConstructorCallAdmissionRefused",
+        wanted_subject: "prepare",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
     // THE REAL CONTROL, not the import-only one above: same builders, same literals, ungated call.
-    && blocking_subject_count_for(
-      source: lawful_call_source,
-      wanted_class: "ConstructorCallAdmissionRefused",
-      wanted_subject: "prepare",
-    ) == 0
+    census_verdict(
+      census: blocking_subject_census(
+        source: lawful_call_source,
+        wanted_class: "ConstructorCallAdmissionRefused",
+        wanted_subject: "prepare",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
+  ])
 }
 
 // THE CENSUS DOES NOT SEE UNBOUND NAMES, so the probe's own vocabulary is pinned by text instead.
