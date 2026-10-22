@@ -43,24 +43,7 @@ for f in $RO $AP dag/test/claim/guarantee_probe_corpus_witness.dag; do
 done
 echo BASE_OVERLAY_BYTE_IDENTICAL
 rm -rf /tmp/w783b4h; git worktree add -q --detach /tmp/w783b4h $HEAD || { echo WTH_FAIL; exit 9; }
-plant() { python3 - "$1" "$2" <<'PY'
-import sys
-p,mod=sys.argv[1],sys.argv[2]
-s=open(p).read()
-anchor='data %s: String = "module probe_%s\\n' % (mod.replace('_canonical','_canonical'), mod)
-# explicit anchors instead
-PY
-python3 - "$1" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read()
-import re
-for anchor in ['data canonical_apply_source: String = "module probe_canonical_apply\\n',
-               'data canonical_approval_routes_source: String = "module probe_canonical_approval_routes\\n']:
-    if s.count(anchor)==1:
-        open(p,'w').write(s.replace(anchor, anchor+'fn broken() -> Int { let s = \\"abc\\n')); print("  plant unterm applied at", anchor[:52]); sys.exit(0)
-print("  ANCHOR_NOT_FOUND -- STOP"); sys.exit(1)
-PY
-}
+plant() { python3 tools/plant783_unterm.py "$1" ; }
 run() { local tag=$1 tree=$2 entry=$3 fn=$4
   cd $tree || exit 9
   timeout 1400 $CB --claim-run --source-root dag --source-root src/v2 --entry $entry --functions $fn > /tmp/g7834_$tag.out 2>&1
