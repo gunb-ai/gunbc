@@ -1,67 +1,18 @@
 module test.claim.fleet.fleet_converge_roster_token_prelude_witness
 
 import std.types { Bool, List, String }
-import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.github.actions { Step, RunStep, UsesStep }
-import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
-import v2.std.fn_index { FnArrowDecl, call_reachable_decls_from_root, fn_arrow_decl_facts_live }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
-
-// EVERY FLEET-CONVERGE MODE WHOSE ENTRY REACHES THE LIVE ROSTER READ CARRIES THE ORG-ADMIN TOKEN PRELUDE.
+// A FLEET-CONVERGE MODE WHOSE ENTRY REACHES THE LIVE ROSTER READ CARRIES THE ORG-ADMIN TOKEN PRELUDE.
 //
-// The requirement is DERIVED from the entry, not listed per mode: each gunbc run-step target's entry
-// function is walked with v2.std.fn_index call_reachable_decls_from_root, and a target that reaches
-// gunbc.fleet.organization_runner_roster_read organization_runner_roster_live_read must appear in a
-// converge step whose script mints GUNBC_ORG_ADMIN_TOKEN. The defect this closes: the cap bracket's
-// admission began reading the roster (#14670) while its step carried no token, so the live read
-// refused at run time.
-//
-// REACH, AND WHAT IT DOES NOT SEE. The walk follows calls through the pool modules only (the runner
-// and fleet trees); a target whose entry module lies outside the pool is not evaluated, and a roster
-// read written as a service call rather than a bare call is invisible to the declaration census
-// (see fleet_health_read_only_witness). The positive control below pins that the walk does enter
-// the bracket route, so a pool that loses it fails here rather than narrowing the claim.
-data pool_roots: List<String> = ["dag/gunbc/runner", "dag/gunbc/fleet"]
-
+// The target is SUPPLIED: this witness discriminates at the emitted job (fleet_converge_job steps), given a mode
+// whose entry reaches organization_runner_roster_live_read, and does not re-run the call-reach walk. That the
+// supplied target does reach the read, and that no other pool target does, is the paired inhabitance claim
+// fleet_converge_roster_reach_inhabitance_witness. The defect this closes: the cap bracket's admission began
+// reading the roster (#14670) while its step carried no token, so the live read refused at run time.
 data token_marker: String = "GUNBC_ORG_ADMIN_TOKEN"
-
-data roster_read_name: String = "gunbc.fleet.organization_runner_roster_read.organization_runner_roster_live_read"
-
-fn slashes_to_dots(s: String) -> String {
-  if string_length(s: s) == 0 { "" } else {
-    let head = substring(s: s, start: 0, end: 1)
-    concat(if head == "/" { "." } else { head }, slashes_to_dots(s: substring(s: s, start: 1, end: string_length(s: s))))
-  }
-}
-
-fn entry_module(t: GunbcRunStepTarget) -> String {
-  slashes_to_dots(s: substring(s: t.entry, start: 4, end: string_length(s: t.entry) - 4))
-}
-
-fn decl_module(d: FnArrowDecl) -> String {
-  substring(s: d.qualified_name, start: 0, end: string_length(s: d.qualified_name) - string_length(s: d.name) - 1)
-}
-
-fn in_pool(t: GunbcRunStepTarget) -> Bool {
-  any(pool_roots, r => string_contains(s: t.entry, pattern: r))
-}
-
-fn reaches_roster_read_over(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> Bool {
-  let reach = call_reachable_decls_from_root(
-    entry_module: entry_module(t: t),
-    fn_name: t.function,
-    terminal_callee_symbols: [],
-    closure_modules: map(decls, d => decl_module(d: d)),
-    decls: decls
-  )
-  any(reach.reached, d => d.qualified_name == roster_read_name)
-}
-
-fn pool_decls() -> List<FnArrowDecl> {
-  fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: [])
-}
 
 fn step_runs(steps: List<Step>) -> List<String> {
   fold(steps, init: [], f: (acc, s) => match s {
@@ -79,20 +30,11 @@ fn target_carries_token(t: GunbcRunStepTarget, runs: List<String>) -> Bool {
   count(named) > 0 && all(named, r => string_contains(s: r, pattern: token_marker))
 }
 
-fn roster_reading_targets(decls: List<FnArrowDecl>) -> List<GunbcRunStepTarget> {
-  filter(gunbc_run_step_targets(), t => in_pool(t: t) && reaches_roster_read_over(t: t, decls: decls))
-}
-
-test fn every_converge_target_reaching_the_roster_read_mints_the_token() -> Bool {
-  let runs = step_runs(steps: fleet_converge_job().steps)
-  all(roster_reading_targets(decls: pool_decls()), t => target_carries_token(t: t, runs: runs))
-}
-
-// POSITIVE CONTROL ON THE WALK: the host-file converge entry reaches the roster read through the
-// cap bracket, so the derived population is not empty and includes the step this fix is about.
-test fn the_walk_derives_the_host_file_converge_target() -> Bool {
-  let derived = roster_reading_targets(decls: pool_decls())
-  any(derived, t => t.function == gunbc_ci_runner_host_file_converge_target.function)
+test fn the_supplied_roster_reading_mode_carries_the_token() -> Bool {
+  target_carries_token(
+    t: gunbc_ci_runner_host_file_converge_target,
+    runs: step_runs(steps: fleet_converge_job().steps)
+  )
 }
 
 // RED CONTROL ON THE PREDICATE: the same check over a script with no prelude refuses.
