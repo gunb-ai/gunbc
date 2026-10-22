@@ -2,6 +2,7 @@ module gunbc.auth.branch_dispatch_federation
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, String, Timestamp }
 import std.optional { Present, Absent }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_from_wire_text }
 import std.human_intervention { EveryProvision, EveryOperatorRequest }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
@@ -90,11 +91,11 @@ fn branch_dispatch_provider_resource() -> String {
 // THE ONE RUN ATTEMPT A GRANT NAMES. GitHub keeps run_id across a re-run and increments run_attempt
 // (both are claims of its OIDC token), so the provider maps their join and a grant names the join: a
 // re-run of an approved run is a new subject and needs its own approval.
-fn branch_run_key(run_id: Int, run_attempt: Int) -> String {
-  join([to_string(run_id), "-", to_string(run_attempt)], "")
+fn branch_run_key(run_id: GitHubWorkflowRunId, run_attempt: Int) -> String {
+  join([github_workflow_run_id_wire_text(id: run_id), "-", to_string(run_attempt)], "")
 }
 
-fn branch_run_principal_set(run_id: Int, run_attempt: Int) -> String {
+fn branch_run_principal_set(run_id: GitHubWorkflowRunId, run_attempt: Int) -> String {
   join([
     "principalSet://iam.googleapis.com/",
     wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: branch_dispatch_wif_pool_id as String),
@@ -112,7 +113,7 @@ data branch_run_expiry_expression_prefix: String = "request.time < timestamp('"
 
 data branch_run_expiry_expression_suffix: String = "')"
 
-fn branch_run_impersonation_cell(run_id: Int, run_attempt: Int, expires_at: Timestamp) -> GcpIamBindingCell {
+fn branch_run_impersonation_cell(run_id: GitHubWorkflowRunId, run_attempt: Int, expires_at: Timestamp) -> GcpIamBindingCell {
   GcpIamBindingCell {
     role: role_iam_workload_identity_user,
     member: branch_run_principal_set(run_id: run_id, run_attempt: run_attempt),
@@ -199,18 +200,18 @@ fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
 
 // THE KEY BACK INTO ITS RUN AND ATTEMPT: exactly two decimal halves, or nothing.
 type BranchRunKey {
-  run_id: Int
+  run_id: GitHubWorkflowRunId
   run_attempt: Int
 }
 
 fn parse_branch_run_key(key: String) -> BranchRunKey? {
   let parts = key.split(delimiter: "-")
   if parts.length() != 2 { none } else {
-    match parse_int(s: match parts.first() { Present { value: h } => h  Absent => "" }) {
+    match github_workflow_run_id_from_wire_text(text: match parts.first() { Present { value: h } => h  Absent => "" }) {
       Absent => none
       Present { value: id } => match parse_int(s: match parts.last() { Present { value: t } => t  Absent => "" }) {
         Absent => none
-        Present { value: attempt } => if id > 0 && attempt > 0 { Present { value: BranchRunKey { run_id: id, run_attempt: attempt } } } else { none }
+        Present { value: attempt } => if attempt > 0 { Present { value: BranchRunKey { run_id: id, run_attempt: attempt } } } else { none }
       }
     }
   }

@@ -1,5 +1,6 @@
 module test.claim.deployment_gate_operator_steps_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 // Witness file for the five operator acts that stand up the deployment gate, and for the ordering that
 // keeps the gate shut until the app-side rule has been witnessed BOTH ways.
 //
@@ -451,7 +452,7 @@ fn ownership_with_enabled(
 // the rule. The canonical values are supplied by receipt_on below, so the ordinary cases read as they
 // did before.
 fn receipt_for(
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   state: ReviewState,
   owner: NonEmptyStr,
   repo: NonEmptyStr,
@@ -523,7 +524,7 @@ data canonical_rule_id: Int = 900000001
 // the observed identity. Every argument below is one the caller had to earn.
 // THE TRIAL'S CANONICAL ARM: this App's installation, this repository, the gate's rule. Used wherever a
 // case varies something on the OTHER arm only, so "which arm drifted" is a single deliberate act.
-fn canonical_receipt(run_id: Int, state: ReviewState) -> Optional<AcceptedRuleReviewReceipt>
+fn canonical_receipt(run_id: GitHubWorkflowRunId, state: ReviewState) -> Optional<AcceptedRuleReviewReceipt>
   admit_callers: [
   // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
   // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
@@ -542,7 +543,7 @@ fn canonical_receipt(run_id: Int, state: ReviewState) -> Optional<AcceptedRuleRe
 }
 
 fn receipt_on(
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   state: ReviewState,
   environment: NonEmptyStr
 ) -> Optional<AcceptedRuleReviewReceipt>
@@ -594,7 +595,7 @@ fn receipt_on(
   )
 }
 
-fn approved_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt>
+fn approved_trial(run_id: GitHubWorkflowRunId) -> Optional<AcceptedRuleReviewReceipt>
   admit_callers: [
   // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
   // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
@@ -616,7 +617,7 @@ fn approved_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt>
   receipt_on(run_id: run_id, state: Approved, environment: gate_env)
 }
 
-fn rejected_trial(run_id: Int) -> Optional<AcceptedRuleReviewReceipt>
+fn rejected_trial(run_id: GitHubWorkflowRunId) -> Optional<AcceptedRuleReviewReceipt>
   admit_callers: [
   // THE WITNESS DOOR IS NOT A SIDE DOOR (side chat, blocker 2). This helper forwards to a sealed
   // mint, so an OPEN proxy here is a mint with the confine painted on the wall: a foreign module
@@ -699,8 +700,8 @@ fn admitted_pair() -> ReviewerRemovalAdmission
 ]
 {
   admit_reviewer_removal(
-    approved: approved_trial(run_id: 35447067113),
-    rejected: rejected_trial(run_id: 35447067114),
+    approved: approved_trial(run_id: GitHubWorkflowRunId { value: 35447067113 }),
+    rejected: rejected_trial(run_id: GitHubWorkflowRunId { value: 35447067114 }),
     boundary: srv1_deployment_gate_boundary,
   )
 }
@@ -1189,7 +1190,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     ) {
            ReviewerRemovalReady { admitted: a } =>
              a.boundary.environment_name == gate_env
-               && a.evidence.approved.run_id == 35447067113
+               && a.evidence.approved.run_id.value == 35447067113
            ReviewerRemovalBlocked { missing: _ } => false
          })
 }
@@ -1866,8 +1867,8 @@ test fn the_act_is_issued_only_for_the_boundary_the_pair_was_witnessed_on() -> B
     && (match reviewer_removal_act_for(
       boundary: srv1_deployment_gate_boundary,
       admission: admitted_pair_on(
-    approved: receipt_on(run_id: 35447067113, state: Approved, environment: sibling_env),
-    rejected: receipt_on(run_id: 35447067114, state: Rejected, environment: sibling_env),
+    approved: receipt_on(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved, environment: sibling_env),
+    rejected: receipt_on(run_id: GitHubWorkflowRunId { value: 35447067114 }, state: Rejected, environment: sibling_env),
     boundary: sibling_boundary,
 ),
       standing: standing_for_trial(),
@@ -2141,8 +2142,8 @@ standing: standing_never_read(),
              let i = a.intervention
              let e = a.evidence
              (i.identity as String).contains(gate_env as String)
-               && e.approved.run_id == 35447067113
-               && e.rejected.run_id == 35447067114
+               && e.approved.run_id.value == 35447067113
+               && e.rejected.run_id.value == 35447067114
                && e.boundary.environment_name == gate_env
            ReviewerRemovalBlocked { missing: _ } => false
          })
@@ -2278,9 +2279,9 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
   // APPROVE ON RULE A, REJECT ON RULE B. Both readbacks are real, both rules are enabled, both are
   // attributed to this App: only the rule the trial was a trial OF differs.
   (match admit_reviewer_removal(
-          approved: canonical_receipt(run_id: 35447067113, state: Approved),
+          approved: canonical_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved),
           rejected: receipt_for(
-            run_id: 35447067114,
+            run_id: GitHubWorkflowRunId { value: 35447067114 },
             state: Rejected,
             owner: gate_owner,
             repo: gate_repo,
@@ -2303,9 +2304,9 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
     // THE ARMS ANSWERED THROUGH DIFFERENT INSTALLATIONS. Same repository, same rule; the identity
     // readback behind one arm is another installation's, so nothing pins WHICH App answered.
     && (match admit_reviewer_removal(
-          approved: canonical_receipt(run_id: 35447067113, state: Approved),
+          approved: canonical_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved),
           rejected: receipt_for(
-            run_id: 35447067114,
+            run_id: GitHubWorkflowRunId { value: 35447067114 },
             state: Rejected,
             owner: gate_owner,
             repo: gate_repo,
@@ -2331,9 +2332,9 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
     // owner/repo-scoped, so these are two unrelated calls. Both names come back, because "which arm
     // came from the wrong repository" is the actionable question.
     && (match admit_reviewer_removal(
-          approved: canonical_receipt(run_id: 35447067113, state: Approved),
+          approved: canonical_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved),
           rejected: receipt_for(
-            run_id: 35447067114,
+            run_id: GitHubWorkflowRunId { value: 35447067114 },
             state: Rejected,
             owner: gate_owner,
             repo: other_repo,
@@ -2366,8 +2367,8 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
     // THE CONTROL: one rule, one installation, one repository — the same pair IS admitted. Without it
     // the three refusals above could be a mint that never produces a receipt.
     && (match admit_reviewer_removal(
-          approved: canonical_receipt(run_id: 35447067113, state: Approved),
-          rejected: canonical_receipt(run_id: 35447067114, state: Rejected),
+          approved: canonical_receipt(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved),
+          rejected: canonical_receipt(run_id: GitHubWorkflowRunId { value: 35447067114 }, state: Rejected),
           boundary: srv1_deployment_gate_boundary,
         ) {
           RemovalAdmitted { evidence: _ } => true
@@ -2376,11 +2377,11 @@ test fn a_trial_that_answers_two_rules_two_installations_or_two_repositories_is_
 }
 
 test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refused() -> Bool {
-  let approve = approved_trial(run_id: 35447067113)
+  let approve = approved_trial(run_id: GitHubWorkflowRunId { value: 35447067113 })
   // ONE DISPATCH DRESSED AS TWO TRIALS.
   (match admit_reviewer_removal(
           approved: approve,
-          rejected: rejected_trial(run_id: 35447067113),
+          rejected: rejected_trial(run_id: GitHubWorkflowRunId { value: 35447067113 }),
           boundary: srv1_deployment_gate_boundary,
         ) {
           RemovalRefused { missing: BothArmsOneDispatch } => true
@@ -2404,7 +2405,7 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
     // it from a legitimate pair
     && (match admit_reviewer_removal(
           approved: approve,
-          rejected: receipt_on(run_id: 35447067115, state: Rejected, environment: sibling_env),
+          rejected: receipt_on(run_id: GitHubWorkflowRunId { value: 35447067115 }, state: Rejected, environment: sibling_env),
           boundary: srv1_deployment_gate_boundary,
         ) {
           RemovalRefused {
@@ -2439,14 +2440,14 @@ test fn a_removal_admission_from_one_dispatch_or_the_wrong_environment_is_refuse
 // not happen the way the evidence claims. This is the discriminating red on the BINDING: mutate the run
 // id or the environment anywhere in the chain and the mint refuses instead of answering.
 test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
-  let good = receipt_on(run_id: 35447067113, state: Approved, environment: gate_env)
+  let good = receipt_on(run_id: GitHubWorkflowRunId { value: 35447067113 }, state: Approved, environment: gate_env)
   // the positive control FIRST: if the happy path stopped minting, the four mutations below would all
   // be "absent" for the wrong reason and this test would be green while proving nothing
   (good != Absent)
     // A PATH FOR ANOTHER RUN: the same 204, the same body, a different deployment. This is the
     // operator's mandated red — a mutated run id must not approve.
     && receipt_for(
-         run_id: 35447067113,
+         run_id: GitHubWorkflowRunId { value: 35447067113 },
          state: Approved,
          owner: gate_owner,
          repo: other_repo,
@@ -2460,7 +2461,7 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          == none
     // A STATUS GITHUB DOES NOT ACCEPT FOR THIS CALL.
     && receipt_for(
-         run_id: 35447067113,
+         run_id: GitHubWorkflowRunId { value: 35447067113 },
          state: Approved,
          owner: gate_owner,
          repo: gate_repo,
@@ -2475,7 +2476,7 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
     // THE BODY RELEASES ANOTHER ENVIRONMENT while the caller claims srv1-production. This is the
     // other half of the mandated red — a mutated environment binding must not approve either.
     && receipt_for(
-         run_id: 35447067113,
+         run_id: GitHubWorkflowRunId { value: 35447067113 },
          state: Approved,
          owner: gate_owner,
          repo: gate_repo,
@@ -2489,7 +2490,7 @@ test fn the_mint_refuses_to_answer_for_a_binding_it_was_not_given() -> Bool {
          == none
     // AND THE BODY AGAINST THE CLAIM ITSELF.
     && receipt_for(
-         run_id: 35447067113,
+         run_id: GitHubWorkflowRunId { value: 35447067113 },
          state: Approved,
          owner: gate_owner,
          repo: gate_repo,
