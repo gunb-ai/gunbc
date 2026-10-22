@@ -232,6 +232,48 @@ data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserve
   observation: mtcollins1_access_observation,
 }
 
+// THE CAPABILITY ROW, AND EVERY MEMBER OF IT IS A WRITE THAT WAS ACTUALLY PERFORMED. BmcCapability
+// has no read-only arms: CapabilityPowerControl and CapabilityBootSourceOverride are both claims
+// about driving the controller, so a row authored from successful READS would assert exactly what
+// was never tested. Both members below were exercised against this unit on 2026-09-05 and both are
+// evidenced in artifacts/bmc/mtcollins1-intake-write-exercise.json:
+//
+//   CapabilityBootSourceOverride — `chassis bootdev pxe` accepted, and boot parameter 5 read back
+//   "Force PXE" / "Options apply to only next boot". The READ-BACK is the evidence; a command's own
+//   success return would not distinguish a controller that accepted the write from one that ignored it.
+//
+//   CapabilityPowerControl — `chassis power cycle` accepted, and the SEL independently recorded
+//   `Power Unit — Power cycle | Asserted` and `System Boot Initiated — Initiated by power up`. The
+//   controller's own event log is a second witness to the effect, not a restatement of the request.
+//
+//   CapabilityOemRemoteMedia — ADDED 2026-09-05T22:55Z, and this row previously said the opposite.
+//   The earlier text read that the REST remote-media surface "answered 401 — present,
+//   unauthenticated-to, never exercised" and grounded "no capability whatever (nothing was
+//   mounted)". That was true when written and is now false: an authenticated session attached
+//   ubuntu-24.04.3-live-server-arm64.iso from the NFS share, configurations read back
+//   redirection_status 100 with session_index 0, and the host BOOTED IT — GRUB 2.12, an EFI-stub
+//   aarch64 kernel, squashfs and overlayfs, systemd as PID 1. Evidence:
+//   artifacts/bmc/mtcollins1-diskless-boot.json.
+//
+//   The distinction the old text drew is still the right one and is what makes this addition
+//   admissible rather than optimistic: a 401 grounds the SURFACE and no capability, because a
+//   capability is a claim about a WRITE taking effect. What changed is that the write was performed
+//   and its effect observed from the host, which is the same standard CapabilityBootSourceOverride
+//   and CapabilityPowerControl were held to above.
+//
+// WHAT IS STILL DELIBERATELY ABSENT, because absence here is the whole point of the row.
+// CapabilityVirtualMedia, CapabilityNbdProxyVirtualMedia, CapabilityAccountManagement,
+// CapabilityFirmwareUpdate, CapabilityBiosAttributeConfig and CapabilitySerialConsole are NOT
+// members. CapabilityVirtualMedia is the near miss and stays out on a real distinction: this
+// controller serves no Redfish, so what was exercised is the OEM REST remote-media route
+// specifically, and the generic virtual-media capability names a surface this unit does not have.
+// CapabilityAccountManagement is absent because the operation that would exercise it was REMOVED
+// (extdeps.bmc.ipmi records why): rotation has no modeled operation at all, so nothing can perform
+// the write that would ground it. SerialConsole is the sharpest case — SOL was activated and
+// streamed both Ampere checkpoint codes and the entire Ubuntu boot, so the capability is very
+// probably real, and it is still omitted because that session was driven by hand from a terminal
+// and not through any modeled route. A capability this row asserts must be one the AUTOMATION can
+// perform.
 
 // THE BOUND ON ONE READ-ONLY ipmitool EXCHANGE WITH THIS UNIT'S CONTROLLER, as `timeout --kill-after`
 // operands. A fact about reaching this BMC, not about any one run that reads it: the boot's diagnostic

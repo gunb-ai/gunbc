@@ -582,8 +582,8 @@ fn service_slot_env(name: String) -> String? {
 
 fn service_slot_host_control(identity: HostIdentity) -> HostControlStanding? {
   match managed_host_binding_for(host: identity as NonEmptyStr) {
-    ManagedHostFound { control: c } => Present { value: bmc_controlled_host(host: identity, standing: c) }
-    ManagedHostFoundUnderDeclaredDrop { control: c, drop: _, standing_subject: _, current_subject: _ } => Present { value: bmc_controlled_host(host: identity, standing: c) }
+    ManagedHostFound { host: _, control: c } => Present { value: bmc_controlled_host(host: identity, standing: c) }
+    ManagedHostFoundUnderDeclaredDrop { host: _, control: c, drop: _, standing_subject: _, current_subject: _ } => Present { value: bmc_controlled_host(host: identity, standing: c) }
     ManagedHostNotManaged { host: _ } => none
   }
 }

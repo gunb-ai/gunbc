@@ -66,6 +66,26 @@ import gunbc.machine_intake.oob_boot_handoff {
   OobHandoffRowAmbiguous,
   oob_boot_handoff_admission_for_row,
 }
+import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, WitnessInterrupted }
+import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
+  one_socket_census_capture, run_attempt, console_of, count_named, world_with_console,
+  run_boot_route, world_for_boot_route, run_boot_route_without_fans,
+}
+import gunbc.machine_intake.post_power_fan_gate_outcome {
+  PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
+}
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
+  MediaAttachAttempted,
+  MediaAttachNotAttempted,
+  HandoffMediaAttempted,
+  PoweredOnAfterAttempt,
+}
+import gunbc.machine_intake.mtcollins1_boot_run {
+  ActuationCensusEnded,
+  ActuationNotPoweredOn,
+  ActuationPoweredOn,
+}
+import gunbc.machine_intake.megarac_media_attach { MegaRacPresentationReady }
 import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster { admit_reset_subject, ResetSubjectAdmitted }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation }
@@ -808,6 +828,113 @@ test fn w_a_build_reading_for_another_controller_grounds_no_capability_row() -> 
 // 0.45.3, so restoring an observation-firmware lookup at the fold hands the admitted arm the OTHER
 // RELEASE'S ROW: the identity comparison below goes red by release identity, not by coincidence of
 // contents -- which is precisely what a content comparison would have missed.
+// THE EXECUTED BOOT ROUTE, END TO END, UNDER THE FRAME. Everything above asks the fold what it would
+// conclude for a row a claim hands it; these ask the ROUTE which release it consulted, by running the
+// production boot (gunbc.machine_intake.mtcollins1_boot_run through the acceptance matrix's hermetic
+// frame over the modeled srv1 world) and reading the identity OUT of what it returned. That is the
+// distinction the seal needs: a defect that restores the historical lookup INSIDE oob_boot_handoff --
+// resolving the catalog from the bound observation's probed firmware instead of the current release
+// standing -- changes what the ROUTE consumes while leaving every claim-supplied admission untouched,
+// so only a claim that executes the route can see it. The committed route observation was probed on the
+// superseded 0.32 and the rostered evidence stands on the current 0.45.3; BOTH catalogued rows carry
+// BootSourceOverride AND PowerControl, so no refusal arm can tell them apart and only the IDENTITY the
+// route itself handed out can.
+//
+// THE WORLD IS THE HEALTHY ONE-SOCKET CENSUS WORLD INSIDE A DEDICATED BOOT-ROUTE FRAME
+// (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix). What these claims assert is the
+// IDENTITY the handoff consumed and that the handoff REACHED the controller (its override + power writes
+// are minted inside oob_boot_handoff); nothing here reads the console census content. The census filing
+// reaches srv2 over the
+// fleet-ssh context, whose preparation calls three operations the boot realization never bound -- the
+// owner-only mux-directory creation and its two stat readbacks. An unbound operation refuses, the census
+// readback refuses before any ssh leg, and the attempt ends at the census gate BEFORE the attach and the
+// handoff -- an admitted identity read off THAT world would be asserted off a route that never reached
+// gunbc.machine_intake.oob_boot_handoff (measured there: the attempt ended with media attach not attempted).
+// The frame answers those three operations the way a healthy CI runner does (0700, job-owned), so the
+// executed path actually reaches the fold; the fold itself is untouched and remains the one decision
+// authority. The identity assertion below is only meaningful because the SAME evaluation's route records
+// the controller writes the admitted arm cannot be minted without (the pairing claim below).
+fn executed_boot_route_consumed_current_release() -> Bool {
+  match run_boot_route(world: world_for_boot_route()) {
+    WitnessReturned { value, route: _ } =>
+      match value.admitted {
+        Absent => false
+        Present { value: consumed } =>
+          bmc_firmware_release_identity_eq(a: consumed, b: megarac_firmware_0_45_3)
+            && !bmc_firmware_release_identity_eq(a: consumed, b: megarac_firmware_0_32)
+      }
+    WitnessRefused { diagnostic: _, route: _ } => false
+    WitnessInterrupted { at: _, route: _ } => false
+  }
+}
+
+test fn w_the_executed_boot_route_consumes_the_current_release_identity() -> Bool {
+  executed_boot_route_consumed_current_release()
+}
+
+
+// THE REPORTED IDENTITY CAME FROM WRITING THE CONTROLLER. A claim cannot manufacture `admitted` by
+// naming an outcome it likes: the identity is carried out only by the arm the route mints after it has
+// applied the boot selection and actuated power, so pairing the executed identity with the writes the
+// frame actually recorded closes the gap between "the route said 0.45.3" and "the route reached the
+// controller at all". Both counts are non-zero rather than equal to one -- the boot program asks the
+// controller for power more than once across the attempt, and this claim is about reachability of the
+// actuation, not about how many times it happened.
+fn executed_boot_route_wrote_the_controller() -> Bool {
+  match run_boot_route(world: world_for_boot_route()) {
+    WitnessReturned { value, route } =>
+      match value.admitted {
+        Absent => false
+        Present { value: _ } =>
+          count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") != 0
+            && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") != 0
+      }
+    WitnessRefused { diagnostic: _, route: _ } => false
+    WitnessInterrupted { at: _, route: _ } => false
+  }
+}
+
+test fn w_the_identity_the_executed_route_reported_came_from_writing_the_controller() -> Bool {
+  executed_boot_route_consumed_current_release() && executed_boot_route_wrote_the_controller()
+}
+
+// THE FAN GATE IS ON THE EXECUTED ROUTE, IN BOTH DIRECTIONS. The production boot path runs
+// mtcollins1_boot_fan_gate after power-on and before the census watch (main #14263): it reads the chassis
+// and the fan sensors and post_power_fan_verdict decides. The boot route's world answers those reads the
+// way the committed healthy observation prints them (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix),
+// so the gate ADMITS through its own verdict and the boot reaches the census.
+test fn w_the_fan_gate_admits_the_executed_boot_route_on_a_healthy_reading() -> Bool {
+  match run_boot_route(world: world_for_boot_route()) {
+    WitnessReturned { value: a, route: _, state: _ } => match a.fan_gate {
+      PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } => match a.outcome { ExitSuccess => true ExitFailure { code: _, reason: _ } => false }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// THE REFUSED DIRECTION: one seeded reading -- the FIRST FITTED HEADER at zero RPM, everything else the
+// committed healthy rows -- must stop THIS run at the gate. The gate sits after power-on by design (its
+// safe stop powers the unit back off), so the stopped shape is: the gate carrier says Refused, the exit
+// names the fan stop, and the census watch never ran (stage remains PoweredOn, not CensusEnded) while the
+// handoff had already been executed above it. Nothing here stubs the gate: the verdict is the production
+// post_power_fan_verdict's own decision on the seeded rows.
+test fn w_a_refused_fan_reading_stops_the_executed_boot_route_at_the_gate() -> Bool {
+  match run_boot_route_without_fans(world: world_for_boot_route()) {
+    WitnessReturned { value: a, route: _, state: _ } =>
+      (match a.fan_gate {
+        PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } => true
+        _ => false
+      })
+        && (match a.outcome {
+          ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "chassis fan function not established after power-on")
+          ExitSuccess => false
+        })
+        && (match a.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => false _ => true })
+    _ => false
+  }
+}
+
 test fn w_the_handoff_consumes_the_row_the_boot_was_admitted_on() -> Bool {
   managed_hosts() |> all(h => {
     let ev = megarac_operation_evidence()
@@ -833,7 +960,29 @@ test fn w_the_handoff_consumes_the_row_the_boot_was_admitted_on() -> Bool {
           _ => false
         }
     }
-  }) && count(managed_hosts()) == 1
+  }) && pairing_scope_holds_the_mtcollins1_subject()
+}
+
+// THE PAIRING IS ABOUT A MACHINE, NOT ABOUT A CENSUS. `all` over an empty list is true, so the pairing
+// above would pass vacuously if the roster ever stopped carrying the host it exists for; and a roster
+// COUNT guard would retire the claim the moment the second machine was registered -- which is the whole
+// point of the second-machine claim further up. So the guard names the machine: the operator-registered
+// mtcollins1 identity must be in the roster and must admit from the committed evidence. The roster's own
+// cardinality is another fact with its own owner (the admission witness counts it); this claim re-derives
+// nothing from it.
+fn pairing_scope_holds_the_mtcollins1_subject() -> Bool {
+  match filter(managed_hosts(), h => host_identity_eq(a: h.host, b: operator_host_mtcollins1)) |> first() {
+    Absent => false
+    Present { value: h } => match admit_boot_subject(
+      evidence: megarac_operation_evidence(),
+      host: h,
+      medium: mtcollins1_boot_medium,
+      execution_revision: revision,
+    ) {
+      BootSubjectAdmitted { subject: _ } => true
+      BootSubjectRefused { host: _, cause: _ } => false
+    }
+  }
 }
 
 // DISCRIMINATOR, OVERRIDE ARM. Remove exactly the boot-source-override capability from the CURRENT
@@ -917,3 +1066,5 @@ test fn w_a_current_row_without_the_power_capability_refuses_the_handoff() -> Bo
     Absent => false
   }
 }
+
+

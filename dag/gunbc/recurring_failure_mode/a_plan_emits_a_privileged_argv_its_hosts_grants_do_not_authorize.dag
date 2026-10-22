@@ -1,10 +1,11 @@
 module gunbc.recurring_failure_mode.a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize: RecurringFailureMode = RecurringFailureMode {
   identity: "a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a host's apply script carries a `sudo -n` argv that no line of that host's rendered sudoers grant authorizes. The plan and the grants are two derivations of one privileged-operation set, and they can diverge without either being wrong alone.",

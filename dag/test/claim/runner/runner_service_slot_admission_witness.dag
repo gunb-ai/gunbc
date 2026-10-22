@@ -9,8 +9,8 @@ import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.uuid { uuid_of }
 import extdeps.filesystem.filesystem_io
-import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host, NoOutOfBandRoute }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
 import gunbc.runner.runner_slot_allocation { RunnerWidthDerived }

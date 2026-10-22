@@ -13,7 +13,7 @@ import gunbc.rung_drop {
   Superseded,
   Retired,
   Dissolved,
-  TypedDeclaration,
+  TypedDeclaration, population_from_list,
 }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
@@ -255,7 +255,7 @@ fn drop_with_identity_and_population(identity: NonEmptyStr, population: List<Str
           previous: p,
           temporary: t,
           reason: r,
-          population: population,
+          population: population_from_list(xs: population),
           restoration_trigger: rt,
         },
       }
@@ -294,7 +294,7 @@ fn drop_dissolved_with_population(population: List<String>) -> RungDrop {
           previous: p,
           temporary: t,
           reason: r,
-          population: population,
+          population: population_from_list(xs: population),
           restoration_trigger: rt,
         },
       }
