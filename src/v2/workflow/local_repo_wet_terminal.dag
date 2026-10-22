@@ -3388,8 +3388,8 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
       expectation: ExpectedToHold {}
     },
-    // THE FOUR PERMANENT CONTROLS THE #14545 RETIREMENT MOVED HERE, one row per identity, so each keeps
-    // an EXECUTING lane. All four greened while enrolled in `gunbc.workflow.floor_expected_red` as
+    // THE THREE PERMANENT CONTROLS THE #14545 RETIREMENT MOVED HERE, one row per identity, so each keeps
+    // an EXECUTING lane. All three greened while enrolled in `gunbc.workflow.floor_expected_red` as
     // ExpectedRed, and DESIGN §4b meta-obligation 4 says a greened expecting-red probe becomes a
     // PERMANENT regression control that STAYS ENROLLED — not deleted. Deleting their roster rows alone
     // would have left them with no executing route (none is wet-scheduled; no job runs the whole
@@ -3398,16 +3398,14 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // `floor_expected_red_retired_rows`; this list is the dispatch fact, that list is the history.
     // Their `manual/` standing changes for these two identities: they were hand-run only, and a lane
     // that runs them on every dispatch is the point of moving them (PR #14545, disclosed).
+    // THE FOURTH identity this PR had retired, doc_graph_registered_plan_roots_all_admitted, is NOT here:
+    // its green was never observed (it runs in neither lane), so calling it a greened permanent control
+    // would inflate its rung (§4b(1)). It is restored to `floor_expected_red`'s ExpectedRed roster, on an
+    // open NeedsOperatorRuling disposition, and runs nowhere on this dispatch.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.direct_call_argument_type_witness", function: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch" },
       entry: "dag/test/claim/direct_call_argument_type_witness.dag",
       function: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted" },
-      entry: "dag/test/claim/doc_reachability_witness.dag",
-      function: "doc_graph_registered_plan_roots_all_admitted",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

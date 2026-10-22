@@ -146,7 +146,6 @@ type ClassificationDisposition =
     RoutedToOwner { owner: String }
   | NeedsOperatorRuling { question: String }
   | RepairedInThisChange
-  | ClosedByPriorChange { closure: Closure }
 
 // measured_evidence records what was EXECUTED to reach the verdict, never what
 // was read: a classification derived from reading a lens is not a measurement.
@@ -169,13 +168,9 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // to them. MEASURED ON 2026-08-24: 228 declared roots, 209 admitted (19 name no
 // file, every one of them under docs/probes/); 16 dangling markdown links, 12 of
 // them into docs/probes/ and 4 at docs/plans/ci-selection-vs-scheduling.md; 35
-// orphan docs once the admitted roots are walked. RE-MEASURED 2026-10-21 at head
-// a162e67d1af8: 27 declared, 27 admitted -- the population those counts described
-// was removed by #9181 and #9186, so the 2026-08-24 figures are history, not the
-// measurement, and each row below says which it is.
+// orphan docs once the admitted roots are walked.
 //
-// THE PART THAT NEEDED A RULING RATHER THAN A REPAIR, AND HOW IT CLOSED (kept
-// here because deleting it would hide a violation that had already landed). Three
+// THE PART THAT NEEDS A RULING RATHER THAN A REPAIR, AND WHY IT IS STILL OPEN. Three
 // of the 19 dead binds were the g1-cited-symbol-control-* rows, which
 // doc_graph_roots declared PlanHasNoRetirement -- permanent discriminating
 // evidence, kept under DESIGN 4b(4) precisely so a climb could not delete it. The
@@ -184,8 +179,8 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // 2026-08-25): deleting the three binds FINISHED a deletion 4b(4) forbids and made
 // it invisible, while restoring the three files from history reversed part of an
 // operator cut -- only the second is reversible by anyone other than the operator,
-// which is why the question was theirs and no lane may have quietly taken the
-// first. #9181 (0df5b4170c51, reachable from this head -- verified) took a third path: the three
+// which is why the question is theirs and no lane may quietly take the first.
+// #9181 (merged 2026-08-25, state verified via GitHub) took a third path: the three
 // controls were machine discriminators, not documents, so #9181 rehomed them into
 // `v2.lens.cited_symbol_resolution` as `cited_symbol_planted_controls` and only then deleted their
 // orphan binds atomically. THAT RE-HOMING HAS NO SURVIVING RECORD IN THIS TREE. The module it lived in
@@ -194,75 +189,33 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // ruling and never carried across the 2026-10 mega-squash. So the g1 planted controls are lost evidence,
 // stated plainly, with no surviving typed record to cite. (An earlier draft of this comment claimed the
 // account "survives in data at ...cited_symbol_partition_third_bucket_note"; no declaration of that name
-// exists anywhere in the tree -- the citation was phantom and is removed.) The closure below therefore
-// rests only on what DOES survive and resolves: the three gunbc.doc_graph_roots declarations in its
-// durable_account, and this row's claim re-enrolled ExpectedToHold on the wet schedule -- not on the
-// vanished g1 controls. That the g1 controls have no account is the honest deficit; it is not repaired
-// with a String (DESIGN 4c) nor with a reference that does not resolve (DESIGN §3). The other sixteen
-// dead binds carried ordinary retirements and needed no ruling.
+// exists anywhere in the tree -- the citation was phantom and is removed. The mega-squash also dropped
+// #9181's merge commit from this branch's history -- `git merge-base --is-ancestor 0df5b4170c51 HEAD` is
+// NOT an ancestor -- so this row does not claim to be closed by it; it is an OPEN ruling, below.)
+// The other sixteen dead binds carried ordinary retirements and needed no ruling.
 // ---------------------------------------------------------------------------
 
-// THE ONE CLOSURE FOR doc_graph_registered_plan_roots_all_admitted. Its two consumers -- this file's
-// ClassifiedRow and v2.workflow.floor_expected_red's RetiredExpectedRedRow -- REFERENCE this value, so
-// the arm, the citation, the durable account and the re-measurement exist exactly once. The durable
-// account is the three gunbc.doc_graph_roots declarations the re-homing operated on -- every one of them
-// resolves against the live index through the witness's own join. It deliberately does NOT include
-// `cited_symbol_planted_controls`: review 84276 checked `git grep` and no declaration of that name exists
-// anywhere in this tree -- the v2.lens.cited_symbol_resolution module it lived in is gone (removed after
-// the 2026-08-25 operator ruling, and not carried across the 2026-10 mega-squash), so a ref to it would
-// be a promise the witness cannot keep. What is NOT in this closure, said plainly: the g1 planted controls
-// the ruling rehomed have NO surviving typed record in this tree -- the module that held them is gone and
-// nothing carries their account forward. This closure therefore rests only on the three gunbc.doc_graph_roots
-// refs above (which the witness resolves) plus this row's re-enrollment ExpectedToHold on the wet schedule;
-// it does NOT claim the g1 controls still run or that their note survives. (A prior draft cited a
-// `cited_symbol_partition_third_bucket_note` here; that declaration does not exist -- phantom, removed.)
-data doc_graph_roots_rehoming_closure: Closure = AttributedToChange {
-  change: PullRequest { number: 9181 },
-  durable_account: [
-    decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
-    decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_declaration_refs"),
-    decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_outside_index_declaration_refs"),
-  ],
-  re_measured: ReMeasurement {
-    head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
-    on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-    routes: [Wet],
-    outcome: Passed,
-    instrument: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
-  },
-}
+data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT ALREADY LANDED, NOT AS A NEUTRAL PAIR OF OPTIONS, BECAUSE THE FRAMING DECIDES WHO HAS TO ACT (manager ruling, swift-badger-524, 2026-08-25). DESIGN 4b(4) says a climb dissolves the redundant lower-rung PRODUCTION machinery and NEVER the evidence: the discriminating RED and its positive control stay enrolled, because deleting them recreates specification-without-execution one rung up. Three of the 19 dead binds are the g1-cited-symbol-control-* rows, declared PlanHasNoRetirement precisely so that a climb could not delete them. The 2026-08-24 measurement bankruptcy deleted them anyway, by a sweep that took docs/probes/ whole. So the two available closures are NOT peers. Deleting the three binds FINISHES a deletion 4b(4) forbids and makes it invisible; restoring the three files from history reverses part of an operator cut. Only the second is reversible by anyone other than the operator, which is why the question is theirs and why no lane may quietly take the first. OPTION B FOR THE OPERATOR (this is the closure a lane MAY take without reversing your cut): declare the loss as a rung drop rather than closing the row by attribution -- file one row each under gunbc.rung_drop (previous rung, temporary rung, reason, bounded population, restoration trigger naming what re-plants the three g1 controls) and/or a row under gunbc.recurring_failure_mode, so the deficit is a typed, located, countable rung drop with a named restoration trigger instead of prose. Then this row may be closed as ClosedByPriorChange pointing at THAT rung-drop row. Do NOT close it by attributing to #9181: its re-homing no longer resolves in this tree, so that attribution would be a closure resting on a reference that does not exist (DESIGN §3). The other sixteen dead binds carry ordinary retirements and need no ruling."
 
 data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
-    // RE-MEASURED, NOT RESTATED. The census this row replaced was a 2026-08-24 snapshot and the
-    // population it counted has since changed twice, so the numbers live in the typed re-measurement
-    // below (head, day, routes, outcome, instrument) — NOT restated in prose, which is
-    // what let a receipt claim a measurement nobody could check (review 84083: "the receipts copy
-    // measurement output instead of naming the instrument"). What this prose carries is only the NARRATIVE
-    // the typed parts cannot: what the stale population was and why it vanished. On 2026-08-25 the three
-    // g1-cited-symbol controls were REHOMED as machine planted controls for the cited-symbol lens (the
-    // permanent evidence 4b(4) protects was MOVED, not finished), and the 16 dead ProbeDoc binds plus the
-    // last emitted plan root were deleted. The historical figure ("228 declared / 209 admitted") named a
-    // population that no longer exists; it survives only as a dated statement of the superseded census.
-    measured_evidence: "Supersedes the 2026-08-24 census (228 declared / 209 admitted), which counted a population that no longer exists: the 19 unadmitted binds were deleted on 2026-08-25 after the g1 controls were rehomed (durable account in the closure below). The current counts are NOT restated here; read them from the typed re-measurement.",
-    // ONE CLOSURE, ONE HOME. Review 84262 caught this row recording the closure as
-    // RestsOnExecutedCheck("no change can be attributed") while v2.workflow.floor_expected_red's retired
-    // row for the SAME identity recorded AttributedToChange{PullRequest 9181} -- one fact, two typed
-    // records, already disagreeing on arm, reason and account (§3: "each fact lives in exactly one
-    // place"). The reviewer's premise that 0df5b4170c51 is reachable was itself wrong (`git rev-list
-    // origin/main | grep -c 0df5b4170c51...` is 0; the 2026-10 mega-squash did drop it), but the defect
-    // was real and this is the fix that follows from the facts: PR #9181 is MERGED (state verified via
-    // GitHub), so the change IS attributable by its PR number -- the citation that survives a history
-    // rewrite, which is why `ChangeCitation` offers `PullRequest` beside a name -- and the durable
-    // account is the three gunbc.doc_graph_roots declarations the witness resolves (see the shared
-    // value's comment below for what is deliberately NOT in the list, and why).
-    // The closure is now a single shared value,
-    // doc_graph_roots_rehoming_closure below, and the floor's retired row references THAT value rather
-    // than restating it: the two records cannot disagree, because there is only one. No check was added
-    // for agreement -- agreement by construction is what §5 asks for where construction is available.
-    disposition: ClosedByPriorChange { closure: doc_graph_roots_rehoming_closure },
+    // MEASURED, NOT RESTATED-AS-GREEN. This claim runs in neither the wet nor the hermetic lane on this
+    // dispatch, so this row carries NO re-measurement: a ReMeasurement whose outcome is Passed would be an
+    // executed rung the claim has not earned (§4b(1) rung inflation). It stays on the roster as ExpectedRed
+    // with this 2026-08-24 measured statement of the population it failed on. The g1 controls' re-homing by
+    // #9181 has no surviving record in this tree (see the group-B header), so the row is NOT closed by that
+    // PR -- it is an OPEN ruling, and option B in the question gives the operator a lane a non-operator may
+    // take without reversing their cut.
+    measured_evidence: "228 declared roots, 209 admitted on 2026-08-24; the 19 unadmitted are exactly the docs/probes/ files the bankruptcy deleted, enumerated by walking doc_graph_roots_all() against the worktree. Re-measurement 2026-10-21 was attempted but the claim is not wet- or hermetic-scheduled, so no executed outcome is recorded; it remains ExpectedRed.",
+    // STILL OPEN. Base held this on NeedsOperatorRuling; a prior draft of this PR closed it as
+    // ClosedByPriorChange{PullRequest 9181}, which review 84372/84397 rejected: #9181's re-homing module
+    // (v2.lens.cited_symbol_resolution) and its cited_symbol_planted_controls are gone from this tree, so
+    // that closure rested on a reference that does not resolve (§3), and it turned an operator-owned open
+    // ruling into a lane-owned closure. Restored to the open disposition; the durable account is the three
+    // gunbc.doc_graph_roots declarations the re-homing operated on, named in the ruling question's option B.
+    disposition: NeedsOperatorRuling { question: permanent_evidence_ruling_question },
   },
   ClassifiedRow {
     identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),
