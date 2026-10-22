@@ -139,7 +139,9 @@ import v2.std.model_core {
 import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
 }
-import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
+import v2.std.compilers.target_model { EmitSpellingEscape,
+  EmitSpellingQuote,
+  PrimitiveRealizationsUnwired,
   TargetPrimitiveRealization,
   TargetPrimitiveArgument,
   PrimitivePassBySharedReference,
@@ -151,6 +153,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   PrimitiveRealizationsWired,
   target_bind_let_separator_present,
   IntLiteralDecimal,
+  ListIntroductionDelimited,
   TargetCapabilityKey,
   ProducedDeclSupport,
   ProducedDeclUnwired,
@@ -295,13 +298,12 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetTypeExprVariantSlot
 }
 import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclColumnPlain,
+  ColumnUnwired,
+  ColumnWired,
+  MembersInAssociatedBlock,
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
-  DeclEmitStringQuote,
-  HeaderLeadingLines,
-  ImportsLeading,
-  MembersInAssociatedBlock,
-  TargetSemanticDeclEmitEscape,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,
@@ -1231,6 +1233,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^rust_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^rust_token_int_literal },
+    list_introduction_form: ListIntroductionDelimited { open: ^rust_token_vec_open, separator: ^rust_token_comma, close: ^rust_token_list_close },
     block_evaluation_mode: ValueProducing
   }
 }
@@ -2487,7 +2490,9 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_path_sep, text: "::"),
     rust_lex_rule(token_class: ^rust_token_box_new, text: "new"),
     rust_lex_rule(token_class: ^rust_token_fn_type_lt, text: "<"),
-    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">")
+    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">"),
+    rust_lex_rule(token_class: ^rust_token_vec_open, text: "vec!["),
+    rust_lex_rule(token_class: ^rust_token_list_close, text: "]")
   ]
 }
 
@@ -2957,13 +2962,14 @@ fn rust_semantic_decl_serialize_profile_bundle_node() -> Node {
     emit_transform_rows: [
       TargetSemanticDeclEmitTransformRow {
         token_class: ^rust_token_str_lit,
-        transform: DeclEmitStringQuote {
-          open: "\"",
-          close: "\"",
+        transform: EmitSpellingQuote {
+        prefix: "",
+        open: "\"",
+        close: "\"",
           escapes: [
-            TargetSemanticDeclEmitEscape { from: "\\", to: "\\\\" },
-            TargetSemanticDeclEmitEscape { from: "\"", to: "\\\"" },
-            TargetSemanticDeclEmitEscape { from: "\r", to: "\\r" }
+            EmitSpellingEscape { from: "\\", to: "\\\\" },
+            EmitSpellingEscape { from: "\"", to: "\\\"" },
+            EmitSpellingEscape { from: "\r", to: "\\r" }
           ]
         }
       }
@@ -2984,9 +2990,11 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     enum_name_after_variants: false,
     field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
-    member_projection: MembersInAssociatedBlock,
-    import_projection: ImportsLeading,
-    header_projection: HeaderLeadingLines,
+    member_projection: ColumnWired { placement: MembersInAssociatedBlock },
+    import_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    header_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    doc_projection: ColumnUnwired,
+    conformance_projection: ColumnUnwired,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,

@@ -2053,48 +2053,6 @@ pub fn is_lit_str_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn is_lit_int_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShLitInt => true,
-        _ => false,
-    }
-}
-
-pub fn is_lit_float_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShLitFloat => true,
-        _ => false,
-    }
-}
-
-pub fn is_str_begin_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStrBegin => true,
-        _ => false,
-    }
-}
-
-pub fn is_str_mid_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStrMid => true,
-        _ => false,
-    }
-}
-
-pub fn is_str_end_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStrEnd => true,
-        _ => false,
-    }
-}
-
-pub fn is_unknown_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShUnknown => true,
-        _ => false,
-    }
-}
-
 pub fn is_newline_shape(shape: TokenShape) -> bool {
     match shape.clone() {
         TokenShape::ShNewline => true,
@@ -2172,20 +2130,6 @@ pub fn is_gt_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn is_le_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShLe => true,
-        _ => false,
-    }
-}
-
-pub fn is_ge_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShGe => true,
-        _ => false,
-    }
-}
-
 pub fn is_fat_arrow_shape(shape: TokenShape) -> bool {
     match shape.clone() {
         TokenShape::ShFatArrow => true,
@@ -2235,86 +2179,9 @@ pub fn is_eq_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn is_eq_eq_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShEqEq => true,
-        _ => false,
-    }
-}
-
-pub fn is_ne_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShNe => true,
-        _ => false,
-    }
-}
-
-pub fn is_plus_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShPlus => true,
-        _ => false,
-    }
-}
-
-pub fn is_minus_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShMinus => true,
-        _ => false,
-    }
-}
-
-pub fn is_star_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShStar => true,
-        _ => false,
-    }
-}
-
-pub fn is_slash_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShSlash => true,
-        _ => false,
-    }
-}
-
-pub fn is_percent_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShPercent => true,
-        _ => false,
-    }
-}
-
-pub fn is_bang_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShBang => true,
-        _ => false,
-    }
-}
-
-pub fn is_and_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShAnd => true,
-        _ => false,
-    }
-}
-
-pub fn is_or_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShOr => true,
-        _ => false,
-    }
-}
-
 pub fn is_question_shape(shape: TokenShape) -> bool {
     match shape.clone() {
         TokenShape::ShQuestion => true,
-        _ => false,
-    }
-}
-
-pub fn is_null_coalesce_shape(shape: TokenShape) -> bool {
-    match shape.clone() {
-        TokenShape::ShNullCoalesce => true,
         _ => false,
     }
 }
@@ -2540,13 +2407,6 @@ pub fn tok_is_lbracket(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn tok_is_rbracket(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_rbracket_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
 pub fn tok_is_colon(tok: Option<Rc<Token>>) -> bool {
     match tok.clone() {
         Some(t) => is_colon_shape(t.shape.clone()),
@@ -2589,52 +2449,10 @@ pub fn tok_is_fat_arrow(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn tok_is_arrow(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_arrow_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_lt(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_lt_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_gt(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_gt_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
 pub fn tok_is_pipe(tok: Option<Rc<Token>>) -> bool {
     match tok.clone() {
         Some(t) => is_pipe_shape(t.shape.clone()),
         std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_pipe_arrow(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_pipe_arrow_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_is_question(tok: Option<Rc<Token>>) -> bool {
-    match tok.clone() {
-        Some(t) => is_question_shape(t.shape.clone()),
-        std::option::Option::None => false,
-    }
-}
-
-pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
-    match tok.clone() {
-        Some(t) => t.span.clone(),
-        std::option::Option::None => crate::v1_std_core::no_span(),
     }
 }
 
@@ -3663,19 +3481,6 @@ pub fn parse_context_after_node_list(
     parse_context_with_occurrence_state(
         ctx.clone(),
         occurrence_allocator_after_node_list(ctx.occurrence_allocator.clone(), nodes.clone()),
-        ctx.occurrence_index.clone(),
-        ctx.declaration_occurrences.clone(),
-        ctx.reference_occurrences.clone(),
-    )
-}
-
-pub fn parse_context_after_optional_node(
-    ctx: Rc<ParseContext>,
-    node: Option<Rc<Node>>,
-) -> Rc<ParseContext> {
-    parse_context_with_occurrence_state(
-        ctx.clone(),
-        occurrence_allocator_after_optional_node(ctx.occurrence_allocator.clone(), node.clone()),
         ctx.occurrence_index.clone(),
         ctx.declaration_occurrences.clone(),
         ctx.reference_occurrences.clone(),
@@ -5572,51 +5377,6 @@ pub fn make_capability_node(
     })
 }
 
-pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
-    {
-        let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "type".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        parse_type_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
-    }
-}
-
 pub fn parse_type_after_kw(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -7341,10 +7101,6 @@ pub fn parse_variant_fields(
             }
         }
     }
-}
-
-pub fn parse_more_variants(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<VariantsResult> {
-    parse_more_variants_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
 }
 
 pub fn parse_more_variants_acc(
@@ -11689,20 +11445,6 @@ pub fn int_to_string_acc(
     }
 }
 
-pub fn first_child_or_self(n: Rc<Node>) -> Rc<Node> {
-    match n.children.clone().first().cloned() {
-        Some(ch) => ch.clone(),
-        std::option::Option::None => n,
-    }
-}
-
-pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
-    match n.children.clone().last().cloned() {
-        Some(ch) => ch.clone(),
-        std::option::Option::None => n,
-    }
-}
-
 pub fn node_to_name_str(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -12515,6 +12257,36 @@ pub fn parse_response_entries_acc(
     }
 }
 
+pub fn parse_mock_entry_discriminator(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExprResult> {
+    {
+        let tok = token_stream_first(tokens.clone());
+        let bare = match tok.clone() {
+            Some(t) => is_fat_arrow_shape(t.shape.clone()),
+            std::option::Option::None => false,
+        };
+        if bare.clone() {
+            parsed_expr_result(tokens.clone(), tokens.clone(), ctx.clone(), |identity| {
+                crate::v1_std_core::make_expr_node(
+                    identity.clone(),
+                    Rc::new(ExprData::ExprLiteral {
+                        value: Rc::new(LiteralValue::LitStr {
+                            value: "reading".to_string(),
+                        }),
+                    }),
+                    Rc::new(vec![]),
+                    std::option::Option::None,
+                    token_span(tok.clone()),
+                )
+            })
+        } else {
+            parse_status_pattern(tokens.clone(), ctx.clone())
+        }
+    }
+}
+
 pub fn parse_optional_mock_response_block(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -12610,7 +12382,7 @@ pub fn parse_mock_response_entries_acc(
                 err: std::option::Option::None,
             });
         } else {
-            let r = parse_status_pattern(tokens.clone(), ctx.clone());
+            let r = parse_mock_entry_discriminator(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(MockEntriesResult {
                     entries: Rc::new(vec![]),
@@ -13481,51 +13253,6 @@ pub fn parse_io_blocks_acc(
     }
 }
 
-pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
-    {
-        let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "data".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        parse_data_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
-    }
-}
-
 pub fn parse_alias_after_kw(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -13901,7 +13628,7 @@ pub fn parse_param_list_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.param.clone());
-        ctx = parse_context_after_node(r.ctx.clone(), r.param.clone());
+        ctx = r.ctx.clone();
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
@@ -14399,7 +14126,7 @@ pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             });
         }
         let stmts = r.stmts.clone();
-        let ctx = parse_context_after_node_list(r.ctx.clone(), stmts.clone());
+        let ctx = r.ctx.clone();
         let tokens = skip_newlines(r.tokens.clone());
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
         if has_err(r.err.clone()) {
@@ -14478,7 +14205,7 @@ pub fn parse_stmts_acc(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                let __tco_1 = r.ctx.clone();
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                 __tco_loop_tokens = __tco_0;
                 __tco_loop_ctx = __tco_1;
@@ -14857,7 +14584,6 @@ pub fn parse_expr_loop(
         let mut lhs_from = __tco_loop_lhs_from;
         #[allow(unused_mut)]
         let mut min_bp = __tco_loop_min_bp;
-        ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ExprResult {
                 expr: lhs.clone(),
@@ -15813,7 +15539,7 @@ pub fn parse_lambda_stmts(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                let __tco_1 = r.ctx.clone();
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                 __tco_loop_tokens = __tco_0;
                 __tco_loop_ctx = __tco_1;
@@ -16593,7 +16319,7 @@ pub fn parse_arg_list_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.arg.clone());
-        ctx = parse_context_after_node(r.ctx.clone(), r.arg.clone());
+        ctx = r.ctx.clone();
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
@@ -16942,7 +16668,6 @@ pub fn parse_expr_loop_no_brace(
         let mut lhs_from = __tco_loop_lhs_from;
         #[allow(unused_mut)]
         let mut min_bp = __tco_loop_min_bp;
-        ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_eof(tok.clone()) || tok_is_lbrace(tok.clone())) {
             break Rc::new(ExprResult {
@@ -17461,7 +17186,7 @@ pub fn parse_match_arm_stmts(
                 }
                 {
                     let __tco_0 = r.tokens.clone();
-                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                    let __tco_1 = r.ctx.clone();
                     let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                     __tco_loop_tokens = __tco_0;
                     __tco_loop_ctx = __tco_1;

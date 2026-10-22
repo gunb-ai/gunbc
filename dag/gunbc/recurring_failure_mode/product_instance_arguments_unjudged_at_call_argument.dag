@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.product_instance_arguments_unjudged_at_call_argument
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data product_instance_arguments_unjudged_at_call_argument: RecurringFailureMode = RecurringFailureMode {
   identity: "product_instance_arguments_unjudged_at_call_argument" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**A value of one instantiation of a generic record is admitted at a call argument declared as another instantiation.** Measured on main with a v1 compile of a scratch module: `fn direct_of(t: FieldOfFractions<Nat>)` called as `direct_of(t: str_instance())`, where `str_instance() -> FieldOfFractions<String>`, compiles with no diagnostic. So does the same value passed through `type Tp = FieldOfFractions<Nat>`. DESIGN section 4b puts `values inhabit declared types` on the ordinary compiler floor, so this is silent wrongness, below the ladder, not a rung.",

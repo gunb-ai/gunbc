@@ -95,6 +95,9 @@ import v2.std.type_binder {
 import v2.std.node_query { find_arrow_body_child, find_named_child, find_labeled_child }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
+  ConcreteSyntaxLayoutItem,
+  LayoutToken,
+  LayoutNest,
   TargetValueExpression,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -649,6 +652,61 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
     }
   )
 }
+// THE DECL ROUTE'S FOLD OVER A LAYOUT-KEEPING SPINE: a token is spelled as in the flat fold, a nested block is
+// the same std.layout nest the grammar-row route makes (target_text_nested) by the unit the target spells, and
+// an unspelled unit refuses (translate_layout_unit_unspelled) rather than printing the block flat.
+fn serialize_concrete_syntax_layout_to_source_string(
+  target: TargetModel,
+  items: List<ConcreteSyntaxLayoutItem>
+) -> Outcome<TargetText> {
+  fold_list(
+    xs: items,
+    empty: Accepted { value: target_text_empty, diagnostics: None },
+    cons: fn(acc, item) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: partial, diagnostics: ad } =>
+          match serialize_concrete_syntax_layout_item(target: target, item: item) {
+            Accepted { value: text, diagnostics: td } =>
+              Accepted {
+                value: target_text_seq(acc: partial, next: text),
+                diagnostics: diagnostics_merge(outer: ad, inner: td)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+          }
+      }
+    }
+  )
+}
+
+fn serialize_concrete_syntax_layout_item(target: TargetModel, item: ConcreteSyntaxLayoutItem) -> Outcome<TargetText> {
+  match item {
+    LayoutToken { token: tok } => serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: [tok])
+    LayoutNest { unit: unit, items: inner } =>
+      nest_by_spelled_unit(
+        target: target,
+        unit: unit,
+        body: fn() { serialize_concrete_syntax_layout_to_source_string(target: target, items: inner) }
+      )
+  }
+}
+
+// The one rule both routes nest by: the unit must be spelled by the target (an unspelled unit refuses), and the
+// body is built only once it is, then wrapped in the std.layout nest.
+fn nest_by_spelled_unit(target: TargetModel, unit: Symbol, body: fn() -> Outcome<TargetText>) -> Outcome<TargetText> {
+  match map_get_checked(target.binding_spellings, unit) {
+    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
+      bind_outcome(
+        o: body(),
+        f: fn(text) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: text)) }
+      )
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
@@ -1259,16 +1317,11 @@ fn serialize_relation_row_nested_bounded(
   unit: Symbol,
   tokens: List<Node>
 ) -> Outcome<TargetText> {
-  match map_get_checked(target.binding_spellings, unit) {
-    Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
-      bind_outcome(
-        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens),
-        f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
-      )
-    Accepted { value: Absent, diagnostics: _ } =>
-      outcome_rejected(translate_layout_unit_unspelled_diagnostic(unit: unit))
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  nest_by_spelled_unit(
+    target: target,
+    unit: unit,
+    body: fn() { serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens) }
+  )
 }
 
 // A nest's unit must be spelled by the target. The binding lookup's fallback to the symbol's own

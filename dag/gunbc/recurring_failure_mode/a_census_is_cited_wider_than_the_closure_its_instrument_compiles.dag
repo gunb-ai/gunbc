@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_census_is_cited_wider_than_the_closure_its_instrument_compiles
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_census_is_cited_wider_than_the_closure_its_instrument_compiles: RecurringFailureMode = RecurringFailureMode {
   identity: "a_census_is_cited_wider_than_the_closure_its_instrument_compiles" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a census is reported at corpus grain when its instrument only ever compiled one closure, so a count that is exactly right for what ran is cited as a fact about the whole tree.** The measurement is not wrong and the instrument is not broken; the SCOPE SENTENCE around the number is wider than the population that produced it. INVALID STATE: a phrase of the form `N across the whole tree` standing on a run whose instrument reaches a proper subset of the tree, with nothing in the report naming the subset.",

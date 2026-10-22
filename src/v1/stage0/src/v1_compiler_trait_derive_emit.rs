@@ -269,17 +269,6 @@ pub fn v1_keyed_map_verdict_from_algebra(
     }
 }
 
-pub fn v1_type_expr_is_keyed_map(
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone())).clone() {
-        KeyedMapVerdict::KeyedMap => true,
-        KeyedMapVerdict::NotKeyedMap => false,
-        KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => false,
-    }
-}
-
 pub fn v1_map_key_head_type_exprs(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.receipt_names_a_property_not_the_tree_it_holds_of
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data receipt_names_a_property_not_the_tree_it_holds_of: RecurringFailureMode = RecurringFailureMode {
   identity: "receipt_names_a_property_not_the_tree_it_holds_of" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a receipt names a PROPERTY and never names the TREE it holds of, so it expires silently** (INVALID STATE: evidence of the form 'regenerating produces the committed bytes', 'the diff is zero', 'the census matches', 'the fixed point is reached' is a claim about A BASE, but is recorded and cited as a claim about A CHANGE.",
