@@ -849,22 +849,32 @@ test fn each_read_path_is_its_template_with_the_placeholders_filled() -> Bool {
 }
 
 // A FOREIGN OWNERSHIP RIDING THE ADMISSION. The ownership is built through the chain for ANOTHER boundary
-// (the sibling environment, honestly read), then handed to broker_phase and protection_phase for
-// srv1-production. Nothing before clear_review compares the ownership's subject with the boundary, so only
-// that one comparison (subject_comparison) refuses it: ReviewNotCleared{OwnershipIsAboutAnotherBoundary}
-// by name, and no ReviewRequest is produced.
-test fn an_ownership_observed_for_another_boundary_does_not_clear_the_review() -> Bool {
+// (the same environment name in another repository, honestly read), then handed to broker_phase and
+// protection_phase for srv1-production. The broker already refuses an ownership read for another
+// ENVIRONMENT (refusal_from_the_ownership); nothing before clear_review compares owner and repo with the
+// boundary, so only that one comparison (subject_comparison) refuses this:
+// ReviewNotCleared{OwnershipIsAboutAnotherBoundary} by name, and no ReviewRequest is produced.
+data fork_boundary: DeploymentGateBoundary = DeploymentGateBoundary {
+  repository: Repository { owner: "gunb-ai", name: "someone-elses-fork" },
+  environment_name: gated_env,
+}
+
+test fn an_ownership_observed_for_another_repository_does_not_clear_the_review() -> Bool {
   match installation_phase(
-    boundary: sibling_boundary,
-    response: honest_installation_read,
+    boundary: fork_boundary,
+    response: InstallationReadResponse {
+      sent: SentRequest { method: GET, path: "/repos/gunb-ai/someone-elses-fork/installation" },
+      status: 200,
+      wire: honest_installation_read.wire,
+    },
     claim: installation_claim
   ) {
     InstallationStopped { outcome: _ } => false
     InstallationEstablished { observed: observed, next: _ } =>
       match ownership_phase(
-        boundary: sibling_boundary,
+        boundary: fork_boundary,
         response: rule_read_at(
-          path: "/repos/gunb-ai/gunbc/environments/gcp-iam-bootstrap/deployment_protection_rules",
+          path: "/repos/gunb-ai/someone-elses-fork/environments/srv1-production/deployment_protection_rules",
           rule_row_id: 900000001,
           row_app: app_id
         ),
