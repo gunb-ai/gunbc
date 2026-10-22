@@ -3436,6 +3436,13 @@ fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recu
   )
 }
 
+fn declaration_shared_at_key(type_summaries: TypeSummaryIndex, key: String, name: String, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Bool {
+  match type_summary_decided(index: type_summaries, key: key) {
+    Present { value: summary } => set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing), name)
+    Absent => true
+  }
+}
+
 // A SHARED DECLARATION READ THROUGH AN UNSHARED LEAF IS A REFUSAL, NEVER A PICK. The shared set is keyed
 // by leaf (shared_by_every_declarer), so when declarers of one leaf disagree the leaf reads unshared and
 // the declaration that IS shared (heap-realized) takes the Copy roster over Rc-realized fields (E0204,
@@ -3447,12 +3454,8 @@ fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recu
 // on the declaration identity.
 fn leaf_sharing_disagreement_declarers(type_summaries: TypeSummaryIndex, name: String, identity: String, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> List<String> {
   let keys = type_summary_keys_of_leaf(index: type_summaries, leaf: name)
-  let shared_of = (key: String) => match type_summary_decided(index: type_summaries, key: key) {
-    Present { value: summary } => set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing), name)
-    Absent => true
-  }
-  let verdicts = keys |> map(key => shared_of(key))
-  let this_shared = keys |> any(key => key == identity && shared_of(key))
+  let verdicts = keys |> map(key => declaration_shared_at_key(type_summaries: type_summaries, key: key, name: name, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing))
+  let this_shared = keys |> any(key => key == identity && declaration_shared_at_key(type_summaries: type_summaries, key: key, name: name, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing))
   if this_shared && (verdicts |> any(v => !v)) { keys } else { [] }
 }
 
