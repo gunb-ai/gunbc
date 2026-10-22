@@ -13,7 +13,8 @@ import product.host_identity { HostIdentity }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
-import gunbc.host.managed_host { ManagedHost, managed_hosts, managed_host_binding }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.host_control_route { HostControlStanding, HostControlRefused, NoOutOfBandRoute, bmc_controlled_host }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent, gunbc_runner_committed_width }
@@ -49,7 +50,7 @@ fn has_offer(m: ManagedHost) -> Bool {
 // that service_slot_population over the real host has exactly 5 bound slots.
 fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
-fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(standing: managed_host_binding(host: m)) }
+fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(host: m.host, standing: bmc_control_binding(observed: m.access, secured: m.secure)) }
 
 data supplied_labels: RunnerRegistrationLabelsResolution = RegistrationLabelsResolved { labels: ["self-hosted", "linux", "ARM64", "gunbc-heavy", "gunbc-host-x"] }
 
