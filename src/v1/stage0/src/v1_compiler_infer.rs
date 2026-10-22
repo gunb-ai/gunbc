@@ -12622,6 +12622,7 @@ pub fn infer_call_arguments_generic_pass(
         Rc::new(ArgGenericFoldState {
             results: Rc::new(vec![]),
             subst: init_subst.clone(),
+            arg_formal_correspondence: Some(arg_formal_correspondence.clone()),
         }),
         |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
             let a = pair.1.clone();
@@ -12817,6 +12818,7 @@ pub fn infer_call_arguments_generic_pass(
                     })]),
                 ),
                 subst: next_subst.clone(),
+                arg_formal_correspondence: st.arg_formal_correspondence.clone(),
             })
         },
     )
@@ -14288,6 +14290,7 @@ Rc::new(InferResult {
                                 Rc::new(ArgGenericFoldState {
                                     subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
                                     results: Rc::new(vec![]),
+                                    arg_formal_correspondence: std::option::Option::None,
                                 }),
                                 |st: Rc<ArgGenericFoldState>, a: Rc<Node>| {
                                     let st = v1_rt::take_owned(st);
@@ -14299,6 +14302,7 @@ Rc::new(InferResult {
                                         );
                                         Rc::new(ArgGenericFoldState {
                                             subst: st.subst,
+                                            arg_formal_correspondence: st.arg_formal_correspondence,
                                             results: v1_rt::concat(
                                                 st.results,
                                                 Rc::new(vec![Rc::new(ArgInferResult {
@@ -14328,6 +14332,7 @@ Rc::new(InferResult {
                             {
                                 Rc::new(ArgGenericFoldState {
                                     subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                    arg_formal_correspondence: std::option::Option::None,
                                     results: match call_args.clone().first().cloned() {
                                         Some(first_arg) => {
                                             let first_result = infer_expr(
@@ -14564,11 +14569,16 @@ Rc::new(InferResult {
                                         span.clone(),
                                     );
                                     let plan_arg_formal_correspondence =
-                                        build_call_argument_formal_correspondence(
-                                            typed_args.clone(),
-                                            value_params_for_check.clone(),
-                                            scope.type_env.source_indices.clone(),
-                                        );
+                                        match arg_call.arg_formal_correspondence.clone() {
+                                            Some(carried) => carried.clone(),
+                                            std::option::Option::None => {
+                                                build_call_argument_formal_correspondence(
+                                                    typed_args.clone(),
+                                                    value_params_for_check.clone(),
+                                                    scope.type_env.source_indices.clone(),
+                                                )
+                                            }
+                                        };
                                     let call_application_plan = build_call_application_plan(
                                         value_params_for_check.clone(),
                                         resolved_formals.clone(),
@@ -25306,6 +25316,7 @@ pub fn is_type_variable_name(name: String) -> bool {
 pub struct ArgGenericFoldState {
     pub results: Rc<Vec<Rc<ArgInferResult>>>,
     pub subst: Rc<HashMap<String, Rc<Node>>>,
+    pub arg_formal_correspondence: Option<Rc<CallArgumentFormalCorrespondence>>,
 }
 
 pub fn type_node_label(

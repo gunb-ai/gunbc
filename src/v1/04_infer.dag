@@ -8265,7 +8265,7 @@ fn formal_code_point_view(formal: ResolvedFormal, env: TypeEnv) -> Node? {
 // the rule stays the single authority, now asked once per argument per call instead of once per
 // consumer per argument per round.
 fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspondence: CallArgumentFormalCorrespondence, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
-  fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
+  fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst, arg_formal_correspondence: Present { value: arg_formal_correspondence } }, f: (st, pair) =>
     let a = pair.second
     let formal_selection = call_argument_selection_at(correspondence: arg_formal_correspondence, argument_index: pair.first)
     let formal_raw = match formal_selection {
@@ -8329,7 +8329,8 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspon
     }
     ArgGenericFoldState {
       results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: ar.emissions }]),
-      subst: next_subst
+      subst: next_subst,
+      arg_formal_correspondence: st.arg_formal_correspondence
     }
   )
 }
@@ -9265,10 +9266,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         LocallyBoundBindingMissing { name: _ } => false
       }
       let arg_call = if declared_formal_authority_failed {
-        fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [] }, f: (st, a) =>
+        fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [], arg_formal_correspondence: none }, f: (st, a) =>
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
           ArgGenericFoldState {
             subst: st.subst,
+            arg_formal_correspondence: st.arg_formal_correspondence,
             results: concat(st.results, [ArgInferResult {
               typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
               emissions: ar.emissions
@@ -9279,7 +9281,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => true
         Present { value: _ } => false
       } {
-        ArgGenericFoldState { subst: empty_map(), results: match call_args |> first {
+        ArgGenericFoldState { subst: empty_map(), arg_formal_correspondence: none, results: match call_args |> first {
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
@@ -9383,10 +9385,23 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           module_name: scope.module_name,
           call_span: span
         )
-        // ONE CORRESPONDENCE FOR THE PLAN. The plan's inverse search now reads the table; its domain
-        // is the plan's own (typed_args, value_params_for_check) -- the same lists the search passed
-        // to the rule before -- built here, in the arm where the plan runs.
-        let plan_arg_formal_correspondence = build_call_argument_formal_correspondence(arguments: typed_args, value_params: value_params_for_check, source_indices: scope.type_env.source_indices)
+        // THE PLAN READS THE FOLD ROUNDS' TABLE (DESIGN §2: share the first value). The fold arm
+        // computed the correspondence over (call_args, value_params); this arm's domain is
+        // (typed_args, value_params_for_check) and value_params_for_check IS value_params (both are
+        // call_sig_split.value_params), while every typed argument is rebuilt by make_arg_node with
+        // name: arg_name_at(n: <its own raw argument>) and the same positional place -- the waiver
+        // pass only filters emissions, never touching typed_arg -- so labels and indices carry
+        // 1:1 and the two tables answer every query identically. Carrying beats rebuilding: the
+        // second build re-answered the selection rule for every argument the first had answered.
+        // The build below survives only as the fallback for the paths that ran no fold rounds
+        // (authority-failed, lambda/fold), which computed no table to carry -- never a path where
+        // one already exists. The shape walls keep their own full-signature domain (sig_params
+        // includes generics; the fold domain removes them), so they are a different question, not
+        // a second copy of this one.
+        let plan_arg_formal_correspondence = match arg_call.arg_formal_correspondence {
+          Present { value: carried } => carried
+          Absent => build_call_argument_formal_correspondence(arguments: typed_args, value_params: value_params_for_check, source_indices: scope.type_env.source_indices)
+        }
         let call_application_plan = build_call_application_plan(
           value_params: value_params_for_check,
           formals: resolved_formals,
@@ -14746,7 +14761,7 @@ fn is_type_variable_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
 
-type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
+type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node>, arg_formal_correspondence: CallArgumentFormalCorrespondence? }
 
 fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let authored = authored_name_at(source_indices: source_indices, node: n)
