@@ -18,7 +18,7 @@ echo "REPO=$REPO"
 git remote set-url origin https://github.com/gunb-ai/gunbc 2>/dev/null || true
 git fetch -q origin +refs/heads/session/nimble-badger-800:refs/heads/session/nimble-badger-800 2>/dev/null || true
 git checkout -q -f -B session/nimble-badger-800 origin/session/nimble-badger-800 2>/dev/null || true
-OID=70dd5a9b88e47293523362a601d346c028b8f9fd   # re-resolved below via PR_REF_MOVED guard
+OID=70dd5a9b88e4de60a04ffc7bcbf64257ffc38ca5   # gh pr view 14717 --json headRefOid (programmatic)
 BASE=a4a189d5390
 echo "HEADSHA_expected=$OID"
 [ -d /sys/fs/cgroup ] || { echo "NO_CGROUP2 -- STOP"; exit 9; }
