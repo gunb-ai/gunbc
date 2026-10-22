@@ -33,6 +33,7 @@ type WireRefusalCause
   | CauseMalformedMember { reason: String }
   | CausePolicy { spelling: String }
   | CausePolicyFieldsDiffer
+  | CauseAdmissionNotDeclared { subject: String, spelling: String }
 
 type WireVerdict
   = WireAccepted
@@ -40,7 +41,7 @@ type WireVerdict
 
 type WireFieldRule
   = WireFreeString
-  | WireAdmittedString { admitted: List<String>, cause: String }
+  | WireAdmittedString { row: WireAdmission, cause: String }
   | WireNested { shape: WireShape }
   | WireListNotAdmitted
 
@@ -50,7 +51,7 @@ type WireSumArm { wire_tag: String, fields: List<WireField> }
 
 type WireShape
   = WireRecord { fields: List<WireField> }
-  | WireSum { arms: List<WireSumArm>, admitted: List<String>, cause: String }
+  | WireSum { arms: List<WireSumArm>, admitted: WireAdmission, cause: String }
 
 type BoundShape
   = ShapeBound { shape: WireShape }
@@ -67,13 +68,38 @@ fn wire_cause_text(c: WireRefusalCause) -> String {
     CauseMalformedMember { reason: r } => r
     CausePolicy { spelling: sp } => sp
     CausePolicyFieldsDiffer => "policy fields are not the declared fields in declaration order"
+    CauseAdmissionNotDeclared { subject: sj, spelling: sp } => join(["policy admits a spelling no declared arm has: ", sj, " ", sp], "")
   }
 }
 
 // The policy's field names must be the derived names, in the derived order.
 fn bind_record(derived: List<String>, rules: List<WireField>) -> BoundShape {
-  if map(rules, r => r.name) == derived { ShapeBound { shape: WireRecord { fields: rules } } }
-  else { ShapeRefused { cause: CausePolicyFieldsDiffer } }
+  if map(rules, r => r.name) != derived { ShapeRefused { cause: CausePolicyFieldsDiffer } }
+  else {
+    match first_unsound_admission(rules: rules) {
+      Present { value: c } => ShapeRefused { cause: c }
+      Absent => ShapeBound { shape: WireRecord { fields: rules } }
+    }
+  }
+}
+
+// A rule whose admission row admits a spelling no declared arm has refuses the whole shape.
+fn first_unsound_admission(rules: List<WireField>) -> WireRefusalCause? {
+  fold(rules, init: Absent, f: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => match r.rule {
+        WireAdmittedString { row: row, cause: _ } =>
+          match admission_verdict(row: row) {
+            AdmissionNotDeclared { subject: sj, spelling: sp } => Present { value: CauseAdmissionNotDeclared { subject: sj, spelling: sp } }
+            AdmissionSound => Absent
+          }
+        WireFreeString => Absent
+        WireNested { shape: inner } => shape_unsound_admission(shape: inner)
+        WireListNotAdmitted => Absent
+      }
+    }
+  })
 }
 
 fn wire_name_listed(allowed: List<String>, k: String) -> Bool {
@@ -115,12 +141,12 @@ fn read_field(obj: JsonValue, path: String, f: WireField) -> WireVerdict {
             Absent => WireRefusedAt { at: at, cause: CauseNotString }
             Present { value: s } => if s == "" { WireRefusedAt { at: at, cause: CauseEmpty } } else { WireAccepted }
           }
-        WireAdmittedString { admitted: adm, cause: c } =>
+        WireAdmittedString { row: row, cause: c } =>
           match wire_text(v: v) {
             Absent => WireRefusedAt { at: at, cause: CauseNotString }
             Present { value: s } =>
               if s == "" { WireRefusedAt { at: at, cause: CauseEmpty } }
-              else if wire_name_listed(allowed: adm, k: s) { WireAccepted }
+              else if wire_name_listed(allowed: row.admitted, k: s) { WireAccepted }
               else { WireRefusedAt { at: at, cause: CausePolicy { spelling: c } } }
           }
         WireNested { shape: sh } => read_shape(shape: sh, v: v, path: at)
@@ -149,6 +175,28 @@ fn read_shape(shape: WireShape, v: JsonValue, path: String) -> WireVerdict {
   }
 }
 
+// A sum's admitted tags are one WireAdmission whose declared list is the arms' own wire_tags
+// (sum_admission), so the B3 tag set and the B4 value sets are judged by the one admission_verdict.
+fn shape_unsound_admission(shape: WireShape) -> WireRefusalCause? {
+  match shape {
+    WireRecord { fields: fs } => first_unsound_admission(rules: fs)
+    WireSum { arms: arms, admitted: adm, cause: _ } =>
+      match admission_verdict(row: adm) {
+        AdmissionNotDeclared { subject: sj, spelling: sp } => Present { value: CauseAdmissionNotDeclared { subject: sj, spelling: sp } }
+        AdmissionSound => fold(arms, init: Absent, f: fn(acc, a) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => first_unsound_admission(rules: a.fields)
+          }
+        })
+      }
+  }
+}
+
+fn sum_admission(subject: String, arms: List<WireSumArm>, admitted: List<String>) -> WireAdmission {
+  WireAdmission { subject: subject, declared: map(arms, a => a.wire_tag), admitted: admitted }
+}
+
 fn read_object(shape: WireShape, ms: List<JsonKeyValue>, v: JsonValue, path: String) -> WireVerdict {
   match shape {
     WireRecord { fields: fs } => read_members(ms: ms, v: v, path: path, allowed: map(fs, f => f.name), fields: fs)
@@ -161,7 +209,7 @@ fn read_object(shape: WireShape, ms: List<JsonKeyValue>, v: JsonValue, path: Str
             Absent => WireRefusedAt { at: join([wire_prefix(path: path), "kind"], ""), cause: CauseNotString }
             Present { value: tag } =>
               if tag == "" { WireRefusedAt { at: join([wire_prefix(path: path), "kind"], ""), cause: CauseEmpty } }
-              else if !wire_name_listed(allowed: adm, k: tag) { WireRefusedAt { at: join([wire_prefix(path: path), "kind"], ""), cause: CausePolicy { spelling: c } } }
+              else if !wire_name_listed(allowed: adm.admitted, k: tag) { WireRefusedAt { at: join([wire_prefix(path: path), "kind"], ""), cause: CausePolicy { spelling: c } } }
               else {
                 match first_arm(arms: arms, tag: tag) {
                   Absent => WireRefusedAt { at: join([wire_prefix(path: path), "kind"], ""), cause: CausePolicy { spelling: c } }
@@ -198,9 +246,9 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- rows.dag retirement step 4: the Wire.swift generator emits its decoders from this fold's shapes and the transcribed tree deletes; the server decode_* chains stay until the option-2 step"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "bind_record"),
-    reason: "the policy rows (admitted spellings, admitted values, per-sum causes: rulings B3 and B4) are authored in the witness, not beside the protocol in gunbc.auth.approval_device_wire",
-    dissolution: unbound_dissolution(description: "feature:wire-policy-rows-in-approval-device-wire -- B3/B4 policy rows are declared in approval_device_wire and the witness consumes them instead of authoring them"),
+    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "admission_verdict"),
+    reason: "the admitted-spelling rows are declared beside the protocol and checked here, but the server decode_* chains still spell their admission as if-chains and the per-shape cause texts (CausePolicy) are still authored in the witness",
+    dissolution: unbound_dissolution(description: "feature:wire-option-2-decode-cutover -- the server decode_* chains read their admission from the same rows and the per-shape causes become rows beside them"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireSumArm"),
@@ -212,4 +260,42 @@ data wire_strict_reader_frontier_rows: List<FrontierRow> = [
     reason: "FieldDefault (literal vs malformed) is read only by test.claim.decl_facts_field_binder_witness; no production reader distinguishes a literal default from a malformed one yet",
     dissolution: unbound_dissolution(description: "feature:wire-swift-generator-switch -- the Wire.swift generator emits a field's default from the declared field list, which needs a literal default as a value and refuses a malformed one; that generator is the first production reader of field_default_reading"),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.auth.wire_strict_reader", decl_name: "WireShape"),
+    reason: "the sum shapes' arm members (push_shape, evidence_shape) are supplied values not paired to their variant declarations (declared_field_list reads a record's fields, not a sum arm's payload); the shape drives only the READ direction; the server *_json encoders are hand-written and merely judged against the shape's member order and admitted spellings by test.claim.wire_encoder_conformance_witness, because dag cannot take a typed value apart by derived field name",
+    dissolution: unbound_dissolution(description: "feature:value-reflection -- a field read by derived name with declaration-driven newtype, enum-spelling and nested dispatch; with it a generic fold from a value plus its WireShape to JsonValue replaces the hand-written *_json encoders and the conformance witness becomes the differential against them"),
+  ),
 ]
+// B3/B4 POLICY ROWS (rulings B3 admitted arms, B4 admitted values). A row names a wire subject, the
+// spellings of EVERY declared arm of its sum (declared, from the sum's *_wire spelling fn over the
+// full arm list) and the spellings the protocol admits. Admission is a policy narrowing, so an admitted
+// spelling that is not a declared one is a policy fork and refuses, typed, with the offender named.
+type WireAdmission { subject: String, declared: List<String>, admitted: List<String> }
+
+type AdmissionVerdict
+  = AdmissionSound
+  | AdmissionNotDeclared { subject: String, spelling: String }
+
+// THE ONLY WAY A ROW IS BUILT: the admitted set is a list of ARMS of the sum (type T), and both
+// lists are spelled by the sum's one spelling fn, so a spelling that is no arm's cannot be written
+// into a row. admission_verdict stays as the check on the carrier (and the arms list's completeness is
+// the cover claim in wire_spelling_injective_witness), not as the thing standing in for construction.
+fn admission_of<T>(subject: String, arms: List<T>, admitted: List<T>, spell: fn(T) -> String) -> WireAdmission {
+  WireAdmission { subject: subject, declared: map(arms, a => spell(a)), admitted: map(admitted, a => spell(a)) }
+}
+
+fn admission_verdict(row: WireAdmission) -> AdmissionVerdict {
+  match first_undeclared(declared: row.declared, admitted: row.admitted) {
+    Present { value: v } => AdmissionNotDeclared { subject: row.subject, spelling: v }
+    Absent => AdmissionSound
+  }
+}
+
+fn first_undeclared(declared: List<String>, admitted: List<String>) -> Optional<String> {
+  fold(admitted, init: Absent, f: fn(acc, a) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if wire_name_listed(allowed: declared, k: a) { Absent } else { Present { value: a } }
+    }
+  })
+}
