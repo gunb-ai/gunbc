@@ -18,7 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
-import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, CensusVerbTraversalOrder, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -292,6 +292,22 @@ import v2.compiler.dependency_demand_census {
   demand_census_report,
   demand_census_strip,
   demand_census_unbound_locus_from_diagnostics,
+}
+import v2.compiler.traversal_order_census {
+  TraversalCensusReport,
+  TraversalFnFact,
+  traversal_census_exit,
+  traversal_census_join,
+  traversal_census_lines,
+  traversal_module_facts
+}
+import v2.compiler.fold_lowering { collection_roster_rows }
+import v2.compiler.traversal_order_roster {
+  traversal_closure_scope,
+  traversal_dispositions,
+  traversal_plan_discharges,
+  traversal_primitive_seeds,
+  traversal_stage_roster
 }
 import v2.compiler.normalized_tree {
   NormalizedTree,
@@ -3218,6 +3234,106 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
       NativeDemandCensusOutput {
         lines: demand_census_lines(r: report),
         exit: demand_census_exit(r: report)
+      }
+  }
+}
+
+// THE TRAVERSAL-ORDER CENSUS (M2V; v2.compiler.traversal_order_census). Streaming like the demand census:
+// each module in the closure scope is resolved, its traversal facts extracted, and its tree dropped
+// before the next; the join over the facts is the census's own pure reduction.
+type NativeTraversalCensusFold {
+  context: NativeTestContext
+  facts: List<TraversalFnFact>
+  unread: List<String>
+}
+
+type NativeTraversalCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_traversal_census_in_scope(module_qn: QualifiedName) -> Bool {
+  fold_list(xs: traversal_closure_scope, empty: false, cons: fn(any, p) {
+    any || list_starts_with(xs: module_qn, prefix: qualified_name_from_dotted_string(dotted: p), eq: fn(a, b) { a == b })
+  })
+}
+
+fn native_traversal_census_owned(module: String) -> Bool {
+  fold_list(xs: traversal_stage_roster, empty: false, cons: fn(any, s) {
+    any || fold_list(xs: s.modules, empty: false, cons: fn(a, m) { a || m == module })
+  })
+}
+
+fn native_traversal_census_module(w: NativeTraversalCensusFold, root: NormalizedTree) -> NativeTraversalCensusFold {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      if native_traversal_census_in_scope(module_qn: module_qn) {
+        let step = native_test_resolve_module(context: w.context, module: module_qn)
+        match step.resolved {
+          Rejected { diagnostics: _ } =>
+            NativeTraversalCensusFold { context: step.context, facts: w.facts, unread: Cons { head: qualified_name_to_dotted_string(qn: module_qn), tail: w.unread } }
+          Accepted { value: resolved, diagnostics: _ } =>
+            NativeTraversalCensusFold {
+              context: step.context,
+              facts: fold_list(
+                xs: traversal_module_facts(resolved: resolved, module_qn: module_qn, retain_shape: native_traversal_census_owned(module: qualified_name_to_dotted_string(qn: module_qn))),
+                empty: w.facts,
+                cons: fn(acc, f) { Cons { head: f, tail: acc } }
+              ),
+              unread: w.unread
+            }
+        }
+      } else {
+        w
+      }
+  }
+}
+
+fn native_traversal_census_seeds() -> List<String> {
+  fold_list(xs: collection_roster_rows, empty: traversal_primitive_seeds, cons: fn(acc, r) {
+    Cons { head: concat(r.row.module_path, concat(".", r.row.decl_name)), tail: acc }
+  })
+}
+
+fn native_traversal_order_census_output(ingest: SourceRootIngest) -> NativeTraversalCensusOutput {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: d } =>
+      NativeTraversalCensusOutput { lines: [concat("[traversal-order-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: front, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: ingest) {
+        Rejected { diagnostics: d } =>
+          NativeTraversalCensusOutput { lines: [concat("[traversal-order-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+        Accepted { value: scope, diagnostics: _ } =>
+          let state = fold_list(
+            xs: ingest,
+            empty: native_test_context_state_empty(),
+            cons: fn(acc, read) {
+              native_test_context_fold_step(state: acc, read: read, lex: front.lex, prepared: front.prepared, scope: scope)
+            }
+          )
+          let walked = fold_list(
+            xs: state.roots,
+            empty: NativeTraversalCensusFold { context: native_test_context_finish(state: state, front: front, ingest: ingest), facts: Empty, unread: Empty },
+            cons: fn(w, root) { native_traversal_census_module(w: w, root: root) }
+          )
+          if is_empty(xs: walked.facts) {
+            NativeTraversalCensusOutput { lines: ["[traversal-order-census] no observation: no module in the closure scope resolved"], exit: 2 }
+          } else {
+            let joined = traversal_census_join(
+              stages: traversal_stage_roster,
+              facts: walked.facts,
+              rows: traversal_dispositions,
+              seeds: native_traversal_census_seeds(),
+              discharges: traversal_plan_discharges
+            )
+            let report = TraversalCensusReport {
+              results: joined.results,
+              stale: joined.stale,
+              refusals: fold_list(xs: walked.unread, empty: joined.refusals, cons: fn(acc, m) { Cons { head: concat("unreadable_module ", m), tail: acc } })
+            }
+            NativeTraversalCensusOutput { lines: traversal_census_lines(stages: traversal_stage_roster, report: report), exit: traversal_census_exit(report: report) }
+          }
       }
   }
 }
@@ -7160,6 +7276,9 @@ fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootInges
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
     CensusVerbDeclRef =>
       let o = native_decl_ref_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+    CensusVerbTraversalOrder =>
+      let o = native_traversal_order_census_output(ingest: ingest)
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
   }
 }
