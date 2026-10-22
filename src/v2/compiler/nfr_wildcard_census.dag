@@ -139,10 +139,7 @@ fn node_is_arrow(n: Node) -> Bool {
 }
 
 fn root_member_sites(root: Node) -> List<WildcardSite> {
-  fold_list(
-    xs: root.children,
-    empty: [],
-    cons: fn(acc, e) {
+  fold(root.children, init: [], f: fn(acc, e) {
       match e.label {
         Authored { name: sym } =>
           if node_is_arrow(n: e.target) {
@@ -153,8 +150,7 @@ fn root_member_sites(root: Node) -> List<WildcardSite> {
         Positional => acc
         StructuralLabel { label: _ } => acc
       }
-    }
-  )
+  })
 }
 
 // A type member is a closed coproduct when its declaration subtree holds a Disj.
@@ -167,20 +163,15 @@ fn member_is_coproduct(target: Node) -> Bool {
         TypeNode { connective: Disj } => true
         _ => false
       })
-    }
-  )
+  })
 }
 
 fn declares_coproduct_named(root: Node, name: String) -> Bool {
-  fold_list(
-    xs: root.children,
-    empty: false,
-    cons: fn(acc, e) {
+  fold(root.children, init: false, f: fn(acc, e) {
       acc || (match e.label {
         Authored { name: sym } => symbol_lexeme(sym: sym) == name && (node_is_arrow(n: e.target) == false) && member_is_coproduct(target: e.target)
         Positional => false
         StructuralLabel { label: _ } => false
       })
-    }
-  )
+  })
 }
