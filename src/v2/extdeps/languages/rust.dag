@@ -297,11 +297,12 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   TargetTypeExprVariantSlot
 }
 import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclColumnPlain,
+  ColumnUnwired,
+  ColumnWired,
+  MembersInAssociatedBlock,
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
-  HeaderLeadingLines,
-  ImportsLeading,
-  MembersInAssociatedBlock,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,
@@ -2988,9 +2989,11 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     enum_name_after_variants: false,
     field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
-    member_projection: MembersInAssociatedBlock,
-    import_projection: ImportsLeading,
-    header_projection: HeaderLeadingLines,
+    member_projection: ColumnWired { placement: MembersInAssociatedBlock },
+    import_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    header_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    doc_projection: ColumnUnwired,
+    conformance_projection: ColumnUnwired,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,
