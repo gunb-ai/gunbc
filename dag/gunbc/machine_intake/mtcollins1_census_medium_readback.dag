@@ -11,6 +11,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContex
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of, sha256sum_digest, boot_medium_served_path, boot_medium_served_argv }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, BootMediumReadbackHeld, BootMediumReadbackDigestDiffers, bmc_boot_image_export, boot_medium_readback }
 import gunbc.machine_intake.boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualification, CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, census_medium_qualification, boot_image_export_text, mtcollins1_census_image, CensusImage, CensusImageDerived, CensusImageRefused }
@@ -43,10 +44,6 @@ type CensusMediumReadback
   | CensusMediumReadbackExporterUnsupported { supported: BootImageExport, named: BootImageExport }
   | CensusMediumReadbackInputUnderived { reason: String }
 
-fn census_medium_served_path(medium: BootMedium) -> NonEmptyStr {
-  boot_image_published_path(export_dir: medium.export.dir, image_name: medium.image_name)
-}
-
 fn census_record_path(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
   ubuntu_seeded_install_media_record_path(dir: bmc_boot_image_export.dir, input: input)
 }
@@ -59,10 +56,6 @@ fn census_record_argv(record_path: NonEmptyStr) -> List<String> {
   argv_words(command: cat_command(path: record_path as String))
 }
 
-fn census_readback_argv(path: NonEmptyStr) -> List<String> {
-  argv_words(command: sha256sum_file_command(path: path as String))
-}
-
 // The derivation record IS one digest: resolve_seeded_image trims the whole file and consumes it,
 // so this reader does the same -- a trailing token is a malformed record, never an admitted one.
 // std.content_hash.sha256_hex_digest is the one admission (exact length AND lowercase hex syntax).
@@ -71,25 +64,6 @@ fn record_digest(text: String) -> String? {
     Absent => none
     Present { value: d } => Present { value: d.hex as String }
   }
-}
-
-// sha256sum prints "<hex>  <path>": the first whitespace-delimited field, admitted as a digest.
-fn sha256sum_digest(line: String) -> String? {
-  match get(xs: split(s: trim(s: line), delimiter: " "), index: 0) {
-    Absent => none
-    Present { value: w } =>
-      match sha256_hex_digest(hex: w) {
-        Absent => none
-        Present { value: d } => Present { value: d.hex as String }
-      }
-  }
-}
-
-// ONE ANSWER PER REMOTE LEG, supplied by the producer or by a witness.
-type RemoteAnswer {
-  exit_code: Int
-  stdout: String
-  stderr: String
 }
 
 // STAGE ONE: the record alone. Its signature carries no measurement, which is what makes "an
@@ -132,7 +106,7 @@ fn census_measure_join(
   recorded: NonEmptyStr,
   measure: RemoteAnswer,
 ) -> CensusMediumReadback {
-  let served_path = census_medium_served_path(medium: medium)
+  let served_path = boot_medium_served_path(medium: medium)
   if measure.exit_code != 0 {
     CensusMediumReadbackImageUnreadable { host: host, served_path: served_path, reason: concat("exit=", to_string(measure.exit_code), " ", trim(s: measure.stderr)) }
   } else {
@@ -226,13 +200,6 @@ fn census_readback_refusal_before_attach(subject: NonEmptyStr, readback: CensusM
 
 data mtcollins1_census_readback_attempt_raw: String = "mtcollins1-census-readback"
 
-fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
-  match outcome {
-    TypedArgvExecRefused { reason: r } => RemoteAnswer { exit_code: 255, stdout: "", stderr: r }
-    TypedArgvExecConverged { result: r } => RemoteAnswer { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
-  }
-}
-
 // THE ONE PRODUCER: two read-only legs on the qualified medium's own exporter (its SSH target,
 // never a substituted one), IN ORDER -- cat the derivation record, and only once it is admitted
 // sha256sum the multi-gigabyte served image. A refused leg is unreadable, never diverged: the bytes
@@ -270,7 +237,7 @@ fn census_medium_readback(
               match census_record_standing(medium: medium, host: host, input: input, record: record) {
                 CensusRecordRefused { readback: r } => r
                 CensusRecordAdmitted { recorded: recorded } => {
-                  let measure = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: census_readback_argv(path: census_medium_served_path(medium: medium))))
+                  let measure = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: boot_medium_served_argv(path: boot_medium_served_path(medium: medium))))
                   census_measure_join(medium: medium, input: input, host: host, recorded: recorded, measure: measure)
                 }
               }

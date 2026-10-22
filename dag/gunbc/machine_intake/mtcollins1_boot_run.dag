@@ -17,13 +17,10 @@ import std.algebra { trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import gunbc.machine_intake.mtcollins1_census_medium_readback {
-  census_medium_readback, census_readback_refusal_before_filing, census_readback_refusal_before_attach,
-}
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
-import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, mtcollins1_census_image_stem, mtcollins1_census_machine }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_readback_attempt_raw }
+import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium, runner_host_medium_image_stem }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine }
+import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
   boot_subject_admission_for, boot_subject_refusal_cause_text, boot_subject_machine,
@@ -826,6 +823,12 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // never observe it: that is decidable from the medium row alone, and a run that discovered it by
 // taking the unit hold, taking the SOL lease, powering the unit and timing out would report a
 // hardware-shaped refusal for a modeling-shaped cause (DESIGN §5, the line stops at the deficit).
+// THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (run 39775218607,
+// create-only into bmc_boot_image_export, export readback of the content digest). Its terminal is the
+// runner_host_up_readback, accepted only under grant_from_store; a deny, an expiry or an unfiled request
+// writes nothing to the controller. The census image row stays the census-member modes' medium.
+data mtcollins1_boot_medium: BootMedium = runner_host_boot_medium(output_digest: "31aef9394d9e58c3e13b07a6176ed3d9e6fe0ee8cb292a33fe92661bfe966e7c")
+
 fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
   match medium.terminal {
     BootMediumNoTerminal { reason: r } =>
@@ -2454,14 +2457,14 @@ fn mtcollins1_boot_actuate(
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
-          match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
+          match boot_medium_served_refusal_before_attach(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: mtcollins1_boot_medium, attempt: boot_medium_served_attempt_raw)) {
             Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
               megarac_attach_boot_image(
                 proof: proof,
                 subject: subject,
                 share: mtcollins1_media_share,
-                replaceable_seeded_stem: mtcollins1_census_image_stem,
+                replaceable_seeded_stem: runner_host_medium_image_stem,
                 bound: mtcollins1_boot_ipmi_read_bound,
                 password_file: password_file,
                 attempt: attempt,
@@ -2978,7 +2981,7 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
+  match boot_medium_served_refusal_before_filing(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: mtcollins1_boot_medium, attempt: boot_medium_served_attempt_raw)) {
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
