@@ -27279,6 +27279,30 @@ mod nfr_tests {
             prod.len(),
             testl
         );
+        let mut fprod = std::collections::BTreeSet::new();
+        let mut ftest = 0;
+        for f in super::fallback_arm_census_facts() {
+            if !f.closed_coproduct_scrutinee {
+                continue;
+            }
+            let site = format!("{}::{}", f.rel_path, f.fn_name);
+            if roster.contains(&site) {
+                continue;
+            }
+            if is_test(&f.rel_path) {
+                ftest += 1;
+            } else {
+                fprod.insert(format!("{site} [{}]", f.class));
+            }
+        }
+        eprintln!(
+            "MEASURE2 facts_unrostered_prod={} facts_unrostered_test_facts={}",
+            fprod.len(),
+            ftest
+        );
+        for s in &fprod {
+            eprintln!("MEASURE2 fprod {s}");
+        }
         for s in &stale_a {
             eprintln!("MEASURE stale_no_fact {s}");
         }
