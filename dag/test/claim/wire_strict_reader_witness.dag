@@ -1,0 +1,136 @@
+module test.claim.wire_strict_reader_witness
+
+import std.roster_frontier { frontier_rows_well_formed }
+import gunbc.auth.wire_strict_reader { wire_strict_reader_frontier_rows }
+import std.types { String, List, Bool, NonEmptyStr }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import extdeps.languages.json.emit { JsonValue, JsonNull }
+import gunbc.auth.approval_device_wire {
+  WireDecoded, WireRefused, decode_read_authentication, decode_push_registration, apns_environment_wire, ApnsProduction, ApnsDevelopment,
+}
+import gunbc.auth.wire_strict_reader {
+  WireVerdict, wire_cause_text, WireAccepted, WireRefusedAt, WireFieldRule, WireFreeString, WireAdmittedString, WireNested, WireField, WireShape, WireRecord, WireSum, WireSumArm,
+  BoundShape, ShapeBound, ShapeRefused, bind_record, read_shape,
+}
+
+// SUPPLIED STRUCTURE: the declared field lists as values (DESIGN 3, a witness discriminates at one
+// interface). The inhabitance claim that the batched decl_facts_at pass yields these same lists is
+// wire_schema_derivation_witness.
+data read_authentication_declared: List<String> = ["enrollment_id", "requested_at", "assertion_b64"]
+
+fn read_authentication_rules() -> List<WireField> {
+  [
+    WireField { name: "enrollment_id", rule: WireFreeString },
+    WireField { name: "requested_at", rule: WireFreeString },
+    WireField { name: "assertion_b64", rule: WireFreeString },
+  ]
+}
+
+fn apns_registration_fields() -> List<WireField> {
+  [
+    WireField { name: "environment", rule: WireAdmittedString { admitted: [apns_environment_wire(e: ApnsProduction) as String, apns_environment_wire(e: ApnsDevelopment) as String], cause: "not an APNs environment" } },
+    WireField { name: "topic", rule: WireFreeString },
+    WireField { name: "token", rule: WireFreeString },
+  ]
+}
+
+data push_shape: WireShape = WireSum {
+  arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }],
+  admitted: ["apns"],
+  cause: "not an admitted push provider",
+}
+
+fn read_auth_shape() -> WireShape {
+  WireRecord { fields: read_authentication_rules() }
+}
+
+fn parsed(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => v
+    JsonDocumentUnreadable { gap: _ } => JsonNull
+  }
+}
+
+fn verdict_key(v: WireVerdict) -> String {
+  match v {
+    WireAccepted => "ok"
+    WireRefusedAt { at: a, cause: c } => join([a, "|", wire_cause_text(c: c)], "")
+  }
+}
+
+fn chain_auth_key(text: String) -> String {
+  match decode_read_authentication(v: parsed(text: text)) {
+    WireDecoded { value: _ } => "ok"
+    WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "")
+  }
+}
+
+fn chain_push_key(text: String) -> String {
+  match decode_push_registration(v: parsed(text: text)) {
+    WireDecoded { value: _ } => "ok"
+    WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "")
+  }
+}
+
+fn reader_key(shape: WireShape, text: String, path: String) -> String {
+  verdict_key(v: read_shape(shape: shape, v: parsed(text: text), path: path))
+}
+
+data auth_ok: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"a\"}"
+data auth_missing: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"t\"}"
+data auth_empty: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"\",\"assertion_b64\":\"a\"}"
+data auth_unknown: String = "{\"enrollment_id\":\"e\",\"requested_at\":\"t\",\"assertion_b64\":\"a\",\"x\":\"y\"}"
+data auth_not_string: String = "{\"enrollment_id\":1,\"requested_at\":\"t\",\"assertion_b64\":\"a\"}"
+
+// Members of a standalone body are bare in both readers (the chain labelled only the object "auth").
+// The recorded B2 change is the object-level subject: "auth" becomes "$" at the root.
+test fn derived_reader_matches_chain_on_read_authentication_members() -> Bool {
+  all([auth_ok, auth_missing, auth_empty, auth_not_string], t =>
+    reader_key(shape: read_auth_shape(), text: t, path: "") == chain_auth_key(text: t))
+}
+
+test fn the_recorded_b2_change_is_the_object_level_subject_only() -> Bool {
+  reader_key(shape: read_auth_shape(), text: auth_unknown, path: "") == "$|unknown member: x"
+    && chain_auth_key(text: auth_unknown) == "auth|unknown member: x"
+}
+
+data apns_ok: String = "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\"}"
+data apns_bad_kind: String = "{\"kind\":\"fcm\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\"}"
+data apns_bad_env: String = "{\"kind\":\"apns\",\"environment\":\"staging\",\"topic\":\"t\",\"token\":\"k\"}"
+data apns_missing_topic: String = "{\"kind\":\"apns\",\"environment\":\"production\",\"token\":\"k\"}"
+data apns_unknown: String = "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\",\"z\":\"1\"}"
+data apns_no_kind: String = "{\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\"}"
+
+// Nested under a site the chain labels "push": the derived reader is given path "push".
+test fn derived_reader_matches_chain_on_push_registration() -> Bool {
+  all([apns_ok, apns_bad_kind, apns_bad_env, apns_missing_topic, apns_unknown, apns_no_kind], t =>
+    reader_key(shape: push_shape, text: t, path: "push") == chain_push_key(text: t))
+}
+
+test fn a_changed_spelling_row_reds_a_vector() -> Bool {
+  let changed = WireSum {
+    arms: [WireSumArm { wire_tag: "apns", fields: apns_registration_fields() }],
+    admitted: ["apns2"],
+    cause: "not an admitted push provider",
+  }
+  reader_key(shape: changed, text: apns_ok, path: "push") != chain_push_key(text: apns_ok)
+}
+
+test fn a_policy_that_is_not_the_declared_fields_is_refused() -> Bool {
+  match bind_record(derived: read_authentication_declared, rules: read_authentication_rules() |> filter(f => f.name != "assertion_b64")) {
+    ShapeRefused { cause: _ } => true
+    ShapeBound { shape: _ } => false
+  }
+}
+
+test fn a_policy_that_is_the_declared_fields_binds() -> Bool {
+  match bind_record(derived: read_authentication_declared, rules: read_authentication_rules()) {
+    ShapeBound { shape: _ } => true
+    ShapeRefused { cause: _ } => false
+  }
+}
+
+// The four declared consumers carry a reason and a bound-or-described dissolution trigger.
+test fn the_declared_frontier_rows_are_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: wire_strict_reader_frontier_rows) && count(wire_strict_reader_frontier_rows) == 4
+}
