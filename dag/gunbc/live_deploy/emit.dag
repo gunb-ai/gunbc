@@ -4646,7 +4646,7 @@ fn apply_step_fragments(
         // bootstraps the repository), and never at the standing pre-position of apply_intent_fragments,
         // where it ran before any step could create the repository. The group carries its repository
         // premise gate first; a failed gate aborts the apply before any git path is created.
-        if art.kind == GunbcSourceTree { git_repository_subtree_tree_position_fragments(spec: spec, plan: plan) } else { [] },
+        if (art.kind == GunbcSourceTree) { git_repository_subtree_tree_position_fragments(spec: spec, plan: plan) } else { [] },
       )
     Dependency { step: dep } =>
       host_script_member_proceed(

@@ -2417,7 +2417,7 @@ fn wre3_lab_spec_without_tree_step() -> DeploymentSpec {
     target: spec.target,
     steps: filter(spec.steps, s => match s {
       ArtifactStep { step: art } => art.kind != GunbcSourceTree
-      Dependency { step: _ } => true,
+      Dependency { step: _ } => true
     }),
     service: spec.service,
     approval_broker: spec.approval_broker,
