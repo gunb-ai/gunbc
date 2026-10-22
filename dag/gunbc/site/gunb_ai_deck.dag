@@ -12,7 +12,6 @@ import extdeps.languages.ecmascript.emit {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.site.aligned_columns { aligned_row, spaces, text_width }
 import gunbc.site.markup { page_render_refusal_prefix }
-import gunbc.instruments.pr_containment_instrument { AddedLine }
 
 // gunb.ai's assets/cards.js, the story-deck renderer. The CARD CONTENT is typed rows below (the three
 // cards' code listings, graphs, lanes, panels and receipts, plus the shared USERS_SYSTEM artifacts); the

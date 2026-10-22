@@ -1,6 +1,6 @@
 module test.claim.docker_container_stats_witness
 import extdeps.docker.container_inspect { ContainerConfig, ContainerInspect, ContainerStateDetail, HostConfig, NetworkSettings }
-import extdeps.docker.container_stats { ContainerStats, CpuStats, CpuUsage, DockerContainerNetworkInterfaceStats, NetworkStats, Networks, PidStats }
+import extdeps.docker.container_stats { ContainerStats, CpuStats, CpuUsage, NetworkStats, Networks, PidStats }
 import std.live_tree { LiveTreeDisposition }
 
 

@@ -31,7 +31,6 @@ import extdeps.git.inspect {
   MergeTreeRefused,
   merge_tree_outcome
 }
-import std.live_tree { LiveTreeDisposition }
 
 // Pure decision inputs only -- this witness reads no repository, which is the property that makes
 // the position-only divergence case authorable at all: no live corpus is guaranteed to contain one.

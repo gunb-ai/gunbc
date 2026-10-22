@@ -170,7 +170,6 @@ import gunbc.machine_intake.subject {
   UnitKeyRefused,
   UnitKeyStanding,
 }
-import gunbc.machine_intake.mtcollins1_power_on_account { OpenQuestion }
 import std.algebra { Cons }
 
 data gunbc_provisioning_authority_anchor: ExternalAuthority = ExternalAuthority {

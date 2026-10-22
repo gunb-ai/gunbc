@@ -1,6 +1,5 @@
 module test.claim.lens_verdict_witness
 import std.live_tree { LiveTreeDisposition }
-import v2.std.lens_verdict { LensVerdict }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

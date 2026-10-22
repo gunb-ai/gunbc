@@ -114,7 +114,6 @@ import v2.std.witness {
 import v2.compiler.refinement_discharge {
   infer_and_discharge,
 }
-import product.compute_board.truth_table_projection { EvalResult }
 
 type CoreNode = Node
 

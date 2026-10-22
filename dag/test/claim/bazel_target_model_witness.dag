@@ -56,7 +56,6 @@ import gunbc.build_target {
 }
 import std.types { String, Bool }
 import std.integer { Int }
-import std.live_tree { LiveTreeDisposition }
 
 // EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
 // so. Without the declaration the floor's fail-closed default reads the module as live-tree

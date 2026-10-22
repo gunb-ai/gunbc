@@ -1,5 +1,4 @@
 module test.claim.accelerator_demo_gpu_witness
-import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly

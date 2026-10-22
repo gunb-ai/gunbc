@@ -9,7 +9,6 @@ import gunbc.harness.harness_throughput {
   round_playback, round_playback_floor_ms, RoundPlayback, round_remaining_flex, harness_round_budget_steps, WriteRound, ReadRound, ReasonRound,
   ThroughputBand, Crawling, Walking, Running, Sprinting,
 }
-import std.live_tree { LiveTreeDisposition }
 
 // A CONTROLLED FIXTURE, NOT A TREE MEASUREMENT. The rows below are authored here with their answer
 // computed by hand, so the assertion compares a fold against an independent oracle rather than

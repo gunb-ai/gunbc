@@ -27,7 +27,6 @@ extdeps.git.worktree_enumeration	Cons	std.algebra
 extdeps.github.auth	DeclaredMetadata	extdeps.coverage
 extdeps.github.auth	Subject	extdeps.coverage
 extdeps.github.effect	List	std.types
-extdeps.github.expressions	FunctionCall	extdeps.llm.openai
 extdeps.github.mock_corpus	List	std.types
 extdeps.github.pulls	JsonPending	extdeps.coverage
 extdeps.github.pulls	List	std.types
@@ -38,8 +37,6 @@ extdeps.google.sheets	Subject	extdeps.coverage
 extdeps.google.sheets_mock_corpus	List	std.types
 extdeps.languages.html	List	std.types
 extdeps.languages.json.emit	List	std.types
-extdeps.languages.typescript.program	BinOp	std.syntax
-extdeps.languages.typescript.program	Block	std.render
 extdeps.languages.typescript.program	List	std.types
 extdeps.linux.mock_corpus	List	std.types
 extdeps.llm.anthropic_messages_api	ExternalSpecWatch	extdeps.coverage
@@ -75,7 +72,6 @@ extdeps.sec.issuer.microsoft_facts	FiledSigned	extdeps.sec.facts
 extdeps.sec.issuer.microsoft_facts	Unfiled	extdeps.sec.facts
 extdeps.sec.issuer.rollins_facts	FiledDuration	extdeps.sec.facts
 extdeps.sec.mock_corpus	List	std.types
-extdeps.ssh.client_options	ConfigFile	extdeps.xcodegen.project_spec
 extdeps.ssh.mock_corpus	List	std.types
 extdeps.tcgplayer.catalog	JsonPending	extdeps.coverage
 extdeps.tcgplayer.catalog	Subject	extdeps.coverage
@@ -94,9 +90,7 @@ gunbc.accelerator_demo.accelerator_demo_float_eval	ElementwiseArrayOp	gunbc.acce
 gunbc.accelerator_demo.accelerator_demo_float_eval	List	std.types
 gunbc.accelerator_demo.accelerator_demo_gpu	DecodeFidelity	extdeps.communication.medium
 gunbc.accelerator_demo.accelerator_demo_gpu	NumericalContract	std.numerical_contract
-gunbc.accelerator_demo.accelerator_demo_plan	AcceleratorFacts	extdeps.gpu.types
 gunbc.accelerator_demo.accelerator_demo_plan	DecodeFidelity	extdeps.communication.medium
-gunbc.accelerator_demo.accelerator_demo_plan	LoweringRefusalReason	extdeps.communication.numerical_fidelity
 gunbc.accelerator_demo.accelerator_demo_plan	Nano	std.measure
 gunbc.accelerator_demo.accelerator_demo_plan	NumericalContract	std.numerical_contract
 gunbc.accelerator_demo.accelerator_demo_plan	RealizationPlan	std.realization_schedule
@@ -118,7 +112,6 @@ gunbc.accelerator_demo.accelerator_demo_render	List	std.types
 gunbc.accelerator_demo.accelerator_demo_render	Nano	std.measure
 gunbc.accelerator_demo.accelerator_demo_render	NonEmptyStr	std.types
 gunbc.accelerator_demo.accelerator_demo_render	NumericalContract	std.numerical_contract
-gunbc.accelerator_demo.accelerator_demo_render	Placement	std.realization
 gunbc.accelerator_demo.accelerator_demo_render	RealizationPlan	std.realization_schedule
 gunbc.auth.deployment_gate_operator_steps	ActAddressedAnotherEnvironment	gunbc.auth.deployment_gate_authorization
 gunbc.auth.deployment_gate_operator_steps	ActAddressedAnotherRepository	gunbc.auth.deployment_gate_authorization
@@ -143,7 +136,6 @@ gunbc.ci.ci_input_envelope	Count	std.measure
 gunbc.ci.ci_input_envelope	Disposition	std.disposition
 gunbc.ci.ci_input_envelope	List	std.types
 gunbc.ci.ci_input_envelope	Measure	std.measure
-gunbc.ci.ci_input_envelope	Nat	std.nat
 gunbc.ci.ci_input_envelope	One	std.measure
 gunbc.ci.ci_oom_reclassify	FloorFailed	gunbc.ci.ci_failure_class
 gunbc.ci.ci_oom_reclassify	FloorFailureClass	gunbc.ci.ci_failure_class
@@ -163,7 +155,6 @@ gunbc.design.state_response	RawSelector	extdeps.languages.css.selectors
 gunbc.design.theme	CustomProperty	extdeps.languages.css.properties
 gunbc.digest_render	List	std.types
 gunbc.digest_render	NonEmptyStr	std.types
-gunbc.digest_render	PullRequest	extdeps.github.pulls
 gunbc.digest_render	PullRequestState	extdeps.github.pulls
 gunbc.digest_render	PullReview	extdeps.github.pulls
 gunbc.emit_diagnostic_observation	List	std.types
@@ -181,7 +172,6 @@ gunbc.fleet.fleet_show_effective_read	NonEmptyStr	std.types
 gunbc.fleet.fleet_show_effective_read	Percent	std.measure
 gunbc.floor.floor_materialization	CacheProvider	std.materialization_ladder
 gunbc.floor.floor_materialization	CoversIdentities	std.materialization_ladder
-gunbc.floor.floor_materialization	Frame	std.materialization_ladder
 gunbc.floor.floor_materialization	FrameDemand	std.materialization_ladder
 gunbc.floor.floor_materialization	Gate	gunbc.ci.ci_gate
 gunbc.floor.floor_materialization	LadderVerdict	std.materialization_ladder
@@ -263,9 +253,7 @@ gunbc.instrument_targets	RequiredLaneResolutionCensusProducer	gunbc.target_bindi
 gunbc.instrument_targets	SelfHostProducer	gunbc.target_binding
 gunbc.instrument_targets	V2NativeCliProducer	gunbc.target_binding
 gunbc.instrument_targets	V2NativeFrontierProducer	gunbc.target_binding
-gunbc.instruments.approval_store_live_probe	ProbeOther	test.claim.diverging_match_arm_join_witness
 gunbc.instruments.docs_projection_gate	List	std.types
-gunbc.instruments.e0599_emitter_decision_census	UnresolvedCause	gunbc.primitive_egress.disposition
 gunbc.instruments.emission_entry_instrument	List	std.types
 gunbc.instruments.fabric_ci_calibration_actuator	ExitFailure	std.process
 gunbc.instruments.floor_cost_distribution_instrument	List	std.types
@@ -283,7 +271,6 @@ gunbc.pr_digests	NonEmptyStr	std.types
 gunbc.pr_digests	PullReview	extdeps.github.pulls
 gunbc.pr_digests	ReviewComment	extdeps.github.pulls
 gunbc.provisioning.altra_autoinstall_seed	Cons	std.algebra
-gunbc.provisioning.altra_autoinstall_seed	OpenQuestion	gunbc.machine_intake.mtcollins1_power_on_account
 gunbc.replacement_cut	Cons	std.algebra
 gunbc.review_sheet_tab_locator	CandidateRead	gunbc.serving.replica_incarnation
 gunbc.review_verdict	ArtifactId	std.types
@@ -326,7 +313,6 @@ gunbc.scm.repository_envelope	CorpusManifestTarget	gunbc.scm.object_store
 gunbc.site.accent_study	ClassSelector	extdeps.languages.css.selectors
 gunbc.site.accent_study	ElementSelector	extdeps.languages.css.selectors
 gunbc.site.accent_study	RawProperty	extdeps.languages.css.properties
-gunbc.site.gunb_ai_deck	AddedLine	gunbc.instruments.pr_containment_instrument
 gunbc.site.markup	List	std.types
 gunbc.site.moodboard	ClassSelector	extdeps.languages.css.selectors
 gunbc.site.moodboard	ElementSelector	extdeps.languages.css.selectors
@@ -352,7 +338,6 @@ gunbc.tailscale_acl_emit	TailscaleNodeAttr	extdeps.tailscale.acl
 gunbc.tailscale_acl_emit	TailscaleSshRule	extdeps.tailscale.acl
 gunbc.tailscale_acl_emit	TailscaleTagOwnerRow	extdeps.tailscale.acl
 gunbc.test_node_wall_clock_ratchet	List	std.types
-gunbc.tools.cron_tag	List	std.types
 gunbc.tools.review	AnthropicChatMessage	extdeps.llm.anthropic_messages_api
 gunbc.tools.review	PullReview	extdeps.github.pulls
 gunbc.tools.review	UserMessage	extdeps.llm.anthropic_messages_api
@@ -370,15 +355,10 @@ product.printed_chassis.assembly_geometry	Block	std.render
 std.behavioral	List	std.types
 std.bytes	List	std.types
 std.determinism	DeclarationRef	std.decl_ref
-std.determinism	PerturbationVerdict	std.perturbation
 std.encoding	List	std.types
 std.graph	List	std.types
 std.machine_word	List	std.types
 std.measure	M	std.types
-std.measure	Temperature	examples.weather
-std.measure	Time	test.fixture.phantom_marker_identity.plain_provider
-std.measure	Volume	gunbc.roadmap.roadmap_sizing
-std.numerical_contract	RoundingMode	std.approximate_field
 std.os	MacosDistributionCatalogRow	std.os.types
 std.os	OperatingSystemSurface	std.os.types
 std.os	UbuntuDistributionCatalogRow	std.os.types
@@ -388,18 +368,10 @@ std.render	List	std.types
 std.spatial_frame	ExtentInFrame	std.attribution
 std.stack	List	std.types
 std.syllogism	List	std.types
-test.claim.accelerator_demo_execution_witness	LiveTreeDisposition	std.live_tree
-test.claim.accelerator_demo_gpu_witness	LiveTreeDisposition	std.live_tree
-test.claim.accelerator_demo_model_witness	LiveTreeDisposition	std.live_tree
-test.claim.access_layer_extension_witness	LiveTreeDisposition	std.live_tree
-test.claim.access_layer_extension_witness	NonEmptyStr	std.types
-test.claim.access_layer_extension_witness	PosixUser	extdeps.access.posix
-test.claim.access_layer_extension_witness	RbacPolicy	extdeps.access.rbac
 test.claim.algebra_carrier_roster_witness	List	std.types
 test.claim.base64_rfc4648_witness	Base64Variant	std.encoding
 test.claim.base64_rfc4648_witness	List	std.types
 test.claim.base64_rfc4648_witness	LiveTreeDisposition	std.live_tree
-test.claim.bazel_target_model_witness	LiveTreeDisposition	std.live_tree
 test.claim.behavioral_receipt_standing_witness	FaultNotCaught	v2.compiler.self_host.promotion_admission
 test.claim.behavioral_receipt_standing_witness	ObservationUnavailable	v2.compiler.self_host.promotion_admission
 test.claim.bmc.bmc_onboard_body_witness	LiveTreeDisposition	std.live_tree
@@ -429,7 +401,6 @@ test.claim.build_cache_endpoint_path	LiveTreeDisposition	std.live_tree
 test.claim.build_cache_endpoint_path	NonEmptyStr	std.types
 test.claim.build_cache_endpoint_path	ObservationCurrency	gunbc.build_cache.build_cache_endpoint_path
 test.claim.build_cache_endpoint_path	ObservationCurrencyUnknown	gunbc.build_cache.build_cache_endpoint_path
-test.claim.build_cache_endpoint_path	ProcessIdentity	gunbc.build_cache.build_cache_instance
 test.claim.build_cache_endpoint_path	SccacheServerTcpPort	extdeps.cache.sccache
 test.claim.build_cache_ensure	CompilePoolSliceDeclared	gunbc.host.host_layout
 test.claim.build_cache_ensure	EndpointListening	gunbc.build_cache.build_cache_endpoint_path
@@ -454,7 +425,6 @@ test.claim.build_cache_placement_observation	NonEmptyStr	std.types
 test.claim.build_cache_placement_observation	OwnerContextUndecided	gunbc.build_cache.build_cache_instance
 test.claim.build_cache_placement_observation	OwnerInRunnerSlot	gunbc.build_cache.build_cache_instance
 test.claim.build_cache_placement_observation	OwnerInSystemdUnit	gunbc.build_cache.build_cache_instance
-test.claim.build_cache_placement_observation	ProcessIdentity	gunbc.build_cache.build_cache_instance
 test.claim.build_cache_placement_observation	RunnerSlotIdentity	gunbc.build_cache.build_cache_instance
 test.claim.build_cache_placement_observation	RunnerSlotLifecycle	gunbc.build_cache.build_cache_instance
 test.claim.build_latency_actions_collect_witness	ActionsBuildJobObservation	gunbc.build_cache.build_cache_latency_probe
@@ -500,7 +470,6 @@ test.claim.ci.ci_oom_reclassify_witness	SimultaneousMultiJobDeath	gunbc.ci.ci_oo
 test.claim.ci.ci_oom_reclassify_witness	Structural	gunbc.ci.ci_failure_class
 test.claim.ci.ci_runner_target_witness	GithubHostedRunner	gunbc.ci.ci_runner_target
 test.claim.ci.ci_runner_target_witness	UbicloudRunner	gunbc.ci.ci_runner_target
-test.claim.claim_entailing_evidence_cause_swap_witness	LiveTreeDisposition	std.live_tree
 test.claim.cli_dispatch_surface	CliAbsoluteLabelOperand	gunbc.cli_dispatch_surface
 test.claim.cli_dispatch_surface	CliExactlyOneOperand	gunbc.cli_dispatch_surface
 test.claim.cli_dispatch_surface	CliKnownOperationNoRealization	gunbc.cli_dispatch_surface
@@ -523,11 +492,8 @@ test.claim.compile_pool_ensure_wiring_witness	SystemdPropertyCaptureRefused	gunb
 test.claim.compile_pool_ensure_wiring_witness	SystemdPropertyCaptured	gunbc.systemctl_show_read
 test.claim.compile_source_model_witness	LiveTreeDisposition	std.live_tree
 test.claim.compile_source_model_witness	SourceRootRole	gunbc.compile_source_model
-test.claim.computation_demand_duplication_witness	ComputationDemandFact	v2.lens.duplicate_computation
 test.claim.computation_demand_duplication_witness	List	std.types
 test.claim.computation_demand_duplication_witness	LiveTreeDisposition	std.live_tree
-test.claim.computation_demand_duplication_witness	ReplicationIntent	v2.lens.duplicate_computation
-test.claim.computation_demand_duplication_witness	TypedArgvInvocation	v2.lens.duplicate_computation
 test.claim.compute.work_request_witness	WorkOutputMismatch	gunbc.compute.work_request
 test.claim.contracts_placement	LiveTreeDisposition	std.live_tree
 test.claim.cr1000a_dhcp_lease_naming	Cr1000aDhcpLeaseRow	extdeps.router.verizon_cr1000a
@@ -540,15 +506,11 @@ test.claim.cr1000a_dhcp_lease_naming	MacAddress	extdeps.dhcp.v4
 test.claim.cr1000a_dhcp_lease_naming	NonEmptyStr	std.types
 test.claim.cr1000a_dhcp_lease_naming	StaticDhcpReservation	extdeps.dhcp.v4
 test.claim.cron_tag_witness	LiveTreeDisposition	std.live_tree
-test.claim.crosstree_probe	AccessDecision	std.access
-test.claim.crosstree_probe	LensVerdict	v2.std.lens_verdict
 test.claim.crosstree_probe	LiveTreeDisposition	std.live_tree
 test.claim.dag_collect_fingerprint_witness	LiveTreeDisposition	std.live_tree
 test.claim.dag_compile_clean_seam_witness	LiveTreeDisposition	std.live_tree
 test.claim.dag_compile_clean_shard_a_witness	LiveTreeDisposition	std.live_tree
 test.claim.dag_compile_clean_shard_a_witness	ShardFailed	gunbc.instruments.dag_compile_clean_partition
-test.claim.deepseek.deepseek_v4_1_flash_authority_witness	LiveTreeDisposition	std.live_tree
-test.claim.deepseek.deepseek_v4_encoder_witness	LiveTreeDisposition	std.live_tree
 test.claim.deployment_gate_operator_steps_witness	JoinWasRefused	gunbc.auth.deployment_gate_authorization
 test.claim.deployment_gate_operator_steps_witness	OwnershipWasNotEstablished	gunbc.auth.deployment_gate_authorization
 test.claim.deployment_gate_operator_steps_witness	SelectedBranchesAndTags	extdeps.github.deployment_environments
@@ -563,7 +525,6 @@ test.claim.docker_container_stats_witness	ContainerStateDetail	extdeps.docker.co
 test.claim.docker_container_stats_witness	ContainerStats	extdeps.docker.container_stats
 test.claim.docker_container_stats_witness	CpuStats	extdeps.docker.container_stats
 test.claim.docker_container_stats_witness	CpuUsage	extdeps.docker.container_stats
-test.claim.docker_container_stats_witness	DockerContainerNetworkInterfaceStats	extdeps.docker.container_stats
 test.claim.docker_container_stats_witness	HostConfig	extdeps.docker.container_inspect
 test.claim.docker_container_stats_witness	LiveTreeDisposition	std.live_tree
 test.claim.docker_container_stats_witness	NetworkSettings	extdeps.docker.container_inspect
@@ -633,7 +594,6 @@ test.claim.extdeps_llm_type_grounding_witness	OpenAiResponses200OutputContent	ex
 test.claim.extdeps_llm_type_grounding_witness	OpenAiResponses200OutputItem	extdeps.llm.openai
 test.claim.extdeps_llm_type_grounding_witness	ToolCall	extdeps.llm.openai
 test.claim.extdeps_version_base	LiveTreeDisposition	std.live_tree
-test.claim.extdeps_version_base	Ordering	std.algebra
 test.claim.extdeps_version_base	VersionConstraint	extdeps.version
 test.claim.extdeps_version_base	VersionIdentity	extdeps.version
 test.claim.extdeps_version_semver	LiveTreeDisposition	std.live_tree
@@ -690,7 +650,6 @@ test.claim.fleet.fleet_show_effective_read_witness	PerSlotMemoryCap	gunbc.host.h
 test.claim.fleet.fleet_show_effective_read_witness	RunnerSliceCapLiveReadRow	gunbc.fleet.fleet_show_effective_read
 test.claim.fleet.fleet_show_effective_read_witness	SystemctlShowProperty	gunbc.host.host_operation_exec
 test.claim.floor.floor_expected_red_coherence_witness	Cons	std.algebra
-test.claim.floor.floor_non_verdict_enrollment_witness	LiveTreeDisposition	std.live_tree
 test.claim.frontend_literal_and_compile_witness	Map	std.types
 test.claim.gcp_oauth_access_token_witness	AdcRefresh	extdeps.cloud.gcp.gcp
 test.claim.gha_expression_roundtrip	ContextAccess	extdeps.github.expressions
@@ -761,9 +720,6 @@ test.claim.gunbc_instruments_known_red_derivation_witness	UnaccountedRedWithoutE
 test.claim.gunbc_instruments_known_red_derivation_witness	VerdictIdentityAmbiguous	gunbc.instruments.known_red_derivation
 test.claim.gunbc_instruments_known_red_derivation_witness	WitnessBinRefusedToBuild	gunbc.instruments.known_red_derivation
 test.claim.gunbhub_react_browse_witness	LiveTreeDisposition	std.live_tree
-test.claim.harness_chat_shape	LiveTreeDisposition	std.live_tree
-test.claim.harness_guidance	LiveTreeDisposition	std.live_tree
-test.claim.harness_throughput	LiveTreeDisposition	std.live_tree
 test.claim.host.host_allocation_conservation	HostUsableRamConservativeLowerBound	gunbc.host.host_memory_observation
 test.claim.host.host_allocation_conservation	HostUsableRamMeasured	gunbc.host.host_memory_observation
 test.claim.host.host_build_cache_provision_design_witness	BuildCacheDaemonObservation	gunbc.build_cache.build_cache_provision_verdict
@@ -866,7 +822,6 @@ test.claim.hostname_allocation_witness	HumanNameDraw	gunbc.hostname_allocation
 test.claim.hostname_allocation_witness	LegacyHostname	gunbc.hostname_allocation
 test.claim.hostname_allocation_witness	List	std.types
 test.claim.hostname_allocation_witness	LiveTreeDisposition	std.live_tree
-test.claim.huggingface.hub_url_kind_witness	LiveTreeDisposition	std.live_tree
 test.claim.input_envelope_admission	BoundedInput	gunbc.ci.ci_input_envelope
 test.claim.input_envelope_admission	InputBound	gunbc.ci.ci_input_envelope
 test.claim.input_envelope_admission	InputEnvelope	gunbc.ci.ci_input_envelope
@@ -876,12 +831,9 @@ test.claim.interp_recorded_fixture_witness	LiveTreeDisposition	std.live_tree
 test.claim.interpreter_kernel_model_witness	LiveTreeDisposition	std.live_tree
 test.claim.jedec_ddr_generation	DramModuleCatalogRow	extdeps.memory.types
 test.claim.jedec_ddr_generation	LiveTreeDisposition	std.live_tree
-test.claim.layout_migration_map_witness	LiveTreeDisposition	std.live_tree
-test.claim.layout_migration_rewrite_witness	LiveTreeDisposition	std.live_tree
 test.claim.layout_render_witness	Doc	std.layout
 test.claim.layout_render_witness	LayoutProtocol	std.layout
 test.claim.layout_render_witness	LiveTreeDisposition	std.live_tree
-test.claim.lens_verdict_witness	LensVerdict	v2.std.lens_verdict
 test.claim.lens_verdict_witness	LiveTreeDisposition	std.live_tree
 test.claim.live_deploy.apply	EmitArtifactThenThinRun	gunbc.host.host_effect
 test.claim.live_deploy.apply_receipt_witness	ActionsRunBinding	gunbc.actions_run_binding
@@ -924,7 +876,6 @@ test.claim.materialization_ladder_witness	CapacityBounded	std.cache_interface
 test.claim.materialization_ladder_witness	CasTier	std.materialization_ladder
 test.claim.materialization_ladder_witness	DeclaredComputation	std.materialization_ladder
 test.claim.materialization_ladder_witness	DemandNature	std.materialization_ladder
-test.claim.materialization_ladder_witness	Frame	std.materialization_ladder
 test.claim.materialization_ladder_witness	FrameDemand	std.materialization_ladder
 test.claim.materialization_ladder_witness	LadderVerdict	std.materialization_ladder
 test.claim.materialization_ladder_witness	List	std.types
@@ -942,9 +893,7 @@ test.claim.measure_magnitude_carrier	Measure	std.measure
 test.claim.measure_magnitude_carrier	Micro	std.measure
 test.claim.medium_fidelity	DecodeFidelity	extdeps.communication.medium
 test.claim.medium_fidelity	LiveTreeDisposition	std.live_tree
-test.claim.medium_fidelity	Medium	extdeps.communication.medium
 test.claim.memory_scale_factor_derivation	LiveTreeDisposition	std.live_tree
-test.claim.memory_scale_factor_derivation	Nat	std.nat
 test.claim.memory_scale_factor_derivation	Scale	std.measure
 test.claim.merge_admission_actuator_witness	GateRosterHash	gunbc.merge_admission
 test.claim.merge_admission_actuator_witness	GitObjectId	extdeps.git.object_store
@@ -995,7 +944,6 @@ test.claim.network_grounding	NetworkHost	extdeps.network.endpoint
 test.claim.node_http_server_emit	LiveTreeDisposition	std.live_tree
 test.claim.observation_ci_render_witness	WitnessRuntimeError	gunbc.observation_ci_render
 test.claim.oomd_install_grounding_witness	CapEffective	gunbc.ci.ci_floor_measurement
-test.claim.oomd_install_grounding_witness	Grounding	std.realization_reconcile
 test.claim.oomd_install_grounding_witness	LiveTreeDisposition	std.live_tree
 test.claim.oomd_install_grounding_witness	OomdEffectiveRead	gunbc.oomd_install
 test.claim.oomd_install_grounding_witness	OomdEnforcementEvidence	gunbc.ci.ci_floor_measurement
@@ -1005,7 +953,6 @@ test.claim.oomd_install_grounding_witness	ReservationBytes	gunbc.session_reserva
 test.claim.oomd_install_grounding_witness	ReservationBytesUnestablished	gunbc.session_reservation_policy
 test.claim.oomd_install_grounding_witness	ShowEffectiveRead	std.realization_reconcile
 test.claim.oomd_install_grounding_witness	SliceMembershipSignal	gunbc.oomd_install
-test.claim.opaque_census_declaration_scan_witness	LiveTreeDisposition	std.live_tree
 test.claim.optional_equality_by_representation	List	std.types
 test.claim.os_free_witness	FreeOutput	extdeps.tools.free
 test.claim.os_free_witness	LiveTreeDisposition	std.live_tree
@@ -1054,7 +1001,6 @@ test.claim.pr_base_freshness_witness	ComparisonStatus	extdeps.github.commits
 test.claim.pr_base_freshness_witness	LiveTreeDisposition	std.live_tree
 test.claim.pr_base_freshness_witness	TestedBaseProvenance	gunbc.pr_base_freshness
 test.claim.pr_base_freshness_witness	Timestamp	std.types
-test.claim.pr_containment_disposition_witness	LiveTreeDisposition	std.live_tree
 test.claim.python_pep440_version_witness	LiveTreeDisposition	std.live_tree
 test.claim.python_pep440_version_witness	Pep440LocalLexicographic	extdeps.version.pep440
 test.claim.python_pep440_version_witness	Pep440LocalNumeric	extdeps.version.pep440
@@ -1077,7 +1023,6 @@ test.claim.realization_reconcile_witness	CreateEffect	std.effects
 test.claim.realization_scale_agnostic	LiveTreeDisposition	std.live_tree
 test.claim.realization_scale_agnostic	Measure	std.measure
 test.claim.realization_scale_agnostic	Milli	std.measure
-test.claim.realization_scale_agnostic	Nat	std.nat
 test.claim.realization_scale_agnostic	Time	test.fixture.phantom_marker_identity.plain_provider
 test.claim.realization_schedule_critical_path	LiveTreeDisposition	std.live_tree
 test.claim.realization_width_witness	CostAccount	std.realization_schedule
@@ -1096,7 +1041,6 @@ test.claim.render_repeat_string_witness	LiveTreeDisposition	std.live_tree
 test.claim.render_surface_witness	Document	std.render
 test.claim.render_surface_witness	LiveTreeDisposition	std.live_tree
 test.claim.render_surface_witness	RenderCapability	std.render
-test.claim.render_surface_witness	RenderFrame	std.render
 test.claim.render_surface_witness	SurfaceEnv	extdeps.render.surface
 test.claim.resource_namespace_upsert	FileTreeScope	gunbc.file_access
 test.claim.resource_namespace_upsert	LiveTreeDisposition	std.live_tree
@@ -1111,7 +1055,6 @@ test.claim.reviewer_source_witness	NonEmptyStr	std.types
 test.claim.reviewer_source_witness	PolicyRef	gunbc.review_verdict
 test.claim.reviewer_source_witness	PolicyReviewer	gunbc.review_verdict
 test.claim.reviewer_source_witness	UnattributedReviewer	gunbc.review_verdict
-test.claim.roadmap.roadmap_attempt_metering_witness	LiveTreeDisposition	std.live_tree
 test.claim.roadmap.roadmap_belt_actuate_witness	BeltObligationEnqueueRefused	gunbc.roadmap.roadmap_belt_obligation
 test.claim.roadmap.roadmap_belt_actuate_witness	BeltObligationHeld	gunbc.roadmap.roadmap_belt_obligation
 test.claim.roadmap.roadmap_belt_actuate_witness	BeltObligationStarted	gunbc.roadmap.roadmap_belt_obligation
@@ -1139,7 +1082,6 @@ test.claim.roadmap.roadmap_status	GitHubUser	extdeps.github.github
 test.claim.roadmap.roadmap_status	List	std.types
 test.claim.roadmap.roadmap_status	LiveTreeDisposition	std.live_tree
 test.claim.roadmap.roadmap_status	PlainLine	gunbc.roadmap.roadmap_status
-test.claim.roadmap.roadmap_status	PullRequest	extdeps.github.pulls
 test.claim.roadmap.roadmap_status	PullRequestRef	extdeps.github.pulls
 test.claim.roadmap.roadmap_status	RoadmapItem	gunbc.roadmap.roadmap_status
 test.claim.roadmap.roadmap_status	SupersededLine	gunbc.roadmap.roadmap_status
@@ -1160,7 +1102,6 @@ test.claim.runner.runner_activation_wall	HostCompilePoolReady	gunbc.runner.runne
 test.claim.runner.runner_activation_wall	HostIdentity	product.host_identity
 test.claim.runner.runner_activation_wall	LiveTreeDisposition	std.live_tree
 test.claim.runner.runner_activation_wall	NonEmptyStr	std.types
-test.claim.runner.runner_activation_wall	ProcessIdentity	gunbc.build_cache.build_cache_instance
 test.claim.runner.runner_activation_wall	RunnerCommandOrRefusal	gunbc.runner.runner_host_deploy
 test.claim.runner.runner_activation_wall	RunnerHostDeploy	gunbc.runner.runner_host_deploy
 test.claim.runner.runner_activation_wall	RunnerSlotIdentity	gunbc.build_cache.build_cache_instance
@@ -1212,7 +1153,6 @@ test.claim.runner.runner_unit_live_read_witness	PerSlotMemoryCap	gunbc.host.host
 test.claim.runner.runner_unit_live_read_witness	RunnerUnitLiveReadRow	gunbc.runner.runner_unit_live_read
 test.claim.sccache_local_content_verified_on_read	CacheEvidence	std.cache_interface
 test.claim.sccache_local_content_verified_on_read	LiveTreeDisposition	std.live_tree
-test.claim.scope_rank_view	LiveTreeDisposition	std.live_tree
 test.claim.secret_manager_access_version_witness	List	std.types
 test.claim.secret_manager_access_version_witness	LiveTreeDisposition	std.live_tree
 test.claim.self_host_artifact_materialization_witness	ArtifactPathOutcome	gunbc.self_host_artifact_materialization
@@ -1328,7 +1268,6 @@ test.claim.tailscale_acl_phase2_design_witness	TokenAbsent	gunbc.tailscale_acl_p
 test.claim.tailscale_acl_witness	LiveTreeDisposition	std.live_tree
 test.claim.tailscale_acl_witness	TailscaleAclPolicy	extdeps.tailscale.acl
 test.claim.tailscale_acl_witness	TailscaleGrant	extdeps.tailscale.acl
-test.claim.target_binding_witness	LiveTreeDisposition	std.live_tree
 test.claim.temporal_effect_spine	AuthorizationGranted	std.scoped_authorization
 test.claim.temporal_effect_spine	AuthorizationPending	std.scoped_authorization
 test.claim.temporal_effect_spine	AuthorizationRequest	std.scoped_authorization
@@ -1354,11 +1293,9 @@ test.claim.temporal_effect_spine	ServiceOpTree	std.effect_grant
 test.claim.temporal_effect_spine	Timestamp	std.types
 test.claim.terminal_capability_witness	CursorAction	std.render
 test.claim.terminal_capability_witness	LiveTreeDisposition	std.live_tree
-test.claim.terminal_capability_witness	RenderFrame	std.render
 test.claim.terminal_capability_witness	TerminalEnvironment	extdeps.render.terminal_capability
 test.claim.terminal_capability_witness	Viewport	std.render
 test.claim.time_scale_factor_derivation	LiveTreeDisposition	std.live_tree
-test.claim.time_scale_factor_derivation	Nat	std.nat
 test.claim.time_scale_factor_derivation	Scale	std.measure
 test.claim.typescript_program_serializer	LiveTreeDisposition	std.live_tree
 test.claim.typescript_program_serializer	TsExpr	extdeps.languages.typescript.program
@@ -1371,7 +1308,6 @@ test.claim.uri_path_parse_witness	ParamToken	extdeps.uri_path
 test.claim.uri_path_parse_witness	PathParamBinding	extdeps.uri_path
 test.claim.uri_path_parse_witness	PathTemplate	extdeps.uri_path
 test.claim.v1_dag_parse_witness	LiveTreeDisposition	std.live_tree
-test.claim.vllm.recipe_deepseek_v4_1_flash_witness	LiveTreeDisposition	std.live_tree
 test.claim.websocat_install_source	LiveTreeDisposition	std.live_tree
 test.claim.wet_hermetic_equivalence_witness	LiveTreeDisposition	std.live_tree
 test.claim.workflow_recursive_gate	ExitFailure	std.process
@@ -1382,16 +1318,13 @@ test.claim.workflow_recursive_witness	List	std.types
 test.claim.workflow_recursive_witness	LiveTreeDisposition	std.live_tree
 test.claim.workflow_recursive_witness	NonEmptyStr	std.types
 test.claim.workflow_recursive_witness	Reduced	std.reducible
-test.claim.workflow_recursive_witness	Review	gunbc.idea_pr_spine
 test.claim.workflow_recursive_witness	StageStep	gunbc.idea_pr_spine
 test.claim.workflow_recursive_witness	VerdictTree	std.workflow_recursive
 test.fixture.decl_facts_reflection.unimported_globally_unique_user	GloballyUniqueWitnessArm	test.fixture.decl_facts_reflection.globally_unique_carrier
 test.fixture.m4_universal_governed_corpus	List	std.types
 test.fixture.m4_universal_governed_corpus	PublishedMockCase	std.hermetic_replay
-test.fixture.reference_derived_graph.consumer_type_only	ProvidedMarker	test.fixture.reference_derived_graph.provider
 test.retirement.model	UnboundDissolution	std.dissolution
 v2.compiler.body_lowering_fold	OccurrencePending	std.occurrence_identity
-v2.compiler.compile	EvalResult	product.compute_board.truth_table_projection
 v2.compiler.emit_host	RuntimeValueEqualityUnavailable	v2.std.runtime
 v2.compiler.eval	RuntimeValueEqualityUnavailable	v2.std.runtime
 v2.extdeps.formats.spice	Sequence	v2.std.grammar
@@ -1432,11 +1365,7 @@ v2.lens.registry	Symbol	v2.std.node
 v2.lens.unit_modeling	Unavailable	v2.std.diagnostic
 v2.lens.witness_cost_locality	ConstructionJustification	v2.lens.common.construction_justification
 v2.lens.witness_cost_locality	List	std.types
-v2.std.artifact	Validation	v2.std.refinement
-v2.std.compilers.body_lowering	Application	std.realization_reconcile
 v2.std.decl_facts_skeleton	Cons	std.algebra
-v2.std.determinism	Determinism	std.determinism
 v2.std.determinism	Symbol	v2.std.node
-v2.std.grounding	EmitHostRunReceipt	v2.std.host_run
 v2.workflow.bootstrap	Textual	v2.std.diagnostic
 v2.workflow.bootstrap	Unavailable	v2.std.diagnostic

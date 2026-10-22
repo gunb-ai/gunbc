@@ -27,9 +27,6 @@ import extdeps.units.dimensionless {
   percent_unity_hundred_count,
   parts_per_million_unity_count,
 }
-import examples.weather { Temperature }
-import gunbc.roadmap.roadmap_sizing { Volume }
-import test.fixture.phantom_marker_identity.plain_provider { Time }
 
 type Quantity =
     Time

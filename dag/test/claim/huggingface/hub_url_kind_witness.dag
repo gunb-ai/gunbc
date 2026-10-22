@@ -6,7 +6,6 @@ import extdeps.huggingface.hub {
   hub_blob_url, hub_repo_https_uri, hub_repo_tree_api_url,
 }
 import extdeps.uri { uri_wire }
-import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

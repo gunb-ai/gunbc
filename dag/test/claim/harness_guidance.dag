@@ -39,7 +39,6 @@ import gunbc.harness.harness_reasoning_wire {
 }
 import extdeps.languages.json.emit { json_object, serialize_json }
 import extdeps.llm.anthropic_messages_api { MaxTokens, ToolUse, EndTurn }
-import std.live_tree { LiveTreeDisposition }
 
 // WHAT THESE TEST, AND WHAT THEY DELIBERATELY DO NOT.
 //

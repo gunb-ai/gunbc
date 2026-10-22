@@ -1,5 +1,4 @@
 module std.numerical_contract
-import std.approximate_field { RoundingMode }
 
 
 type FmaContractionPolicy

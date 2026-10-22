@@ -5,7 +5,6 @@ import gunbc.instruments.self_host_curated_seed_linked_harness {
   cssl_fault_run_detected_the_planted_fault,
   cssl_pass_marker_stem
 }
-import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_status
 import extdeps.github.github { GitHubUser }
-import extdeps.github.pulls { PullRequest, PullRequestRef }
+import extdeps.github.pulls { PullRequestRef }
 import gunbc.roadmap.roadmap_status { AuthoredLine, DerivableLine, DriftVerdict, PlainLine, RoadmapItem, SupersededLine }
 import std.live_tree { LiveTreeDisposition }
 import std.types { List }

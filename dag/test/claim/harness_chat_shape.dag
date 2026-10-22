@@ -20,7 +20,6 @@ import gunbc.harness.harness_turn {
   HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
   harness_user_text_message_json,
 }
-import std.live_tree { LiveTreeDisposition }
 
 // THE CHAT SHAPE IS A SECOND REALIZATION OF ONE INTERFACE. These witnesses decode a fixture chat
 // completion into the same blocks the messages shape yields, and encode the same blocks back into

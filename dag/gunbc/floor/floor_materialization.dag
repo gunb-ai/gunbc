@@ -1,6 +1,6 @@
 module gunbc.floor.floor_materialization
 import gunbc.ci.ci_gate { Gate }
-import std.materialization_ladder { CacheProvider, CoversIdentities, Frame, FrameDemand, LadderVerdict, ValueConsumerEdge, ValueMaterialization, ValueUsage }
+import std.materialization_ladder { CacheProvider, CoversIdentities, FrameDemand, LadderVerdict, ValueConsumerEdge, ValueMaterialization, ValueUsage }
 import std.realization_schedule { ScheduleWitnessEntry }
 import std.types { List }
 

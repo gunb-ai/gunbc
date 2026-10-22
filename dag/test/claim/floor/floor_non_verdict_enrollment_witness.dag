@@ -7,7 +7,6 @@ import gunbc.floor.floor_non_verdict_enrollment {
   floor_non_verdict_cause_census, floor_non_verdict_measured_total,
   floor_non_verdict_population_basis,
 }
-import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

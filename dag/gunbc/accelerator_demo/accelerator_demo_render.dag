@@ -4,7 +4,6 @@ import gunbc.accelerator_demo.accelerator_demo_plan { AcceleratorRecognitionOutc
 import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram }
 import std.measure { Nano }
 import std.numerical_contract { NumericalContract }
-import std.realization { Placement }
 import std.realization_schedule { RealizationPlan }
 import std.types { List, NonEmptyStr }
 

@@ -1,8 +1,4 @@
 module test.claim.access_layer_extension_witness
-import extdeps.access.posix { PosixUser }
-import extdeps.access.rbac { RbacPolicy }
-import std.live_tree { LiveTreeDisposition }
-import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly

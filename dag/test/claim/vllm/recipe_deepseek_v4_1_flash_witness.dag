@@ -17,7 +17,6 @@ import extdeps.vllm.recipe_deepseek_v4_1_flash {
   vllm_recipe_deepseek_v4_1_flash_source_blob_locator,
   extdeps_external_authority_anchor,
 }
-import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

@@ -1,5 +1,5 @@
 module gunbc.digest_render
-import extdeps.github.pulls { PullRequest, PullRequestState, PullReview }
+import extdeps.github.pulls { PullRequestState, PullReview }
 import std.types { List, NonEmptyStr }
 
 

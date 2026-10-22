@@ -1,5 +1,5 @@
 module test.claim.build_cache_placement_observation
-import gunbc.build_cache.build_cache_instance { BuildCacheEndpointObservation, BuildCacheInstance, BuildCacheServerPlacement, EndpointAbsent, EndpointObservationUnavailable, EndpointOwnerContext, EndpointOwnerObserved, EndpointOwnershipAmbiguous, OwnerContextUndecided, OwnerInRunnerSlot, OwnerInSystemdUnit, ProcessIdentity, RunnerSlotIdentity, RunnerSlotLifecycle }
+import gunbc.build_cache.build_cache_instance { BuildCacheEndpointObservation, BuildCacheInstance, BuildCacheServerPlacement, EndpointAbsent, EndpointObservationUnavailable, EndpointOwnerContext, EndpointOwnerObserved, EndpointOwnershipAmbiguous, OwnerContextUndecided, OwnerInRunnerSlot, OwnerInSystemdUnit, RunnerSlotIdentity, RunnerSlotLifecycle }
 import std.live_tree { LiveTreeDisposition }
 import std.types { NonEmptyStr }
 

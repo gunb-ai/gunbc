@@ -22,7 +22,6 @@ import gunbc.scope_rank_view {
   scope_rank_paired_acceptance_rows,
   scope_rank_relayed_acceptance_rows
 }
-import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 

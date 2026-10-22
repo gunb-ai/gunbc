@@ -42,7 +42,6 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_dsml_tool_calls_block_name, deepseek_v4_1_flash_dsml_tool_calls_open,
   deepseek_v4_1_flash_dsml_token,
 }
-import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
