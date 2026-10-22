@@ -25,8 +25,8 @@ pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
-pub use crate::std_coercion::TypeRealizationDecision;
 use crate::std_coercion::TypeRealizationDecision::*;
+pub use crate::std_coercion::{dag_declared_widening_admits, TypeRealizationDecision};
 use crate::std_compiler_entry::CompilerEntryDriver::{
     DirectIngestDriver, NativeClaimDriver, NativeCliDriver, NativeServeDriver,
     RetainedHostCliKernel, SourceRootEvalDriver,
@@ -81,7 +81,8 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReference
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
-    GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+    type_reference_declaration_ref, GlobalBareLookupState, TypeBinding, TypeEnv,
+    TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
     item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
@@ -6852,6 +6853,53 @@ pub fn cast_source_representation_identical(
     }
 }
 
+pub fn cast_source_grounded_onto_target_carrier(
+    expr: Rc<Node>,
+    cast_target_node: Rc<Node>,
+    target_spelling: String,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match expr.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: n, .. }) => {
+            match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                n.clone(),
+                source_indices.clone(),
+                env.clone(),
+            ) {
+                Some(d) => {
+                    if crate::std_coercion::dag_declared_widening_admits(
+                        d.clone(),
+                        crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            cast_target_node.clone(),
+                        ),
+                    ) {
+                        match crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                            crate::v1_compiler_coercion::type_reference_realization(
+                                n.clone(),
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    n.clone(),
+                                ),
+                                target.clone(),
+                            ),
+                        ) {
+                            Some(spelling) => (spelling.clone() == target_spelling.clone()),
+                            std::option::Option::None => false,
+                        }
+                    } else {
+                        false
+                    }
+                }
+                std::option::Option::None => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn emit_typed_cast_shared(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
@@ -6884,27 +6932,41 @@ pub fn emit_typed_cast_shared(
             ) {
                 expr_str.clone()
             } else {
-                if crate::v1_compiler_coercion::can_cast(
-                    target.clone(),
-                    src_ty.clone(),
+                if cast_source_grounded_onto_target_carrier(
+                    expr.clone(),
+                    cast_target_node.clone(),
                     ty_str.clone(),
+                    target.clone(),
+                    env.clone(),
+                    source_indices.clone(),
                 ) {
-                    crate::v1_compiler_coercion::render_cast(
-                        expr_str.clone(),
-                        ty_str.clone(),
-                        target.clone(),
-                    )
+                    expr_str.clone()
                 } else {
-                    emit_error_expr(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("unsupported cast from ".to_string(), src_ty.clone()),
-                                " to ".to_string(),
-                            ),
-                            ty_str.clone(),
-                        ),
+                    if crate::v1_compiler_coercion::can_cast(
                         target.clone(),
-                    )
+                        src_ty.clone(),
+                        ty_str.clone(),
+                    ) {
+                        crate::v1_compiler_coercion::render_cast(
+                            expr_str.clone(),
+                            ty_str.clone(),
+                            target.clone(),
+                        )
+                    } else {
+                        emit_error_expr(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "unsupported cast from ".to_string(),
+                                        src_ty.clone(),
+                                    ),
+                                    " to ".to_string(),
+                                ),
+                                ty_str.clone(),
+                            ),
+                            target.clone(),
+                        )
+                    }
                 }
             }
         }

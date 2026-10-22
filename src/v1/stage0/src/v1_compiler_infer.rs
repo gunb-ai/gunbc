@@ -49,7 +49,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{
-    dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type, select_text_crossing_plan,
+    dag_can_cast, dag_cast_requires_proof, dag_declaration_has_widening_rows,
+    dag_declared_widening_admits, is_dag_cast_domain_type, select_text_crossing_plan,
     unicode_scalar_unfold, ConversionPlanJudgment, CrossingPlanSelection, SubtractionRefinement,
     TextRepresentation, TypeDeclarationProvenance,
 };
@@ -10851,8 +10852,25 @@ pub fn categorized_error(
     )
 }
 
+pub fn cast_source_declaration(
+    inner: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    match inner.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: n, .. }) => {
+            crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                n.clone(),
+                scope.type_env.source_indices.clone(),
+                scope.type_env.clone(),
+            )
+        }
+        _ => std::option::Option::None,
+    }
+}
+
 pub fn validate_cast(
     source_inferred: Option<Rc<InferredNode>>,
+    source_declaration: Option<Rc<DeclarationRef>>,
     target_name: String,
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -10865,53 +10883,95 @@ pub fn validate_cast(
             if (source_name.clone() == target_name.clone()) {
                 std::option::Option::None
             } else {
-                if crate::std_coercion::dag_cast_requires_proof(
-                    source_name.clone(),
-                    target_name.clone(),
-                ) {
-                    {
-                        let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), source_name.clone()), " as ".to_string()), target_name.clone()), " is a refinement cast, not a re-typing -- an arbitrary ".to_string()), source_name.clone()), " has no ".to_string()), target_name.clone()), "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)".to_string());
-                        let diag = Rc::new(CompilerDiagnostic::InternalError {
-                            message: msg.clone(),
-                            span: span.clone(),
-                        });
-                        Some(crate::v1_std_core::make_error_node(
-                            diag.clone(),
-                            module_name.clone(),
-                        ))
-                    }
-                } else {
-                    if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
+                if match source_declaration.clone() {
+                    Some(d) => crate::std_coercion::dag_declaration_has_widening_rows(d.clone()),
+                    std::option::Option::None => false,
+                } {
+                    if match source_declaration.clone() {
+                        Some(d) => crate::std_coercion::dag_declared_widening_admits(
+                            d.clone(),
+                            target_name.clone(),
+                        ),
+                        std::option::Option::None => false,
+                    } {
                         std::option::Option::None
                     } else {
-                        if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
+                        {
+                            let msg = v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "invalid cast: ".to_string(),
+                                            source_name.clone(),
+                                        ),
+                                        " as ".to_string(),
+                                    ),
+                                    target_name.clone(),
+                                ),
+                                " -- no declared conversion route in std.coercion".to_string(),
+                            );
+                            Some(crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::InternalError {
+                                    message: msg.clone(),
+                                    span: span.clone(),
+                                }),
+                                module_name.clone(),
+                            ))
+                        }
+                    }
+                } else {
+                    if crate::std_coercion::dag_cast_requires_proof(
+                        source_name.clone(),
+                        target_name.clone(),
+                    ) {
+                        {
+                            let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), source_name.clone()), " as ".to_string()), target_name.clone()), " is a refinement cast, not a re-typing -- an arbitrary ".to_string()), source_name.clone()), " has no ".to_string()), target_name.clone()), "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)".to_string());
+                            let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                message: msg.clone(),
+                                span: span.clone(),
+                            });
+                            Some(crate::v1_std_core::make_error_node(
+                                diag.clone(),
+                                module_name.clone(),
+                            ))
+                        }
+                    } else {
+                        if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
                             std::option::Option::None
                         } else {
-                            if crate::std_coercion::dag_can_cast(
-                                source_name.clone(),
-                                target_name.clone(),
-                            ) {
+                            if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
                                 std::option::Option::None
                             } else {
-                                {
-                                    let msg = v1_rt::concat(
-                                        v1_rt::concat(
+                                if crate::std_coercion::dag_can_cast(
+                                    source_name.clone(),
+                                    target_name.clone(),
+                                ) {
+                                    std::option::Option::None
+                                } else {
+                                    {
+                                        let msg = v1_rt::concat(
                                             v1_rt::concat(
-                                                "invalid cast: ".to_string(),
-                                                source_name.clone(),
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "invalid cast: ".to_string(),
+                                                        source_name.clone(),
+                                                    ),
+                                                    " as ".to_string(),
+                                                ),
+                                                target_name.clone(),
                                             ),
-                                            " as ".to_string(),
-                                        ),
-                                        target_name.clone(),
-                                    );
-                                    let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                        message: msg.clone(),
-                                        span: span.clone(),
-                                    });
-                                    Some(crate::v1_std_core::make_error_node(
-                                        diag.clone(),
-                                        module_name.clone(),
-                                    ))
+                                            " -- no declared conversion route in std.coercion"
+                                                .to_string(),
+                                        );
+                                        let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                            message: msg.clone(),
+                                            span: span.clone(),
+                                        });
+                                        Some(crate::v1_std_core::make_error_node(
+                                            diag.clone(),
+                                            module_name.clone(),
+                                        ))
+                                    }
                                 }
                             }
                         }
@@ -16681,6 +16741,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let target_name = crate::v1_std_core::authored_name_at(si.clone(), target_type.clone());
             let cast_diag = validate_cast(
                 inner_typed.inferred.clone(),
+                cast_source_declaration(inner_typed.clone(), scope.clone()),
                 target_name.clone(),
                 span.clone(),
                 si.clone(),
