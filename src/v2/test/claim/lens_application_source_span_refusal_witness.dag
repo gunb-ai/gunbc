@@ -4,7 +4,7 @@ import v2.compiler.source_root_eval { native_lane_file_refusal_index, native_tes
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.test.claim.resolve.namespace_candidate_rule { NcrAbsent, NcrFileRefused, NcrRefused, NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of, ncr_verdict_refuses_with }
+import v2.test.claim.resolve.namespace_candidate_rule { ncr_home_a_read, ncr_importer_read, NcrAbsent, NcrFileRefused, NcrRefused, NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of, ncr_verdict_refuses_with }
 import v2.std.text { String }
 import v2.std.node { Symbol }
 
@@ -33,7 +33,7 @@ data lasf_ingest: SourceRootIngest = Cons {
     head: ncr_read(source: lasf_red_source, id: ^lasf_red_artifact, unit: ^lasf_red_cu, path: "dag/lasf_red.dag"),
     tail: Cons {
       head: ncr_read(source: lasf_name_control_source, id: ^lasf_name_control_artifact, unit: ^lasf_name_control_cu, path: "dag/lasf_name_control.dag"),
-      tail: Cons { head: ncr_read(source: lasf_types_control_source, id: ^lasf_types_control_artifact, unit: ^lasf_types_control_cu, path: "dag/lasf_types_control.dag"), tail: Empty }
+      tail: Cons { head: ncr_home_a_read(), tail: Cons { head: ncr_importer_read(), tail: Cons { head: ncr_read(source: lasf_types_control_source, id: ^lasf_types_control_artifact, unit: ^lasf_types_control_cu, path: "dag/lasf_types_control.dag"), tail: Empty } } }
     }
   }
 }
@@ -72,3 +72,10 @@ test fn the_refusal_is_not_a_missing_module() -> Bool {
 test fn the_refusal_is_an_unbound_symbol() -> Bool {
   ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_unbound_symbol)
 }
+
+test fn probe_home_resolved() -> Bool { ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.lasf_lens")) }
+test fn probe_ncr_home_a_resolved() -> Bool { ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.ncr_home_a")) }
+test fn probe_ncr_importer_resolved() -> Bool { ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.ncr_importer")) }
+test fn probe_ncr_importer_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.ncr_importer"), reason: ^resolve_module_not_found) }
+test fn probe_types_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_module_not_found) }
+test fn probe_red_unbound() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_unbound_symbol) }
