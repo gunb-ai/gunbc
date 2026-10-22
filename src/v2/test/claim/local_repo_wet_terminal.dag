@@ -368,7 +368,8 @@ test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool
 // THE REAL SCHEDULE HAS NO DUPLICATED IDENTITY -- the control for the fold's refusal, run against
 // the schedule main actually ships. A refusal that fires on every schedule, including the good one,
 // is a wall, not a check: the RED in v2.test.wet_evidence proves the fold refuses the duplicate,
-// this claim proves it does not refuse main's 503-row schedule. It runs the fold alone -- two linear
+// this claim proves it does not refuse the schedule main actually ships (its row count is measured
+// and printed in the PR, not restated here). It runs the fold alone -- two linear
 // passes over the schedule, no terminals, no requirement -- which is the shape the falsified memo
 // claimed no construction could make linear.
 test fn the_real_schedule_has_no_duplicated_identity() -> Bool {
