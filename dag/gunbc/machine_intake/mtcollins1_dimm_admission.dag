@@ -40,7 +40,7 @@ import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 // non-volatile backing is the one fact the memory model does not yet carry, so it is declared here as the
 // observed unit's own field rather than minted as a second module-kind vocabulary.
 
-// One firmware DRAM-table line: socket and memory controller as the reader (ampere_dram_console_observation
+// One firmware DRAM-table line: socket, memory controller and slot as the reader (ampere_dram_console_observation
 // AmpereDramTrainedDimm) keys them, SPD manufacturer id, part, RCD controller id, module class and the
 // trained-for rank and rate. Capacity is carried by the part. The firmware line does not state die
 // stacking, so it is the catalog row's fact where the part has one (extdeps.memory micron, sk_hynix) and
@@ -49,6 +49,7 @@ import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 type ObservedDimm {
   socket: Int
   memory_controller: Int
+  slot: Int
   spd_manufacturer: NonEmptyStr
   part_number: NonEmptyStr
   controller: NonEmptyStr
@@ -85,15 +86,15 @@ data mtcollins1_refused_run: NonEmptyStr = "39005709187"
 data mtcollins1_accepted_run: NonEmptyStr = "39010930690"
 
 fn micron_nv_rdimm_1r_2666(memory_controller: Int) -> ObservedDimm {
-  ObservedDimm { socket: 0, memory_controller: memory_controller, spd_manufacturer: "2c:80", part_number: "18ASF2G72XF12G6V21AB", controller: "b3:80", buffering: Registered, non_volatile_backing: true, stacking: Absent, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) }
+  ObservedDimm { socket: 0, memory_controller: memory_controller, slot: 0, spd_manufacturer: "2c:80", part_number: "18ASF2G72XF12G6V21AB", controller: "b3:80", buffering: Registered, non_volatile_backing: true, stacking: Absent, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) }
 }
 
 fn micron_rdimm_2r_2133(memory_controller: Int) -> ObservedDimm {
-  ObservedDimm { socket: 0, memory_controller: memory_controller, spd_manufacturer: "2c:80", part_number: "36ASF2G72PZ-2G1A2", controller: "b3:80", buffering: Registered, non_volatile_backing: false, stacking: Present { value: mta36asf2g72pz_2g1a2_catalog.die_stacking }, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) }
+  ObservedDimm { socket: 0, memory_controller: memory_controller, slot: 0, spd_manufacturer: "2c:80", part_number: "36ASF2G72PZ-2G1A2", controller: "b3:80", buffering: Registered, non_volatile_backing: false, stacking: Present { value: mta36asf2g72pz_2g1a2_catalog.die_stacking }, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) }
 }
 
 fn hynix_rdimm_1r_2666(memory_controller: Int, controller: NonEmptyStr) -> ObservedDimm {
-  ObservedDimm { socket: 0, memory_controller: memory_controller, spd_manufacturer: "ad:80", part_number: "HMA82GR7AFR4N-VK", controller: controller, buffering: Registered, non_volatile_backing: false, stacking: Present { value: hma82gr7afr4n_vk_catalog.die_stacking }, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) }
+  ObservedDimm { socket: 0, memory_controller: memory_controller, slot: 0, spd_manufacturer: "ad:80", part_number: "HMA82GR7AFR4N-VK", controller: controller, buffering: Registered, non_volatile_backing: false, stacking: Present { value: hma82gr7afr4n_vk_catalog.die_stacking }, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) }
 }
 
 // Run 39005709187 DRAM table, MC0..MC7 in order.
@@ -103,7 +104,7 @@ data mtcollins1_run_39005709187_population: List<ObservedDimm> = [micron_nv_rdim
 data mtcollins1_run_39010930690_population: List<ObservedDimm> = [hynix_rdimm_1r_2666(memory_controller: 0, controller: "32:86"), micron_rdimm_2r_2133(memory_controller: 1), micron_rdimm_2r_2133(memory_controller: 2), micron_rdimm_2r_2133(memory_controller: 3), hynix_rdimm_1r_2666(memory_controller: 4, controller: "32:86"), hynix_rdimm_1r_2666(memory_controller: 5, controller: "b3:80"), hynix_rdimm_1r_2666(memory_controller: 6, controller: "b3:80"), micron_rdimm_2r_2133(memory_controller: 7)]
 
 fn dimm_identical(a: ObservedDimm, b: ObservedDimm) -> Bool {
-  a.socket == b.socket && a.memory_controller == b.memory_controller && a.spd_manufacturer == b.spd_manufacturer && a.part_number == b.part_number
+  a.socket == b.socket && a.memory_controller == b.memory_controller && a.slot == b.slot && a.spd_manufacturer == b.spd_manufacturer && a.part_number == b.part_number
     && a.controller == b.controller && a.buffering == b.buffering && a.non_volatile_backing == b.non_volatile_backing && a.stacking == b.stacking
     && a.rank_count == b.rank_count && a.megatransfers == b.megatransfers
 }
