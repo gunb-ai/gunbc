@@ -80,7 +80,6 @@ fn go_method_templates_flat() -> Map<String, String> {
 
 data go_lambda_template: String = "func({0}) interface\{\} \{ {1} \}"
 data go_error_expr_template: String = "panic({0})"
-data go_refusal_expr_template: String = "panic({0})"
 data go_list_literal_empty: String = "[]interface\{\}\{\}"
 data go_list_literal_template: String = "[]interface\{\}\{{0}\}"
 data go_null_coalesce_template: String = "func() interface\{\} \{ if {0} != nil \{ return {0} \}; return {1} \}()"

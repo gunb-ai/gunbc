@@ -2572,16 +2572,6 @@ fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> St
   apply_type_template2(template: spec.lambda_template, arg0: params_str, arg1: body_str)
 }
 
-// THE REFUSAL OF AN AUTHORED INPUT THE TARGET CANNOT REALIZE. Two meanings, two names: emit_error_expr is
-// the diverging value of an arm that is an unreachable invariant (it type-checks anywhere, so a dead arm
-// never breaks a valid build); this is for a construct the author wrote and the emitter cannot render,
-// which must stop the target build rather than abort at run time (DESIGN section 5, fabricated output).
-fn emit_refusal_expr(message: String, target: RenderTarget) -> String {
-  let msg = emit_string_literal(s: message, suffix: "")
-  let spec = language_spec(target: target)
-  apply_type_template1(template: spec.refusal_expr_template, arg0: msg)
-}
-
 fn emit_error_expr(message: String, target: RenderTarget) -> String {
   let msg = emit_string_literal(s: message, suffix: "")
   let spec = language_spec(target: target)
@@ -3437,7 +3427,7 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
-    emit_refusal_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
+    emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }
 
