@@ -49,7 +49,7 @@ use crate::std_syntax::LiteralValue::LitStr;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitSymbol};
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, ParseEnvironment,
-    SyntaxSpec,
+    PostfixOperatorSpec, PrefixOperatorSpec, SyntaxSpec,
 };
 pub use crate::std_target_representation::VariantParentIdentity;
 use crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference;
@@ -2787,6 +2787,68 @@ pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Optio
             }
         } else {
             std::option::Option::None
+        }
+    }
+}
+
+pub fn find_prefix_binding_power(
+    ops: Rc<Vec<Rc<PrefixOperatorSpec>>>,
+    symbol: String,
+) -> Option<i64> {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            Some(
+                matching
+                    .clone()
+                    .first()
+                    .cloned()
+                    .clone()
+                    .unwrap()
+                    .binding_power
+                    .clone(),
+            )
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn declared_postfix_gate_admits(
+    ops: Rc<Vec<Rc<PostfixOperatorSpec>>>,
+    symbol: String,
+    min_bp: i64,
+) -> bool {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            (min_bp.clone()
+                <= matching
+                    .clone()
+                    .first()
+                    .cloned()
+                    .clone()
+                    .unwrap()
+                    .binding_power
+                    .clone())
+        } else {
+            false
         }
     }
 }
@@ -13504,9 +13566,9 @@ pub fn parse_data_after_kw(
             });
         }
         let r = if ctx.heads_only.clone() {
-            parse_data_value_heads_only(r.tokens.clone(), ctx.clone())
+            parse_data_value_heads_only(skip_newlines(r.tokens.clone()), ctx.clone())
         } else {
-            parse_expr(r.tokens.clone(), ctx.clone())
+            parse_expr(skip_newlines(r.tokens.clone()), ctx.clone())
         };
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
@@ -15100,51 +15162,75 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
             std::option::Option::None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
+        let text = match tok.clone() {
+            Some(t) => t.text.clone(),
+            std::option::Option::None => "".to_string(),
+        };
         match sh.clone() {
-            Some(TokenShape::ShBang) => {
-                let r = parse_expr_bp(token_stream_advance(tokens.clone(), 1), ctx.clone(), 12);
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: r.expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
+            Some(TokenShape::ShBang) => match find_prefix_binding_power(
+                ctx.env.syntax_spec.prefix_operators.clone(),
+                text.clone(),
+            ) {
+                std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
+                Some(bp) => {
+                    let r = parse_expr_bp(
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        bp.clone(),
+                    );
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: r.expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
+                        crate::v1_std_core::make_expr_node(
+                            identity.clone(),
+                            Rc::new(ExprData::ExprUnaryOp {
+                                op: UnaryOpKind::Not,
+                            }),
+                            Rc::new(vec![r.expr.clone()]),
+                            std::option::Option::None,
+                            span.clone(),
+                        )
+                    })
                 }
-                parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
-                    crate::v1_std_core::make_expr_node(
-                        identity.clone(),
-                        Rc::new(ExprData::ExprUnaryOp {
-                            op: UnaryOpKind::Not,
-                        }),
-                        Rc::new(vec![r.expr.clone()]),
-                        std::option::Option::None,
-                        span.clone(),
-                    )
-                })
-            }
-            Some(TokenShape::ShMinus) => {
-                let r = parse_expr_bp(token_stream_advance(tokens.clone(), 1), ctx.clone(), 12);
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: r.expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
+            },
+            Some(TokenShape::ShMinus) => match find_prefix_binding_power(
+                ctx.env.syntax_spec.prefix_operators.clone(),
+                text.clone(),
+            ) {
+                std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
+                Some(bp) => {
+                    let r = parse_expr_bp(
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        bp.clone(),
+                    );
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: r.expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
+                        crate::v1_std_core::make_expr_node(
+                            identity.clone(),
+                            Rc::new(ExprData::ExprUnaryOp {
+                                op: UnaryOpKind::Neg,
+                            }),
+                            Rc::new(vec![r.expr.clone()]),
+                            std::option::Option::None,
+                            span.clone(),
+                        )
+                    })
                 }
-                parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
-                    crate::v1_std_core::make_expr_node(
-                        identity.clone(),
-                        Rc::new(ExprData::ExprUnaryOp {
-                            op: UnaryOpKind::Neg,
-                        }),
-                        Rc::new(vec![r.expr.clone()]),
-                        std::option::Option::None,
-                        span.clone(),
-                    )
-                })
-            }
+            },
             _ => parse_primary(tokens.clone(), ctx.clone()),
         }
     }
@@ -15652,7 +15738,11 @@ pub fn try_postfix(
         let span = token_span(tok.clone());
         match sh.clone() {
             Some(TokenShape::ShLParen) => {
-                if (21 < min_bp.clone()) {
+                if !declared_postfix_gate_admits(
+                    ctx.env.syntax_spec.postfix_operators.clone(),
+                    "(".to_string(),
+                    min_bp.clone(),
+                ) {
                     Rc::new(PostfixResult {
                         expr: lhs.clone(),
                         changed: false,
@@ -15702,7 +15792,11 @@ pub fn try_postfix(
             }
             Some(TokenShape::ShIdent) => {
                 if (tok.clone().unwrap().text.clone() == "as".to_string()) {
-                    if (13 < min_bp.clone()) {
+                    if !declared_postfix_gate_admits(
+                        ctx.env.syntax_spec.postfix_operators.clone(),
+                        "as".to_string(),
+                        min_bp.clone(),
+                    ) {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
                             changed: false,
@@ -15758,7 +15852,11 @@ pub fn try_postfix(
                 }
             }
             Some(TokenShape::ShLBracket) => {
-                if (21 < min_bp.clone()) {
+                if !declared_postfix_gate_admits(
+                    ctx.env.syntax_spec.postfix_operators.clone(),
+                    "[".to_string(),
+                    min_bp.clone(),
+                ) {
                     Rc::new(PostfixResult {
                         expr: lhs.clone(),
                         changed: false,
@@ -15812,7 +15910,13 @@ pub fn try_postfix(
                         lhs.clone(),
                         ctx.source_indices.clone(),
                     );
-                    if (is_uppercase_start(n.clone()) && (14 <= min_bp.clone())) {
+                    if (is_uppercase_start(n.clone())
+                        && !declared_postfix_gate_admits(
+                            ctx.env.syntax_spec.postfix_operators.clone(),
+                            "{".to_string(),
+                            min_bp.clone(),
+                        ))
+                    {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
                             changed: false,
@@ -15867,7 +15971,13 @@ pub fn try_postfix(
                         lhs.clone(),
                         ctx.source_indices.clone(),
                     );
-                    if (is_uppercase_start(last_seg.clone()) && (14 <= min_bp.clone())) {
+                    if (is_uppercase_start(last_seg.clone())
+                        && !declared_postfix_gate_admits(
+                            ctx.env.syntax_spec.postfix_operators.clone(),
+                            "{".to_string(),
+                            min_bp.clone(),
+                        ))
+                    {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
                             changed: false,
@@ -16696,7 +16806,13 @@ pub fn parse_expr_loop_no_brace(
                 }
             }
             tokens = skip_continuation_newlines(tokens.clone(), ctx.env.clone());
-            if (tok_is_lparen(token_stream_first(tokens.clone())) && (21 >= min_bp.clone())) {
+            if (tok_is_lparen(token_stream_first(tokens.clone()))
+                && declared_postfix_gate_admits(
+                    ctx.env.syntax_spec.postfix_operators.clone(),
+                    "(".to_string(),
+                    min_bp.clone(),
+                ))
+            {
                 let r = parse_call_args(tokens.clone(), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
@@ -16739,7 +16855,13 @@ pub fn parse_expr_loop_no_brace(
                     continue;
                 }
             } else {
-                if (tok_is_lbracket(token_stream_first(tokens.clone())) && (21 >= min_bp.clone())) {
+                if (tok_is_lbracket(token_stream_first(tokens.clone()))
+                    && declared_postfix_gate_admits(
+                        ctx.env.syntax_spec.postfix_operators.clone(),
+                        "[".to_string(),
+                        min_bp.clone(),
+                    ))
+                {
                     let span = token_span(token_stream_first(tokens.clone()));
                     let r = parse_index_or_slice(
                         tokens.clone(),

@@ -1,5 +1,7 @@
 module v2.test.claim.execution.dag_add_emit_round_trip
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -151,7 +153,8 @@ data dag_add_inferred_tree: InferredTree = InferredTree {
   root: dag_add_emitted_root,
   facts: PartialFunction {
     lookup: dag_add_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn anchor_dag_add_emit_accepts() -> Outcome<Medium<String>> {
@@ -212,7 +215,8 @@ test fn dag_add_domain_translate_accepts_holds() -> Bool {
   match translate_emitted_node(
     tree: InferredTree {
       root: dag_arrow_domain_conj_node(),
-      facts: PartialFunction { lookup: dag_add_facts_lookup }
+      facts: PartialFunction { lookup: dag_add_facts_lookup },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: dag_add_target_model
   ) {
