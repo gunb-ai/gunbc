@@ -556,7 +556,7 @@ data nvidia_h200_nvl_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   package: PcieAddInCard,
   execution_lane_count: none,
   memory: MemoryFacts {
-    capacity: gibibyte_to_byte_size(g: gibibyte(count: 141)),
+    capacity: byte_size(count: 141000000000),
     memory_kind: Hbm,
   },
   memory_bandwidth: Present { value: bandwidth(count: 4800000000000) },

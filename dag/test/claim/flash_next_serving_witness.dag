@@ -12,6 +12,7 @@ import extdeps.qwen.qwen3_8_flash_next {
   qwen3_8_flash_next_architecture, flash_next_qsa_kv_bytes_per_token, flash_next_routed_expert_parameters,
   flash_next_params_per_routed_expert, qwen3_8_flash_next_consumer_frontier,
 }
+import gunbc.serving.gpu_observed_memory_receipt { observed_memory_bytes, h200_nvl_observed_memory, b200_observed_memory, observed_memory_frontier }
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
 import gunbc.serving.flash_next_image_capability_observation {
   Sm90, Sm100, Sm120, Fp8MainKvCache, FlashInferNativeFp4Moe, Nvfp4PleTable, JitIfCompiles, NotBuilt, BuiltIn,
@@ -213,6 +214,7 @@ test fn w_declared_frontiers_are_open() -> Bool {
   !dissolution_is_bound(condition: qwen3_8_flash_next_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_maxq_run_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_image_observation_frontier)
+    && !dissolution_is_bound(condition: observed_memory_frontier)
     && !dissolution_is_bound(condition: flash_next_roofline_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_measured_readings_frontier)
 }
@@ -248,4 +250,21 @@ test fn w_hgx_8x_rows_scale_additive_b200_rows_only() -> Bool {
     && (fold(rows, init: true, f: (acc, r) => acc && r.high == r.base.high * 8 && r.low == r.base.low * 8))
     && !dissolution_is_bound(condition: hgx_b200_8x_frontier)
     && !dissolution_is_bound(condition: flash_next_power_consumer_frontier)
+}
+
+// The capacity math consumes the driver-reported memory, not the vendor figure: H200 NVL is 141 GB decimal in the
+// catalog and 143,771 MiB on the card.
+test fn w_observed_memory_is_consumed_not_vendor_figure() -> Bool {
+  byte_size_count(b: nvidia_h200_nvl_catalog.memory.capacity) == 141000000000
+    && observed_memory_bytes(o: h200_nvl_observed_memory) == 143771 * 1048576
+    && observed_memory_bytes(o: b200_observed_memory) == 183359 * 1048576
+    && card_memory_is(card: flash_next_h200_card, bytes: observed_memory_bytes(o: h200_nvl_observed_memory))
+    && card_memory_is(card: flash_next_b200_fp4_card, bytes: observed_memory_bytes(o: b200_observed_memory))
+}
+
+fn card_memory_is(card: RooflineCard?, bytes: Nat) -> Bool {
+  match card {
+    Present { value: c } => c.memory_bytes == bytes
+    none => false
+  }
 }

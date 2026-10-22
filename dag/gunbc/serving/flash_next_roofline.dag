@@ -15,7 +15,8 @@ import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
 // quantity whose input is missing (a bandwidth the catalog does not carry, a divisor of zero, a reserve
 // larger than the memory) is absent, and the prediction that depends on it is not scored.
 
-// WHAT A CARD IS, FOR THE FOLD: the catalog row (memory, bandwidth, tensor throughput), plus the three
+// WHAT A CARD IS, FOR THE FOLD: the catalog row (bandwidth, tensor throughput), the memory the driver reported on the
+// rented card (memory_bytes: observed, not the vendor figure), plus the three
 // numbers this repository does not get from a catalog -- the weights the engine loads on it, the
 // engine overhead outside weights and KV, and the engine's gpu-memory-utilization. A bandwidth the
 // catalog lacks (the B200 row carries none) is supplied as an explicit operator figure and keeps its
@@ -23,6 +24,7 @@ import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
 type RooflineCard {
   catalog: GpuModelCatalogRow
   bandwidth_override_bytes_per_second: Nat?
+  memory_bytes: Nat
   weights_bytes: Nat
   overhead_bytes: Nat
   gpu_memory_utilization_bp: Nat
@@ -58,7 +60,7 @@ fn ratio_permille(num: Nat, den: Nat) -> Nat? {
 // P1 -- KV CAPACITY FROM MEMORY: utilization x capacity, minus weights, minus overhead, over KV bytes per
 // token. Absent when the reserve consumes the budget or bytes per token is zero.
 fn kv_capacity_tokens(card: RooflineCard, kv_bytes_per_token: Nat) -> Nat? {
-  let budget = byte_size_count(b: card.catalog.memory.capacity) * card.gpu_memory_utilization_bp / 10000
+  let budget = card.memory_bytes * card.gpu_memory_utilization_bp / 10000
   let reserve = card.weights_bytes + card.overhead_bytes
   if kv_bytes_per_token == 0 || reserve >= budget {
     none

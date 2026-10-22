@@ -68,5 +68,5 @@ data flash_next_maxq_run_2026_10_21: FlashNextMaxQRunReceipt = FlashNextMaxQRunR
 }
 
 data flash_next_maxq_run_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: flash_next_maxq_run_2026_10_21 is consumed by gunbc.serving.flash_next_roofline (the KV bytes-per-token calibration and the workload means the predictions are ratioed against). Trigger: that fold reads these fields. The prompt-by-source counters sum to 0.017 percent above prompt_tokens at print precision; the roofline reads the by-source split for shares and prompt_tokens for the mean, and the discrepancy is carried as a finding in the PR, not reconciled here." as NonEmptyStr
+  description: "DESIGN section 3c: flash_next_maxq_run_2026_10_21 is consumed by gunbc.serving.flash_next_roofline (the KV bytes-per-token calibration and the workload means the predictions are ratioed against). Trigger: that fold reads these fields. The by-source counters and prompt_tokens_total are separate Prometheus counters scraped non-atomically, so their 0.017 percent excess is expected and is not reconciled; the roofline reads the by-source split for shares and prompt_tokens for the mean." as NonEmptyStr
 )
