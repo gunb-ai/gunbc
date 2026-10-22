@@ -2545,7 +2545,7 @@ fn dashboard_git_worker_repository_premise_refusal_sentence(repo: String) -> Str
 // Does this spec carry the step that establishes the repository tree? The group moves only for that
 // shape; any other spec keeps its standing fragments unchanged.
 fn spec_publishes_source_tree(spec: DeploymentSpec) -> Bool {
-  spec_has_artifact_kind(spec: spec, kind: GunbcSourceTree)
+  spec_has_artifact_kind(spec: spec, kind: UpsertOwned { kind: GunbcSourceTree })
 }
 
 fn owned_directory_target_fragments(t: OwnedDirectoryTarget) -> List<HostScriptFragment> {
@@ -4646,7 +4646,7 @@ fn apply_step_fragments(
         // bootstraps the repository), and never at the standing pre-position of apply_intent_fragments,
         // where it ran before any step could create the repository. The group carries its repository
         // premise gate first; a failed gate aborts the apply before any git path is created.
-        if (art.kind == GunbcSourceTree) { git_repository_subtree_tree_position_fragments(spec: spec, plan: plan) } else { [] },
+        if (art.kind == UpsertOwned { kind: GunbcSourceTree }) { git_repository_subtree_tree_position_fragments(spec: spec, plan: plan) } else { [] },
       )
     Dependency { step: dep } =>
       host_script_member_proceed(

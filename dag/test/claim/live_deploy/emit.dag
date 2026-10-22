@@ -2416,7 +2416,7 @@ fn wre3_lab_spec_without_tree_step() -> DeploymentSpec {
     role_singletons: spec.role_singletons,
     target: spec.target,
     steps: filter(spec.steps, s => match s {
-      ArtifactStep { step: art } => art.kind != GunbcSourceTree
+      ArtifactStep { step: art } => art.kind != UpsertOwned { kind: GunbcSourceTree }
       Dependency { step: _ } => true
     }),
     service: spec.service,
