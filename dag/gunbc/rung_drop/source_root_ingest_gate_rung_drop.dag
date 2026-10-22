@@ -1,7 +1,8 @@
 module gunbc.rung_drop.source_root_ingest_gate_rung_drop
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, LostAsPassenger }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, Enumerated, LostAsPassenger }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 // THE FLOOR CUT OWED THIS DECLARATION AND FILED NONE. Recorded 2026-08-21 against the cut of
@@ -88,18 +89,7 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: LostAsPassenger { carrier: "the falsifier cadence, deleted by the floor cut of 2026-08-15" },
-    population: [
-    "v2.workflow.source_root_ingest_gate",
-    "v2.workflow.source_root_ingest_transport",
-    "v2.workflow.compiler_closure_ingest_transport",
-    "v2.workflow.module_binding_supply_transport",
-    "src/v1/stage0/src/bin/discover_owned_data.rs",
-    "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness",
-    "src/v2/test/claim/program_assembly/real_ingest.dag",
-    "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag",
-    "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness.dag",
-    "src/v2/test/claim/self_host/crate_layout_witness.dag"
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "v2.workflow.source_root_ingest_gate", tail: ["v2.workflow.source_root_ingest_transport", "v2.workflow.compiler_closure_ingest_transport", "v2.workflow.module_binding_supply_transport", "src/v1/stage0/src/bin/discover_owned_data.rs", "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness", "src/v2/test/claim/program_assembly/real_ingest.dag", "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag", "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness.dag", "src/v2/test/claim/self_host/crate_layout_witness.dag"] } },
     restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci.ci_layer_roots exclusion rows above name a consumer that executes. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category. Waiters whose remaining unsatisfied condition is only that capability retire together. A waiter whose remainder is still unsatisfied is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and stays Standing until its own trigger is fully satisfied."
   }
 }

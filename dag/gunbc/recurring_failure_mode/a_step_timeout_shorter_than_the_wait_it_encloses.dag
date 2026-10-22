@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_step_timeout_shorter_than_the_wait_it_encloses
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_step_timeout_shorter_than_the_wait_it_encloses: RecurringFailureMode = RecurringFailureMode {
   identity: "a_step_timeout_shorter_than_the_wait_it_encloses" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "A STEP TIMEOUT SHORTER THAN THE WAIT IT ENCLOSES KILLS THE TRANSACTION BETWEEN APPLY AND VERDICT, leaving neither commit nor rollback. The fleet-converge arm launch step carries timeout-minutes from gunbc.fleet.fleet_workflow_steps gunbc_ci_spark_serving_step_timeout_minutes (60), a literal, while the transaction it runs waits for the front door up to the engine's VLLM_ENGINE_READY_TIMEOUT_S (3600 s) AFTER a preflight, preserve and apply that already take minutes. The runner kills the process; the transaction's commit and rollback legs never run; the hosts keep the new units, the preserved incumbent and the fence.",

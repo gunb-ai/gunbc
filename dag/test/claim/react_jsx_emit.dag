@@ -1,5 +1,12 @@
 module test.claim.react_jsx_emit
 import std.live_tree { LiveTreeDisposition }
+import gunbc.gunbhub_serve { gunbhub_browse_page, gunbhub_hostile_page }
+import extdeps.languages.react_jsx {
+  serialize_jsx_component,
+  try_serialize_jsx_component,
+  JsxOk,
+  JsxRejected,
+}
 import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

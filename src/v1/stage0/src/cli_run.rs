@@ -107,12 +107,12 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_type_declaration_use_census_runs, run_v2_demand_census,
-    run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit,
-    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
-    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
-    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
+    run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
+    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord,
+    NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun,
+    NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases,
+    NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
@@ -147,7 +147,8 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
+    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
+    whole_tree_resolved_ctx, EntryResolveRefusal,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -204,6 +205,7 @@ pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
+mod provider_acquire;
 mod source_layout_lookup;
 pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
@@ -720,7 +722,9 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -7148,7 +7152,25 @@ pub enum IndexResidency {
     OwnedByThisCompile,
 }
 
+/// THE COMPILE TRANSACTION, AND ITS RECEIPT (§4 P0.1, §5a amendment A).
+///
+/// This is the outer boundary of ONE compile. The wrapper exists so the receipt is printed
+/// whatever the transaction's disposition — an early admission refusal still gets its rows,
+/// because an operator staring at a SIGKILL or a refusal is exactly who needs the receipt.
+/// `CompileRun.wall_ms` is sampled INSIDE the body before its locals finish dropping, and the
+/// caller materializes output and renders diagnostics after this returns, so the process rows
+/// staged here (printed at exit by `pre_entry_phase`) carry what falls outside even this.
 pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
+    let transaction_started = std::time::Instant::now();
+    let run = compile_emission_over_inner(request, residency);
+    crate::cli_run::pre_entry_phase::print_compile_transaction_receipt(
+        &request.subject.label(),
+        transaction_started,
+    );
+    run
+}
+
+fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -8888,6 +8910,84 @@ mod closure_edge_demand_tests {
         reset_bare_reference_admission_completion_for_test();
     }
 
+    /// §5 LANE A (P0.6) DISCRIMINATOR: `extend_with_bare_reference_closure` REUSES the index's
+    /// shared path lookup instead of rebuilding `path_to_source_lookup` per fixpoint round. What
+    /// must stay UNCHANGED is the closure and its order — this drives a two-round chain (entry
+    /// bare-calls `mid`, which bare-calls `deep`, so the second provider arrives only in round
+    /// two) through both the loader route and the fixpoint authority directly, on ONE index, and
+    /// the two must agree on paths in order. The sharing itself is pinned by pointer identity:
+    /// if a future edit re-mints the map per round (the pre-fix behavior), the `Rc` pointers
+    /// diverge and this goes red.
+    #[test]
+    fn bare_path_lookup_is_shared_across_rounds_with_closure_and_order_unchanged() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module probe_entry\nfn main() -> Int { mid() }\n",
+            ),
+            ("mid.dag", "module probe_mid\nfn mid() -> Int { deep() }\n"),
+            ("deep.dag", "module probe_deep\nfn deep() -> Int { 7 }\n"),
+        ]);
+        let index = fixture.index();
+        let entry_path = fixture.0.join("entry.dag").to_string_lossy().into_owned();
+        // The stage slot is thread-local and can carry residue; per the field's own contract,
+        // subtract a pre-span snapshot.
+        let before_snapshot = entry_resolve::resolve_stage_slot_snapshot();
+
+        let ordered = |sources: &[Rc<v1_compiler_compile::SourceFile>]| -> Vec<String> {
+            sources.iter().map(|s| s.path.clone()).collect()
+        };
+
+        // Route A: the ordinary loader, which closes through the fixpoint authority.
+        let via_loader = load_sources_for_entry_with_pool(&index, &entry_path).unwrap();
+        let via_loader = ordered(&via_loader);
+
+        // Route B: the fixpoint authority directly, seeded with the entry alone. Both routes
+        // share ONE index, so both must serve the SAME lookup; the closure and its order
+        // (paths ascending, the fixpoint's own normalization) must be identical.
+        let content = std::fs::read_to_string(&entry_path).unwrap();
+        // Seed with the workspace-relative path, exactly as the loader normalizes it — otherwise
+        // the seed and the index's copy of the entry survive `dedup_by(path)` as two rows.
+        let seed = Rc::new(v1_compiler_compile::SourceFile {
+            path: workspace_relative_entry_path(&entry_path),
+            content,
+        });
+        let lookup_ptr_before = Rc::as_ptr(&pool_path_lookup(&index));
+        let via_fixpoint = extend_sources_to_both_closure_fixpoint(vec![seed], &index).unwrap();
+        let via_fixpoint = ordered(&via_fixpoint);
+
+        assert!(
+            via_fixpoint.len() >= 3,
+            "the chain must pull BOTH providers across rounds, got {via_fixpoint:?}"
+        );
+        assert_eq!(
+            via_fixpoint, via_loader,
+            "closure and order must be unchanged by the lookup-sharing change"
+        );
+        assert!(
+            via_fixpoint.windows(2).all(|w| w[0] <= w[1]),
+            "the fixpoint's path-order normalization must survive: {via_fixpoint:?}"
+        );
+        // The lookup is the INDEX's memo, stable across the whole fixpoint — a regression that
+        // re-mints the index's own cell per round fails here. The rebuild elimination itself is
+        // what the self-host instrument prices: `load_bare_path_lookup` drops to ~0 ns per call
+        // after the first (the per-round calls keep counting, pinned below, so the instrument
+        // reads real data rather than an absent row).
+        assert_eq!(
+            lookup_ptr_before,
+            Rc::as_ptr(&pool_path_lookup(&index)),
+            "the path lookup must be minted once per index, not rebuilt per fixpoint round"
+        );
+        let after = entry_resolve::resolve_stage_slot_snapshot();
+        let calls = after.load_bare_path_lookup_calls - before_snapshot.load_bare_path_lookup_calls;
+        let rounds = after.load_fixpoint_rounds - before_snapshot.load_fixpoint_rounds;
+        assert!(
+            calls >= rounds && rounds >= 3,
+            "one lookup call per fixpoint round must still be counted (loader + direct \
+             fixpoint = at least 3 rounds), got {calls} calls for {rounds} rounds"
+        );
+    }
+
     /// A `test` row is never a bare provider, and which rows are tests is the parse's
     /// `DeclarationMarker`, read off the census binding. The same shape with the marker removed
     /// is the positive control: the provider is then pulled.
@@ -10125,8 +10225,17 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    // THE LOOKUP IS SHARED, NOT REBUILT PER ROUND (§4 P0.6). `path_to_source_lookup` maps
+    // `index.source_files`, which no code path mutates after the index is built (demand-acquired
+    // files arrive through a FRESH index, never into this one) — so the index's
+    // `OnceCell`-memoized `pool_path_lookup` answer is the same map every round would rebuild.
+    // This function runs once per fixpoint round of
+    // `extend_sources_to_both_closure_fixpoint`; before this, every round cloned the whole
+    // path-keyed map (a per-fixpoint-round O(pool) rebuild) to produce an identical lookup.
+    // The receipt keeps counting calls per round; the nanos drop to zero after the first, which
+    // is the point an operator can SEE the sharing rather than trust the claim.
     let lookup_started = std::time::Instant::now();
-    let lookup = path_to_source_lookup(&index.source_files);
+    let lookup = pool_path_lookup(index);
     resolve_stage_slot_add(|s| {
         s.load_bare_path_lookup += lookup_started.elapsed().as_nanos();
         s.load_bare_path_lookup_calls += 1;
@@ -11449,6 +11558,14 @@ pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
     source_files: ModuleSourceIndex,
+    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): the
+    /// layout's typed answer for a module this index's acquired closure does not hold. Set only by
+    /// `demand_acquire`; every index that already holds its whole pool leaves it empty.
+    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> entry_resolve::ProviderLayoutAnswer>>>,
+    /// The source each Holds answer read, kept so the rebuild acquires those exact bytes and never
+    /// reads the provider a second time.
+    provider_snapshots:
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
     module_graph_facts: ModuleGraphFactsLive,
     /// Per-index typed results, keyed by the typed-module CONTENT key
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
@@ -13433,9 +13550,10 @@ mod module_schedule_batches_tests {
 fn finish_resolved_graph_assembly(
     modules: Rc<im::Vector<Rc<TypedModule>>>,
     diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
+    demand_chunks: Vec<provider_acquire::ProviderDemands>,
     binding_fork_counts: (usize, usize),
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
     let registry_started = std::time::Instant::now();
     let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
@@ -13492,12 +13610,28 @@ fn finish_resolved_graph_assembly(
     }
     resolve_stage_slot_add(|s| s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos());
     let rewire_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let rewire_index = modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<v1_compiler_infer::TypedModule>>(),
+        |acc, m| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                m.clone(),
+            )
+        },
+    );
+    let modules = v1_compiler_infer::rewire_type_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
     let rewire3_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_func_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
@@ -13513,7 +13647,7 @@ fn finish_resolved_graph_assembly(
         diagnostics,
     });
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
-    Ok(graph)
+    Ok((graph, provider_acquire::group_pass_demands(&demand_chunks)))
 }
 
 /// When every module in the closure is already in the typed cache, skip the
@@ -13537,7 +13671,7 @@ fn try_reconcile_all_cache_hits(
     cycle_residue_slots: &HashSet<usize>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
-) -> Result<Option<Rc<ResolvedGraph>>, String> {
+) -> Result<Option<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands)>, String> {
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -13620,6 +13754,8 @@ fn try_reconcile_all_cache_hits(
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     let empty_parent_diags = Rc::new(im::Vector::new());
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> =
+        Vec::with_capacity(closure_modules.len());
     for tc_result in results.into_iter() {
         let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
         let graph_started = std::time::Instant::now();
@@ -13628,6 +13764,7 @@ fn try_reconcile_all_cache_hits(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -13643,6 +13780,7 @@ fn try_reconcile_all_cache_hits(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
@@ -14124,7 +14262,7 @@ fn reconcile_with_typed_cache(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     index: &MultiEntryIndex,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
@@ -14258,7 +14396,7 @@ fn reconcile_with_typed_cache(
                     Rc::new(im::Vector::new())
                 } else {
                     let parent_envs_started = std::time::Instant::now();
-                    let parent_result = v1_compiler_infer::collect_parent_envs(
+                    let parent_diagnostics = v1_compiler_infer::missing_parent_env_diagnostics(
                         resolved.clone(),
                         module_index.clone(),
                         source_indices.clone(),
@@ -14266,7 +14404,7 @@ fn reconcile_with_typed_cache(
                     resolve_stage_slot_add(|s| {
                         s.parent_envs += parent_envs_started.elapsed().as_nanos()
                     });
-                    parent_result.diagnostics.clone()
+                    parent_diagnostics.clone()
                 };
                 let tc_result = match cached {
                     Some(hit) => hit,
@@ -14376,8 +14514,23 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                let computed =
-                                    index_insert_typed(index, typed_key.clone(), computed)?;
+                                // A RESULT COMPUTED WHILE A DEMANDED PROVIDER WAS OUTSIDE THIS CLOSURE IS NOT
+                                // THE MODULE'S ANSWER. Its generated references were left as
+                                // needs-acquisition, and the content key (source hash plus direct-import
+                                // interfaces) cannot see a provider no import names, so caching it would
+                                // serve the unacquired result again after the provider joins. Only a
+                                // result whose every demanded provider is in the closure it was computed
+                                // against is cached; the draft is recomputed on the grown closure.
+                                let providers_held = computed.provider_demands.iter().all(|d| {
+                                    closure_names
+                                        .iter()
+                                        .any(|n| *n == d.declaration.module_path)
+                                });
+                                let computed = if providers_held {
+                                    index_insert_typed(index, typed_key.clone(), computed)?
+                                } else {
+                                    computed
+                                };
                                 Ok(computed)
                             };
 
@@ -14448,6 +14601,7 @@ fn reconcile_with_typed_cache(
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
     // result is byte-identical regardless of how the schedule batched the closure.
     let mut modules_vec = im::Vector::new();
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> = Vec::new();
     for (slot, entry) in dispatched.into_iter().enumerate() {
         let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
             unreachable!(
@@ -14462,6 +14616,7 @@ fn reconcile_with_typed_cache(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -14477,6 +14632,7 @@ fn reconcile_with_typed_cache(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
@@ -17629,7 +17785,9 @@ pub fn handle_serve(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -20062,7 +20220,7 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // exec created and is not inherited. A missing field is None, never a fabricated zero.
     #[cfg(target_os = "linux")]
     {
-        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+        proc_status_kb_field("VmHWM").filter(|b| *b > 0)
     }
     #[cfg(target_os = "macos")]
     {
@@ -20164,16 +20322,17 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 // the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
 
 /// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
-/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
-/// `project_falsifier_witness_entries` turn them into explicit entries that RUN, and explicit rows
+/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries`
+/// turns them into explicit entries that RUN, and explicit rows
 /// merge after discovery with no exclusion filter — so an enrolled witness under an offline path
 /// executes even though the path excludes it (the two-edit rule `enforcement_coverage_exclusion_note`
 /// records: offlining such a witness requires deleting its enrollment too).
 ///
 /// Without this, the freeze wall would refuse 31 identities that already have a real consumer —
-/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count:
-/// `GitPrePushHook` is fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only
-/// that surface is not a consumer.
+/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count
+/// (`EXECUTING_COMMIT_SURFACES`): `GitPrePushHook` is fmt-only since 2026-07-25 and
+/// `FalsifierCadenceJob` lost its executor at 611fd02770, so an enrollment naming only those is
+/// not a consumer.
 fn commit_roster_witness_claim_keys() -> &'static [String] {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
@@ -20185,13 +20344,20 @@ fn commit_roster_witness_claim_keys() -> &'static [String] {
     })
 }
 
+/// The enrollment surfaces that execute a witness. Hand-listed here only because the seed reads
+/// `commit_workflow.dag` by text scan; the authority is
+/// `gunbc.commit_workflow enrollment_is_scheduled`, and the unit test
+/// `executing_surfaces_mirror_enrollment_is_scheduled` pins this list to that predicate's body.
+/// `FalsifierCadenceJob` is deliberately absent: its executor (falsifier.yml) was deleted at
+/// 611fd02770 (#8283), so a row enrolled only there executes nowhere.
+const EXECUTING_COMMIT_SURFACES: [&str; 1] = ["GithubActionsCiJob"];
+
 fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
     // The ROW head, not the bare constructor name: `CommitWitnessClaim {` also opens the coproduct
     // declaration and every pattern-match arm over it, and one such arm's window happens to reach a
     // prose `entry:` literal in a neighbouring note. A row is always a `check:` field of a
     // `CommitCheckEnrollment`, so that prefix is the identity of a row rather than a guess about it.
     const HEAD: &str = "check: CommitWitnessClaim {";
-    const EXECUTING_SURFACES: [&str; 2] = ["GithubActionsCiJob", "FalsifierCadenceJob"];
     let mut keys: Vec<String> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
@@ -20216,7 +20382,10 @@ fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
                  {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable enrollment `surfaces:` list"
             );
         };
-        if !EXECUTING_SURFACES.iter().any(|s| surfaces.contains(s)) {
+        if !EXECUTING_COMMIT_SURFACES
+            .iter()
+            .any(|s| surfaces.contains(s))
+        {
             continue;
         }
         for function in quoted_literals(&list) {
@@ -24077,10 +24246,45 @@ mod node_frontier_plumbing_controls {
             keys,
             vec![
                 "src/v2/test/claim/long/a_test.dag::ci_holds".to_string(),
-                "src/v2/test/claim/long/b_test.dag::falsifier_holds".to_string(),
             ],
-            "executing surfaces admit; the coproduct declaration and a pre-push-only row do not"
+            "only an executing surface admits; the coproduct declaration, a FalsifierCadenceJob-only \
+             row (dead executor) and a pre-push-only row do not"
         );
+    }
+
+    // THE DIFFERENTIAL PIN. The seed cannot call the .dag fact, so it mirrors it; this reads the
+    // authority's own body and refuses if the two surface sets ever differ. A mirror with no pin is
+    // a second authority that drifts silently (the fail-open this list once carried: it credited
+    // FalsifierCadenceJob after the predicate's executor was deleted).
+    #[test]
+    fn executing_surfaces_mirror_enrollment_is_scheduled() {
+        let content =
+            std::fs::read_to_string(workspace_root().join(super::COMMIT_WORKFLOW_AUTHORITY_REL))
+                .expect("read commit_workflow authority");
+        let head = content
+            .find("fn enrollment_is_scheduled(")
+            .expect("enrollment_is_scheduled is declared in the authority");
+        let body = &content[head..];
+        let body = &body[..body
+            .find("\n}\n")
+            .expect("enrollment_is_scheduled body closes")];
+        let mut authored: Vec<&str> = body
+            .split("surface: ")
+            .skip(1)
+            .map(|rest| {
+                rest.split(|c: char| !c.is_alphanumeric())
+                    .next()
+                    .unwrap_or("")
+            })
+            .collect();
+        authored.sort_unstable();
+        let mut mirrored: Vec<&str> = super::EXECUTING_COMMIT_SURFACES.to_vec();
+        mirrored.sort_unstable();
+        assert_eq!(
+            authored, mirrored,
+            "EXECUTING_COMMIT_SURFACES drifted from enrollment_is_scheduled"
+        );
+        assert!(!mirrored.contains(&"FalsifierCadenceJob"));
     }
 
     // The live half of the same fact: an enrolled witness under an offline path is admitted, and
@@ -28555,6 +28759,7 @@ mod witness_layer_roots_compile_clean_tests {
         let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
             graph: None,
             diagnostics: Rc::new(im::Vector::new()),
+            provider_demands: Rc::new(im::Vector::new()),
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             complexity: empty_complexity_report(),
             ownership: Rc::new(im::Vector::new()),
@@ -28713,6 +28918,7 @@ mod witness_layer_roots_compile_clean_tests {
             let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
                 graph: compiled.graph.clone(),
                 diagnostics: Rc::new(diagnostics.into()),
+                provider_demands: compiled.provider_demands.clone(),
                 source_indices: compiled.source_indices.clone(),
                 complexity: compiled.complexity.clone(),
                 ownership: compiled.ownership.clone(),
@@ -29966,7 +30172,7 @@ pub fn parse_extdeps_module_items(
 /// inputs the operation itself declares (name + optional default expression).
 ///
 /// This is the single authority the generic argv materializer binds against
-/// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
+/// (`std.operation_argv`): the binding vocabulary is the operation's own
 /// `input { .. }` block, never a fixed list the seed happens to know.
 pub struct OperationArgvDeclaration {
     pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
@@ -30043,6 +30249,9 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
+    /// Declared-input names (variables intersected with `declared_inputs`) read anywhere inside `argv[0]`, calls and field accesses
+    /// included. Empty means the executable position reads no input.
+    pub executable_input_refs: Vec<String>,
 }
 
 fn collect_argv_input_refs(
@@ -30066,6 +30275,34 @@ fn collect_argv_input_refs(
             }
         }
         _ => {}
+    }
+}
+
+/// Every variable read anywhere under `node` (call arguments, field accesses, interpolations),
+/// in first-seen order. Unlike `collect_argv_input_refs` it descends through every expression
+/// form, because its question is "can an input reach this position", not "which inputs does
+/// this element interpolate".
+fn collect_expression_var_reads(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    if let ExprData::ExprVar { .. } = node.expr_data.as_ref() {
+        let name = expr_var_name_at(node.clone(), source_indices.clone());
+        if !name.is_empty() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    if let ExprData::ExprStringInterp = node.expr_data.as_ref() {
+        for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+            if let StringPart::Interpolation { expr } = part.as_ref() {
+                collect_expression_var_reads(expr, source_indices, out);
+            }
+        }
+    }
+    for child in node.children.iter() {
+        collect_expression_var_reads(child, source_indices, out);
     }
 }
 
@@ -30143,6 +30380,20 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                 for argv_node in transport.children.iter() {
                     collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
                 }
+                let mut executable_input_refs: Vec<String> = Vec::new();
+                if let Some(executable) = transport.children.iter().next() {
+                    collect_expression_var_reads(
+                        executable,
+                        &source_indices,
+                        &mut executable_input_refs,
+                    );
+                    let declared = operation_declared_inputs(op, &source_indices);
+                    executable_input_refs.retain(|name| {
+                        declared
+                            .iter()
+                            .any(|(declared_name, _)| declared_name == name)
+                    });
+                }
                 rows.push(ShellTransportOperationCensusRow {
                     path: rel.clone(),
                     service: item.name.clone(),
@@ -30152,6 +30403,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         .map(|(name, _)| name)
                         .collect(),
                     argv_input_refs,
+                    executable_input_refs,
                 });
             }
         }
@@ -30184,7 +30436,7 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 /// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
 /// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
 /// author who causes it -- the same seven operations are already typed and counted debt on
-/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// the MATERIALIZATION side (`std.operation_argv` `ArgvRowExpressionResidue`, pinned in
 /// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
 ///
 /// So the two readings of one corpus disagree and this comment is where that is recorded:

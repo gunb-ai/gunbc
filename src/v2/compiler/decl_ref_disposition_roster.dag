@@ -1,0 +1,191 @@
+module v2.compiler.decl_ref_disposition_roster
+
+// THE DISPOSITION ROSTER of the decl-ref census: every DeclarationRef or backtick span the census
+// finds unresolved and that is not repaired. A row's subject is typed: a CitedDeclaration
+// carries the DeclarationRef (module, declaration and field, so a NamedField is never widened to its
+// whole declaration), a CitedSpan the span text; never a pattern. The row and carries the specific reason it is
+// kept. The census refuses a row that no longer matches an unresolved citation, so the roster only
+// shrinks (a monotone debt contract over the census's own independently discovered population,
+// DESIGN section 5). There is no blanket stale-citation reason: a stale reference is repaired or
+// deleted, and a row remains only where the repair needs a judgment the author of this roster cannot
+// make, stated by its reason (the arm's meaning below; a reason is the same for every row of its arm, so a per-row note would repeat it).
+//   DeliberateAbsentFixture      -- a RED/control fixture that cites a name that must not resolve.
+//   UpstreamFieldUnmodeled       -- an external-spec field the local model does not carry yet.
+//   DeliberatelyAbsentCapability -- a stamp bound to the name of a capability not yet authored.
+//   BindTargetDeleted            -- a scaffold row whose bind target was deleted with no named successor; re-pointing or retiring it is an operator verdict on the debt (DESIGN 5).
+//   HostBuiltinSeam              -- a bind into the v1 seed's builtin registry, outside the v2 index.
+//   DataRowFieldNotResolvable    -- a NamedField citation into a `data` row's literal value; v2.std.decl_ref_resolution
+//                                   decl_ref_named_field_present reads only the labelled children of a type declaration, so a
+//                                   correct field of a data row reads as FieldAbsent. The citation stays NamedField (never widened
+//                                   to WholeDeclaration). dissolve-on: the resolver reads the fields of a data row's literal.
+//   ProductLabelTypedAsDeclarationRef -- a MEANING FORK (DESIGN 3): an ExternalSubjectRef carries the upstream product's own label
+//                                   ("github.CodeSearch") in a DeclarationRef, whose meaning is a declaration of a module. The
+//                                   retype is a follow-up; the row is held at identity grain until then. dissolve-on:
+//                                   ExternalSubjectRef names its subject by a type that is not a DeclarationRef (model first).
+//   IllustrativeName             -- a placeholder in explanatory prose (an example witness or module name), never declared.
+//   NameUnrecoveredFromHistory   -- a witness-module name in a receipt that no path search of history recovers (renamed
+//                                   or never a file of that name). dissolve-on: each owning receipt cites the successor symbol or a commit.
+//   HistoricalReceipt { commit } -- prose in a receipt naming a symbol that existed at that commit and
+//                                   has since been renamed or deleted; the receipt is a record, not a live citation.
+//   DeclNameIsAParameter         -- a construction whose module_path is a literal and whose decl_name is a parameter: the
+//                                   module is named, the declaration is chosen at run time. The subject is the site: the file holding the construction and the module its literal names.
+//                                   dissolve-on: substrate construction refuses unresolvable DeclarationRef literals (computed names then
+//                                   resolve at the call that supplies them).
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import v2.std.text { String }
+
+type DeclRefDispositionReason
+  = DeliberateAbsentFixture
+  | UpstreamFieldUnmodeled
+  | DeliberatelyAbsentCapability
+  | BindTargetDeleted
+  | HostBuiltinSeam
+  | DataRowFieldNotResolvable
+  | ProductLabelTypedAsDeclarationRef
+  | IllustrativeName
+  | NameUnrecoveredFromHistory
+  | HistoricalReceipt { commit: String }
+  | DeclNameIsAParameter
+
+type DeclRefSubject
+  = CitedDeclaration { reference: DeclarationRef }
+  | CitedSpan { text: String }
+  | ComputedDeclName { file: String, module_path: String }
+
+type DeclRefDisposition {
+  subject: DeclRefSubject
+  reason: DeclRefDispositionReason
+}
+
+data decl_ref_disposition_roster: List<DeclRefDisposition> = [
+  DeclRefDisposition { subject: ComputedDeclName { file: "src/v2/compiler/fold_lowering.dag", module_path: "std.algebra" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/gunbc/observation_emit_census.dag", module_path: "v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/test/claim/observation_emit_census_producer_witness.dag", module_path: "v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/test/claim/capability_binding_witness.dag", module_path: "gunbc.capability_binding" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: ComputedDeclName { file: "dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag", module_path: "gunbc.machine_intake.mtcollins1_memory_census_observation" }, reason: DeclNameIsAParameter },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.test.workflow.claim_witness_corpus_ci_runner" as NonEmptyStr, decl_name: "ClaimWitnessCorpusClaimRunRow" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.http" as NonEmptyStr, decl_name: "redfish.Http" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.bmc.ipmi" as NonEmptyStr, decl_name: "diagnostic.ipmi.Tool" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.code_search" as NonEmptyStr, decl_name: "github.CodeSearch" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.git_database" as NonEmptyStr, decl_name: "github.GitDatabase" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.repository_contents" as NonEmptyStr, decl_name: "github.RepositoryContents" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.github.users" as NonEmptyStr, decl_name: "github.Users" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.linux.cgroup_v2" as NonEmptyStr, decl_name: "linux.CgroupV2" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_rest" as NonEmptyStr, decl_name: "llm.Anthropic" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.openai_rest" as NonEmptyStr, decl_name: "llm.OpenAI" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.node" as NonEmptyStr, decl_name: "node.Runtime" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.getconf" as NonEmptyStr, decl_name: "posix.Getconf" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.process" as NonEmptyStr, decl_name: "posix.Process" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.posix.signal" as NonEmptyStr, decl_name: "posix.Signal" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.rust.rustc" as NonEmptyStr, decl_name: "rustc.Check" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.systemd.journalctl" as NonEmptyStr, decl_name: "systemd.Journalctl" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.systemd.systemd_run" as NonEmptyStr, decl_name: "systemd.SystemdRun" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.tailscale.acl_api" as NonEmptyStr, decl_name: "tailscale.AclAdmin" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.tools.coreutils_head" as NonEmptyStr, decl_name: "coreutils.Head" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.typescript" as NonEmptyStr, decl_name: "typescript.Compiler" as NonEmptyStr, field: WholeDeclaration } }, reason: ProductLabelTypedAsDeclarationRef },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "gunbc.ci.ci_fleet" as NonEmptyStr, decl_name: "gunbc_ci_host" as NonEmptyStr, field: NamedField { field_name: "memory" as NonEmptyStr } } }, reason: DataRowFieldNotResolvable },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "synthetic.keyed_read_module_absent_RED" as NonEmptyStr, decl_name: "anything" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "synthetic.g1_module_absent_RED" as NonEmptyStr, decl_name: "any" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.decl_facts_reflection.specimens" as NonEmptyStr, decl_name: "disposition_scaffold" as NonEmptyStr, field: NamedField { field_name: "no_such_field_KEYED_RED" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.decl_facts_reflection.specimens" as NonEmptyStr, decl_name: "disposition_scaffold" as NonEmptyStr, field: NamedField { field_name: "dissolves_to" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.decl_facts_reflection.specimens" as NonEmptyStr, decl_name: "no_such_declaration_KEYED_RED" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.decl_facts_reflection.specimens" as NonEmptyStr, decl_name: "named_field_anchor" as NonEmptyStr, field: NamedField { field_name: "dissolves_to" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.decl_facts_reflection.specimens" as NonEmptyStr, decl_name: "planted_scaffold_specimen" as NonEmptyStr, field: NamedField { field_name: "dissolves_to" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.std.node" as NonEmptyStr, decl_name: "NoSuchDecl_G1_RED" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.std.node" as NonEmptyStr, decl_name: "g1_ambiguous" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.std.node" as NonEmptyStr, decl_name: "NodeKind" as NonEmptyStr, field: NamedField { field_name: "NoSuchField_G1_RED" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.languages.nonexistent.subject" as NonEmptyStr, decl_name: "nonexistent_language" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.scaffold_disposition_census.pool.specimens" as NonEmptyStr, decl_name: "no_such_declaration_G1_dangling_bind_control_RED" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.scaffold_disposition_census.pool.specimens" as NonEmptyStr, decl_name: "scaffold_realization_dispatch_named_specimen" as NonEmptyStr, field: NamedField { field_name: "bind" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.scaffold_disposition_census.pool.specimens" as NonEmptyStr, decl_name: "scaffold_single_authority_named_specimen" as NonEmptyStr, field: NamedField { field_name: "dissolves_to" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "test.fixture.scaffold_disposition_census.pool.specimens" as NonEmptyStr, decl_name: "scaffold_substrate_mandatory_tag_named_specimen" as NonEmptyStr, field: NamedField { field_name: "dissolves_to" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "gunbc.capability_binding" as NonEmptyStr, decl_name: "x" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.test.lens_cost.valuation" as NonEmptyStr, decl_name: "unmodelled_effect_specimen" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.lens.cost" as NonEmptyStr, decl_name: "capability_absent_from_decl_facts" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "gunbc.instruments.rust_stage0_gates" as NonEmptyStr, decl_name: "per_unit_test_selector" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "std.disposition" as NonEmptyStr, decl_name: "Disposition" as NonEmptyStr, field: NamedField { field_name: "marker" as NonEmptyStr } } }, reason: DeliberateAbsentFixture },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api" as NonEmptyStr, decl_name: "AnthropicImageBlock" as NonEmptyStr, field: NamedField { field_name: "cache_control" as NonEmptyStr } } }, reason: UpstreamFieldUnmodeled },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api" as NonEmptyStr, decl_name: "AnthropicTextBlock" as NonEmptyStr, field: NamedField { field_name: "cache_control" as NonEmptyStr } } }, reason: UpstreamFieldUnmodeled },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api" as NonEmptyStr, decl_name: "AnthropicTextBlock" as NonEmptyStr, field: NamedField { field_name: "citations" as NonEmptyStr } } }, reason: UpstreamFieldUnmodeled },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api" as NonEmptyStr, decl_name: "AnthropicToolReferenceBlock" as NonEmptyStr, field: NamedField { field_name: "cache_control" as NonEmptyStr } } }, reason: UpstreamFieldUnmodeled },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.llm.anthropic_messages_api" as NonEmptyStr, decl_name: "CacheControl" as NonEmptyStr, field: NamedField { field_name: "ttl" as NonEmptyStr } } }, reason: UpstreamFieldUnmodeled },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.tcgplayer.store" as NonEmptyStr, decl_name: "UpdateSkuPrice" as NonEmptyStr, field: NamedField { field_name: "price" as NonEmptyStr } } }, reason: UpstreamFieldUnmodeled },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.lens.enforcement.complexity_contract_subject" as NonEmptyStr, decl_name: "unrestricted_semantic_complexity_equivalence_procedure" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberatelyAbsentCapability },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.lens.grounding" as NonEmptyStr, decl_name: "confirm_judge_should_ground" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberatelyAbsentCapability },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.lens.synthesis" as NonEmptyStr, decl_name: "unrestricted_cheaper_equivalent" as NonEmptyStr, field: WholeDeclaration } }, reason: DeliberatelyAbsentCapability },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "gunbc.ci.ci_floor_measurement" as NonEmptyStr, decl_name: "gunbc_ci_managed_host_quiescent_meminfo_read" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "gunbc.ci.ci_floor_measurement" as NonEmptyStr, decl_name: "gunbc_ci_legacy_host_modeled_residents" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "gunbc.roadmap.roadmap_authority" as NonEmptyStr, decl_name: "roadmap_document" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "extdeps.mediawiki" as NonEmptyStr, decl_name: "extdeps_external_authority_anchor" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },
+  DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "std.bytes" as NonEmptyStr, decl_name: "builtin_function_registry" as NonEmptyStr, field: WholeDeclaration } }, reason: HostBuiltinSeam },
+  DeclRefDisposition { subject: CitedSpan { text: "extdeps.realization.compile_stage_memo" }, reason: HistoricalReceipt { commit: "617614ddf05c2194af6a374d813aeb44adfdb945" } },
+  DeclRefDisposition { subject: CitedSpan { text: "extdeps.realization.parse_table_memo" }, reason: HistoricalReceipt { commit: "617614ddf05c2194af6a374d813aeb44adfdb945" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.auth.mtcollins1_boot_federation_provision" }, reason: HistoricalReceipt { commit: "c6c17c565d6594162f890cd79d1eb845fc9fb463" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.auth.patterns" }, reason: HistoricalReceipt { commit: "39750802d5683330a10b2b7bf50a2b289be1fa92" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.bare_name_fork_lens" }, reason: HistoricalReceipt { commit: "cb6cfb87375ca43aafb5fe83aedb4a46c1c5e5b4" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.ci_heal_credential" }, reason: HistoricalReceipt { commit: "9dc370d034d18911eb9c041cf747c34de6210869" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.ci_workflow" }, reason: HistoricalReceipt { commit: "2749a4432f07aacf42def71c6e3f383eddae3609" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.floor_component_receipt" }, reason: HistoricalReceipt { commit: "a4604db2b58339bde1e5107c87618adcacba445e" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.floor_component_receipt_document" }, reason: HistoricalReceipt { commit: "259c85e88461c7e1471d9a411af663c35e444f85" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.heal_revalidation" }, reason: HistoricalReceipt { commit: "eb88f65059c2cd60791ed7087f5e4d1da9340c22" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.model.choice" }, reason: HistoricalReceipt { commit: "da542dbf354600ef47e3271f355a17dd1f1ff7e2" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.namespace_wave_admission" }, reason: HistoricalReceipt { commit: "8cc9099e626ba9d5cd7a31d9dd2b1cc0625f1be8" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.product.fabric.provider_admission" }, reason: HistoricalReceipt { commit: "da8200862e4a9aa4f212d44b1b93ed0100fda7d8" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.product.fabric.work" }, reason: HistoricalReceipt { commit: "a4b21cb8e477aef9d277eb23f0d68ea4b130fef3" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.recurring_failure_mode.roster" }, reason: HistoricalReceipt { commit: "764d5477b9e7c69f16a0b9224f9bfe07b98d6cf6" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.rung_drop.roster" }, reason: HistoricalReceipt { commit: "0c031e6da4e3a6935107f9e878e034e06ea5e4f8" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.spark.serving_converge_realize" }, reason: HistoricalReceipt { commit: "0c031e6da4e3a6935107f9e878e034e06ea5e4f8" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.spark.serving_desired" }, reason: HistoricalReceipt { commit: "0c031e6da4e3a6935107f9e878e034e06ea5e4f8" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.spark.serving_readback_parse" }, reason: HistoricalReceipt { commit: "8aaa9b31b81be4d1fb84fde6d7208a25ff0579dc" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.test.claim.generated_artifact_assessment_witness_test" }, reason: HistoricalReceipt { commit: "37dbc62026bbd3e16512c095015f0304b6c28a0c" } },
+  DeclRefDisposition { subject: CitedSpan { text: "gunbc.tools.review_codex" }, reason: HistoricalReceipt { commit: "39750802d5683330a10b2b7bf50a2b289be1fa92" } },
+  DeclRefDisposition { subject: CitedSpan { text: "std.resources.X" }, reason: HistoricalReceipt { commit: "36dd24afc3874fecfe53077836a792b17ec95e16" } },
+  DeclRefDisposition { subject: CitedSpan { text: "std.string_type" }, reason: HistoricalReceipt { commit: "a006d71a610b4807d13553cd0f0c65ac113bd720" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.compiler.05_emit_orchestration" }, reason: HistoricalReceipt { commit: "cf37d1e6c3a991402ee53b6076351ac7779429b4" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.lens.cited_symbol_resolution" }, reason: HistoricalReceipt { commit: "77c81f37614de1cb1d744f3c34db86cdec46cbc2" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.std.collection" }, reason: HistoricalReceipt { commit: "8aaa9b31b81be4d1fb84fde6d7208a25ff0579dc" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.std.float" }, reason: HistoricalReceipt { commit: "15bcbfa95e837bfd6466151d91eeabc7b68307e5" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.std.nat.Nat" }, reason: HistoricalReceipt { commit: "2f9761079f85c284958f36224169e863f5b06ae1" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.std.optional" }, reason: HistoricalReceipt { commit: "32daad429becc75c385c443a31e7e8ed31c4e910" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.floor_unimported_bare_provider_debt" }, reason: HistoricalReceipt { commit: "954ce1b0596294634bc415b79ee0ffa3b5b36bc4" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.floor_unimported_bare_provider_debt_roster" }, reason: HistoricalReceipt { commit: "39750802d5683330a10b2b7bf50a2b289be1fa92" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.floor_wet_route" }, reason: HistoricalReceipt { commit: "fd17c9f1766025937c8eb775ae45293056510f71" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.source_root_ingest_gate" }, reason: HistoricalReceipt { commit: "1ee213e26f60a3741cebf9cbd1a925ad58c8b1d9" } }
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.claim.body_lowering.anonymous_record_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.decl.shared_fn" }, reason: IllustrativeName },
+  DeclRefDisposition { subject: CitedSpan { text: "test.user" }, reason: IllustrativeName },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.claim.compiler_materialization_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.claim.floor_unimported_bare_provider_debt" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.claim.body_lowering.caret_symbol_value_refusal" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.self_host.rust_module_emission_population" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.rcfp" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.instrument_sandbox_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.instrument_sandbox_witness_test" }, reason: HistoricalReceipt { commit: "b2abbe695a672e99d58a3d681a0d7de322914b6f" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.instrument_tuner_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.instrument_tuner_witness_test" }, reason: HistoricalReceipt { commit: "b2abbe695a672e99d58a3d681a0d7de322914b6f" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.payload_arm_excess_field_admission_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.roadmap.roadmap_program_view_witness_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.spark.spark_first_party_serving_witness.every_use_program_is_not_engaged_and_names_its_basis" }, reason: HistoricalReceipt { commit: "gunbc#13779" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.spark.spark_serving_offer_route_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.xl0_provider.T" }, reason: IllustrativeName },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.xl0_provider.xl0_provided_value" }, reason: IllustrativeName },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.goal_assessment_witness_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.realization_selection_witness_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.some_witness" }, reason: IllustrativeName },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.interpreter_match_guard_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.sql_create_table_fold_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.declared_type_inhabitance_direct_call_witness_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.long.reference_closure_equivalence_test" }, reason: HistoricalReceipt { commit: "58e66766b383f8bb5ea8e4f194a3b4a1b2bcad62" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.fleet.fleet_desired_merge_queue_admission_witness_test" }, reason: HistoricalReceipt { commit: "3ee2abcf4dbda2440ad9f74a146bfe905c9dbcd7" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.heal_publisher_provision_witness_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.fleet.fleet_desired_merge_queue_admission_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.bare_name_fork_lens_witness_test" }, reason: HistoricalReceipt { commit: "df490cd1724be71fc6c1450e8368fb07864d65f4" } },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.floor_wet_route" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.workflow_dispatch_input_witness_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.nbd_proxy_virtual_media_install_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.year_end_plan_witness" }, reason: NameUnrecoveredFromHistory },
+  DeclRefDisposition { subject: CitedSpan { text: "v2.test.claim.emit.produced_decl_two_target_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.spark.spark_cell_role_retirement_witness_test" }, reason: HistoricalReceipt { commit: "72fab822e57faebae5a88c3f6b94c0e3ddbd404f" } },
+  DeclRefDisposition { subject: CitedSpan { text: "test.claim.spark_serving_model_materialization_witness" }, reason: NameUnrecoveredFromHistory },
+]

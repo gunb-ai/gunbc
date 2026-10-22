@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_absent_reading_assigned_an_extent_conclusion
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_absent_reading_assigned_an_extent_conclusion: RecurringFailureMode = RecurringFailureMode {
   identity: "an_absent_reading_assigned_an_extent_conclusion" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a read whose SCOPE is one observer is assigned a conclusion about the WORLD, and the two are indistinguishable in the response** (INVALID STATE: a query answers successfully and empty, the producer assigns that result a meaning the query could not carry -- no such thing exists, rather than this observer saw none -- and the distinction is recorded nowhere, so every consumer downstream inherits the stronger reading.",

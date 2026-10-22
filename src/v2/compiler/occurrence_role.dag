@@ -15,6 +15,12 @@ import std.occurrence_identity {
   OccurrenceRole,
   OccurrenceSynthetic,
   ReferenceRole,
+  ReferencePosition,
+  ValuePosition,
+  ReturnPosition,
+  TypeAnnotationPosition,
+  LabelPosition,
+  PatternTagPosition,
   TypeOccurrence
 }
 import v2.compiler.parse { ParseArtifact }
@@ -28,6 +34,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_param_list_binder_atoms
 }
 import v2.compiler.fold_lowering { ArrowLambdaValue, FnLiteralValue, FunctionValueKind, function_value_parts_optional }
+import v2.compiler.lexical_scope { arrow_slot, node_value_frame, ArrowValueFrame, ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlot, ArrowTypeParamsSlot }
 import v2.extdeps.languages.dag {
   dag_grammar_root,
   dag_named_arg_name_node_optional,
@@ -39,7 +46,57 @@ import v2.std.integer { Int }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr, parse_production_emitted_identity_optional }
-import v2.std.node { Node, Symbol }
+import v2.std.node {
+  Node,
+  Symbol,
+  EdgeLabel,
+  Authored,
+  CoreEdgeLabel,
+  CoreMarker,
+  Positional,
+  ProductionEdge,
+  StructuralLabel,
+  AdmitCallersEdge,
+  ArrowBodyEdge,
+  ArrowEffectClaimsEdge,
+  ArrowExecutionModeClaimEdge,
+  ArrowResourceRequirementsEdge,
+  ArrowSignatureOrderEdge,
+  BinderDefaultEdge,
+  BinderStructureEdge,
+  BinderTypeEdge,
+  BodyTermLoweredEdge,
+  CastTargetEdge,
+  ConstantMemberEdge,
+  ConstructTagEdge,
+  ConstructTagElidedEdge,
+  DeclarationReferenceEdge,
+  FieldProjectionBaseEdge,
+  FieldProjectionFieldEdge,
+  LexicalReferenceEdge,
+  LoopBoundEdge,
+  LoopCarrierEdge,
+  LoopDomainEdge,
+  LoopRealizedDeclarationEdge,
+  MapLiteralEntriesEdge,
+  MapLiteralEntryEdge,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  MatchArmScopeExitEdge,
+  ParameterReferenceEdge,
+  TypeAliasEdge,
+  TypeAnnotationEdge,
+  TypeBodyEdge,
+  TypeParamsEdge,
+  TypeNode,
+  ComputationNode,
+  Arrow,
+  Conj,
+  Disj,
+  Atom,
+  Instantiation,
+  Edge
+}
 import std.optional { Absent, Optional, Present }
 
 // WHICH AUTHORED NAMES DECLARE, AND WHICH NAME SOMETHING THE MODULE SCOPE DOES NOT HOLD (XL-2
@@ -380,6 +437,128 @@ fn occurrence_roles_empty() -> OccurrenceRoles {
   OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), reader_refused: empty_map(), unminted: 0, derived: 0 }
 }
 
+// THE POSITION READER: what the edge a mention hangs off says about where it sits. ONE RULE OVER THE
+// CORE MARKER TABLE (v2.std.node CoreEdgeLabel), because the marker table is the only place the tree
+// records WHY a child hangs where it hangs; a consumer re-deriving this from shapes would be
+// re-deciding it at every call site (DESIGN section 3). MATCHED EXHAUSTIVELY OVER ALL 32 MARKERS, so
+// adding a marker forces this decision to be made rather than defaulting a mention to a value.
+//
+// PRESENT means this edge decides. ABSENT means this edge does NOT decide: the child takes the
+// position the nearest deciding ancestor established, and with no such ancestor an authored atom leaf
+// is a value mention. Absent is a considered answer, not a fallthrough.
+fn position_under_marker(marker: CoreEdgeLabel) -> Optional<ReferencePosition> {
+  match marker {
+    // TYPE POSITIONS: nothing here names a value a frame binds; these are annotations and type
+    // structure. The signature-order edge carries parameter types AND the return type, so a mention
+    // reported `unbound` here -- the specimen's signature mentions -- is the defect this stops.
+    TypeAnnotationEdge => Present { value: TypeAnnotationPosition }
+    BinderTypeEdge => Present { value: TypeAnnotationPosition }
+    TypeBodyEdge => Present { value: TypeAnnotationPosition }
+    TypeAliasEdge => Present { value: TypeAnnotationPosition }
+    TypeParamsEdge => Present { value: TypeAnnotationPosition }
+    CastTargetEdge => Present { value: TypeAnnotationPosition }
+    // A PROJECTION'S FIELD LABEL and a CALL'S ARGUMENT LABEL name a member or a parameter slot.
+    FieldProjectionFieldEdge => Present { value: LabelPosition }
+    ParameterReferenceEdge => Present { value: LabelPosition }
+    // The signature-order edge carries the authored parameter LABELS, so its children are label
+    // spellings (v2.std.arrow_signature arrow_signature_from_nodes: the order element is the label
+    // list). It was first read as a TYPE position, which was the right answer for the wrong fact --
+    // measured: the binder spellings hang here, and a binder spelling is no more a type mention than
+    // a value one. Its slot (ArrowCarriedSlot) is what decides it now.
+    ArrowSignatureOrderEdge => Present { value: LabelPosition }
+    // A PATTERN TAG may name a payload constructor instead of binding; never a value position. A
+    // pattern hangs under the arm-pattern marker, so both edges name one.
+    ConstructTagEdge => Present { value: PatternTagPosition }
+    ConstructTagElidedEdge => Present { value: PatternTagPosition }
+    MatchArmPatternEdge => Present { value: PatternTagPosition }
+    // VALUE POSITIONS, spelled out rather than left Absent so the reading is auditable.
+    ArrowBodyEdge => Present { value: ValuePosition }
+    MatchArmBodyEdge => Present { value: ValuePosition }
+    LoopDomainEdge => Present { value: ValuePosition }
+    LoopCarrierEdge => Present { value: ValuePosition }
+    FieldProjectionBaseEdge => Present { value: ValuePosition }
+    LexicalReferenceEdge => Present { value: ValuePosition }
+    BodyTermLoweredEdge { seal: _ } => Present { value: ValuePosition }
+    MapLiteralEntryEdge => Present { value: ValuePosition }
+    MapLiteralEntriesEdge => Present { value: ValuePosition }
+    // DOES NOT DECIDE: structure, a claim list whose atoms come from their own production, or a
+    // binder position the PRODUCTION reader already classifies (a binder is keyed by the row table,
+    // and an authored leaf is keyed as a declaration by position_walk below).
+    LoopBoundEdge => Absent
+    LoopRealizedDeclarationEdge => Absent
+    DeclarationReferenceEdge => Absent
+    ArrowEffectClaimsEdge => Absent
+    ArrowExecutionModeClaimEdge => Absent
+    ArrowResourceRequirementsEdge => Absent
+    AdmitCallersEdge => Absent
+    BinderStructureEdge => Absent
+    BinderDefaultEdge => Absent
+    MatchArmScopeExitEdge => Absent
+    ConstantMemberEdge => Absent
+  }
+}
+
+// THE POSITION OF A MENTION, decided ONE STEP AT A TIME as the walk descends, by THE SOLE ISSUER.
+// ONE RULE PER STEP, in a fixed order of authority:
+//   1. the SLOT, when the parent is an Arrow -- v2.compiler.lexical_scope arrow_slot, the EXISTING
+//      producer of the codomain, which no edge marker carries. The codomain is ReturnPosition; the
+//      type-parameter slot is a type position. Nothing new is minted for either: the slot table is
+//      what the frame walk already reads (child_value_scope consults it for the very same edges).
+//   2. else the CORE MARKER, which is where the tree records WHY a child hangs where it hangs.
+//   3. else TRANSPARENT -- an authored edge names the SPOT (a declaration, a binder, a parameter
+//      slot), not what hangs below it, and a production or positional edge names nothing. The
+//      inherited position stands, so the NEAREST deciding step wins and the fold is TOTAL: a mention
+//      with no deciding step above it is a value mention.
+// Linear in the depth of the walk, one pass, no tree re-read. Nothing here reads a node's SHAPE to
+// classify it, and no consumer re-derives any of it -- reference_position_step is the only place a
+// position is issued.
+//
+// A mention a lowering MOVED (OccurrenceProjected { id, caused_by }) takes its position from where it
+// hangs NOW, which is where its consumer reads it; its IDENTITY still belongs to its authored cause
+// (measured: id equals caused_by on every projected atom of the specimen). Position from the position,
+// identity from the cause -- one fact, one producer each.
+fn reference_position_step(inherited: ReferencePosition, parent: Node, edge: Edge, ordinal: Int) -> ReferencePosition {
+  // The slot table is about an Arrow's children, and THE ONLY reader that decides "is this parent an
+  // Arrow" is v2.compiler.lexical_scope node_value_frame -- the same call the value-frame walk makes
+  // (v2.compiler.reference_site_collector reads it for the frame). The step ASKS THAT AUTHORITY rather
+  // than re-reading the connective: slot and frame agree by construction because they ARE one reading.
+  match node_value_frame(n: parent) {
+    ArrowValueFrame { params: _ } => match arrow_slot(e: edge, ordinal: ordinal) {
+      // The codomain is the Arrow's RESULT: a type mention, and the one position no marker carries.
+      ArrowCodomainSlot => ReturnPosition
+      ArrowTypeParamsSlot => TypeAnnotationPosition
+      // The domain, the body, the claim lists and the authored edges are decided by their own marker
+      // below -- the slot table says where they hang, the marker table says what they are.
+      ArrowDomainSlot => position_of_marker_or(inherited: inherited, edge: edge)
+      ArrowBodyOrNamedSlot => position_of_marker_or(inherited: inherited, edge: edge)
+      ArrowAuthoredSlot => position_of_marker_or(inherited: inherited, edge: edge)
+      // The signature-order edge carries the authored parameter LABELS (v2.std.arrow_signature: the
+      // order element is the label list), so its children are label spellings, not type mentions.
+      ArrowCarriedSlot => LabelPosition
+      ArrowResourceRequirementsSlot => position_of_marker_or(inherited: inherited, edge: edge)
+    }
+    _ => position_of_marker_or(inherited: inherited, edge: edge)
+  }
+}
+
+// THE CLOSED ENUMERATION (review 83367c): the label-carrying arm delegates to the exhaustive marker table (whose own
+// Absent arms are the declared transparent MARKERS); the other three arms are the transparent EDGE-SHAPE cases,
+// enumerated rather than defaulted, so a future EdgeLabel variant cannot slip through as "inherited" by default -- it
+// must be decided here. 'Absent => inherited' inside the marker arm STAYS: that is the marker table's own answer for
+// markers that carry no position (DeclarationReferenceEdge, BinderStructureEdge, ...), not a catch-all.
+fn position_of_marker_or(inherited: ReferencePosition, edge: Edge) -> ReferencePosition {
+  match edge.label {
+    StructuralLabel { label: CoreMarker { marker: m } } =>
+      match position_under_marker(marker: m) {
+        Present { value: p } => p
+        Absent => inherited
+      }
+    Authored { name: _ } => inherited
+    Positional => inherited
+    StructuralLabel { label: ProductionEdge { language: _, edge: _ } } => inherited
+  }
+}
+
 fn count_symbol(m: Map<Symbol, Int>, key: Symbol) -> Map<Symbol, Int> {
   match map_lookup(m: m, key: key) {
     Present { value: n } => map_insert(m: m, key: key, value: n + 1)
@@ -456,6 +635,12 @@ fn occurrence_roles_of_admitted(tree: Node, admission: NameProductionTableAdmiss
 fn occurrence_role_index(roles: OccurrenceRoles) -> Map<OccurrenceId, AtomOccurrenceRole> {
   fold_list(xs: roles.roles, empty: empty_map(), cons: fn(acc, r) { map_insert(m: acc, key: r.occurrence, value: r) })
 }
+
+
+
+
+
+
 
 // The emitted identities of the `.dag` table's productions: the keys its per-production counters
 // (not_yet_read, reader_refused) can carry, derived from the grammar, so a consumer can total them.

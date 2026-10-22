@@ -6,7 +6,7 @@ import std.effect_grant {
   Read, Write, ServiceOpTree, NamespacePosition,
   ModeledRealization, LifecycleByConstruction, Grant, Envelope,
 }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, DispatchRecord,
   OperationObserved, OperationWorkerKilled, ShellObserved,
@@ -85,6 +85,8 @@ fn power_control(action: NonEmptyStr) -> Bool {
     username: "operator" as NonEmptyStr,
     password_file: "/nonexistent/credential" as NonEmptyStr,
     action: action,
+    deadline: "5s" as NonEmptyStr,
+    kill_after: "1s" as NonEmptyStr,
   ).success
 }
 
