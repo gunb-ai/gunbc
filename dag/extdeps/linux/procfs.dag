@@ -191,16 +191,16 @@ service linux.Procfs {
   // supervisor's. The UUID is one line, so the shell transport's trimming of the trailing newline loses nothing.
   operation ReadBootId {
     requires none
-    input {}
+    input { path: NonEmptyStr }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["cat", "/proc/sys/kernel/random/boot_id"] }
+    transport shell { argv: ["cat", "{path}"] }
     exit {
       0 => Unit
-      nonzero => String "/proc/sys/kernel/random/boot_id read failed"
+      nonzero => String "boot id read failed"
     }
     mock_response {
       0 => { value: "aaaaaaaa-0000-4000-8000-0000000000b1", success: true } "hermetic linux.Procfs.ReadBootId"
