@@ -25884,6 +25884,9 @@ fn qc503_proclaim_process() {
 // 21 starts carries its entry list. Never lands.
 fn qc503_door_arg_summary(args: &[(Option<String>, Value)]) -> String {
     fn summarize(v: &Value, depth: usize) -> String {
+        value_depth_guarded(|| summarize_unguarded(v, depth))
+    }
+    fn summarize_unguarded(v: &Value, depth: usize) -> String {
         match v {
             Value::Str(s) => {
                 let s: &str = s;
