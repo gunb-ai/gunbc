@@ -9474,13 +9474,53 @@ fn infer_callback_formal_arg(pairs: List<InhabitanceFormalArg>, callback: Node) 
   })
 }
 
-// The application's instances as far as its settled actuals fix them. A callback actual is not settled
-// yet and contributes nothing; an actual whose type is not derived, or does not match its formal's shape,
+// A FUNCTION LITERAL FIXES ITS FORMAL'S CODOMAIN BY ITS BODY'S TYPE once the body has facts: `init: fn(Int) -> R`
+// filled by `fn(n) { n + 1 }` fixes R as Int for the later `is_done: fn(R) -> Bool`. The literal's own arrow
+// entry is the FORMAL's declared type (the callback signature it was framed with), so only the body says what
+// the literal produced; a body not yet folded, or a formal that is not an arrow, contributes nothing.
+fn infer_function_literal_return_instances(pair: InhabitanceFormalArg, entries: Map<Node, List<InferredFacts>>, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex, bindings: SymbolIndex) -> List<TypeVariableInstance> {
+  match pair.formal.declared.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_body_target_lookup(children: pair.arg.children) {
+        Found { target: body } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: body) {
+            Absent => instances
+            Present { value: facts } =>
+              match inferred_facts_resolved_type(facts: facts) {
+                Violates { diagnostic: _ } => instances
+                Holds { value: produced } =>
+                  match list_at_optional(xs: positional_child_target_nodes(node: pair.formal.declared), index: 1) {
+                    Absent => instances
+                    Present { value: formal_return } =>
+                      match infer_match_generic_formal_or_carrier(
+                        formal: infer_type_alias_normalized_at(t: formal_return, bodies: declarations, bindings: bindings),
+                        produced: infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings),
+                        type_params: type_params,
+                        instances: instances,
+                        declarations: declarations,
+                        bindings: bindings
+                      ) {
+                        InferFormalMatched { instances: matched } => matched
+                        InferFormalShapeMismatch => instances
+                      }
+                  }
+              }
+          }
+        Ambiguous => instances
+        NotFound => instances
+      }
+    TypeNode { connective: _ } => instances
+    ComputationNode { behavior: _ } => instances
+  }
+}
+
+// The application's instances as far as its settled actuals fix them. A callback actual whose body has not settled
+// yet contributes nothing; an actual whose type is not derived, or does not match its formal's shape,
 // contributes nothing here -- the row judging it afterwards reports that, typed and located.
 fn infer_settled_actual_instances(pairs: List<InhabitanceFormalArg>, entries: Map<Node, List<InferredFacts>>, type_params: List<Symbol>, declarations: SymbolIndex, bindings: SymbolIndex) -> List<TypeVariableInstance> {
   fold(pairs, init: infer_no_type_variable_instances(), f: fn(instances, pair) {
     if infer_node_is_function_literal(n: pair.arg) {
-      instances
+      infer_function_literal_return_instances(pair: pair, entries: entries, type_params: type_params, instances: instances, declarations: declarations, bindings: bindings)
     } else {
       match lookup_inferred_facts_in_entries(entries: entries, key: pair.arg) {
         Absent => instances
