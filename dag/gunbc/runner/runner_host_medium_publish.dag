@@ -1,0 +1,92 @@
+module gunbc.runner.runner_host_medium_publish
+
+import std.types { Bool, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.host.boot_medium { bmc_boot_image_export }
+import gunbc.machine_intake.mtcollins1_census_image {
+  mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg, census_image_stock_path,
+}
+import gunbc.provisioning.seeded_install_media_publish {
+  BmcExportBoundary, SeededImagePublication,
+  publish_seeded_image, seeded_image_publication_holds, render_seeded_image_publication,
+}
+import gunbc.runner.runner_host_medium {
+  RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
+  runner_host_medium_image,
+}
+
+// THE IMAGE LEG'S PRODUCTION CALLER (gunbc.runner.runner_throughput_qualification_route mtcollins1_image_leg).
+// It derives the runner image from the authority (gunbc.runner.runner_host_medium runner_host_medium_image)
+// for mtcollins1 -- the host parameters are the census's own machine name and serial console, so the
+// envelope and the kernel's console agree with the boot subject -- and publishes it create-only into the
+// BMC export through the one seeded-image publication fold, on the export's serving host over fleet SSH
+// (srv2 has no runner slot). The publication measures the built bytes, names the image by that digest,
+// and reads the published file back before it reports; the receipt below is the digest the boot leg's
+// runner_host_boot_medium row carries.
+data mtcollins1_runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
+  machine: mtcollins1_census_machine,
+  console_device: mtcollins1_census_console_device,
+  console_kernel_arg: mtcollins1_census_console_arg,
+}
+
+type RunnerImagePublishAttempt
+  = RunnerImageNotDerived { reason: String }
+  | RunnerImagePublishRan { publication: SeededImagePublication }
+
+fn runner_image_publication_on(host: CommandHost, image: RunnerHostMediumImage) -> RunnerImagePublishAttempt {
+  match image {
+    RunnerHostMediumRunnerUnpublished { binary_release: r } =>
+      RunnerImageNotDerived { reason: concat("no arm64 runner tarball is published for release ", r.version as String) }
+    RunnerHostMediumUserDataRefused { reason: r } => RunnerImageNotDerived { reason: concat("the user-data document does not render: ", r) }
+    RunnerHostMediumImageDerived { input: i, runner: _ } =>
+      RunnerImagePublishRan {
+        publication: publish_seeded_image(host: host, input: i, stock_path: census_image_stock_path(), boundary: BmcExportBoundary { export_dir: bmc_boot_image_export.dir }),
+      }
+  }
+}
+
+fn runner_image_attempt_holds(a: RunnerImagePublishAttempt) -> Bool {
+  match a {
+    RunnerImageNotDerived { reason: _ } => false
+    RunnerImagePublishRan { publication: p } =>
+      seeded_image_publication_holds(p: p)
+  }
+}
+
+fn render_runner_image_attempt(a: RunnerImagePublishAttempt) -> String {
+  match a {
+    RunnerImageNotDerived { reason: r } => concat("publication=not attempted\npublication_reason=", r, "\n")
+    RunnerImagePublishRan { publication: p } =>
+      render_seeded_image_publication(p: p)
+  }
+}
+
+data mtcollins1_runner_image_receipt_path: String = "target/mtcollins1-runner-image.txt"
+
+data mtcollins1_runner_image_attempt_raw: String = "mtcollins1-runner-image-publish"
+
+// CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
+// consumes the fleet SSH key and runs on any runner (gunbc.fleet.fleet_converge_workflow, gunbc.ci.ci_spec).
+// The receipt is written whatever the outcome and uploaded by the step that follows.
+fn mtcollins1_runner_image_publish_wet() -> ProcessExit {
+  let attempt = match prepare_fleet_ssh_agent_context(attempt_raw: mtcollins1_runner_image_attempt_raw) {
+    FleetSshContextRefused { cause: c } => RunnerImageNotDerived { reason: concat("no fleet SSH context: ", c) }
+    FleetSshContextReady { context: context, receipt: _ } =>
+      runner_image_publication_on(
+        host: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context },
+        image: runner_host_medium_image(host: mtcollins1_runner_host),
+      )
+  }
+  let rendered = render_runner_image_attempt(a: attempt)
+  let written = Filesystem.Write(path: mtcollins1_runner_image_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("mtcollins1 runner image: the receipt could not be written: ", written.error, "\n", rendered))
+  } else if runner_image_attempt_holds(a: attempt) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 runner image publication did not hold:\n", rendered))
+  }
+}

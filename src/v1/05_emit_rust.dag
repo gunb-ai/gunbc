@@ -15,7 +15,7 @@ import std.repair_input_origin {
 }
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration,
-  never_type_declaration, never_eliminator_declaration
+  never_type_declaration, never_eliminator_declaration, never_projection_declarations
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
@@ -6707,7 +6707,9 @@ fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
 
 fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
   let here = decl_ref(module_path: module_path, decl_name: name)
-  if declaration_ref_eq(a: here, b: never_eliminator_declaration) {
+  if declaration_ref_eq(a: here, b: never_eliminator_declaration)
+    || (never_projection_declarations |> any(d => declaration_ref_eq(a: here, b: d)))
+  {
     "#[allow(unreachable_code)]\n"
   } else {
     ""

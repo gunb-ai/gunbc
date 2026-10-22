@@ -8,7 +8,7 @@ use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntRe
 pub use crate::std_checked_arithmetic::{
     checked_int_multiply, checked_int_subtract, CheckedInt, IntegerOverflow,
 };
-pub use crate::std_error_primitives::pure_dag_seam_unreachable;
+pub use crate::std_error_primitives::pure_dag_seam_unreachable_int;
 pub use crate::std_render_repeat_string_bootstrap::repeat_string;
 pub use crate::std_types::{range, Bool};
 use crate::v1_rt;
@@ -135,7 +135,7 @@ pub fn canonical_exact_decimal(mut __tco_loop_d: ExactDecimal) -> ExactDecimal {
         let mut d = __tco_loop_d;
         if (d.fraction_digits.clone() < 0) {
             break ExactDecimal {
-                units: v1_rt::pure_dag_seam_unreachable(),
+                units: crate::std_error_primitives::pure_dag_seam_unreachable_int(),
                 fraction_digits: 0,
             };
         } else {
