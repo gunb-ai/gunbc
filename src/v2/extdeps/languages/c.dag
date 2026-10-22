@@ -62,6 +62,7 @@ import v2.std.grammar {
 }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
+  ListIntroductionUnwired,
   IntLiteralDecimal,
   InfixToken,
   canonical_operation_op_add,
@@ -1118,6 +1119,7 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^c_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^c_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,
       statement_terminator: ^c_token_semicolon

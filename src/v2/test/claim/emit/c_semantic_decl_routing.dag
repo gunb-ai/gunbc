@@ -1,5 +1,6 @@
 module v2.test.claim.emit.c_semantic_decl_routing
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.c { c_target_model }
@@ -56,7 +57,7 @@ fn cdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
 }
 
 fn cdr_emit_text(name: Symbol, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(header: [], imports: [], members: [], name: name, params: Empty, node: node, target: c_target_model(), realization_host: c_target_model()) {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: name, params: Empty, node: node, target: c_target_model(), realization_host: c_target_model()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -122,7 +123,7 @@ fn cdr_bool_field_record() -> Node {
 }
 
 test fn c_semantic_non_int_field_refuses() -> Bool {
-  match emit_semantic_type_decl(header: [], imports: [], members: [], 
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Bad,
     params: [],
     node: cdr_bool_field_record(),
@@ -143,7 +144,7 @@ fn cdr_arrow_type() -> Node {
 }
 
 test fn c_semantic_generic_struct_refuses() -> Bool {
-  match emit_semantic_type_decl(header: [], imports: [], members: [], 
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Pair,
     params: [^K, ^V],
     node: cdr_point_record(),
@@ -156,7 +157,7 @@ test fn c_semantic_generic_struct_refuses() -> Bool {
 }
 
 test fn c_semantic_generic_tagged_union_refuses() -> Bool {
-  match emit_semantic_type_decl(header: [], imports: [], members: [], 
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Answer,
     params: [^T],
     node: cdr_answer_coproduct(),

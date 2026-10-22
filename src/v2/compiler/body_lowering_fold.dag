@@ -6590,6 +6590,7 @@ fn body_lower_dotted_head_raw_atom_optional(node: Node) -> Optional<Node> {
 type PostfixStep
   = PostfixProjection { segment: Node, call_elem: Optional<Node> }
   | PostfixCast { target: Node }
+  | PostfixIs { arm: Node }
   | PostfixRecord { segment: Node, items: List<Node> }
   | PostfixIndex { items_capture: Node, at: Node }
 
@@ -6670,6 +6671,11 @@ fn body_lower_postfix_chain_acc_call_step(
 }
 
 // A cast closes a bare spine the way a call does: what follows it is a value, never a path segment.
+// `x is V` closes a bare spine the way a cast does: what follows it is a value.
+fn body_lower_postfix_chain_acc_is_step(acc: PostfixChainAcc, arm: Node) -> PostfixChainAcc {
+  body_lower_postfix_chain_acc_closing_step(acc: acc, step: PostfixIs { arm: arm })
+}
+
 fn body_lower_postfix_chain_acc_cast_step(acc: PostfixChainAcc, target: Node) -> PostfixChainAcc {
   body_lower_postfix_chain_acc_closing_step(acc: acc, step: PostfixCast { target: target })
 }
@@ -6711,6 +6717,13 @@ fn body_lower_postfix_chain_steps_read(
               grown: body_lower_postfix_chain_acc_cast_step(acc: acc, target: target)
             )
           Absent =>
+        match body_lower_is_suffix_arm_optional(repeat_elem: repeat_elem) {
+          Present { value: arm } =>
+            body_lower_postfix_chain_steps_grow(
+              repeat_capture: repeat_capture,
+              grown: body_lower_postfix_chain_acc_is_step(acc: acc, arm: arm)
+            )
+          Absent =>
         match body_lower_index_suffix_expr_optional(repeat_elem: repeat_elem) {
           Present { value: items_capture } =>
             body_lower_postfix_chain_steps_grow(
@@ -6750,6 +6763,7 @@ fn body_lower_postfix_chain_steps_read(
                   )
                 )
             }
+        }
         }
         }
         }
@@ -6886,6 +6900,16 @@ fn body_lower_postfix_chain_fold_step(
                 diagnostics: ad
               )
           }
+        PostfixIs { arm: arm } =>
+          outcome_with_diagnostics(
+            value: PostfixAccumValue {
+              node: body_lower_is_node(
+                operand: body_lower_postfix_accum_node(acc: state, source: source),
+                arm: arm
+              )
+            },
+            diagnostics: ad
+          )
         PostfixIndex { items_capture: items_capture, at: at } =>
           match body_lower_comma_list_items(
             list_capture: items_capture,
@@ -7117,6 +7141,7 @@ fn body_lower_postfix_chain_head_atom_for_steps(head_node: Node, steps: List<Pos
     Cons { head: first, tail: _ } =>
       match first {
         PostfixCast { target: _ } => optional_absent()
+        PostfixIs { arm: _ } => optional_absent()
         PostfixIndex { items_capture: _, at: _ } => optional_absent()
         PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_atom_optional(node: head_node)
         PostfixRecord { segment: _, items: _ } => body_lower_dotted_head_atom_optional(node: head_node)
@@ -7150,6 +7175,7 @@ fn body_lower_postfix_steps_carry_cast_or_index(steps: List<PostfixStep>) -> Boo
   fold(steps, init: false, f: fn(acc, step) {
     acc || match step {
       PostfixCast { target: _ } => true
+      PostfixIs { arm: _ } => true
       PostfixIndex { items_capture: _, at: _ } => true
       PostfixProjection { segment: _, call_elem: _ } => false
       PostfixRecord { segment: _, items: _ } => false
@@ -7188,6 +7214,20 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
     args: [
       Edge { label: Authored { name: ^xs }, target: base, declaration: NotADeclaration },
       Edge { label: Authored { name: ^index }, target: index, declaration: NotADeclaration }
+    ]
+  )
+}
+
+// THE `is` TEST NODE. `x is V` is Transform[kw_is, x, V] where V is the arm's SOURCE SPELLING, an
+// atom and never a reference: it is not resolved here or by v2.compiler.resolve. Infer matches it
+// against the roster of x's type declaration and records the decided arm as the node's fact.
+fn body_lower_is_node(operand: Node, arm: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_is } }, children: []), declaration: NotADeclaration },
+      Edge { label: Positional, target: operand, declaration: NotADeclaration },
+      Edge { label: Positional, target: arm, declaration: NotADeclaration }
     ]
   )
 }
@@ -9861,6 +9901,9 @@ fn body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: Node) 
         match body_lower_as_suffix_type_optional(repeat_elem: repeat_elem) {
           Present { value: _ } => true
           Absent =>
+          match body_lower_is_suffix_arm_optional(repeat_elem: repeat_elem) {
+          Present { value: _ } => true
+          Absent =>
           match body_lower_index_suffix_expr_optional(repeat_elem: repeat_elem) {
           Present { value: _ } => true
           Absent =>
@@ -9868,6 +9911,7 @@ fn body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: Node) 
               Present { value: rest } => body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: rest)
               Absent => false
             }
+          }
           }
         }
     }
@@ -9882,6 +9926,19 @@ fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
       match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
         Present { value: id } =>
           if id == ^dag_token_kw_as { optional_present(value: pair.right) } else { optional_absent() }
+        Absent => optional_absent()
+      }
+  }
+}
+
+// is_suffix = seq(kw_is, name): answers the arm's name atom when the element is an `is` test.
+fn body_lower_is_suffix_arm_optional(repeat_elem: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: repeat_elem)) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+        Present { value: id } =>
+          if id == ^dag_token_kw_is { body_lower_param_binding_atom_optional(node: pair.right) } else { optional_absent() }
         Absent => optional_absent()
       }
   }

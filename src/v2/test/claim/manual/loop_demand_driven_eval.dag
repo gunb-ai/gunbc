@@ -1,4 +1,6 @@
 module v2.test.claim.manual.loop_demand_driven_eval
+
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 import std.types { List, Map }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -313,7 +315,8 @@ fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
 fn loop_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: loop_eval_facts_lookup }
+    facts: PartialFunction { lookup: loop_eval_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

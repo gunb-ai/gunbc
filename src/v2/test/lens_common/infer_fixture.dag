@@ -1,4 +1,6 @@
 module v2.test.lens_common.infer_fixture
+
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
 import std.optional { optional_absent }
@@ -131,7 +133,8 @@ fn claim_inferred_facts_map(facts: InferredFacts) -> PartialFunction<Node, Infer
 fn claim_inferred_tree(root: Node, facts: InferredFacts) -> InferredTree {
   InferredTree {
     root: root,
-    facts: claim_inferred_facts_map(facts: facts)
+    facts: claim_inferred_facts_map(facts: facts),
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

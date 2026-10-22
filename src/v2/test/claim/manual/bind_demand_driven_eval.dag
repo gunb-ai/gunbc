@@ -1,5 +1,7 @@
 module v2.test.claim.manual.bind_demand_driven_eval
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceMinted, OccurrenceSynthetic }
@@ -349,7 +351,8 @@ fn bind_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn bind_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: bind_eval_facts_lookup }
+    facts: PartialFunction { lookup: bind_eval_facts_lookup },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

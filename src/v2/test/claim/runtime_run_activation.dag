@@ -1,5 +1,6 @@
 module v2.test.claim.runtime_run_activation
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 import std.algebra { Cons, Empty, PartialFunction, fold_list, length, list_at_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -128,11 +129,11 @@ fn rr_facts_everywhere(node: Node) -> Optional<InferredFacts> {
 }
 
 fn rr_tree(root: Node) -> InferredTree {
-  InferredTree { root: root, facts: PartialFunction { lookup: rr_facts_everywhere } }
+  InferredTree { root: root, facts: PartialFunction { lookup: rr_facts_everywhere }, arm_resolutions: constructed_root_arm_resolutions() }
 }
 
 fn rr_tree_with(root: Node, lookup: fn(Node) -> Optional<InferredFacts>) -> InferredTree {
-  InferredTree { root: root, facts: PartialFunction { lookup: lookup } }
+  InferredTree { root: root, facts: PartialFunction { lookup: lookup }, arm_resolutions: constructed_root_arm_resolutions() }
 }
 
 fn rr_positional(target: Node) -> Edge {

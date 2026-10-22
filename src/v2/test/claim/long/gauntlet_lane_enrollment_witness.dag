@@ -20,7 +20,10 @@ import std.realization_schedule {
 import std.algebra { length }
 import v2.std.text { String }
 
-// Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow
+// Executing consumer for the per-PR half of the FalsifierCadenceJob lane -- the lane itself is
+// declared but UNREALIZED (its executor falsifier.yml was deleted at 611fd02770/#8283; the loss is
+// carried by the typed frontier and gunbc.rung_drop.falsifier_rehomed_rows_unexecuted, #14615)
+// (gunbc.commit_workflow
 // falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole
 // value is the difference between 're-homed' and 'dropped', and that difference is invisible in a
 // diff: both look like a surface list edit. Three claims, the third a RED control so the first two
@@ -115,9 +118,13 @@ test fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
 
 test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {
   live_roster_has_no_bare_deenrolled_witness()
-    && roster_has_no_bare_deenrolled_witness(
-         roster: [synthetic_pr_row(), synthetic_rehomed_row()]
-       )
+    && roster_has_no_bare_deenrolled_witness(roster: [synthetic_pr_row()])
+}
+
+// FalsifierCadenceJob executes nothing (falsifier.yml deleted at 611fd02770, #8283), so a row
+// enrolled only on it is a bare de-enrollment and the gate refuses it.
+test fn falsifier_cadence_only_row_is_refused_RED_control_holds() -> Bool {
+  !roster_has_no_bare_deenrolled_witness(roster: [synthetic_pr_row(), synthetic_rehomed_row()])
 }
 
 test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
@@ -175,8 +182,14 @@ fn synthetic_bare_deenrolled_gate_row() -> CommitCheckEnrollment {
 test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
   live_roster_has_no_bare_deenrolled_gate()
     && roster_has_no_bare_deenrolled_gate(
-         roster: [synthetic_cadence_gate_row(), synthetic_enrolled_gate_row()]
+         roster: [synthetic_enrolled_gate_row()]
        )
+}
+
+test fn falsifier_cadence_only_gate_is_refused_RED_control_holds() -> Bool {
+  !roster_has_no_bare_deenrolled_gate(
+    roster: [synthetic_cadence_gate_row(), synthetic_enrolled_gate_row()]
+  )
 }
 
 test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> Bool {
