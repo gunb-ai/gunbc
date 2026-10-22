@@ -2,7 +2,9 @@ module gunbc.recurring_failure_mode.the_live_runner_unit_memory_shape_drifts_fro
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // WHY THIS IS A LEDGER ROW AND NOT A QUEUE COMPENSATION. The operator rejected (2026-10-21, #14613)
 // the premise that taking the global instrument concurrency group apart loses an isolation guarantee:
@@ -25,6 +27,16 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data the_live_runner_unit_memory_shape_drifts_from_the_declared_slot: RecurringFailureMode = RecurringFailureMode {
   identity: "the_live_runner_unit_memory_shape_drifts_from_the_declared_slot" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a scheduled read of every fleet slot's MemoryHigh/MemoryMax/MemorySwapMax feeds gunbc.runner.runner_unit_live_read runner_unit_memory_max_drifts_against_cap and runner_unit_swap_max_converged against the slot actually declared for that host (gunbc.runner.runner_slot_desired), with a swap read of 0 enforced and a required-context refusal on drift",
+    },
+  },
 
   receipts: [
     "INVALID STATE: a runner unit's effective systemd memory shape (MemoryHigh, MemoryMax, MemorySwapMax) sits away from what gunbc.runner.runner_slot_desired declares for that slot, and nothing on the required path notices, because the readers that could notice are called only on a fixture. HARM: the slot is the isolation authority -- it is what the operator ruling on #14613 pointed to when it said a job should not have to worry about what else is running on the machine -- so a drifted slot silently weakens the guarantee the whole parallel-instrument change relies on. Concretely at the declared MemorySwapMax = 0: the slot is sized so an overrun is REFUSED (oom_kill, a loud red), and a drifted drop-in that permits swap turns that same overrun into memory.high throttling inside a run that still exits green, so the instrument reports a duration that is partly throttling and reports it as work.",

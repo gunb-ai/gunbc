@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation: RecurringFailureMode = RecurringFailureMode {
   identity: "annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: v2 answers one question -- does this produced value inhabit this declared type? -- through two relations chosen by position. An argument at its formal and a fn body at its declared return build a DeclaredTypeObligation and consult v2.std.inhabitance declared_type_inhabitance; an annotated let (`let x: T = e`) is judged by v2.compiler.infer infer_bind_annotation_check through v2.std.coercion coercion_cast_crossing, the fold a cast's crossing asks.",

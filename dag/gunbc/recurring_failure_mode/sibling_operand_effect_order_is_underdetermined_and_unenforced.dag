@@ -1,7 +1,7 @@
 module gunbc.recurring_failure_mode.sibling_operand_effect_order_is_underdetermined_and_unenforced
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 // THIS ROW IS A DERIVATION READ, NOT A REPAIR, AND IT DELIBERATELY PROPOSES NO NEW VOCABULARY.
 // The question it was opened to answer is whether sibling-operand order is UNDERIVABLE or merely
@@ -13,6 +13,8 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 // the wrong one, and for named siblings it would contradict content identity outright.
 data sibling_operand_effect_order_is_underdetermined_and_unenforced: RecurringFailureMode = RecurringFailureMode {
   identity: "sibling_operand_effect_order_is_underdetermined_and_unenforced" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**sibling-operand effect order is underdetermined by the model, and the absence is declared but unenforced** (INVALID STATE: an accepted program in which two siblings of one operand list each reach an observable effect, so its meaning depends on which runs first, while every authority the realizations consult declines to carry that order -- and nothing refuses the program).",
