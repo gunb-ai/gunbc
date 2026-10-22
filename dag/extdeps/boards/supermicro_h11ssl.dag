@@ -13,7 +13,16 @@ import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
-  CitedFigureStanding, TranscribedUncited,
+  CitedFigureStanding, TranscribedUncited, CitedToAuthority,
+}
+import extdeps.boards.physical_layout {
+  dimm_short_names, labels_of_kind,
+  BoardEdge, EdgeTop, EdgeBottom, EdgeLeft, EdgeRight, ManualCite, BoardFrame,
+  SocketSide, LeftOfSocket, RightOfSocket, LayoutNeighbour, NeighbourBoardEdge, NeighbourFeature,
+  DimmSlotPlacement, FeatureKind, FeaturePlacement, FrameRow, FrameColumn,
+  KindCpuSocket, KindPcieSlot, KindM2Slot, KindSataConnector, KindSasConnector, KindNvmeConnector,
+  KindFanHeader, KindPowerConnector, KindFrontPanelHeader, KindJumper, KindBattery, KindLed, KindRearPort, KindHeader,
+  RowTop, RowMiddle, RowBottom, ColumnLeft, ColumnCentre, ColumnRight,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
@@ -102,7 +111,7 @@ data supermicro_h11ssl_epyc_7702p_standing: CitedFigureStanding = TranscribedUnc
 }
 
 // ---- Memory (p.15, pp.32-34).
-data supermicro_h11ssl_dimm_slots: List<NonEmptyStr> = ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"]
+data supermicro_h11ssl_dimm_slots: List<NonEmptyStr> = dimm_short_names(placements: supermicro_h11ssl_dimm_placements)
 
 type H11sslDimmModule = Rdimm1R | Rdimm2R | Rdimm2Dr | Lrdimm3ds4R | Lrdimm3ds8R | Rdimm3ds2R2H | Lrdimm3ds2S2R | Lrdimm3ds2S4R | Rdimm3ds2S2R | Rdimm3ds2S4R
 
@@ -152,9 +161,11 @@ data supermicro_h11ssl_memory_faq_conflict_standing: CitedFigureStanding = Trans
   read_obligation: "Manual p.54 FAQ states 1 TB at DDR4 2400/2666, older than pp.15,32. The tables are used; confirm against the current Supermicro H11SSL memory compatibility list.",
 }
 
-// Pp.33-34 population guide. Columns were recovered from text-layer alignment, not the page image.
-data supermicro_h11ssl_dimm_population_read_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Verify the pp.34 population-guide slot columns against the rendered page image; the text layer lost table borders.",
+// Pp.33-34 population guide. The slot columns were first recovered from the text layer and then
+// read against the rendered page-34 image: every pictured row of both CPU-family guides matches
+// the rows below (7001: C1 / C1,A1 / C1,A1,E1,H1 / all; 7002: C1 / D1,C1 / D1,C1,G1,H1 / all).
+data supermicro_h11ssl_dimm_population_read_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
 }
 
 fn h11ssl_pop(slots: List<NonEmptyStr>) -> DimmPopulation {
@@ -179,6 +190,11 @@ data supermicro_h11ssl_documented_dimm_populations_epyc7002: List<DimmPopulation
   h11ssl_pop(slots: ["D1", "C1", "G1", "H1"]),
   h11ssl_pop(slots: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"]),
 ]
+
+// The slots the family's guide pictures for exactly one DIMM (read from the guide rows above).
+fn supermicro_h11ssl_pictured_single_dimm_slots(family: H11sslCpuFamily) -> List<NonEmptyStr> {
+  fold(h11ssl_documented_for(family: family), init: [], f: (acc, p) => if count(p.slots) == 1 { concat(acc, p.slots) } else { acc })
+}
 
 // The manual's standing for a candidate DIMM set. There is no 'unsupported' arm: the manual never
 // forbids a placement, so a set it does not picture is unestablished, and a later operational
@@ -266,7 +282,7 @@ type H11sslLanLinkSpeedLed = LinkLedOff10M | LinkLedGreen100M | LinkLedAmber1G
 data supermicro_h11ssl_lan_link_leds: List<H11sslLanLinkSpeedLed> = [LinkLedOff10M, LinkLedGreen100M, LinkLedAmber1G]
 
 // ---- Fans (p.39): seven 4-pin headers; pin 1 GND, 2 +12V, 3 tach, 4 PWM.
-data supermicro_h11ssl_fan_headers: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4", "FAN5", "FANA", "FANB"]
+data supermicro_h11ssl_fan_headers: List<NonEmptyStr> = labels_of_kind(features: supermicro_h11ssl_features, kind: KindFanHeader)
 type H11sslFanPin = FanGnd | Fan12V | FanTach | FanPwm
 fn supermicro_h11ssl_fan_pin(pin: Nat) -> H11sslFanPin? {
   match pin {
@@ -428,3 +444,155 @@ data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = Supermicr
   dimms_per_channel: 1,
   lan_ports: [Lan1, Lan2],
 }
+
+// ---- PHYSICAL LAYOUT (Figure 1-2 p.10, Quick Reference p.11, Figure 2-1 p.36, Figure 2-2 p.33).
+// Vocabulary: extdeps.boards.physical_layout. CONSUMERS: the witnesses in
+// test.claim.supermicro_h11ssl_witness exercise the DIMM relations and the feature lookups, and
+// gunbc.machine_intake.supermicro_h11ssl_first_contact joins the unit's observed DIMM slot to
+// supermicro_h11ssl_dimm_placements; arrival-intake binding is the declared frontier named there.
+// The figure's frame has the I/O shield edge at the TOP.
+data supermicro_h11ssl_frame: BoardFrame = BoardFrame {
+  io_shield_edge: EdgeTop,
+  cite: ManualCite { page: 10, diagram: "Figure 1-2 Motherboard Layout; Figure 2-1 I/O Port Locations (p.36)" },
+}
+
+fn h11ssl_cite(page: Nat, diagram: NonEmptyStr) -> ManualCite {
+  ManualCite { page: page, diagram: diagram }
+}
+
+// Each DIMM slot is placed by the Figure 2-2 arrows (p.33) and the Quick Reference callouts
+// (p.11), read against the page images: left bank, left to right, D1 C1 B1 A1 (A1 beside the
+// socket, D1 beside PCI-E SLOT6); right bank, left to right, E1 F1 G1 H1 (E1 beside the socket,
+// H1 on the right board edge). rank_from_socket is 1 at A1 and E1 and 4 at D1 and H1. The
+// population-guide column order D1 C1 B1 A1 E1 F1 G1 H1 is the same left-to-right order.
+fn h11ssl_dimm(letter: NonEmptyStr, side: SocketSide, rank: Nat, beyond: LayoutNeighbour) -> DimmSlotPlacement {
+  DimmSlotPlacement {
+    short_name: letter + "1",
+    silkscreen: "P1-DIMM" + letter + "1",
+    callout: "DIMM" + letter + "1",
+    side: side,
+    rank_from_socket: rank,
+    beyond: beyond,
+    cite: h11ssl_cite(page: 33, diagram: "Figure 2-2 DIMM Installation (arrows); Figure 1-2 p.10 silkscreen; Quick Reference p.11"),
+    standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+  }
+}
+
+data supermicro_h11ssl_dimm_placements: List<DimmSlotPlacement> = [
+  h11ssl_dimm(letter: "A", side: LeftOfSocket, rank: 1, beyond: NeighbourFeature { label: "B1" }),
+  h11ssl_dimm(letter: "B", side: LeftOfSocket, rank: 2, beyond: NeighbourFeature { label: "C1" }),
+  h11ssl_dimm(letter: "C", side: LeftOfSocket, rank: 3, beyond: NeighbourFeature { label: "D1" }),
+  h11ssl_dimm(letter: "D", side: LeftOfSocket, rank: 4, beyond: NeighbourFeature { label: "SLOT6" }),
+  h11ssl_dimm(letter: "E", side: RightOfSocket, rank: 1, beyond: NeighbourFeature { label: "F1" }),
+  h11ssl_dimm(letter: "F", side: RightOfSocket, rank: 2, beyond: NeighbourFeature { label: "G1" }),
+  h11ssl_dimm(letter: "G", side: RightOfSocket, rank: 3, beyond: NeighbourFeature { label: "H1" }),
+  h11ssl_dimm(letter: "H", side: RightOfSocket, rank: 4, beyond: NeighbourBoardEdge { edge: EdgeRight }),
+]
+
+// Every non-DIMM position is a 3x3 cell of the board outline read by eye from the p.11 callout
+// figure, not a measurement.
+data supermicro_h11ssl_feature_position_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Cells are read by eye from the p.11 Quick Reference callouts (board outline split in thirds, I/O edge at top). Ground against the board's silkscreen on the unit or a dimensioned mechanical drawing before any cell is used for a placement decision; a feature on a cell boundary may be one cell off.",
+}
+
+fn h11ssl_feature(label: NonEmptyStr, kind: FeatureKind, row: FrameRow, column: FrameColumn, edge: BoardEdge?, page: Nat) -> FeaturePlacement {
+  FeaturePlacement {
+    label: label, kind: kind, row: row, column: column, on_edge: edge,
+    cite: h11ssl_cite(page: page, diagram: "Quick Reference callouts p.11; Figure 1-2 p.10"),
+    standing: supermicro_h11ssl_feature_position_standing,
+  }
+}
+
+data supermicro_h11ssl_features: List<FeaturePlacement> = [
+  h11ssl_feature(label: "CPU1", kind: KindCpuSocket, row: RowMiddle, column: ColumnCentre, edge: Absent, page: 10),
+  h11ssl_feature(label: "SLOT1", kind: KindPcieSlot, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 42),
+  h11ssl_feature(label: "SLOT2", kind: KindPcieSlot, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 42),
+  h11ssl_feature(label: "SLOT3", kind: KindPcieSlot, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 42),
+  h11ssl_feature(label: "SLOT4", kind: KindPcieSlot, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 42),
+  h11ssl_feature(label: "SLOT5", kind: KindPcieSlot, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 42),
+  h11ssl_feature(label: "SLOT6", kind: KindPcieSlot, row: RowMiddle, column: ColumnCentre, edge: Absent, page: 42),
+  h11ssl_feature(label: "J23", kind: KindM2Slot, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 41),
+  h11ssl_feature(label: "I-SATA0", kind: KindSataConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 39),
+  h11ssl_feature(label: "I-SATA1", kind: KindSataConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 39),
+  h11ssl_feature(label: "I-SATA2", kind: KindSataConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 39),
+  h11ssl_feature(label: "I-SATA3", kind: KindSataConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 39),
+  h11ssl_feature(label: "I-SATA4~7", kind: KindSataConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 39),
+  h11ssl_feature(label: "L-SAS0~7", kind: KindSasConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 40),
+  h11ssl_feature(label: "JNVME0", kind: KindNvmeConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 40),
+  h11ssl_feature(label: "JNVME1", kind: KindNvmeConnector, row: RowBottom, column: ColumnLeft, edge: Absent, page: 40),
+  h11ssl_feature(label: "FANB", kind: KindFanHeader, row: RowBottom, column: ColumnLeft, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FANA", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN4", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN3", kind: KindFanHeader, row: RowBottom, column: ColumnCentre, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN5", kind: KindFanHeader, row: RowTop, column: ColumnRight, edge: Present { value: EdgeRight }, page: 39),
+  h11ssl_feature(label: "FAN2", kind: KindFanHeader, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "FAN1", kind: KindFanHeader, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeBottom }, page: 39),
+  h11ssl_feature(label: "JPWR2", kind: KindPowerConnector, row: RowBottom, column: ColumnRight, edge: Absent, page: 44),
+  h11ssl_feature(label: "JPWR1", kind: KindPowerConnector, row: RowBottom, column: ColumnRight, edge: Present { value: EdgeRight }, page: 45),
+  h11ssl_feature(label: "JPW1", kind: KindPowerConnector, row: RowTop, column: ColumnRight, edge: Present { value: EdgeRight }, page: 45),
+  h11ssl_feature(label: "JF1", kind: KindFrontPanelHeader, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 38),
+  h11ssl_feature(label: "JBT1", kind: KindJumper, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 46),
+  h11ssl_feature(label: "JPB1", kind: KindJumper, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 47),
+  h11ssl_feature(label: "JPG1", kind: KindJumper, row: RowTop, column: ColumnLeft, edge: Absent, page: 47),
+  h11ssl_feature(label: "JWD1", kind: KindJumper, row: RowTop, column: ColumnLeft, edge: Absent, page: 48),
+  h11ssl_feature(label: "JPL1", kind: KindJumper, row: RowTop, column: ColumnCentre, edge: Absent, page: 47),
+  h11ssl_feature(label: "JPL2", kind: KindJumper, row: RowTop, column: ColumnCentre, edge: Absent, page: 47),
+  h11ssl_feature(label: "JPS1", kind: KindJumper, row: RowBottom, column: ColumnCentre, edge: Absent, page: 48),
+  h11ssl_feature(label: "BT1", kind: KindBattery, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 43),
+  h11ssl_feature(label: "LEDM1", kind: KindLed, row: RowTop, column: ColumnLeft, edge: Absent, page: 49),
+  h11ssl_feature(label: "UID-LED", kind: KindLed, row: RowTop, column: ColumnCentre, edge: Present { value: EdgeTop }, page: 49),
+  h11ssl_feature(label: "LE1", kind: KindLed, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 49),
+  h11ssl_feature(label: "LE3", kind: KindLed, row: RowMiddle, column: ColumnCentre, edge: Absent, page: 49),
+  h11ssl_feature(label: "LEDSAS", kind: KindLed, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 50),
+  h11ssl_feature(label: "JOH1", kind: KindHeader, row: RowMiddle, column: ColumnLeft, edge: Absent, page: 43),
+  h11ssl_feature(label: "VGA", kind: KindRearPort, row: RowTop, column: ColumnCentre, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "LAN2", kind: KindRearPort, row: RowTop, column: ColumnCentre, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "LAN1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "USB4/5", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "USB0/1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "IPMI_LAN", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+  h11ssl_feature(label: "COM1", kind: KindRearPort, row: RowTop, column: ColumnRight, edge: Present { value: EdgeTop }, page: 36),
+]
+
+// Known-unplaced features: they exist on the board (named on the p.11 callouts) but no cell is
+// authored for them. A label here is "exists, position unread"; a label in neither list is not
+// known to this model. Placing one adds it to supermicro_h11ssl_features and removes it here.
+type UnplacedFeature { label: NonEmptyStr, kind: FeatureKind, obligation: NonEmptyStr }
+
+fn h11ssl_unplaced(label: NonEmptyStr, kind: FeatureKind) -> UnplacedFeature {
+  UnplacedFeature {
+    label: label, kind: kind,
+    obligation: "Read the cell and edge of this feature from the p.11 callout figure (or the unit silkscreen) and add it to supermicro_h11ssl_features, then delete it from this list.",
+  }
+}
+
+data supermicro_h11ssl_unplaced_features: List<UnplacedFeature> = [
+  h11ssl_unplaced(label: "JL1", kind: KindHeader),
+  h11ssl_unplaced(label: "JSTBY1", kind: KindHeader),
+  h11ssl_unplaced(label: "JVRM1", kind: KindHeader),
+  h11ssl_unplaced(label: "PWRI2C", kind: KindHeader),
+  h11ssl_unplaced(label: "JNCSI1", kind: KindHeader),
+  h11ssl_unplaced(label: "JSD1", kind: KindHeader),
+  h11ssl_unplaced(label: "JSD2", kind: KindHeader),
+  h11ssl_unplaced(label: "JSEN1", kind: KindHeader),
+  h11ssl_unplaced(label: "JD1", kind: KindHeader),
+  h11ssl_unplaced(label: "JIPMB1", kind: KindHeader),
+  h11ssl_unplaced(label: "JTPM1", kind: KindHeader),
+  h11ssl_unplaced(label: "J38", kind: KindHeader),
+  h11ssl_unplaced(label: "USB2/3", kind: KindHeader),
+  h11ssl_unplaced(label: "USB6/7", kind: KindHeader),
+  h11ssl_unplaced(label: "USB8", kind: KindRearPort),
+  h11ssl_unplaced(label: "SP1", kind: KindHeader),
+]
+
+// Does the model know a label: placed, exists with position unread, or not known.
+type H11sslFeatureKnowledge = FeaturePlaced | FeatureExistsPositionUnread | FeatureNotKnown
+
+fn supermicro_h11ssl_feature_knowledge(label: NonEmptyStr) -> H11sslFeatureKnowledge {
+  if any(supermicro_h11ssl_features, f => f.label == label) { FeaturePlaced }
+  else if any(supermicro_h11ssl_unplaced_features, u => u.label == label) { FeatureExistsPositionUnread }
+  else { FeatureNotKnown }
+}
+
+// Authored row order within one board edge is left to right in the figure (p.10, p.11), so
+// labels_on_edge reads the order from supermicro_h11ssl_features itself; no second list.
