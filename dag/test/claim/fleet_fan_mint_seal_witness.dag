@@ -3,7 +3,7 @@ module test.claim.fleet_fan_mint_seal_witness
 import std.types { String, Bool, Int }
 import std.process { ProcessExit }
 import gunbc.compile_diagnostic_census { CensusNotRunnable, CensusObserved, CompileDiagnosticCensus, census_blocking_histograms_equal }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit, census_premise, CensusUnobserved }
 
 // THE FLEET FAN OBSERVATION MINT IS TERMINAL-SEALED. Each probe is source handed to the compiler as
 // DATA (the pattern of operation_admit_callers_inert_witness), written as an OUTSIDE module that is
@@ -47,13 +47,14 @@ fn blocked_with(source: String, class: String) -> ProcessExit {
 // same imports, and its blocking HISTOGRAM (any class - an undefined name or a type error included)
 // must equal the baseline's key by key in both directions, both censuses observed. A total would let
 // one diagnostic disappearing offset another arriving.
-fn clean(source: String) -> Bool {
+fn clean_exit(source: String, expect_clean: Bool) -> ProcessExit {
   match fan_census_of(source: legal_baseline_source) {
     CensusObserved { rows: base } => match fan_census_of(source: source) {
-      CensusObserved { rows: with_fn } => census_blocking_histograms_equal(a: base, b: with_fn)
-      CensusNotRunnable { cause: _ } => false
+      CensusObserved { rows: with_fn } =>
+        census_exit(census_premise(name: "the blocking histogram equals the baseline's exactly when the module is clean", holds: census_blocking_histograms_equal(a: base, b: with_fn) == expect_clean))
+      CensusNotRunnable { cause: cause } => census_exit(CensusUnobserved { cause: cause })
     }
-    CensusNotRunnable { cause: _ } => false
+    CensusNotRunnable { cause: cause } => census_exit(CensusUnobserved { cause: cause })
   }
 }
 
@@ -73,8 +74,8 @@ test fn witness_indirect_subject_through_variant_subject_is_refused() -> Process
   blocked_with(source: indirect_subject_source, class: "ConstructorCallAdmissionRefused")
 }
 
-test fn witness_a_legal_outside_module_compiles_clean() -> Bool {
-  clean(source: legal_outside_source)
+test fn witness_a_legal_outside_module_compiles_clean() -> ProcessExit {
+  clean_exit(source: legal_outside_source, expect_clean: true)
 }
 
 test fn witness_converged_evidence_literal_is_refused() -> ProcessExit {
@@ -85,6 +86,6 @@ test fn witness_converged_evidence_mint_call_is_refused() -> ProcessExit {
   blocked_with(source: evidence_mint_source, class: "ConstructorCallAdmissionRefused")
 }
 
-test fn witness_a_broken_outside_module_is_not_clean() -> Bool {
-  !clean(source: broken_outside_source)
+test fn witness_a_broken_outside_module_is_not_clean() -> ProcessExit {
+  clean_exit(source: broken_outside_source, expect_clean: false)
 }
