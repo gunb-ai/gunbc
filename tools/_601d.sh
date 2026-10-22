@@ -3,7 +3,7 @@
 # re-verify: re-run parse-gate RED + control + 2 witness claims by name at the printed head.
 # Static delta audit (merge parents, 2 resolved files, schedule rows, stall file) done locally.
 set -u
-OID=c2b863a6fc7b6155671793e5c1d18c13098b93a0  # gh pr view 14601 --json headRefOid at 23:43Z
+OID=c2b863a6fc7b28bf86d26054de2fb704e49867e1  # gh pr view 14601 --json headRefOid
 REPO=/root/workspace/repo-root
 [ -d /tmp/c4v/pr14575 ] && REPO=/tmp/c4v/pr14575
 cd $REPO || exit 9
