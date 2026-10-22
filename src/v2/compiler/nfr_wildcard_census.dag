@@ -57,7 +57,7 @@ fn arrow_domain_is_empty_conj(arrow: Node) -> Bool {
 
 fn param_heads_optional(arrow: Node) -> Optional<List<ParamHead>> {
   match arrow_domain_named_param_bindings(arrow: arrow) {
-    Rejected { diagnostics: _ } => if arrow_domain_is_empty_conj(arrow: arrow) { optional_present(value: []) } else { optional_absent() }
+    Rejected { diagnostics: _ } => if arrow_domain_is_empty_conj(arrow: arrow) { optional_present(value: Empty) } else { optional_absent() }
     Accepted { value: names, diagnostics: _ } =>
       match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
         Absent => optional_absent()
