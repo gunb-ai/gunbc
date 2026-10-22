@@ -34,6 +34,14 @@ import v2.workflow.outside_discovery_roots_census {
   OutsideRootsStanding,
   OutsideRootsOutcome,
   CensusUnread,
+  CensusUnreadCause,
+  CensusReadFailure,
+  ReadProcessAbsent,
+  ReadProcessRefused,
+  ReadNoAnswer,
+  IndexUnread,
+  MarkerUnread,
+  census_unread_cause_text,
   CensusObserved,
   InsideGovernedTree,
   OutsideDiscoveryRoots,
@@ -68,13 +76,13 @@ data claim_declaration_pattern: String = "^[[:space:]]*test fn [A-Za-z_][A-Za-z_
 // THE CAPTURE. git's own answer, or a typed refusal -- never an empty listing standing in for a failure.
 type TrackedListing
   = ListingRead { paths: List<String> }
-  | ListingRefused { cause: String }
+  | ListingRefused { failure: CensusReadFailure }
 
 // The same discipline for the marker read: a run that printed nothing "because no file declares a claim" and
 // a run that was never answered are different facts, and only the first licenses an empty population.
 type ClaimBearerRead
   = BearersRead { paths: List<String> }
-  | BearersRefused { cause: String }
+  | BearersRefused { failure: CensusReadFailure }
 
 fn tracked_claim_listing() -> TrackedListing {
   match run_shell_command_capture(
@@ -82,9 +90,9 @@ fn tracked_claim_listing() -> TrackedListing {
     transport: LocalExec
   ) {
     ProcessOutputPresent { text: text } => listing_from_captured_text(text: text)
-    ProcessOutputAbsent => ListingRefused { cause: "the index could not be asked" }
+    ProcessOutputAbsent => ListingRefused { failure: ReadProcessAbsent }
     ProcessRefused { exit_code: exit_code, stderr: stderr } =>
-      ListingRefused { cause: concat("the index refused (exit ", concat(to_string(exit_code), concat("): ", trim(s: stderr)))) }
+      ListingRefused { failure: ReadProcessRefused { exit_code: exit_code, stderr: stderr } }
   }
 }
 
@@ -98,9 +106,9 @@ fn tracked_claim_bearers() -> ClaimBearerRead {
     transport: LocalExec
   ) {
     ProcessOutputPresent { text: text } => bearers_from_captured_text(text: text)
-    ProcessOutputAbsent => BearersRefused { cause: "the marker read was never answered" }
+    ProcessOutputAbsent => BearersRefused { failure: ReadProcessAbsent }
     ProcessRefused { exit_code: exit_code, stderr: stderr } =>
-      BearersRefused { cause: concat("the marker read refused (exit ", concat(to_string(exit_code), concat("): ", trim(s: stderr)))) }
+      BearersRefused { failure: ReadProcessRefused { exit_code: exit_code, stderr: stderr } }
   }
 }
 
@@ -115,7 +123,7 @@ fn tracked_claim_bearers() -> ClaimBearerRead {
 fn bearers_from_captured_text(text: String) -> ClaimBearerRead {
   let body = trim(s: text)
   if body == "" {
-    BearersRefused { cause: "the marker read returned no answer at all" }
+    BearersRefused { failure: ReadNoAnswer }
   } else {
     BearersRead { paths: listing_paths(text: body) }
   }
@@ -131,7 +139,7 @@ fn listing_from_captured_text(text: String) -> TrackedListing {
   if body != "" {
     ListingRead { paths: listing_paths(text: body) }
   } else {
-    ListingRefused { cause: "the index returned no listing at all" }
+    ListingRefused { failure: ReadNoAnswer }
   }
 }
 
@@ -159,7 +167,7 @@ fn listing_paths(text: String) -> List<String> {
 type OutsideRootsChannel
   = OutsideChannelHeld
   | OutsideChannelFinding { reasons: List<String> }
-  | OutsideChannelUnread { cause: String }
+  | OutsideChannelUnread { cause: CensusUnreadCause }
 
 // THE CHANNEL, DERIVED FROM THE OUTCOME, never chosen beside it (review 84111: the Bool this used to take
 // made an unread census and a clean census two shapes of ONE carrier, distinguishable only because a Bool
@@ -169,8 +177,7 @@ type OutsideRootsChannel
 // census is the "no observation" case; an observed census that found nothing held.
 fn outside_roots_channel(outcome: OutsideRootsOutcome) -> OutsideRootsChannel {
   match outcome {
-    CensusUnread { cause: cause } =>
-      OutsideChannelUnread { cause: concat("outside-discovery-roots-census: ", cause) }
+    CensusUnread { cause: cause } => OutsideChannelUnread { cause: cause }
     CensusObserved { rows: rows } => {
       let findings = outside_roots_findings(rows: rows)
       if !is_empty(findings) {
@@ -201,11 +208,10 @@ type OutsideRootsCensusOutput {
 
 fn outside_roots_census(listing: TrackedListing, bearers: ClaimBearerRead) -> OutsideRootsCensusOutput {
   match listing {
-    ListingRefused { cause: cause } => refused_census(cause: concat("the index could not be asked: ", cause)),
+    ListingRefused { failure: failure } => refused_census(cause: IndexUnread { failure: failure }),
     ListingRead { paths: paths } =>
       match bearers {
-        BearersRefused { cause: cause } =>
-          refused_census(cause: concat("the claim marker could not be read: ", cause))
+        BearersRefused { failure: failure } => refused_census(cause: MarkerUnread { failure: failure })
         BearersRead { paths: marker_paths } => observed_census(
           rows: census_rows(listing: paths, claim_bearers: marker_paths),
           claim_bearers: marker_paths
@@ -219,7 +225,7 @@ fn outside_roots_census(listing: TrackedListing, bearers: ClaimBearerRead) -> Ou
 // input is typed, located, and can never pass as an empty population, because there is no empty population
 // here to confuse it with: the findings/gap fields are empty because NOTHING WAS READ, and the outcome arm
 // says so in the type, not in a Bool beside them).
-fn refused_census(cause: String) -> OutsideRootsCensusOutput {
+fn refused_census(cause: CensusUnreadCause) -> OutsideRootsCensusOutput {
   let outcome = CensusUnread { cause: cause }
   OutsideRootsCensusOutput {
     outcome: outcome,
@@ -228,7 +234,7 @@ fn refused_census(cause: String) -> OutsideRootsCensusOutput {
     undeclared: [],
     scan_dir_gap: [],
     channel: outside_roots_channel(outcome: outcome),
-    lines: concat(outside_roots_header_lines(), [concat("OUTSIDE-DISCOVERY-ROOTS UNREAD: ", cause)])
+    lines: concat(outside_roots_header_lines(), [concat("OUTSIDE-DISCOVERY-ROOTS UNREAD: ", census_unread_cause_text(cause: cause))])
   }
 }
 

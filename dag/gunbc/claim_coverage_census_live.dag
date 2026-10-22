@@ -21,6 +21,7 @@ import v2.workflow.outside_discovery_roots_census_live {
   tracked_claim_listing, tracked_claim_bearers, outside_roots_census, outside_roots_head_receipt_line,
   OutsideRootsChannel, OutsideChannelHeld, OutsideChannelFinding, OutsideChannelUnread
 }
+import v2.workflow.outside_discovery_roots_census { CensusUnreadCause, census_unread_cause_text }
 import v2.workflow.claim_coverage_census_s1 { s1_block }
 import v2.workflow.claim_coverage_census_s1 {
   S1Standing, S1Held, S1DidNotHold, S1Unread,
@@ -136,7 +137,7 @@ fn claim_coverage_composed_standing(
       _ => []
     }
     let outside_unread_note = match outside {
-      OutsideChannelUnread { cause: cause } => [unread_beside_finding_note(cause: cause)]
+      OutsideChannelUnread { cause: cause } => [unread_beside_finding_note(cause: outside_unread_text(cause: cause))]
       _ => []
     }
     ComposedFinding { reasons: concat(findings, concat(s1_unread_note, outside_unread_note)) }
@@ -147,7 +148,7 @@ fn claim_coverage_composed_standing(
       S1Unread { reason: cause } => ComposedUnread { cause: cause }
       _ => match outside {
         // Nothing found, S1 read clean, but the outside census could not read its listing: no observation.
-        OutsideChannelUnread { cause: cause } => ComposedUnread { cause: cause }
+        OutsideChannelUnread { cause: cause } => ComposedUnread { cause: outside_unread_text(cause: cause) }
         _ => ComposedHeld
       }
     }
@@ -156,6 +157,12 @@ fn claim_coverage_composed_standing(
 
 // THE UNREAD CAUSE, SAID AS WHAT IT IS WHEN IT DOES NOT DECIDE. Kept separate from the finding reasons so a
 // reader cannot mistake it for a claim finding, and so the exit-2 arm can print the bare cause instead.
+// The outside census's typed unread cause becomes prose only here, at the receipt/exit boundary, carrying
+// the instrument's name so the located cause says which census could not read.
+fn outside_unread_text(cause: CensusUnreadCause) -> String {
+  concat("outside-discovery-roots-census: ", census_unread_cause_text(cause: cause))
+}
+
 fn unread_beside_finding_note(cause: String) -> String {
   concat("an input could not be read (does not change the exit: a finding was found): ", cause)
 }

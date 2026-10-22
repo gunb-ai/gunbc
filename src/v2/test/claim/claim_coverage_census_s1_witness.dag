@@ -62,7 +62,8 @@ import v2.workflow.outside_discovery_roots_census_live {
   outside_roots_channel
 }
 import v2.workflow.outside_discovery_roots_census {
-  OutsideRootsOutcome, CensusUnread, CensusObserved, OutsideDiscoveryRoots, outside_roots_cause
+  OutsideRootsOutcome, CensusUnread, CensusObserved, OutsideDiscoveryRoots, outside_roots_cause,
+  IndexUnread, MarkerUnread, ReadProcessAbsent, ReadProcessRefused, ReadNoAnswer
 }
 import std.process { ExitSuccess, ExitFailure }
 import v2.workflow.claim_coverage_census_s1 { s1_exit_code_did_not_hold, s1_exit_code_unread }
@@ -1012,7 +1013,7 @@ test fn an_outside_unread_with_no_finding_exits_two_and_names_the_cause() -> Boo
     bytes: "receipt",
     wet: ClaimCoverageHeld,
     s1: S1Held,
-    outside: OutsideChannelUnread { cause: "the index could not be asked: git missing" }
+    outside: OutsideChannelUnread { cause: IndexUnread { failure: ReadProcessRefused { exit_code: 127, stderr: "git missing" } } }
   ) {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
       (code == 2)
@@ -1048,7 +1049,7 @@ test fn an_outside_unread_beside_a_wet_finding_exits_one_and_keeps_the_cause() -
     bytes: "receipt",
     wet: finding_wet_standing,
     s1: S1Held,
-    outside: OutsideChannelUnread { cause: "the marker read was never answered" }
+    outside: OutsideChannelUnread { cause: MarkerUnread { failure: ReadProcessAbsent } }
   ) {
     CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: reason } } =>
       (code == 1)
@@ -1098,7 +1099,7 @@ test fn two_unread_inputs_report_the_s1_cause_first() -> Bool {
   match claim_coverage_composed_standing(
     wet: ClaimCoverageHeld,
     s1: S1Unread { reason: "the S1 index could not be read" },
-    outside: OutsideChannelUnread { cause: "the outside listing could not be read" }
+    outside: OutsideChannelUnread { cause: IndexUnread { failure: ReadNoAnswer } }
   ) {
     ComposedUnread { cause: cause } => cause == "the S1 index could not be read"
     _ => false
@@ -1116,8 +1117,8 @@ test fn the_channel_is_derived_from_what_was_observed() -> Bool {
       !is_empty(reasons) && any(reasons, r => string_contains(s: r, pattern: "outside-discovery-roots-census"))
     _ => false
   }
-  let unread_arm = match outside_roots_channel(outcome: CensusUnread { cause: "the index could not be asked" }) {
-    OutsideChannelUnread { cause: cause } => cause != ""
+  let unread_arm = match outside_roots_channel(outcome: CensusUnread { cause: IndexUnread { failure: ReadProcessAbsent } }) {
+    OutsideChannelUnread { cause: IndexUnread { failure: ReadProcessAbsent } } => true
     _ => false
   }
   let held_arm = match outside_roots_channel(outcome: CensusObserved { rows: [] }) {

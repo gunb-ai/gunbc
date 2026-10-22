@@ -40,6 +40,14 @@ import v2.workflow.outside_discovery_roots_census {
   NotAClaimFile,
   OutsideRootsOutcome,
   CensusUnread,
+  CensusUnreadCause,
+  CensusReadFailure,
+  IndexUnread,
+  MarkerUnread,
+  ReadProcessAbsent,
+  ReadProcessRefused,
+  ReadNoAnswer,
+  census_unread_cause_text,
   CensusObserved,
   census_rows,
   outside_roots_row,
@@ -259,10 +267,10 @@ test fn the_header_cites_the_layout_authority() -> Bool {
 
 test fn an_unreadable_listing_is_not_an_empty_census() -> Bool {
   let refused = outside_roots_census(
-    listing: ListingRefused { cause: "the index could not be asked" },
+    listing: ListingRefused { failure: ReadProcessAbsent },
     bearers: BearersRead { paths: subject_population_expected }
   )
-  (match refused.outcome { CensusUnread { cause: cause } => string_contains(s: cause, pattern: "could not be asked") _ => false })
+  (match refused.outcome { CensusUnread { cause: IndexUnread { failure: ReadProcessAbsent } } => true _ => false })
     && is_empty(refused.findings)
     && any(xs: refused.lines, predicate: fn(line) { string_contains(s: line, pattern: "UNREAD") })
 }
@@ -316,7 +324,8 @@ test fn a_live_function_resolves_and_reports_no_finding_for_an_empty_listing() -
 // so this can be put in its hand -- the capture itself only runs on the real route.
 test fn an_empty_answer_from_the_index_is_a_typed_refusal_not_an_empty_population() -> Bool {
   match listing_from_captured_text(text: "   \n ") {
-    ListingRefused { cause: cause } => string_contains(s: cause, pattern: "no listing")
+    ListingRefused { failure: ReadNoAnswer } => true
+    ListingRefused { failure: _ } => false
     ListingRead { paths: paths } => false
   }
 }
@@ -327,7 +336,7 @@ test fn a_captured_listing_splits_on_newlines_and_drops_the_trailing_one() -> Bo
     ListingRead { paths: paths } =>
       length(xs: paths) == 1
         && any(xs: paths, predicate: fn(p) { p == "src/v1/tests/claim/escape_json_string_differential.dag" })
-    ListingRefused { cause: _ } => false
+    ListingRefused { failure: _ } => false
   }
 }
 
@@ -344,9 +353,9 @@ data bare_marker_phrase: String = "test fn"
 test fn a_refused_marker_read_is_a_refusal_even_when_the_listing_read_fine() -> Bool {
   let out = outside_roots_census(
     listing: ListingRead { paths: subject_population_expected },
-    bearers: BearersRefused { cause: "the marker read was never answered" }
+    bearers: BearersRefused { failure: ReadProcessAbsent }
   )
-  (match out.outcome { CensusUnread { cause: _ } => true _ => false })
+  (match out.outcome { CensusUnread { cause: MarkerUnread { failure: ReadProcessAbsent } } => true _ => false })
     && is_empty(out.findings)
     && any(xs: out.lines, predicate: fn(line) { string_contains(s: line, pattern: "marker") })
 }
@@ -460,7 +469,8 @@ test fn the_marker_pattern_asks_for_a_declaration_and_not_a_mention() -> Bool {
 // "the transport never answered", which is a refusal, not an empty population.
 test fn no_text_at_all_from_the_marker_read_is_a_refusal() -> Bool {
   match bearers_from_captured_text(text: " \n ") {
-    BearersRefused { cause: cause } => string_contains(s: cause, pattern: "marker")
+    BearersRefused { failure: ReadNoAnswer } => true
+    BearersRefused { failure: _ } => false
     BearersRead { paths: _ } => false
   }
 }
@@ -786,4 +796,97 @@ test fn the_citation_list_covers_every_authority_the_cause_carries() -> Bool {
          string_contains(s: p, pattern: ".")
            && !string_contains(s: p, pattern: " ")
        })
+}
+
+// ---------------------------------------------------------------------------
+// THE UNREAD CAUSE IS A SUM (review 84644): each arm is a distinct, countable value, so a reader that asks
+// "which read failed, and how" matches a constructor instead of searching a sentence. One fixture per arm,
+// each through the real census route; the discriminator is the arm itself, and the counted total below is
+// derived from the same list the arms are enumerated in, so a new arm that is not fixtured shows as a gap.
+// ---------------------------------------------------------------------------
+
+fn unread_via_listing(failure: CensusReadFailure) -> OutsideRootsOutcome {
+  outside_roots_census(
+    listing: ListingRefused { failure: failure },
+    bearers: BearersRead { paths: subject_population_expected }
+  ).outcome
+}
+
+fn unread_via_bearers(failure: CensusReadFailure) -> OutsideRootsOutcome {
+  outside_roots_census(
+    listing: ListingRead { paths: subject_population_expected },
+    bearers: BearersRefused { failure: failure }
+  ).outcome
+}
+
+test fn a_listing_whose_process_never_answered_is_the_index_process_absent_arm() -> Bool {
+  match unread_via_listing(failure: ReadProcessAbsent) {
+    CensusUnread { cause: IndexUnread { failure: ReadProcessAbsent } } => true
+    _ => false
+  }
+}
+
+test fn a_listing_the_process_refused_keeps_its_exit_code_and_stderr_as_data() -> Bool {
+  match unread_via_listing(failure: ReadProcessRefused { exit_code: 128, stderr: "fatal: not a git repository" }) {
+    CensusUnread { cause: IndexUnread { failure: ReadProcessRefused { exit_code: code, stderr: err } } } =>
+      code == 128 && err == "fatal: not a git repository"
+    _ => false
+  }
+}
+
+test fn an_empty_listing_answer_is_the_index_no_answer_arm() -> Bool {
+  match unread_via_listing(failure: ReadNoAnswer) {
+    CensusUnread { cause: IndexUnread { failure: ReadNoAnswer } } => true
+    _ => false
+  }
+}
+
+test fn a_marker_read_whose_process_never_answered_is_the_marker_process_absent_arm() -> Bool {
+  match unread_via_bearers(failure: ReadProcessAbsent) {
+    CensusUnread { cause: MarkerUnread { failure: ReadProcessAbsent } } => true
+    _ => false
+  }
+}
+
+test fn a_marker_read_the_process_refused_keeps_its_exit_code_and_stderr_as_data() -> Bool {
+  match unread_via_bearers(failure: ReadProcessRefused { exit_code: 2, stderr: "fatal: bad pattern" }) {
+    CensusUnread { cause: MarkerUnread { failure: ReadProcessRefused { exit_code: code, stderr: err } } } =>
+      code == 2 && err == "fatal: bad pattern"
+    _ => false
+  }
+}
+
+test fn an_empty_marker_answer_is_the_marker_no_answer_arm() -> Bool {
+  match unread_via_bearers(failure: ReadNoAnswer) {
+    CensusUnread { cause: MarkerUnread { failure: ReadNoAnswer } } => true
+    _ => false
+  }
+}
+
+// The six arms render to six distinct receipts, and only the renderer makes prose: the subject axis and the
+// failure axis both show, so two causes that differ in either never print the same line.
+test fn the_six_unread_causes_render_to_six_distinct_receipt_texts() -> Bool {
+  let causes = [
+    IndexUnread { failure: ReadProcessAbsent },
+    IndexUnread { failure: ReadProcessRefused { exit_code: 1, stderr: "e" } },
+    IndexUnread { failure: ReadNoAnswer },
+    MarkerUnread { failure: ReadProcessAbsent },
+    MarkerUnread { failure: ReadProcessRefused { exit_code: 1, stderr: "e" } },
+    MarkerUnread { failure: ReadNoAnswer }
+  ]
+  let texts = list_map(xs: causes, f: fn(c) { census_unread_cause_text(cause: c) })
+  length(xs: texts) == 6
+    && all_pairs_differ(texts: texts)
+}
+
+fn all_pairs_differ(texts: List<String>) -> Bool {
+  match texts {
+    Empty => true
+    Cons { head: h, tail: t } => !any(xs: t, predicate: fn(o) { o == h }) && all_pairs_differ(texts: t)
+  }
+}
+
+test fn a_refused_exit_code_and_stderr_reach_the_rendered_receipt() -> Bool {
+  let text = census_unread_cause_text(cause: IndexUnread { failure: ReadProcessRefused { exit_code: 128, stderr: " fatal: nope \n" } })
+  string_contains(s: text, pattern: "exit 128") && string_contains(s: text, pattern: "fatal: nope")
 }

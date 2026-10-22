@@ -45,9 +45,9 @@ module v2.workflow.outside_discovery_roots_census
 // population is stated as a PREDICATE over paths (the subject of the note it cites), not as a snapshot of
 // what the tree contains today.
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, Int }
 import std.optional { Optional, Absent, Present }
-import std.algebra { Cons, Empty, list_map, list_reverse }
+import std.algebra { Cons, Empty, list_map, list_reverse, trim }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.rust_emitted_edge { module_to_filename }
 import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
@@ -73,13 +73,46 @@ type OutsideRootsStanding
   | OutsideDiscoveryRoots { path: String, cause: OutsideRootsCause }
   | NotAClaimFile { path: String }
 
+// WHY A READ FAILED, AS A SUM AND NOT A SENTENCE (review 84644). The census asks git two questions, and each
+// can fail in the three ways the transport and the decision on its text really distinguish: the process
+// never answered, it answered with a refusal (exit code and stderr are DATA here, not interpolated prose),
+// or it answered with nothing at all. Prose is made only at the receipt, by `census_unread_cause_text`.
+type CensusReadFailure
+  = ReadProcessAbsent
+  | ReadProcessRefused { exit_code: Int, stderr: String }
+  | ReadNoAnswer
+
+// WHICH READ FAILED. The subject axis is separate from the failure axis so the two are never fused into one
+// arm per combination: a listing and a marker read that fail the same way stay distinguishable by subject.
+type CensusUnreadCause
+  = IndexUnread { failure: CensusReadFailure }
+  | MarkerUnread { failure: CensusReadFailure }
+
+// THE ONE RENDERER, used only where a receipt line or an exit reason is printed.
+fn census_unread_cause_text(cause: CensusUnreadCause) -> String {
+  match cause {
+    IndexUnread { failure: failure } => concat("the index could not be asked: ", match failure {
+      ReadProcessAbsent => "the index could not be asked"
+      ReadProcessRefused { exit_code: exit_code, stderr: stderr } =>
+        concat("the index refused (exit ", concat(to_string(exit_code), concat("): ", trim(s: stderr))))
+      ReadNoAnswer => "the index returned no listing at all"
+    })
+    MarkerUnread { failure: failure } => concat("the claim marker could not be read: ", match failure {
+      ReadProcessAbsent => "the marker read was never answered"
+      ReadProcessRefused { exit_code: exit_code, stderr: stderr } =>
+        concat("the marker read refused (exit ", concat(to_string(exit_code), concat("): ", trim(s: stderr))))
+      ReadNoAnswer => "the marker read returned no answer at all"
+    })
+  }
+}
+
 // THE OUTCOME: what the census as a whole knows. Either it looked, and these are the rows -- or it could
 // not look, and this is why. Not both, ever: the fold that consumed the marker-hunting predicate is gone,
 // and the channel the composed census consumes is now DERIVED by matching this sum (review 84111 also
 // dissolves the Bool the derivation used to take: an unread census and a clean census were distinguishable
 // only because a Bool said so; now they are different arms).
 type OutsideRootsOutcome
-  = CensusUnread { cause: String }
+  = CensusUnread { cause: CensusUnreadCause }
   | CensusObserved { rows: List<OutsideRootsStanding> }
 
 // THE CAUSE, AS CITATIONS AND NOT AS PROSE. A finding's cause used to be one sentence naming its three
