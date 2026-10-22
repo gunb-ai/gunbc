@@ -25899,7 +25899,7 @@ fn qc503_door_arg_summary(args: &[(Option<String>, Value)]) -> String {
                 format!("\"{}\"", s.chars().take(96).collect::<String>())
             }
             Value::List(items) => {
-                let items: &[Value] = items;
+                let items: &im::Vector<Value> = items;
                 if depth > 2 {
                     return format!("[..{}..]", items.len());
                 }
