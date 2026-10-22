@@ -11,7 +11,8 @@ import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.remote_shell_command { Unknown }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ProcessExit }
-import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, census_verdict, census_verdict_all }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows_of_class_at_subject }
 import gunbc.auth.approval_ntfy_access_readback {
   FileTime, StatusChangeTime, BirthTime, file_time_predates_start, process_start_instant,
   ApprovalNtfyAclVerdict, AclEstablished, AclRefused,
@@ -1241,8 +1242,19 @@ data unadmitted_effect_caller_source: String = "module probe_enrolment_second_ro
 
 data sealed_effect_leaves: List<String> = ["mint_enrolment_code", "read_publisher_token", "issue_enrolment_code", "issue_and_deliver_enrolment_code_until", "deliver_enrolment_code", "publish_notification", "approval_ntfy_runtime_reading", "approval_ntfy_run"]
 
+// ONE compile serves all eight leaves: the typed per-subject probe recompiles its source on every
+// call, so the census is taken once and each leaf re-selects from its rows through the same
+// selection (gunbc.compile_diagnostic_census census_blocking_rows_of_class_at_subject) the probe uses.
+fn leaf_admission_refusal_census(census: CompileDiagnosticCensus, leaf: String) -> CompileDiagnosticCensus {
+  match census {
+    CensusObserved { rows: rows } => CensusObserved { rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: leaf) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
+  }
+}
+
 test fn a_second_root_is_refused_at_every_effect_leaf() -> ProcessExit {
-  census_verdict_all(map(sealed_effect_leaves, leaf => census_verdict(census: blocking_subject_census(source: unadmitted_effect_caller_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: leaf), holds: fn(n) { n >= 1 })))
+  let census = compile_dag_diagnostic_census(unadmitted_effect_caller_source)
+  census_verdict_all(map(sealed_effect_leaves, leaf => census_verdict(census: leaf_admission_refusal_census(census: census, leaf: leaf), holds: fn(n) { n >= 1 })))
 }
 
 // GREEN CONTROL: the admitted root compiles with no admission refusal.
