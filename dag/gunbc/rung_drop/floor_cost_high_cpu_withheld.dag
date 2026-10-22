@@ -2,7 +2,8 @@ module gunbc.rung_drop.floor_cost_high_cpu_withheld
 
 import std.types { NonEmptyStr }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, NotYetCounted, DeletedWithoutReplacement, NoInstanceProjection }
+import v2.workflow.floor_cost_debt { floor_cost_debt_roster }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement, population_from_list }
 
 data floor_cost_high_cpu_withheld: RungDrop = RungDrop {
   identity: "floor_cost_high_cpu_withheld" as NonEmptyStr,
@@ -17,7 +18,7 @@ data floor_cost_high_cpu_withheld: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: NotYetCounted { cause: NoInstanceProjection },
+    population: population_from_list(xs: floor_cost_debt_roster()),
     restoration_trigger: "At capability grain and NOT retired by these rows getting faster: an environment-independent per-claim cost qualification -- a charge readable as a stable property of the claim rather than of the attempt -- so that a cost verdict discriminates a regression from an execution position. That is the same capability `floor_cost_claim_qualification_unavailable` names, and this row is downstream of it: while a claim's charge is not a property of the claim, no threshold anywhere makes this gate discriminate, and moving the line only moves which rows flap. Individual rows returning under 219ms is a POPULATION shrink and retires their own membership, not this row."
   }
 }

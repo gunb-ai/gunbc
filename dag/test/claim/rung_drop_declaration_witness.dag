@@ -199,10 +199,7 @@ test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() 
 // dropped the cause, or a row naming the wrong capability, fails the per-row needle; the arms
 // differ across rows (instance projection, population join, surface), so one constant cannot satisfy all four.
 test fn each_typed_uncounted_row_renders_the_capability_it_lacks() -> Bool {
-  contains_text(haystack: rung_drop_declaration_message(d: floor_cost_high_cpu_withheld), needle: "none projects the member identities")
-    && contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "is not modeled")
-    && !contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "none projects the member identities")
-    && !contains_text(haystack: rung_drop_declaration_message(d: floor_cost_high_cpu_withheld), needle: "is not modeled")
+  contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "is not modeled")
 }
 
 // POSITIVE CONTROL / BOUND: the multi-population rows (2, 4) and the rows whose prose does not state every typed field (1, 6) stay counted prose debt, while
