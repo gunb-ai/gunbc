@@ -10851,6 +10851,26 @@ pub fn categorized_error(
     )
 }
 
+pub fn cast_source_is_declared_nominal(
+    source_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let provenance = crate::v1_std_core::type_reference_provenance(source_node.clone());
+        (!crate::v1_compiler_coercion::provenance_realizes_natively(provenance.clone())
+            && !match (*provenance.clone()).clone() {
+                TypeDeclarationProvenance::CorpusDeclared { decl_file: f, .. } => {
+                    (v1_rt::contains(f.clone(), "std/types.dag".to_string())
+                        && (crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            source_node.clone(),
+                        ) == "Unit".to_string()))
+                }
+                _ => false,
+            })
+    }
+}
+
 pub fn validate_cast(
     source_inferred: Option<Rc<InferredNode>>,
     target_name: String,
@@ -16710,11 +16730,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Some(InferredNode::Resolved {
                     node: source_node, ..
                 }) => {
-                    (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
+                    ((crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
                         expected_type_head_exposure(source_node.clone(), scope.clone()),
                     ) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
                         expected_type_head_exposure(source_node.clone(), scope.clone()),
-                    ))
+                    )) && cast_source_is_declared_nominal(source_node.clone(), si.clone()))
                 }
                 _ => false,
             };
