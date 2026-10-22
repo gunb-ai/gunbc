@@ -6,6 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbTraversalOrder }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -828,7 +829,7 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 }
 
 fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: "demand-census" } }
+  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
 }
 
 // The traversal-order census (v2.compiler.source_root_eval native_traversal_order_census_output, the
@@ -840,11 +841,11 @@ fn traversal_order_census_label() -> Label {
 }
 
 fn traversal_order_census_binding() -> TargetBinding {
-  TargetBinding { target: traversal_order_census_label() producer: NativeCensusVerbProducer { verb: "traversal-order-census" } }
+  TargetBinding { target: traversal_order_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbTraversalOrder } }
 }
 
 fn decl_ref_census_binding() -> TargetBinding {
-  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: "decl-ref-census" } }
+  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
 }
 
 fn generic_identity_census_binding() -> TargetBinding {
