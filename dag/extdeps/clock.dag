@@ -6,7 +6,6 @@ import extdeps.uri { Uri, Https }
 import std.types { EpochMs, EpochSecs, Timestamp, Unit }
 import std.nat { Nat }
 import std.optional { Present }
-import std.resources { Clock }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
