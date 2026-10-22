@@ -20,8 +20,9 @@ cd $WT || exit 9
 export CARGO_TARGET_DIR=/root/workspace/repo-root/.tc4h CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
 [ "$(git rev-parse HEAD)" = "$HEADSHA" ] || { echo "BUILT_AT_WRONG_COMMIT"; exit 9; }
-CB=$WT/target/release/claim_batch
+CB=/root/workspace/repo-root/.tc4h/release/claim_batch
 [ -x $CB ] || { echo "NO BINARY -- nothing below is a result"; exit 9; }
+mkdir -p $WT/target/release && cp -f $CB $WT/target/release/claim_batch
 echo "BUILD_COMMIT=$(git rev-parse HEAD) CB_SHA256=$(sha $CB) built $(date -u +%H:%M:%S)Z"
 CMD="--claim-run --source-root dag --source-root src/v2 --entry dag/test/claim/react_jsx_emit.dag --functions witness_safe_page_emits_ok"
 
@@ -33,8 +34,8 @@ echo 17179869184 > /sys/fs/cgroup/verA/memory.max
 RBA=$(cat /sys/fs/cgroup/verA/memory.max)
 { [ "$RBA" != "max" ] && [ -n "$RBA" ]; } || { echo "A_BOUND_READBACK_FAIL got=$RBA"; exit 9; }
 echo "  A cgroup=/sys/fs/cgroup/verA memory.max(read-back)=$RBA"
-( exec 11>>/sys/fs/cgroup/verA/cgroup.procs; echo $BASHPID >&11
-  cd $WT && timeout 900 $CB $CMD ) > /tmp/c4h_A.out 2>&1
+exec 11>>/sys/fs/cgroup/verA/cgroup.procs; echo $BASHPID >&11
+cd $WT && timeout 900 $CB $CMD > /tmp/c4h_A.out 2>&1
 RC_A=$?
 echo "  rc=$RC_A $(date -u +%H:%M:%S)Z"
 sed 's/^/    A| /' /tmp/c4h_A.out | grep -aE '^(PASS|FAIL|UNOBSERVED)|HostBudget|panic|OUTPUT-POLICY|REFUSAL' | cut -c1-190 | head -10
@@ -46,8 +47,9 @@ echo max > /sys/fs/cgroup/verB/memory.max
 RBB=$(cat /sys/fs/cgroup/verB/memory.max)
 [ "$RBB" = "max" ] || { echo "B_UNBOUND_SETUP_FAIL got=$RBB"; exit 9; }
 echo "  B cgroup=/sys/fs/cgroup/verB memory.max(read-back)=$RBB BUILDBUDDY_RUN_ID=[unset]"
-( exec 12>>/sys/fs/cgroup/verB/cgroup.procs; echo $BASHPID >&12
-  cd $WT && env -u BUILDBUDDY_RUN_ID timeout 900 $CB $CMD ) > /tmp/c4h_B.out 2>&1
+exec 12>>/sys/fs/cgroup/verB/cgroup.procs; echo $BASHPID >&12
+cd $WT && env -u BUILDBUDDY_RUN_ID timeout 900 $CB $CMD > /tmp/c4h_B.out 2>&1
+echo "  B cgroup now: $(cat /proc/self/cgroup)"
 RC_B=$?
 echo "  rc=$RC_B $(date -u +%H:%M:%S)Z"
 sed 's/^/    B| /' /tmp/c4h_B.out | grep -aE 'UNOBSERVED|HostBudget|panic|OUTPUT-POLICY|REFUSAL' | cut -c1-190 | head -10
