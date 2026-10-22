@@ -279,7 +279,6 @@ data dag_cast_rules: List<CastRule> = [
 
 data grounded_primitive_coproduct_identities: List<CastRule> = [
   { from_type: "Int",    to_type: "Nat" },
-  { from_type: "Nat",    to_type: "Int" },
   { from_type: "String", to_type: "FreeMonoid" },
 ]
 
@@ -296,6 +295,31 @@ data grounded_primitive_coproduct_identities: List<CastRule> = [
 data refinement_cast_rules: List<RefinementCastRule> = [
   { from_type: "Int", to_type: "Nat", to_declaration: decl_ref(module_path: "std.nat", decl_name: "Nat") },
 ]
+
+// DECLARED WIDENING: an explicit `as` from a declaration that IS a subset of its target, so the cast
+// re-types and performs no operation (`Nat as Int`: a std.nat Nat IS an Int, the converse of the
+// refinement row above). The row names the SOURCE'S DECLARATION, never its spelling: a user type that
+// happens to be named Nat is a different declaration and gets no route (DESIGN section 4, compatibility
+// keys on the exact declaration). It governs the EXPLICIT cast only and does not feed dag_can_cast, so
+// implicit admission of a Nat at an Int formal is unchanged. RESIDUE: grounded_primitive_coproduct_identities
+// and dag_cast_rules stay name-keyed; re-keying them is the same migration to declaration identity.
+type DeclaredWideningRule {
+  from_declaration: DeclarationRef
+  from_type: String
+  to_type: String
+}
+
+data declared_widening_rules: List<DeclaredWideningRule> = [
+  { from_declaration: decl_ref(module_path: "std.nat", decl_name: "Nat"), from_type: "Nat", to_type: "Int" },
+]
+
+fn dag_declaration_has_widening_rows(source: DeclarationRef) -> Bool {
+  declared_widening_rules |> any(r => declaration_ref_eq(a: r.from_declaration, b: source))
+}
+
+fn dag_declared_widening_admits(source: DeclarationRef, target_type: String) -> Bool {
+  declared_widening_rules |> any(r => declaration_ref_eq(a: r.from_declaration, b: source) && r.to_type == target_type)
+}
 
 fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
   refinement_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)

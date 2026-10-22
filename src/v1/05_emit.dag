@@ -7,7 +7,7 @@ import std.compiler_entry {
 }
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
-import std.coercion { TypeRealizationDecision, dag_can_cast }
+import std.coercion { TypeRealizationDecision, dag_declared_widening_admits }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
@@ -43,7 +43,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, type_reference_declaration_ref }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -3387,19 +3387,23 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
 }
 
 // A DECLARED ROUTE WHOSE REPRESENTATIONS COINCIDE REALIZES AS THE IDENTITY. LEGALITY is std.coercion's
-// (dag_can_cast over grounded_primitive_coproduct_identities: a Nat IS an Int); emit decides nothing
+// (dag_declared_widening_admits over declared_widening_rules, keyed on the source DECLARATION: a std.nat Nat IS an Int); emit decides nothing
 // about it. What emit adds is only the realization: the decision made at the source's own reference
 // (provenance-keyed, so v2.std.nat's Peano Nat answers Unrealized and never qualifies) names the host
 // spelling the source is grounded onto, and when that is the target's the target performs no operation.
-fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, target_spelling: String, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, target_spelling: String, target: RenderTarget, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   match expr.inferred {
     Present { value: Resolved { node: n } } =>
-      if dag_can_cast(source_type: authored_name_at(source_indices: source_indices, node: n), target_type: authored_name_at(source_indices: source_indices, node: cast_target_node)) {
-        match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: authored_name_at(source_indices: source_indices, node: n), target: target)) {
-          Present { value: spelling } => spelling == target_spelling
-          Absent => false
-        }
-      } else { false }
+      match type_reference_declaration_ref(n: n, source_indices: source_indices, env: env) {
+        Present { value: d } =>
+          if dag_declared_widening_admits(source: d, target_type: authored_name_at(source_indices: source_indices, node: cast_target_node)) {
+            match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: authored_name_at(source_indices: source_indices, node: n), target: target)) {
+              Present { value: spelling } => spelling == target_spelling
+              Absent => false
+            }
+          } else { false }
+        Absent => false
+      }
     _ => false
   }
 }
@@ -3422,11 +3426,14 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
     expr_str
   } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
     expr_str
-  } else if cast_source_grounded_onto_target_carrier(expr: expr, cast_target_node: cast_target_node, target_spelling: ty_str, target: target, source_indices: source_indices) {
+  } else if cast_source_grounded_onto_target_carrier(expr: expr, cast_target_node: cast_target_node, target_spelling: ty_str, target: target, env: env, source_indices: source_indices) {
     expr_str
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
+    // INVARIANT, NOT A PLACEHOLDER: validate_cast (04_infer) refuses a cast with no declared std.coercion
+    // route at type check, so an Accepted program never reaches this arm; the abort spelling is the
+    // generic emit_error_expr because nothing can observe it.
     emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }
