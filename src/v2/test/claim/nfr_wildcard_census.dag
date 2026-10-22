@@ -1,11 +1,11 @@
 module v2.test.claim.nfr_wildcard_census
 
-import std.algebra { list_at_optional }
+import std.algebra { fold_list, list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.types { List }
 import v2.compiler.decl_ref_census { ImportPair }
-import v2.compiler.nfr_wildcard_census { WildcardSite, declares_coproduct_named, head_module_optional, roster_join_keys, root_member_sites, site_join_key }
+import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, head_module_optional, roster_join_keys, root_member_reads, site_join_key }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
@@ -39,22 +39,52 @@ fn nfr_normalized(text: String) -> Outcome<NormalizedTree> {
 
 data nfr_src: String = "module m.t\n\ntype C = A | B\n\ntype R { x: Int }\n\nfn pick(c: C, n: Int) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n\nfn closed(c: C) -> Int {\n  match c {\n    A => 1\n    B => 0\n  }\n}\n\nfn local(n: Int) -> Int {\n  match n {\n    1 => 1\n    _ => 0\n  }\n}\n"
 
-fn nfr_sites() -> List<WildcardSite> {
-  match nfr_normalized(text: nfr_src) {
+fn nfr_reads_of(text: String) -> List<SiteRead> {
+  match nfr_normalized(text: text) {
     Rejected { diagnostics: _ } => []
-    Accepted { value: nt, diagnostics: _ } => root_member_sites(root: nt.root)
+    Accepted { value: nt, diagnostics: _ } => root_member_reads(root: nt.root)
   }
+}
+
+fn nfr_count_sites(reads: List<SiteRead>) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc + 1  Classified { fn_name: _, cause: _ } => acc  Unread { fn_name: _, cause: _ } => acc } })
+}
+
+fn nfr_count_classified(reads: List<SiteRead>, want: String) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc  Classified { fn_name: _, cause: c } => if c == want { acc + 1 } else { acc }  Unread { fn_name: _, cause: _ } => acc } })
+}
+
+fn nfr_count_unread(reads: List<SiteRead>) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc  Classified { fn_name: _, cause: _ } => acc  Unread { fn_name: _, cause: _ } => acc + 1 } })
 }
 
 test fn nfr_census_finds_the_wildcard_site_on_a_parameter() -> Bool {
-  count(nfr_sites()) == 2
+  nfr_count_sites(reads: nfr_reads_of(text: nfr_src)) == 2
 }
 
 test fn nfr_census_site_is_the_param_fn_and_head() -> Bool {
-  match list_at_optional(xs: nfr_sites(), index: 0) {
-    Present { value: s } => s.fn_name == "pick" && s.type_head == "C"
+  match list_at_optional(xs: nfr_reads_of(text: nfr_src), index: 0) {
+    Present { value: Site { fn_name: f, type_head: h } } => f == "pick" && h == "C"
+    Present { value: _ } => false
     Absent => false
   }
+}
+
+// RED for the dropped-without-a-trace class: a wildcard Match whose scrutinee is an expression, and one
+// over a local rather than a parameter, are each READ and counted by cause, never skipped; and a fully
+// readable source has no Unread.
+data nfr_classify_src: String = "module m.k\n\nfn expr(n: Int) -> Int {\n  match n + 1 {\n    1 => 1\n    _ => 0\n  }\n}\n\nfn local(n: Int) -> Int {\n  let k = n\n  match k {\n    1 => 1\n    _ => 0\n  }\n}\n"
+
+test fn nfr_expression_scrutinee_is_classified_not_skipped() -> Bool {
+  nfr_count_classified(reads: nfr_reads_of(text: nfr_classify_src), want: "scrutinee-is-an-expression") == 1
+}
+
+test fn nfr_local_scrutinee_is_classified_not_skipped() -> Bool {
+  nfr_count_classified(reads: nfr_reads_of(text: nfr_classify_src), want: "scrutinee-is-not-a-parameter") == 1
+}
+
+test fn nfr_readable_source_has_no_unread() -> Bool {
+  nfr_count_unread(reads: nfr_reads_of(text: nfr_classify_src)) == 0 && nfr_count_unread(reads: nfr_reads_of(text: nfr_src)) == 0
 }
 
 test fn nfr_census_coproduct_declared_in_module() -> Bool {

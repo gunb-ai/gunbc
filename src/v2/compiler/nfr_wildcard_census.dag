@@ -1,6 +1,6 @@
 module v2.compiler.nfr_wildcard_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, length, list_at_optional, list_snoc_item }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -12,16 +12,12 @@ import v2.std.text { String }
 
 // THE NON-FOLD-RESIDUE WILDCARD CENSUS (a pure reader; the verb is v2.compiler.source_root_eval
 // `nfr-wildcard-census`). The population it reads is the set of SITES in a module's normalized tree:
-// a fn whose body holds a Match with a wildcard arm, scrutinising a plain variable that names one of
-// the fn's parameters. A site's parameter type head is the declaration whose closedness decides whether
+// a fn whose body holds a Match with a wildcard arm. Each is read as a Site (a plain variable naming a
+// parameter), a Classified match (an expression scrutinee, a local, a headless type) or an Unread refusal.
+// A site's parameter type head is the declaration whose closedness decides whether
 // the wildcard stands where a variant arm was available (the closed-coproduct test lives in the verb,
 // which owns the cross-module lookup). The join key of a site is its fn name; the module path
 // prefix is the verb's.
-
-type WildcardSite {
-  fn_name: String
-  type_head: String
-}
 
 // The head spelling of a parameter's declared type: an atom, or the head of an instantiation.
 // Anything else (a qualified Conj spine, an arrow) has no bare head and is Absent, which the verb counts.
@@ -40,24 +36,23 @@ fn type_head_optional(t: Node) -> Optional<String> {
 type ParamHead {
   name: String
   head: Optional<String>
+  type_read: Bool
 }
 
-fn param_heads(arrow: Node) -> List<ParamHead> {
+// Absent when the arrow's parameters cannot be read: the caller refuses rather than reading "no parameters".
+fn param_heads_optional(arrow: Node) -> Optional<List<ParamHead>> {
   match arrow_domain_named_param_bindings(arrow: arrow) {
-    Rejected { diagnostics: _ } => []
+    Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: names, diagnostics: _ } =>
       match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
-        Absent => []
+        Absent => optional_absent()
         Present { value: domain } =>
-          fold(names, init: [], f: fn(acc, nm) {
-              list_snoc_item(xs: acc, item: ParamHead {
-                name: symbol_lexeme(sym: nm),
-                head: match find_binder_type(root: domain, name: nm) {
-                  Accepted { value: t, diagnostics: _ } => type_head_optional(t: t)
-                  Rejected { diagnostics: _ } => optional_absent()
-                }
+          optional_present(value: fold(names, init: [], f: fn(acc, nm) {
+              list_snoc_item(xs: acc, item: match find_binder_type(root: domain, name: nm) {
+                Accepted { value: t, diagnostics: _ } => ParamHead { name: symbol_lexeme(sym: nm), head: type_head_optional(t: t), type_read: true }
+                Rejected { diagnostics: _ } => ParamHead { name: symbol_lexeme(sym: nm), head: optional_absent(), type_read: false }
               })
-            })
+            }))
       }
   }
 }
@@ -73,13 +68,19 @@ fn match_has_wildcard_arm(m: Node) -> Bool {
   fold(positional_child_target_nodes(node: m), init: false, f: fn(acc, c) { acc || arm_is_wildcard(arm: c) })
 }
 
-fn scrutinee_name_optional(m: Node) -> Optional<String> {
+// What a Match scrutinee is: a plain variable (its name), a larger expression, or missing altogether.
+type Scrutinee =
+  | ScrutineeVariable { name: String }
+  | ScrutineeExpression
+  | ScrutineeMissing
+
+fn scrutinee_read(m: Node) -> Scrutinee {
   match list_at_optional(xs: positional_child_target_nodes(node: m), index: 0) {
-    Absent => optional_absent()
+    Absent => ScrutineeMissing
     Present { value: s } =>
       match s.kind {
-        TypeNode { connective: Atom { identity: id } } => optional_present(value: symbol_lexeme(sym: id))
-        _ => optional_absent()
+        TypeNode { connective: Atom { identity: id } } => ScrutineeVariable { name: symbol_lexeme(sym: id) }
+        _ => ScrutineeExpression
       }
   }
 }
@@ -91,33 +92,65 @@ fn match_node_is(n: Node) -> Bool {
   }
 }
 
-// One site per (fn, wildcard Match scrutinising one of its parameters); a fn is listed once per
-// distinct parameter type head, since the join key is the fn.
-fn fn_sites(fn_name: String, arrow: Node) -> List<WildcardSite> {
-  let params = param_heads(arrow: arrow)
-  match find_arrow_body_child(root: arrow) {
-    Rejected { diagnostics: _ } => []
-    Accepted { value: body, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: body), init: [], f: fn(acc, n) {
-          if match_node_is(n: n) && match_has_wildcard_arm(m: n) {
-            match scrutinee_name_optional(m: n) {
-              Absent => acc
-              Present { value: s } =>
-                fold(params, init: acc, f: fn(inner, p) {
-                  if p.name == s {
-                    match p.head {
-                      Present { value: h } => list_snoc_item(xs: inner, item: WildcardSite { fn_name: fn_name, type_head: h })
-                      Absent => inner
-                    }
-                  } else {
-                    inner
-                  }
-                })
-            }
+// The reading of one wildcard Match, or of one fn the census could not read. NOTHING is dropped without
+// a trace: a Site is a parameter wildcard to judge; a Classified match is read and is not a parameter
+// wildcard (counted by cause); an Unread is a refusal located at the fn (cause plus fn), and the verb
+// exits non-zero on any.
+type SiteRead =
+  | Site { fn_name: String, type_head: String }
+  | Classified { fn_name: String, cause: String }
+  | Unread { fn_name: String, cause: String }
+
+fn site_read_one(fn_name: String, params: List<ParamHead>, m: Node) -> List<SiteRead> {
+  match scrutinee_read(m: m) {
+    ScrutineeMissing => [Unread { fn_name: fn_name, cause: "match-without-scrutinee" }]
+    ScrutineeExpression => [Classified { fn_name: fn_name, cause: "scrutinee-is-an-expression" }]
+    ScrutineeVariable { name: s } =>
+      match find_param_head(params: params, name: s) {
+        Absent => [Classified { fn_name: fn_name, cause: "scrutinee-is-not-a-parameter" }]
+        Present { value: p } =>
+          if p.type_read == false {
+            [Unread { fn_name: fn_name, cause: "parameter-type-unreadable" }]
           } else {
-            acc
+            match p.head {
+              Present { value: h } => [Site { fn_name: fn_name, type_head: h }]
+              Absent => [Classified { fn_name: fn_name, cause: "parameter-type-has-no-head" }]
+            }
           }
-        })
+      }
+  }
+}
+
+fn find_param_head(params: List<ParamHead>, name: String) -> Optional<ParamHead> {
+  fold(params, init: optional_absent(), f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if p.name == name { optional_present(value: p) } else { optional_absent() }
+    }
+  })
+}
+
+// One reading per wildcard Match under the member. The member is judged only when it holds a wildcard
+// Match (an arrow TYPE alias holds none, so it is never refused); then its body and parameters must
+// read, or the fn is an Unread refusal rather than "no site".
+fn fn_site_reads(fn_name: String, arrow: Node) -> List<SiteRead> {
+  let matches = fold(node_subtree_nodes(root: arrow), init: [], f: fn(acc, n) {
+    if match_node_is(n: n) && match_has_wildcard_arm(m: n) { list_snoc_item(xs: acc, item: n) } else { acc }
+  })
+  if is_empty(xs: matches) {
+    []
+  } else {
+    match find_arrow_body_child(root: arrow) {
+      Rejected { diagnostics: _ } => [Unread { fn_name: fn_name, cause: "body-unfindable" }]
+      Accepted { value: _, diagnostics: _ } =>
+        match param_heads_optional(arrow: arrow) {
+          Absent => [Unread { fn_name: fn_name, cause: "parameters-unreadable" }]
+          Present { value: params } =>
+            fold(matches, init: [], f: fn(acc, m) {
+              fold(site_read_one(fn_name: fn_name, params: params, m: m), init: acc, f: fn(a2, r) { list_snoc_item(xs: a2, item: r) })
+            })
+        }
+    }
   }
 }
 
@@ -134,12 +167,12 @@ fn node_member_edges(root: Node) -> List<Edge> {
   })
 }
 
-fn root_member_sites(root: Node) -> List<WildcardSite> {
+fn root_member_reads(root: Node) -> List<SiteRead> {
   fold(node_member_edges(root: root), init: [], f: fn(acc, e) {
       match e.label {
         Authored { name: sym } =>
           if node_is_arrow(n: e.target) {
-            fold(fn_sites(fn_name: symbol_lexeme(sym: sym), arrow: e.target), init: acc, f: fn(a2, s) { list_snoc_item(xs: a2, item: s) })
+            fold(fn_site_reads(fn_name: symbol_lexeme(sym: sym), arrow: e.target), init: acc, f: fn(a2, s) { list_snoc_item(xs: a2, item: s) })
           } else {
             acc
           }

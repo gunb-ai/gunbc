@@ -270,7 +270,7 @@ import v2.compiler.dependency_demand {
   OperationFact,
 }
 import gunbc.non_fold_residue_scope { NfrProductionScope, NfrTestLayerExcluded, nfr_file_scope }
-import v2.compiler.nfr_wildcard_census { WildcardSite, declares_coproduct_named, declares_member_named, head_module_optional, roster_join_keys, root_member_sites, site_join_key }
+import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, declares_member_named, head_module_optional, roster_join_keys, root_member_reads, site_join_key }
 import v2.compiler.decl_ref_census { ImportPair, LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
@@ -3524,6 +3524,8 @@ type NativeNfrState {
   ambient: Map<String, Bool>
   ambient_list: List<String>
   refused: List<String>
+  classified: List<String>
+  unread: List<String>
 }
 
 type NativeNfrHeadRead {
@@ -3533,11 +3535,11 @@ type NativeNfrHeadRead {
 }
 
 fn native_nfr_state_with_alloc(s: NativeNfrState, alloc: OccurrenceIdAllocator) -> NativeNfrState {
-  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused }
+  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
 }
 
 fn native_nfr_refuse(s: NativeNfrState, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator) -> NativeNfrState {
-  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: list_snoc_item(xs: s.refused, item: symbol_lexeme(sym: read.compilation_unit)) }
+  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: list_snoc_item(xs: s.refused, item: symbol_lexeme(sym: read.compilation_unit)), classified: s.classified, unread: s.unread }
 }
 
 // The module root of a declaring module, normalized once.
@@ -3553,7 +3555,7 @@ fn native_nfr_module_root(s: NativeNfrState, plan: NativeDeclRefCensusPlan, fron
             Rejected { diagnostics: _ } => NativeNfrModuleRead { state: native_nfr_refuse(s: s, read: read, alloc: result.alloc), root: Absent }
             Accepted { value: tree, diagnostics: _ } =>
               NativeNfrModuleRead {
-                state: NativeNfrState { alloc: result.alloc, roots: map_insert(s.roots, module, tree.root), verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused },
+                state: NativeNfrState { alloc: result.alloc, roots: map_insert(s.roots, module, tree.root), verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread },
                 root: Present { value: tree.root }
               }
           }
@@ -3585,7 +3587,7 @@ fn native_nfr_head_read(s: NativeNfrState, plan: NativeDeclRefCensusPlan, front:
               Present { value: root } =>
                 let v = declares_coproduct_named(root: root, name: head)
                 NativeNfrHeadRead {
-                  state: NativeNfrState { alloc: read.state.alloc, roots: read.state.roots, verdicts: map_insert(read.state.verdicts, key, v), sites: read.state.sites, site_keys: read.state.site_keys, rows: read.state.rows, row_keys: read.state.row_keys, duplicates: read.state.duplicates, ambient: read.state.ambient, ambient_list: read.state.ambient_list, refused: read.state.refused },
+                  state: NativeNfrState { alloc: read.state.alloc, roots: read.state.roots, verdicts: map_insert(read.state.verdicts, key, v), sites: read.state.sites, site_keys: read.state.site_keys, rows: read.state.rows, row_keys: read.state.row_keys, duplicates: read.state.duplicates, ambient: read.state.ambient, ambient_list: read.state.ambient_list, refused: read.state.refused, classified: read.state.classified, unread: read.state.unread },
                   closed: v,
                   ambient: false
                 }
@@ -3598,22 +3600,30 @@ fn native_nfr_head_read(s: NativeNfrState, plan: NativeDeclRefCensusPlan, front:
 fn native_nfr_add_site(s: NativeNfrState, key: String, head: String) -> NativeNfrState {
   match map_lookup(m: s.sites, key: key) {
     Present { value: _ } => s
-    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, head), site_keys: list_snoc_item(xs: s.site_keys, item: key), rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, head), site_keys: list_snoc_item(xs: s.site_keys, item: key), rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
   }
 }
 
 fn native_nfr_add_ambient(s: NativeNfrState, head: String) -> NativeNfrState {
   match map_lookup(m: s.ambient, key: head) {
     Present { value: _ } => s
-    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: map_insert(s.ambient, head, true), ambient_list: list_snoc_item(xs: s.ambient_list, item: head), refused: s.refused }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: map_insert(s.ambient, head, true), ambient_list: list_snoc_item(xs: s.ambient_list, item: head), refused: s.refused, classified: s.classified, unread: s.unread }
   }
 }
 
 fn native_nfr_add_row(s: NativeNfrState, key: String) -> NativeNfrState {
   match map_lookup(m: s.rows, key: key) {
-    Present { value: _ } => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: list_snoc_item(xs: s.duplicates, item: key), ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused }
-    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: map_insert(s.rows, key, true), row_keys: list_snoc_item(xs: s.row_keys, item: key), duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused }
+    Present { value: _ } => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: list_snoc_item(xs: s.duplicates, item: key), ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: map_insert(s.rows, key, true), row_keys: list_snoc_item(xs: s.row_keys, item: key), duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
   }
+}
+
+fn native_nfr_add_classified(s: NativeNfrState, item: String) -> NativeNfrState {
+  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: list_snoc_item(xs: s.classified, item: item), unread: s.unread }
+}
+
+fn native_nfr_add_unread(s: NativeNfrState, item: String) -> NativeNfrState {
+  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: list_snoc_item(xs: s.unread, item: item) }
 }
 
 fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan: NativeDeclRefCensusPlan, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural) -> NativeNfrState {
@@ -3624,16 +3634,21 @@ fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan
       let pairs = import_pairs_of(rows: normalized_tree_import_bindings(tree: tree))
       let file = symbol_lexeme(sym: read.compilation_unit)
       fold_list(
-        xs: root_member_sites(root: tree.root),
+        xs: root_member_reads(root: tree.root),
         empty: native_nfr_state_with_alloc(s: s, alloc: result.alloc),
-        cons: fn(acc, site) {
-          let head = native_nfr_head_read(s: acc, plan: plan, front: front, ingest_scope: ingest_scope, self_root: tree.root, pairs: pairs, head: site.type_head)
-          if head.closed {
-            native_nfr_add_site(s: head.state, key: site_join_key(file: file, fn_name: site.fn_name), head: site.type_head)
-          } else if head.ambient {
-            native_nfr_add_ambient(s: head.state, head: site.type_head)
-          } else {
-            head.state
+        cons: fn(acc, r) {
+          match r {
+            Classified { fn_name: f, cause: c } => native_nfr_add_classified(s: acc, item: concat(file, "::", f, " ", c))
+            Unread { fn_name: f, cause: c } => native_nfr_add_unread(s: acc, item: concat(file, "::", f, " ", c))
+            Site { fn_name: f, type_head: h } =>
+              let head = native_nfr_head_read(s: acc, plan: plan, front: front, ingest_scope: ingest_scope, self_root: tree.root, pairs: pairs, head: h)
+              if head.closed {
+                native_nfr_add_site(s: head.state, key: site_join_key(file: file, fn_name: f), head: h)
+              } else if head.ambient {
+                native_nfr_add_ambient(s: head.state, head: h)
+              } else {
+                head.state
+              }
           }
         }
       )
@@ -3672,15 +3687,16 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
           let candidates = fold_list(xs: wild, empty: [], cons: fn(acc, r) { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } })
           let holders = fold_list(xs: ingest, empty: [], cons: fn(acc, r) { if string_contains(s: r.source.carried, pattern: "non_fold_residue_frontier") { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } } else { acc } })
           let excluded = length(xs: wild) - length(xs: candidates)
-          let start = NativeNfrState { alloc: occurrence_id_allocator_initial(), roots: empty_map(), verdicts: empty_map(), sites: empty_map(), site_keys: [], rows: empty_map(), row_keys: [], duplicates: [], ambient: empty_map(), ambient_list: [], refused: [] }
+          let start = NativeNfrState { alloc: occurrence_id_allocator_initial(), roots: empty_map(), verdicts: empty_map(), sites: empty_map(), site_keys: [], rows: empty_map(), row_keys: [], duplicates: [], ambient: empty_map(), ambient_list: [], refused: [], classified: [], unread: [] }
           let scanned = fold_list(xs: candidates, empty: start, cons: fn(acc, r) { native_nfr_scan_candidate(s: acc, read: r, plan: plan, front: front, ingest_scope: ingest_scope) })
           let done = fold_list(xs: holders, empty: scanned, cons: fn(acc, r) { native_nfr_scan_holder(s: acc, read: r, front: front, ingest_scope: ingest_scope) })
           let unrostered = fold_list(xs: done.site_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.rows, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
           let stale = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.sites, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
-          let bad = length(xs: unrostered) + length(xs: stale) + length(xs: done.duplicates) + length(xs: done.refused)
+          let unobserved = length(xs: done.refused) + length(xs: done.unread)
+          let bad = length(xs: unrostered) + length(xs: stale) + length(xs: done.duplicates)
           NativeNfrOutput {
             lines: list_append(
-              left: [concat("[nfr-wildcard-census] files=", to_string(n: length(xs: ingest)), " wildcard_files=", to_string(n: length(xs: wild)), " excluded_test_layer=", to_string(n: excluded), " candidates=", to_string(n: length(xs: candidates)), " holders=", to_string(n: length(xs: holders)), " sites=", to_string(n: length(xs: done.site_keys)), " rows=", to_string(n: length(xs: done.row_keys)), " unrostered=", to_string(n: length(xs: unrostered)), " stale=", to_string(n: length(xs: stale)), " duplicates=", to_string(n: length(xs: done.duplicates)), " refused=", to_string(n: length(xs: done.refused)), " ambient_heads=", to_string(n: length(xs: done.ambient_list)))],
+              left: [concat("[nfr-wildcard-census] files=", to_string(n: length(xs: ingest)), " wildcard_files=", to_string(n: length(xs: wild)), " excluded_test_layer=", to_string(n: excluded), " candidates=", to_string(n: length(xs: candidates)), " holders=", to_string(n: length(xs: holders)), " sites=", to_string(n: length(xs: done.site_keys)), " rows=", to_string(n: length(xs: done.row_keys)), " unrostered=", to_string(n: length(xs: unrostered)), " stale=", to_string(n: length(xs: stale)), " duplicates=", to_string(n: length(xs: done.duplicates)), " refused=", to_string(n: length(xs: done.refused)), " unread=", to_string(n: length(xs: done.unread)), " classified=", to_string(n: length(xs: done.classified)), " ambient_heads=", to_string(n: length(xs: done.ambient_list)))],
               right: list_append(
                 left: fold_list(xs: unrostered, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] unrostered ", k)) }),
                 right: list_append(
@@ -3689,13 +3705,19 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
                     left: fold_list(xs: done.duplicates, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] duplicate ", k)) }),
                     right: list_append(
                       left: fold_list(xs: done.refused, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] refused ", k)) }),
-                      right: fold_list(xs: done.ambient_list, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] ambient_head ", k)) })
+                      right: list_append(
+                        left: fold_list(xs: done.unread, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] unread ", k)) }),
+                        right: list_append(
+                          left: fold_list(xs: done.classified, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] classified ", k)) }),
+                          right: fold_list(xs: done.ambient_list, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] ambient_head ", k)) })
+                        )
+                      )
                     )
                   )
                 )
               )
             ),
-            exit: if bad == 0 { 0 } else { 1 }
+            exit: if unobserved > 0 { 2 } else if bad == 0 { 0 } else { 1 }
           }
       }
   }
