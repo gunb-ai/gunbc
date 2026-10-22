@@ -523,17 +523,18 @@ test fn the_sanctioned_route_inside_the_fixture_admits_its_own_effect() -> Bool 
   )
 }
 
-// KNOWN GAP, KEPT EXECUTABLE RATHER THAN AS PROSE.
+// EXPECTED-RED FORGE PROBE — NOT A `test fn`, SO IT COUNTS AS NO PASSING ASSERTION TODAY.
 //
-// std.durable_compare_and_set does not seal CasOutcome: `cas_decide` is a pure fold and nothing in the
-// tree mints a CasOutcome but the caller, so a caller can author a CasCommitted and reach the admitted
-// arm with no store involved. No fold in any module can close that, because every commit fact a fold
-// could check is caller-authored. The closure obligation is the durable store's — a store-minted,
-// sole_constructor CasOutcome that enrolment_persist takes as its receipt.
+// std.durable_compare_and_set does not seal CasOutcome: a caller can author a CasCommitted and reach the
+// admitted arm with no store involved. The assertion this probe makes is the DESIRED one: a caller-authored
+// commit is NOT admitted. It evaluates false today, and that is the point; it is the deliberate forge RED,
+// the one direct CasCommitted construction in the corpus outside the store modules and the fold.
 //
-// This control asserts the gap EXISTS, so closing it FLIPS this test rather than letting the module's
-// disclosure quietly go stale.
-test fn known_gap_a_caller_authored_commit_reaches_the_admitted_arm() -> Bool {
+// NAMED TRIGGER: the CasOutcome seal (only admitted realizations mint CasCommitted, #14447). When it
+// lands this construction stops compiling; the probe is then rewritten to assert the seal's refusal on the
+// real acceptance path and enrolled as a `test fn` (DESIGN 4b(4): the RED stays, it does not vanish).
+// Every other witness obtains CasCommitted through cas_decide_readable with a supplied hypothesis.
+fn expected_red_forge_is_refused_pending_cas_outcome_seal() -> Bool {
   let state = prepared_state()
   let verdict = enrolment_persist(
     state: state,
@@ -548,7 +549,7 @@ test fn known_gap_a_caller_authored_commit_reaches_the_admitted_arm() -> Bool {
     },
   }
   match forged {
-    CasCommitted { committed: _ } => has_admission(verdict: verdict)
+    CasCommitted { committed: _ } => !has_admission(verdict: verdict)
     _ => false
   }
 }
