@@ -16,5 +16,5 @@ data removal_tombstone_commit_resolution_stall: GuaranteeStall = GuaranteeStall 
   population: BoundedPopulation {
     members: ["gunbc.rung_drop.d0_store_walls_single_lifecycle", "gunbc.rung_drop.sha256_span_program_serialize_new_witness_eval_step_cost"]
   },
-  next_rung_trigger: climbs_when(capability: "a git-reading instrument label, run in a checkout, resolves every removed_at sha of every PopulationDeleted tombstone in the rung_drop roster, with a RED where a bogus sha is refused and a positive control where a real one resolves")
+  next_rung_trigger: climbs_when(capability: "a git-reading instrument label, run in a checkout, resolves every removed_at sha of every Dissolved tombstone in the rung_drop roster, with a RED where a bogus sha is refused and a positive control where a real one resolves")
 }

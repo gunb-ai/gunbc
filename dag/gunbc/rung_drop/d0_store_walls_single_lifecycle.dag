@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, CommitSha }
 import std.algebra { FreeSemigroup }
 import std.removal_tombstone { RemovalTombstone }
 import v2.lens.module_impact_query { ModuleIdentity }
-import gunbc.rung_drop { RungDrop, Dissolved, TypedDeclaration, PopulationDeleted, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Dissolved, EndedTypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // OPERATOR-RULED, SINGLE-USE (2026-09-30, relayed by proud-deer-538, option A): take the fabric store
@@ -34,21 +34,17 @@ data d0_store_walls_single_lifecycle: RungDrop = RungDrop {
   declared: "2026-09-30",
 
   standing: Dissolved {
-    ruling: "Group A decommissioned (operator, 2026-10-07, relayed by valiant-crab-775): srv5-srv8 were sold, so this drop's whole population -- D0 lifecycles for FabricGroupA -- no longer exists, and D0 itself (gunbc.spark.pair_serving_d0 and its door) was deleted with the group it was the only lifecycle of" as NonEmptyStr,
-    decision_record: "dashboard messages msg_5d88338f (the removal, operator-approved) and msg_9e5a2fee (the arm path and D0 with it), both 2026-10-07" as NonEmptyStr,
-    population_gone: "D0 lifecycles for FabricGroupA no longer exist: gunbc.spark.pair_serving_d0 and its door were deleted with Group A" as NonEmptyStr,
-  },
-
-  declaration: TypedDeclaration {
-    previous: MechanicallyPreventable,
-    temporary: Mitigatable,
-    reason: ReplacementStaged { replacement: "the fabric store door verifies each protected advance's credential per operation (gunbc.fabric.fabric_store_operation_admission, gunbc#12537 and the d0_store_operation_wall PR chain), and the served/local writer roster is live on srv1" },
-    population: PopulationDeleted { removal: RemovalTombstone {
+    removal: RemovalTombstone {
       removed_modules: FreeSemigroup { head: ModuleIdentity { name: "gunbc.spark.pair_serving_d0" }, tail: [ModuleIdentity { name: "gunbc.spark.pair_serving_d0_door" }] },
       removed_at: "fa44b9810259b88f721e55ae0a3bd3cf7bc9b46f" as CommitSha,
       ruling: "Group A decommissioned (operator, 2026-10-07, relayed by valiant-crab-775); deleted in gunbc#13641" as NonEmptyStr,
       decision_record: "dashboard messages msg_5d88338f and msg_9e5a2fee, both 2026-10-07" as NonEmptyStr,
-    } },
-    restoration_trigger: "BOTH store walls live, SUFFICIENT FOR a rostered fleet writer without D0 authorization for the operation to be refused at the store on srv1: gunbc.rung_drop.fabric_storage_append_principal_unrefused retired AND effective on srv1 (the unix-socket door deployed by dashboard_deploy), AND gunbc.spark.pair_serving_d0 d0_store_operation_wall at StoreOperationWallRestored. When both hold, d0_store_write_wall_standing admits every lifecycle through the walls and this row retires; retiring it earlier re-closes the door to this lifecycle too.",
-  },
+    },
+    declaration: EndedTypedDeclaration {
+      previous: MechanicallyPreventable,
+      temporary: Mitigatable,
+      reason: ReplacementStaged { replacement: "the fabric store door verifies each protected advance's credential per operation (gunbc.fabric.fabric_store_operation_admission, gunbc#12537 and the d0_store_operation_wall PR chain), and the served/local writer roster is live on srv1" },
+      restoration_trigger: "BOTH store walls live, SUFFICIENT FOR a rostered fleet writer without D0 authorization for the operation to be refused at the store on srv1: gunbc.rung_drop.fabric_storage_append_principal_unrefused retired AND effective on srv1 (the unix-socket door deployed by dashboard_deploy), AND gunbc.spark.pair_serving_d0 d0_store_operation_wall at StoreOperationWallRestored. When both hold, d0_store_write_wall_standing admits every lifecycle through the walls and this row retires; retiring it earlier re-closes the door to this lifecycle too."
+    }
+  }
 }

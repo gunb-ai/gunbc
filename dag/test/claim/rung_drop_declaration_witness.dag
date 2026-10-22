@@ -24,14 +24,13 @@ data control_rung_drop: RungDrop = RungDrop {
   identity: "control.identity" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: FreeSemigroup { head: "control.population.one", tail: [] } },
     restoration_trigger: "control restoration trigger"
-  }
+  } }
 }
 
 // THE SAME CONTROL, EXCEPT THAT ITS TRIGGER ALREADY CLOSES ITS SENTENCE. The period is the one
@@ -41,14 +40,13 @@ data control_rung_drop_with_terminated_trigger: RungDrop = RungDrop {
   identity: "control.identity" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: FreeSemigroup { head: "control.population.one", tail: [] } },
     restoration_trigger: "control restoration trigger."
-  }
+  } }
 }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
@@ -139,42 +137,39 @@ data unreadable_empty_population: RungDrop = RungDrop {
   identity: "control.empty" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: NotYetCounted { cause: NoInstrumentObservesTheZero },
     restoration_trigger: "control restoration trigger"
-  }
+  } }
 }
 
 data unreadable_unknown_label: RungDrop = RungDrop {
   identity: "control.unknown_label" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: DerivedBy { label: Label { package: instruments_package() target: TargetName { name: "no-such-instrument" as NonEmptyStr } } },
     restoration_trigger: "control restoration trigger"
-  }
+  } }
 }
 
 data readable_derived_label: RungDrop = RungDrop {
   identity: "control.derived" as NonEmptyStr,
   subject: "control.subject",
   declared: "2026-01-01",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: DerivedBy { label: compile_clean_diagnostic_census_label() },
     restoration_trigger: "control restoration trigger"
-  }
+  } }
 }
 
 test fn an_uncounted_or_unlabelled_standing_population_is_refused_and_readable_ones_are_accepted() -> Bool {

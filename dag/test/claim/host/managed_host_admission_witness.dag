@@ -8,7 +8,7 @@ import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
 import gunbc.rung_drop {
   AuthoredProse,
   RungDrop,
-  Standing,
+  Standing, Retired, Superseded, Dissolved,
   TypedDeclaration, population_from_list,
 }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
@@ -19,7 +19,6 @@ import gunbc.host.managed_host {
   AdmissionHoldMissing,
   MemberUnderDeclaredDrop,
   OrdinaryMember,
-  drop_is_standing_citation,
   managed_host_admission,
   managed_host_admission_receipt,
   managed_host_binding_for,
@@ -38,6 +37,7 @@ import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_curre
 import gunbc.host.host_reset_subject_roster {
   ResetRosterHostUnderDeclaredDrop, OrdinaryResetRosterHost, reset_subject_roster, reset_subject_roster_of,
 }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.auth.managed_host_boot_federation {
   boot_federation_for, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
 }
@@ -67,8 +67,8 @@ test fn w_reset_roster_and_boot_federation_match_the_declared_drop_arm() -> Bool
         MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
           (d.decl_name as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
             && (h.host as String) == (operator_host_mtcollins1 as String)
-            && count(reset_subject_roster()) == 1
-            && reset_subject_roster() |> all(e => match e {
+            && count(reset_subject_roster(evidence: megarac_operation_evidence())) == 1
+            && reset_subject_roster(evidence: megarac_operation_evidence()) |> all(e => match e {
               OrdinaryResetRosterHost { host: _ } => false
               ResetRosterHostUnderDeclaredDrop { host: rh, drop: rd } =>
                 (rh as String) == (operator_host_mtcollins1 as String)
@@ -128,7 +128,7 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
         drops: [],
         allocations: gunbc_fleet_hostname_allocations,
       )
-      count(hosts) == 0 && count(reset_subject_roster_of(hosts: hosts)) == 0
+      count(hosts) == 0 && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: hosts)) == 0
     }
   }
 }
@@ -142,7 +142,6 @@ test fn w_a_missing_hold_decision_is_absent() -> Bool {
           host: r.host,
           subject: r.subject,
           access: r.access,
-          capability_row: r.capability_row,
           secure: r.secure,
           hold: AdmissionHoldMissing,
           smpro: r.smpro,
@@ -185,7 +184,6 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
           host: r.host,
           subject: r.subject,
           access: r.access,
-          capability_row: r.capability_row,
           secure: r.secure,
           hold: r.hold,
           smpro: r.smpro,
@@ -210,48 +208,34 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
 test fn w_mtjade1_has_no_record_and_is_not_managed() -> Bool {
   match managed_host_binding_for(host: "mtjade1" as NonEmptyStr) {
     ManagedHostNotManaged { host: h } => (h as String) == "mtjade1" && count(managed_hosts()) == 1
-    ManagedHostFound { standing: _ } => false
-    ManagedHostFoundUnderDeclaredDrop { standing: _, drop: _, standing_subject: _, current_subject: _ } => false
+    ManagedHostFound { control: _ } => false
+    ManagedHostFoundUnderDeclaredDrop { control: _, drop: _, standing_subject: _, current_subject: _ } => false
   }
 }
 
 fn drop_with_identity_and_population(identity: NonEmptyStr, population: List<String>) -> RungDrop {
   let base = mtcollins1_bmc_secure_standing_predates_reflash
-  match base.declaration {
-    AuthoredProse { legacy: _, authored: _ } => base
-    TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } =>
+  match base.standing {
+    Standing { declaration: TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } } =>
       RungDrop {
         identity: identity,
         subject: base.subject,
         declared: base.declared,
-        standing: Standing,
-        declaration: TypedDeclaration {
-          previous: p,
-          temporary: t,
-          reason: r,
-          population: population_from_list(xs: population),
-          restoration_trigger: rt,
+        standing: Standing {
+          declaration: TypedDeclaration {
+            previous: p,
+            temporary: t,
+            reason: r,
+            population: population_from_list(xs: population),
+            restoration_trigger: rt,
+          },
         },
       }
+    Standing { declaration: AuthoredProse { legacy: _, authored: _ } } => base
+    Retired { trigger_fired: _, declaration: _ } => base
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => base
+    Dissolved { removal: _, declaration: _ } => base
   }
-}
-
-test fn w_covering_is_cited_drop_identity_not_population_prose() -> Bool {
-  drop_is_standing_citation(drop: mtcollins1_bmc_secure_standing_predates_reflash, cited: mtcollins1_bmc_secure_standing_drop_ref)
-    && drop_is_standing_citation(
-      drop: drop_with_identity_and_population(
-        identity: mtcollins1_bmc_secure_standing_predates_reflash.identity,
-        population: ["no host token in this sentence"],
-      ),
-      cited: mtcollins1_bmc_secure_standing_drop_ref,
-    )
-    && drop_is_standing_citation(
-      drop: drop_with_identity_and_population(
-        identity: "some_other_drop" as NonEmptyStr,
-        population: ["mtcollins1 is named here so a substring search would have matched"],
-      ),
-      cited: mtcollins1_bmc_secure_standing_drop_ref,
-    ) == false
 }
 
 test fn w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_mtcollins1() -> Bool {

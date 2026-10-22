@@ -1,0 +1,414 @@
+// WITNESS: the C2 typed host-removal leaf (gunbc.host.host_effect_realize
+// host_remove_on_host / host_remove_verdict) — the leaf the live_deploy retract (W1) and the
+// W8 apply cutover consume to remove the gunbc source tree and its unit files, replacing the
+// bash `rm -d` / `rm -f` / `rm -rf` leaves under `set -euo pipefail` with an ordered typed
+// sequence whose every refusal is typed and names the arm, the step and the path.
+//
+// DESIGN 3 WITNESS RULE: every boundary value is SUPPLIED here at the pure verdict interface
+// (host_remove_verdict) — no operation, no sudo, no filesystem. The discriminating RED is the
+// non-empty RemoveEmptyDirectory refusal: under the OLD bash, `rm -d` under `set -e` aborted the
+// whole pipeline with an opaque `exit 1` (no arm, no path, no step); under the leaf it is a typed
+// NotConverged that names arm=RemoveEmptyDirectory, step=remove-empty-dir, path=<p>, and carries
+// the loud-refusal "never widened to -rf" phrase. The last claim is one inhabitance claim on the
+// REAL route: it pins that the GunbcSourceTree teardown argvs (the two dispatch roots, the three
+// unit files, and the source tree) each carry the shape they name.
+module test.claim.host.host_remove_on_host_witness
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.algebra { Empty, FreeSemigroup, non_empty_append, non_empty_singleton, non_empty_to_list }
+import std.realization_reconcile { Reconciliation, Converged, NotConverged }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.posix.test_utility { test_symbolic_link_command }
+import gunbc.host.host_effect_realize {
+  HostRemoveTarget,
+  HostRemoveEvidence,
+  host_remove_target_argv,
+  host_remove_verdict,
+  HostRemovePathState,
+  HostRemovePathPresent,
+  HostRemovePathAbsent,
+  HostRemovePathUnreadable,
+  host_remove_reading,
+  host_remove_state_of,
+  host_remove_entry_state,
+  host_remove_arm_name,
+  host_remove_step_name,
+  RunArgvTransportOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+  ShellExecObserved,
+}
+
+// -- boundary: an EMPTY RemoveForce is a TYPE ERROR, not a runtime refusal. The leaf and the pure
+// verdict used to carry an `empty path list (rm -f needs an operand)` branch each; both are deleted
+// (review 81100 on #14144) because `RemoveForce.paths` is a FreeSemigroup, so there is no value to
+// dispatch and no branch to reach. The RED moved from a runtime check to a CONSTRUCTION FIXTURE: the
+// source below asks for the empty roster and the checker must refuse it, while the control (one
+// path) must still compile. Together they pin that the nonemptiness is carried by the type rather
+// than by a guard someone could delete (DESIGN §5, ruling nonemptiness_is_constructed_or_proved).
+fn host_remove_empty_roster_fixture_source() -> String {
+  "module host_remove_empty_probe\n\nimport gunbc.host.host_effect_realize { HostRemoveTarget, RemoveForce }\n\nfn host_remove_probe_empty_target() -> HostRemoveTarget {\n  RemoveForce { paths: [] }\n}\n"
+}
+
+// THE POSITIVE CONTROL. The correct spelling must still compile, or the refusal above would be
+// satisfied by a checker that refuses everything and measures nothing.
+fn host_remove_one_roster_fixture_source() -> String {
+  "module host_remove_one_probe\n\nimport std.algebra { non_empty_singleton }\nimport gunbc.host.host_effect_realize { HostRemoveTarget, RemoveForce }\n\nfn host_remove_probe_one_target() -> HostRemoveTarget {\n  RemoveForce { paths: non_empty_singleton(item: \"/etc/systemd/system/gunbc-oomd-sessions.slice.service\") }\n}\n"
+}
+
+// The fixture's `module` name IS its emitted read path (module foo_bar -> src/foo_bar.rs), so both
+// fixtures are named to match the path handed to the checker; before that, both claims were reading a
+// file that was never emitted and the negative one was passing for the wrong reason.
+//
+// They are a PAIR, and only together do they mean anything: the positive claim below proves the
+// fixture convention works at all (its own function must appear in the emitted Rust, so a fixture that
+// never emitted could not pass it). Given that proof, the negative claim's refusal can only come from
+// the empty roster itself — there is no other way for it to fail to emit.
+test fn an_empty_remove_force_roster_must_not_compile() -> Bool {
+  !compile_dag_rust_emit_check(
+    host_remove_empty_roster_fixture_source(),
+    "src/host_remove_empty_probe.rs",
+    [],
+    [],
+  )
+}
+
+test fn a_one_path_remove_force_roster_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    host_remove_one_roster_fixture_source(),
+    "src/host_remove_one_probe.rs",
+    ["pub fn host_remove_probe_one_target("],
+    [],
+  )
+}
+
+// -- the RED (discriminating): RemoveEmptyDirectory on a NON-EMPTY dir is the loud refusal, never
+// widened to -rf. Under the old bash this was an opaque `exit 1` under `set -e`; under the leaf it
+// is a typed NotConverged that names the arm, the step and the path, and carries the
+// loud-refusal phrase. This is the one the W8 apply cutover and the non-empty witness pin from
+// both directions (DESIGN 3 witness rule).
+test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
+  let target = RemoveEmptyDirectory {
+    path: "/var/lib/gunbc/deploy-stages/dispatch-root-a" as NonEmptyStr,
+  }
+  match host_remove_verdict(
+    target: target,
+    pre_state: [HostRemovePathPresent],
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "rm: cannot remove '/var/lib/gunbc/deploy-stages/dispatch-root-a': Directory not empty",
+      },
+    },
+    post_state: [HostRemovePathPresent],
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "RemoveEmptyDirectory refused")
+        && string_contains(s: r, pattern: "rm -d failed (exit 1)")
+        && string_contains(s: r, pattern: "Directory not empty")
+        && string_contains(s: r, pattern: "never widened to -rf")
+        && string_contains(s: r, pattern: "arm=RemoveEmptyDirectory")
+        && string_contains(s: r, pattern: "step=remove-empty-dir")
+        && string_contains(s: r, pattern: "/var/lib/gunbc/deploy-stages/dispatch-root-a")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// -- boundary: RemoveEmptyDirectory on an ABSENT dir is a refusal (rm -d on an absent dir exits 1),
+// NOT idempotent-success. The pre-observation carries the distinction from the non-empty case.
+test fn witness_remove_empty_directory_absent_is_a_refusal_not_a_noop() -> Bool {
+  let target = RemoveEmptyDirectory {
+    path: "/var/lib/gunbc/deploy-stages/dispatch-root-b" as NonEmptyStr,
+  }
+  match host_remove_verdict(
+    target: target,
+    pre_state: [HostRemovePathAbsent],
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "rm: cannot remove '/var/lib/gunbc/deploy-stages/dispatch-root-b': No such file or directory",
+      },
+    },
+    post_state: [HostRemovePathAbsent],
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "RemoveEmptyDirectory refused")
+        && string_contains(s: r, pattern: "rm -d failed (exit 1)")
+        && string_contains(s: r, pattern: "No such file or directory")
+        && string_contains(s: r, pattern: "arm=RemoveEmptyDirectory")
+        && string_contains(s: r, pattern: "step=remove-empty-dir")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// -- boundary: RemoveForceRecursive on an ABSENT dir with an exit-0 rm is Converged RemovedNoOp
+// (rm -rf on an absent path is idempotent), NOT a refusal and NOT a RemovedConfirmed.
+test fn witness_remove_force_recursive_absent_is_a_noop() -> Bool {
+  let target = RemoveForceRecursive {
+    path: "/opt/gunbc/source-tree" as NonEmptyStr,
+  }
+  match host_remove_verdict(
+    target: target,
+    pre_state: [HostRemovePathAbsent],
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 0,
+        success: true,
+        stdout: "",
+        stderr: "",
+      },
+    },
+    post_state: [HostRemovePathAbsent],
+  ) {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        RemovedNoOp { path: p } =>
+          string_contains(s: p, pattern: "/opt/gunbc/source-tree")
+        RemovedConfirmed { paths: _, exit_code: _ } => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// -- boundary: a read-back that still shows the path present after an exit-0 rm is a
+// did-not-converge refusal that names the arm, the step and the path — the verdict is carried by
+// the read-back, not the exit status.
+test fn witness_remove_force_readback_still_present_is_not_converged() -> Bool {
+  let target = RemoveForce {
+    paths: non_empty_singleton(item: "/etc/systemd/system/gunbc-deploy.service" as NonEmptyStr),
+  }
+  match host_remove_verdict(
+    target: target,
+    pre_state: [HostRemovePathPresent],
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 0,
+        success: true,
+        stdout: "",
+        stderr: "",
+      },
+    },
+    post_state: [HostRemovePathPresent],
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "RemoveForce did not converge")
+        && string_contains(s: r, pattern: "still present after read-back")
+        && string_contains(s: r, pattern: "arm=RemoveForce")
+        && string_contains(s: r, pattern: "step=remove-force")
+        && string_contains(s: r, pattern: "/etc/systemd/system/gunbc-deploy.service")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// -- boundary: a sudo -n denial (stderr carries "a password is required") is a typed
+// sudo-elevation-unavailable refusal that names the arm, the step and the path — it is checked
+// before the generic non-zero exit so the elevation failure names itself.
+test fn witness_remove_empty_directory_sudo_denial_names_elevation_unavailable() -> Bool {
+  let target = RemoveEmptyDirectory {
+    path: "/var/lib/gunbc/deploy-stages/dispatch-root-a" as NonEmptyStr,
+  }
+  match host_remove_verdict(
+    target: target,
+    pre_state: [HostRemovePathPresent],
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "sudo: a password is required",
+      },
+    },
+    post_state: [HostRemovePathPresent],
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "sudo -n elevation unavailable")
+        && string_contains(s: r, pattern: "arm=RemoveEmptyDirectory")
+        && string_contains(s: r, pattern: "step=remove-empty-dir")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// -- inhabitance on the REAL route: the GunbcSourceTree teardown argvs. The leaf's
+// host_remove_target_argv pins the exact `sudo -n rm <shape> <paths>` argv for each arm, so the
+// two dispatch roots (rm -d), the three unit files (rm -f) and the source tree (rm -rf) each
+// carry the shape they name. This is the one inhabitance claim the DESIGN 3 witness rule requires:
+// the leaf is not just well-typed at the boundary — it is inhabited by the real retract route.
+test fn witness_gunbc_source_tree_teardown_argv_shapes_are_inhabited() -> Bool {
+  let root_a = RemoveEmptyDirectory {
+    path: "/var/lib/gunbc/deploy-stages/dispatch-root-a" as NonEmptyStr,
+  }
+  let root_a_argv = host_remove_target_argv(target: root_a)
+  // THREE UNIT FILES, BUILT ON THE NON-EMPTY CARRIER: head + tail, so the arity the argv must carry
+  // is fixed by the expression rather than by a count someone has to keep in their head.
+  let unit_files = RemoveForce {
+    paths: non_empty_append(
+      left: non_empty_append(
+        left: non_empty_singleton(item: "/etc/systemd/system/gunbc-deploy.service" as NonEmptyStr),
+        right: non_empty_singleton(item: "/etc/systemd/system/gunbc-deploy.timer" as NonEmptyStr)
+      ),
+      right: non_empty_singleton(item: "/etc/systemd/system/gunbc-deploy.path" as NonEmptyStr)
+    ),
+  }
+  let unit_argv = host_remove_target_argv(target: unit_files)
+  let tree = RemoveForceRecursive {
+    path: "/opt/gunbc/source-tree" as NonEmptyStr,
+  }
+  let tree_argv = host_remove_target_argv(target: tree)
+  // The dispatch root is `sudo -n rm -d <path>`.
+  let root_shape =
+    string_contains(s: join(root_a_argv, " "), pattern: "rm -d /var/lib/gunbc/deploy-stages/dispatch-root-a")
+  // The unit files are `sudo -n rm -f <p1> <p2> <p3>`.
+  let unit_shape =
+    string_contains(s: join(unit_argv, " "), pattern: "rm -f /etc/systemd/system/gunbc-deploy.service /etc/systemd/system/gunbc-deploy.timer /etc/systemd/system/gunbc-deploy.path")
+  // The source tree is `sudo -n rm -rf <path>`.
+  let tree_shape = string_contains(s: join(tree_argv, " "), pattern: "rm -rf /opt/gunbc/source-tree")
+  // Every argv is elevated with `sudo -n` (the same shell_privileged_command_text_of_argv the bash used).
+  let all_elevated =
+    string_contains(s: join(root_a_argv, " "), pattern: "sudo -n")
+      && string_contains(s: join(unit_argv, " "), pattern: "sudo -n")
+      && string_contains(s: join(tree_argv, " "), pattern: "sudo -n")
+  root_shape && unit_shape && tree_shape && all_elevated
+}
+
+// -- THE FAIL-OPEN, CLOSED. `test -e` exits 1 for an absent path AND for a path it cannot stat, and
+// above 1 on an error, so a false is not absence. These controls supply the probe states the pure
+// verdict folds: an unreadable pre-state refuses before any removal verdict, an unreadable post-state
+// never converges, and the genuinely-absent and removed positives still converge.
+fn remove_ok() -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" } }
+}
+
+fn force_target() -> HostRemoveTarget {
+  RemoveForce { paths: non_empty_singleton(item: "/etc/systemd/system/gunbc-a.service" as NonEmptyStr) }
+}
+
+fn is_not_converged_with(v: Reconciliation<HostRemoveTarget, HostRemoveEvidence>, pattern: String) -> Bool {
+  match v {
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: pattern)
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+test fn an_unreadable_pre_state_refuses_even_when_the_rm_succeeded() -> Bool {
+  is_not_converged_with(
+    v: host_remove_verdict(target: force_target(), pre_state: [HostRemovePathUnreadable { reason: "test exited 2" }], outcome: remove_ok(), post_state: [HostRemovePathAbsent]),
+    pattern: "pre-removal state of a path could not be read",
+  )
+}
+
+test fn an_unreadable_post_state_never_converges() -> Bool {
+  is_not_converged_with(
+    v: host_remove_verdict(target: force_target(), pre_state: [HostRemovePathPresent], outcome: remove_ok(), post_state: [HostRemovePathUnreadable { reason: "test exited 2" }]),
+    pattern: "post-removal state of a path could not be read",
+  )
+}
+
+test fn a_genuinely_absent_path_is_a_noop_and_a_removed_path_is_confirmed() -> Bool {
+  match host_remove_verdict(target: force_target(), pre_state: [HostRemovePathAbsent], outcome: remove_ok(), post_state: [HostRemovePathAbsent]) {
+    Converged { evidence: _, applied: _ } =>
+      match host_remove_verdict(target: force_target(), pre_state: [HostRemovePathPresent], outcome: remove_ok(), post_state: [HostRemovePathAbsent]) {
+        Converged { evidence: _, applied: _ } => true
+        NotConverged { reason: _, applied: _ } => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+fn probe_observed(code: Int) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { exit_code: code, success: code == 0, stdout: "", stderr: "e" } }
+}
+
+fn state_is_unreadable(st: HostRemovePathState) -> Bool {
+  match st {
+    HostRemovePathUnreadable { reason: _ } => true
+    HostRemovePathPresent => false
+    HostRemovePathAbsent => false
+  }
+}
+
+fn state_is_absent(st: HostRemovePathState) -> Bool {
+  match st {
+    HostRemovePathAbsent => true
+    HostRemovePathPresent => false
+    HostRemovePathUnreadable { reason: _ } => false
+  }
+}
+
+// `test` exit 1 is absence ONLY under a searchable parent; exit 1 under an unsearchable parent (the
+// existing-path-behind-0000-dir case) and any exit above 1 are unreadable.
+test fn test_status_is_absent_only_under_a_searchable_parent() -> Bool {
+  state_is_absent(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
+    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 1))))
+    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 2)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
+}
+
+// -- THE ENTRY, NOT ITS REFERENT. `test -e` follows symlinks (POSIX stat), so a link whose referent is
+// missing, unreachable or itself reads false under it while the entry exists and rm removes it. The
+// production fold host_remove_entry_state is driven here over a SUPPLIED runner keyed on the test
+// operand (-L lstat, -e stat, -x parent search), so the probe vector is the interface and no
+// filesystem is touched. The inhabitance pairing is that the same fold is what
+// host_remove_probe_state hands the real transport.
+fn probe_by_operand(c: ArgvCommand, link: Int, follow: Int, parent: Int) -> RunArgvTransportOutcome {
+  let words = join(argv_words(command: c), " ")
+  if string_contains(s: words, pattern: "test -L ") {
+    probe_observed(code: link)
+  } else if string_contains(s: words, pattern: "test -e ") {
+    probe_observed(code: follow)
+  } else {
+    probe_observed(code: parent)
+  }
+}
+
+fn entry_state(link: Int, follow: Int, parent: Int) -> HostRemovePathState {
+  host_remove_entry_state(path: "/p/c", run: fn(c) { probe_by_operand(c: c, link: link, follow: follow, parent: parent) })
+}
+
+test fn the_link_operand_is_posix_test_dash_l() -> Bool {
+  join(argv_words(command: test_symbolic_link_command(path: "/p/c")), " ") == "test -L /p/c"
+}
+
+// A GENUINELY ABSENT path (both lookups false, searchable parent) stays absent, so the no-follow fix is
+// not satisfied by calling everything present.
+test fn a_genuinely_absent_entry_is_absent() -> Bool {
+  state_is_absent(st: entry_state(link: 1, follow: 1, parent: 0))
+}
+
+// A DANGLING LINK, A LINK TO A REFERENT BEHIND AN UNSEARCHABLE DIRECTORY AND A SELF-LOOP all give
+// lstat success and stat failure: -L 0, -e 1, parent searchable. That vector is a PRESENT entry; the
+// follow-only reading classified it Absent.
+test fn a_symlink_whose_referent_does_not_resolve_is_present() -> Bool {
+  host_remove_state_present(state: entry_state(link: 0, follow: 1, parent: 0))
+    && host_remove_state_present(state: entry_state(link: 0, follow: 2, parent: 0))
+}
+
+// An entry that resolves is present however the link probe answered, and an unreadable lookup stays
+// distinct from absence in each position.
+test fn a_resolving_entry_is_present_and_unreadable_lookups_stay_unreadable() -> Bool {
+  host_remove_state_present(state: entry_state(link: 1, follow: 0, parent: 0))
+    && state_is_unreadable(st: entry_state(link: 2, follow: 1, parent: 0))
+    && state_is_unreadable(st: entry_state(link: 1, follow: 2, parent: 0))
+    && state_is_unreadable(st: entry_state(link: 1, follow: 1, parent: 1))
+}
+
+// REMOVAL OF A DANGLING LINK IS CONFIRMED, NOT A NO-OP: pre (link present) then rm then post (genuinely
+// absent) is RemovedConfirmed. Under follow-only probes this read pre 1 / post 1 and was RemovedNoOp
+// though an entry was removed.
+test fn removing_a_dangling_link_is_confirmed_not_a_noop() -> Bool {
+  match host_remove_verdict(
+    target: RemoveForceRecursive { path: "/p/c" as NonEmptyStr },
+    pre_state: [entry_state(link: 0, follow: 1, parent: 0)],
+    outcome: remove_ok(),
+    post_state: [entry_state(link: 1, follow: 1, parent: 0)],
+  ) {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        RemovedConfirmed { paths: _, exit_code: _ } => true
+        RemovedNoOp { path: _ } => false
+      }
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
