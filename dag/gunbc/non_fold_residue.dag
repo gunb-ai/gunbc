@@ -54,6 +54,8 @@ data nfr_reason_nat_keyed_lookup_table: String = "a Nat-keyed lookup table autho
 
 data nfr_dissolve_nat_keyed_lookup_table: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: the pin table is authored as keyed data rows (pin number to signal, one row each) read by a keyed lookup that returns Absent for a missing key, so the board's pin map is rows and not a match; or the typed census classifies a Nat scrutinee as an open domain and no longer reports it")
 
+data nfr_reason_wildcard_landed_after_join_measurement: String = "a top-level wildcard arm over a closed coproduct found unrostered by the row-to-wildcard identity measurement re-run on the merge of main eed4a900e23e into the join-data branch (fallback_arm_census_facts joined to the frontier union; measured, not gated); it landed on main after the 8f00f69fd5b7 measurement. Un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
+
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
@@ -115,5 +117,120 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       subject: PathSubject { path: "dag/extdeps/boards/supermicro_h11ssl.dag::supermicro_h11ssl_jpwr2_pin" },
       reason: nfr_reason_nat_keyed_lookup_table,
       dissolution: nfr_dissolve_nat_keyed_lookup_table,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/languages/rust/primitives.dag::rust_float_binding_for_representation" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/tools/curl.dag::curl_exit_outcome" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/auth/gcp_iam_bootstrap_delta_route.dag::operation_step" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/auth/gcp_iam_bootstrap_journal.dag::journal_store_failure_text" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/claim_coverage_census_live.dag::claim_coverage_composed_standing" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/host_effect_realize.dag::live_deploy_preamble_injected_result" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag::fci1_runtime_state_equal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag::fci1_store_state_equal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/provisioning/altra_autoinstall_seed.dag::admit_altra_autoinstall_target" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/provisioning/altra_autoinstall_seed.dag::crypt_layout" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/provisioning/altra_autoinstall_seed.dag::reject_layout" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_busy" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_drained" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_idle_listener" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_unproven" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/product/electrical/carrier_phase.dag::is_phase_classified" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/product/p4261_carrier_layout.dag::unread_projection_gap" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/eval.dag::eval_control_choose" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/eval.dag::eval_control_frame_if_agreeing" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/translate.dag::translate_algebra_finalize_at_node" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/extdeps/languages/swift_expr_door.dag::swift_expr_door_lower" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/extdeps/languages/swift_expr_door.dag::swift_expr_door_names" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/workflow/roster_import_sweep.dag::roster_control_edit_row_round_trip" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
     },
 ]
