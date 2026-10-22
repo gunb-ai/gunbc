@@ -556,6 +556,8 @@ fn service_slot_pass_over(
 // THE PASS TAKES FOUR CARRIERS AND NOTHING ELSE: the admitted mint (this boot, a population member), the held
 // key (never its path), the isolated listener user and the pass identity. It binds the real effects to the fold
 // above and is reachable from the entry alone.
+// What executing these four real bindings would establish, and what is deferred, is
+// service_slot_pass_binding_execution_frontier.
 fn service_slot_pass(admission: ServiceSlotMintAdmission, key: ServiceSlotKeyHeld, isolated: ServiceSlotListenerIsolated, pass: ServiceSlotPassId) -> ServiceSlotPass
   uses net: Network
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_controller_main")]
