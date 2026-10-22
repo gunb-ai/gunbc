@@ -50,7 +50,7 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe }
 import extdeps.git {
   git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command,
-  git_worktree_add_detached_command, git_branch_command, git_rev_parse_head_command,
+  git_worktree_add_detached_command, git_branch_command, git_rev_parse_head_command, git_checkout_revision_command,
   git_local_config_get_command, git_core_shared_repository_config_key,
   git_core_shared_repository_group_value, git_gc_auto_config_key, git_maintenance_auto_config_key,
   git_disabled_config_value, git_disabled_maintenance_config_value,
@@ -1436,6 +1436,28 @@ test fn the_premise_gate_admits_an_unborn_repository() -> Bool {
   } else {
     let repo = join([root, "/unborn"], "")
     let planted = wet_ok(command: mkdir_parents_command(path: repo)) && wet_ok(command: git_init_quiet_command(repository_dir: repo))
+    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stdout(repo: repo) == ""
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && admitted && cleaned
+  }
+}
+
+// ADMIT STATE 3 -- a DETACHED HEAD (a working tree pinned to a revision, not a branch). This is the
+// case a symbolic-ref-only premise would FALSELY refuse: git symbolic-ref HEAD fails on a detached
+// HEAD ('ref HEAD is not a symbolic ref'), which would take the whole deploy down though the tree is
+// real. The commit half of the head premise (git rev-parse --verify HEAD) resolves it, so the gate
+// admits. A source tree pinned to a revision is a plausible route, so this is a load-bearing admit.
+test fn the_premise_gate_admits_a_detached_head_repository() -> Bool {
+  let root = wre3_scratch_root()
+  if root == "" {
+    false
+  } else {
+    let repo = join([root, "/detached"], "")
+    // The typed --detach HEAD checkout IS the state establishment; git 2.43 fails symbolic-ref HEAD on
+    // the result (probed), which is exactly what a symbolic-ref-only premise would misrefuse.
+    let planted = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_repo_with_a_commit(repo: repo)
+      && wet_ok(command: git_checkout_revision_command(repository_dir: repo, revision: "HEAD"))
     let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stdout(repo: repo) == ""
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && admitted && cleaned

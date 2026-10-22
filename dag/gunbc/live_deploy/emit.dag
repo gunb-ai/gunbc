@@ -2510,16 +2510,54 @@ fn dashboard_git_worker_repository_premise_refusal_branch(sentence: String) -> L
   ]
 }
 
+// The trusted `<git-in-repo> <verb...>` words for one premise read, mapped to bash word literals.
+// Both the path premise and the HEAD premise read git the same way (safe.directory pinned to the
+// repository, the git program from the model), so the argv is built in ONE place.
+fn dashboard_git_worker_premise_trusted_git_words(repo: String, verbs: List<String>) -> List<Node> {
+  concat(
+    map(git_in_trusted_repository_args(repo: repo as NonEmptyStr), w => bash_build_word_lit(text: w)),
+    concat([bash_build_word_lit(text: git_program_word)], map(verbs, v => bash_build_word_lit(text: v)))
+  )
+}
+
+// A git read captured for a test, DOUBLE-QUOTED so an EMPTY capture is the explicit word "" and not a
+// vanished word. The project's blessed readback idiom (the approval-broker helper snapshot renders
+// test -z "$(...)" the same way, and its own witness asserts the quotes) exists because an UNQUOTED
+// test over an empty command substitution is fragile -- [ $(false) != x ] collapses to [ != x ], a
+// unary-operator arity error that bash reports as "test false" (an error-as-false the command_runner
+// row rejects) and leaks a diagnostic to stderr. Quoting makes emptiness a real value the test sees.
+fn dashboard_git_worker_premise_captured_read(read: Node) -> Node {
+  bash_build_word_concat_from_nodes(parts: [bash_build_word_cmdsubst(body: read)])
+}
+
+// THE HEAD PREMISE, VERSION-INDEPENDENT: HEAD resolves as a branch OR as a commit. Two MODELLED git
+// reads, captured (never printed), and the premise is the EMPTINESS of the capture:
+//   git symbolic-ref -q HEAD   succeeds on an unborn repository and on any branch (prints the refname)
+//   git rev-parse --verify -q HEAD   succeeds on a DETACHED HEAD (prints the resolved commit)
+// A repository checked out at a revision rather than a branch is real and must NOT be refused, so a
+// symbolic-ref-only premise is wrong (it fails on detached HEAD and would take the whole deploy down).
+// The HEAD-less fabrication -- objects/refs/logs but no HEAD -- has neither a branch nor a commit to
+// resolve, so BOTH reads fail and the capture is empty. Running both inside $( ... ) captures their
+// stdout into the substitution (a successful read prints its ref/sha, which makes the capture
+// non-empty); it is NEVER echoed to the gate's own stdout, so an admitted gate still writes nothing
+// there and the wet claim's admit-state "stdout is empty" check holds. Redirected stderr keeps git's
+// own error text out of both the stdout and the result. Not a directory test.
+fn dashboard_git_worker_premise_head_probe_words(repo: String) -> Node {
+  bash_build_or_else(
+    left: bash_build_with_redir(
+      inner: bash_build_command_with_words(words: dashboard_git_worker_premise_trusted_git_words(repo: repo, verbs: ["symbolic-ref", "-q", "HEAD"])),
+      redir: ^bash_production_fold_redir_stderr_null),
+    right: bash_build_with_redir(
+      inner: bash_build_command_with_words(words: dashboard_git_worker_premise_trusted_git_words(repo: repo, verbs: ["rev-parse", "--verify", "-q", "HEAD"])),
+      redir: ^bash_production_fold_redir_stderr_null),
+  )
+}
+
 fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
   bash_build_if_else(
     cond: bash_build_test_bracket(words: [
-      bash_build_word_cmdsubst(body: bash_build_with_redir(
-        inner: bash_build_command_with_words(words: concat(
-          map(git_in_trusted_repository_args(repo: repo as NonEmptyStr), w => bash_build_word_lit(text: w)),
-          concat(
-            [bash_build_word_lit(text: git_program_word)],
-            [bash_build_word_lit(text: "rev-parse"), bash_build_word_lit(text: "--absolute-git-dir")],
-          ))),
+      dashboard_git_worker_premise_captured_read(read: bash_build_with_redir(
+        inner: bash_build_command_with_words(words: dashboard_git_worker_premise_trusted_git_words(repo: repo, verbs: ["rev-parse", "--absolute-git-dir"])),
         redir: ^bash_production_fold_redir_stderr_null)),
       bash_build_word_lit(text: "!="),
       bash_build_word_lit(text: concat(repo, "/.git")),
@@ -2527,23 +2565,20 @@ fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
     then_body: bash_build_stmt_list_from_nodes(
       stmts: dashboard_git_worker_repository_premise_refusal_branch(
         sentence: dashboard_git_worker_repository_premise_refusal_sentence(repo: repo))),
-    // NOT the same directory: fall through to the HEAD premise. A HEAD-less .git (a fabricated tree with
-    // objects/refs/logs but no HEAD) must be refused too, and --absolute-git-dir is not enough to catch
-    // it: git 2.43 (srv1) resolves --absolute-git-dir against such a tree with exit 0, so a path-equality
-    // gate admits the fabrication. A MODELLED git read decides it, version-independently: `git symbolic-ref
-    // HEAD` succeeds on a bootstrapped/unborn repository (git init writes .git/HEAD -> refs/heads/<br>) and
-    // fails on a HEAD-less tree, so it distinguishes "established, not yet committed" from "fabricated"
-    // where rev-parse alone cannot. Not a directory test.
+    // NOT the same directory: fall through to the HEAD premise. --absolute-git-dir is GIT-VERSION-
+    // SENSITIVE: git 2.43 (srv1) resolves it against a HEAD-less .git with exit 0, so the path premise
+    // alone ADMITS the fabrication. The head probe decides it on any git: an empty capture (no branch,
+    // no commit) is a fabricated tree; a non-empty one is an established repository, on a branch,
+    // unborn, or detached. -z says "capture empty" = refuse; else = established, admit.
     else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_if_else(
-      cond: bash_build_with_redir(
-        inner: bash_build_command_with_words(words: concat(
-          map(git_in_trusted_repository_args(repo: repo as NonEmptyStr), w => bash_build_word_lit(text: w)),
-          concat([bash_build_word_lit(text: git_program_word)], [bash_build_word_lit(text: "symbolic-ref"), bash_build_word_lit(text: "HEAD")]))),
-        redir: ^bash_production_fold_redir_stderr_null),
-      then_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
-      else_body: bash_build_stmt_list_from_nodes(
+      cond: bash_build_test_bracket(words: [
+        bash_build_word_lit(text: "-z"),
+        bash_build_word_cmdsubst(body: dashboard_git_worker_premise_head_probe_words(repo: repo)),
+      ]),
+      then_body: bash_build_stmt_list_from_nodes(
         stmts: dashboard_git_worker_repository_premise_refusal_branch(
           sentence: dashboard_git_worker_repository_premise_headless_refusal_sentence(repo: repo))),
+      else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
     )]),
   )
 }

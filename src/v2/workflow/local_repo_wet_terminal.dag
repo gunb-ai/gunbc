@@ -805,6 +805,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_admits_a_detached_head_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_admits_a_detached_head_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_refuses_a_headless_dot_git_skeleton" },
       entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
       function: "the_premise_gate_refuses_a_headless_dot_git_skeleton",
