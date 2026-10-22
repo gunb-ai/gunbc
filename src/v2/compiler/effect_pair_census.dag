@@ -7,6 +7,13 @@ import v2.std.integer { Int }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import std.occurrence_identity { OccurrenceId }
+import v2.std.node { Node }
+import v2.std.provenance { node_occurrence_id_optional }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.compiler.value_use_dependency {
+  NotDerivedReason, NotDerivedStanding, RecordAbsent, ValuedBinderNotLocated, ValuedBinderSiteUnkeyed,
+  ValuedUseNotLocated, ValueUseDependencies, ValueUseNotDerived, ValueUseRelation
+}
 import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites, FactGroup, FactSpan }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure, DemandDerived, DemandDidNotSettle, DemandUndecided, DependencyDemandRow, FunctionFact,
@@ -258,6 +265,14 @@ type BodyOrdered {
   sites: List<FactCallSite>
   orders: List<OrderEdge>
   exclusive: List<OrderEdge>
+  not_derived: List<NotDerivedKey>
+}
+
+// A value-use row the derivation could NOT produce, keyed by the occurrence it was asked about.
+// Absent is not independent: a body with a pair carries the rows that touch its own sites.
+type NotDerivedKey {
+  key: Int
+  reason: String
 }
 
 // ACTIVATION of one Branch/Match: the first child span is the selector, so every site in it orders before
@@ -309,11 +324,40 @@ fn activation_exclusive(arms: List<List<Int>>, acc: List<OrderEdge>) -> List<Ord
   }
 }
 
-fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, uses: List<UseEdge>) -> List<BodyOrdered> {
+// The module's not-derived rows indexed once by the occurrence they were asked about, so a body reads
+// only the keys its own sites and operands name, never the module's whole row list.
+fn not_derived_index(rows: List<NotDerivedKey>) -> Map<Int, List<String>> {
+  fold_list(xs: rows, empty: empty_map(), cons: fn(m, r) {
+    match map_lookup(m: m, key: r.key) {
+      Present { value: seen } => map_insert(m: m, key: r.key, value: list_snoc_item(xs: seen, item: r.reason))
+      Absent => map_insert(m: m, key: r.key, value: list_snoc_item(xs: Empty, item: r.reason))
+    }
+  })
+}
+
+fn body_not_derived_at(index: Map<Int, List<String>>, o: Optional<OccurrenceId>, acc: List<NotDerivedKey>) -> List<NotDerivedKey> {
+  match extract_occurrence_key(o: o) {
+    Absent => acc
+    Present { value: k } =>
+      match map_lookup(m: index, key: k) {
+        Absent => acc
+        Present { value: reasons } => fold_list(xs: reasons, empty: acc, cons: fn(a, r) { list_snoc_item(xs: a, item: NotDerivedKey { key: k, reason: r }) })
+      }
+  }
+}
+
+fn body_not_derived(sites: List<FactCallSite>, index: Map<Int, List<String>>) -> List<NotDerivedKey> {
+  fold_list(xs: sites, empty: Empty, cons: fn(acc, site) {
+    fold_list(xs: site.operands, empty: body_not_derived_at(index: index, o: site.occurrence, acc: acc), cons: fn(a, o) { body_not_derived_at(index: index, o: o, acc: a) })
+  })
+}
+
+fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, uses: List<UseEdge>, not_derived: List<NotDerivedKey>) -> List<BodyOrdered> {
   let use_index = extract_use_index(uses: uses)
+  let nd_index = not_derived_index(rows: not_derived)
   fold_list(xs: bodies, empty: Empty, cons: fn(acc, body) {
     let act = activation_edges(sites: body.sites, groups: body.groups)
-    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive })
+    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive, not_derived: body_not_derived(sites: body.sites, index: nd_index) })
   })
 }
 
@@ -336,7 +380,14 @@ fn body_effect_facts(body: BodyOrdered, table: EffectReachTable) -> BodyEffectFa
 
 // ONE MODULE'S result, run at the end over the closure-wide reach table; the caller concatenates modules,
 // so no list is searched per body.
+type BodyNotDerived {
+  module: QualifiedName
+  function: QualifiedName
+  rows: List<NotDerivedKey>
+}
+
 type ModuleEffectPairCensus {
+  not_derived: List<BodyNotDerived>
   pairs: List<EffectPairRow>
   exclusive_pairs: List<ExclusivePairRow>
   totals: ModuleEffectPairTotals
@@ -344,6 +395,7 @@ type ModuleEffectPairCensus {
 
 fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>, table: EffectReachTable) -> ModuleEffectPairCensus {
   let seed = ModuleEffectPairCensus {
+    not_derived: Empty,
     pairs: Empty,
     exclusive_pairs: Empty,
     totals: ModuleEffectPairTotals { module: module, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }
@@ -352,6 +404,7 @@ fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>
     let found = body_effect_pairs(facts: body_effect_facts(body: body, table: table))
     let n = length(xs: found.pairs)
     ModuleEffectPairCensus {
+      not_derived: if n > 0 { list_snoc_item(xs: acc.not_derived, item: BodyNotDerived { module: module, function: body.function, rows: body.not_derived }) } else { acc.not_derived },
       pairs: fold_list(xs: found.pairs, empty: acc.pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
       exclusive_pairs: fold_list(xs: found.exclusive_pairs, empty: acc.exclusive_pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
       totals: ModuleEffectPairTotals {
@@ -435,4 +488,146 @@ fn effect_reach_reason(table: EffectReachTable, callee: QualifiedName) -> Option
         Absent => Present { value: ReachesUnresolvedCallee { callee: callee } }
       }
   }
+}
+
+// ---- THE VALUE-USE DERIVATION, REDUCED. One module's relations as occurrence pairs, and its not-derived
+// rows keyed by occurrence with a closed word for why (the same coproduct, not text). A Node without an
+// occurrence yields an Absent endpoint, which orders nothing.
+fn use_edges_of(deps: ValueUseDependencies) -> List<UseEdge> {
+  fold_list(xs: deps.relations, empty: Empty, cons: fn(acc, r) {
+    list_snoc_item(xs: acc, item: UseEdge { source: node_occurrence_id_optional(node: r.view.source), dependent: node_occurrence_id_optional(node: r.view.dependent) })
+  })
+}
+
+fn not_derived_word(r: NotDerivedReason) -> String {
+  match r {
+    NotDerivedStanding { standing: _ } => "binder_standing_has_no_value"
+    ValuedUseNotLocated { value: _, why: _ } => "valued_use_not_located"
+    ValuedBinderSiteUnkeyed { value: _ } => "valued_binder_site_unkeyed"
+    ValuedBinderNotLocated { value: _, why: _ } => "valued_binder_not_located"
+    RecordAbsent => "record_absent"
+  }
+}
+
+fn not_derived_keys_of(deps: ValueUseDependencies) -> List<NotDerivedKey> {
+  fold_list(xs: deps.not_derived, empty: Empty, cons: fn(acc, r) {
+    list_snoc_item(xs: acc, item: NotDerivedKey { key: r.occurrence.value, reason: not_derived_word(r: r.reason) })
+  })
+}
+
+// ---- THE UNOBSERVED POPULATION, GROUPED BY ROOT. A module that did not resolve is never a module with
+// zero pairs: it is counted here under the first refused file and cause that stranded it (or, when the
+// census names none, under its own resolve reason), so one run says how many modules each root strands.
+type UnobservedRoot {
+  root: String
+  cause: String
+  modules: Int
+  example: QualifiedName
+}
+
+fn unobserved_roots_add(roots: List<UnobservedRoot>, root: String, cause: String, module: QualifiedName) -> List<UnobservedRoot> {
+  let known = fold_list(xs: roots, empty: false, cons: fn(hit, r) { hit || ((r.root == root) && (r.cause == cause)) })
+  if known {
+    fold_list(xs: roots, empty: Empty, cons: fn(acc, r) {
+      if (r.root == root) && (r.cause == cause) {
+        list_snoc_item(xs: acc, item: UnobservedRoot { root: r.root, cause: r.cause, modules: r.modules + 1, example: r.example })
+      } else {
+        list_snoc_item(xs: acc, item: r)
+      }
+    })
+  } else {
+    list_snoc_item(xs: roots, item: UnobservedRoot { root: root, cause: cause, modules: 1, example: module })
+  }
+}
+
+type EffectPairCensusReport {
+  modules: List<ModuleEffectPairCensus>
+  roots: List<UnobservedRoot>
+  unobserved_modules: Int
+  file_refusals: Int
+  unreadable_files: Int
+}
+
+fn epc_text(parts: List<String>) -> String {
+  fold_list(xs: parts, empty: "", cons: fn(acc, p) { concat(acc, p) })
+}
+
+fn epc_reason_word(r: ReachReason) -> String {
+  match r {
+    ReachesHostObservation => "host_observation"
+    ReachesHostActuation => "host_actuation"
+    ReachesExecutionSemanticsUnknown => "execution_semantics_unknown"
+    ReachesDeclaredResource { operation: o } => concat("declared_resource:", qualified_name_to_dotted_string(qn: o))
+    ReachesOpaqueOperation { operation: o } => concat("opaque_operation:", qualified_name_to_dotted_string(qn: o))
+    ReachesUndeclaredOperation { operation: o } => concat("undeclared_operation:", qualified_name_to_dotted_string(qn: o))
+    ReachesFunctionValueCall { function: f } => concat("function_value_call:", qualified_name_to_dotted_string(qn: f))
+    ReachesUnresolvedCallee { callee: c } => concat("unresolved_callee:", qualified_name_to_dotted_string(qn: c))
+    ReachesThroughCallee { callee: c } => concat("through_callee:", qualified_name_to_dotted_string(qn: c))
+  }
+}
+
+fn epc_site_text(s: EffectSite) -> String {
+  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", to_string(s.occurrence), "(", epc_reason_word(r: s.reason), ")"])
+}
+
+fn epc_pair_line(p: EffectPairRow) -> String {
+  epc_text(parts: [
+    "[effect-pair] module=", qualified_name_to_dotted_string(qn: p.module),
+    " function=", qualified_name_to_dotted_string(qn: p.function),
+    " first=", epc_site_text(s: p.first), " second=", epc_site_text(s: p.second),
+    " resource_standing=alias_unknown"
+  ])
+}
+
+fn epc_not_derived_lines(b: BodyNotDerived) -> List<String> {
+  fold_list(xs: b.rows, empty: Empty, cons: fn(acc, r) {
+    list_snoc_item(xs: acc, item: epc_text(parts: [
+      "[effect-pair-not-derived] module=", qualified_name_to_dotted_string(qn: b.module),
+      " function=", qualified_name_to_dotted_string(qn: b.function),
+      " occurrence=", to_string(r.key), " reason=", r.reason
+    ]))
+  })
+}
+
+fn epc_totals(r: EffectPairCensusReport) -> ModuleEffectPairTotals {
+  fold_list(xs: r.modules, empty: ModuleEffectPairTotals { module: Empty, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }, cons: fn(t, m) {
+    ModuleEffectPairTotals {
+      module: t.module,
+      bodies_scanned: t.bodies_scanned + m.totals.bodies_scanned,
+      bodies_with_pairs: t.bodies_with_pairs + m.totals.bodies_with_pairs,
+      pairs: t.pairs + m.totals.pairs,
+      exclusive_pairs: t.exclusive_pairs + m.totals.exclusive_pairs
+    }
+  })
+}
+
+fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
+  let t = epc_totals(r: r)
+  let head = [epc_text(parts: [
+    "[effect-pair-census] OVER-COUNTS: resource identity is not modelled (D16 part 3), so every pair of effect-reaching sites with no derived order counts as a possible conflict; absent is not independent.",
+    " modules_observed=", to_string(length(xs: r.modules)),
+    " modules_unobserved=", to_string(r.unobserved_modules),
+    " file_refusals=", to_string(r.file_refusals),
+    " unreadable_files=", to_string(r.unreadable_files),
+    " bodies_scanned=", to_string(t.bodies_scanned),
+    " bodies_with_pairs=", to_string(t.bodies_with_pairs),
+    " pairs=", to_string(t.pairs),
+    " exclusive_pairs=", to_string(t.exclusive_pairs)
+  ])]
+  let roots = fold_list(xs: r.roots, empty: head, cons: fn(acc, x) {
+    list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-root] root=", x.root, " cause=", x.cause, " modules=", to_string(x.modules), " example=", qualified_name_to_dotted_string(qn: x.example)]))
+  })
+  fold_list(xs: r.modules, empty: roots, cons: fn(acc, m) {
+    let with_pairs = fold_list(xs: m.pairs, empty: acc, cons: fn(a, p) { list_snoc_item(xs: a, item: epc_pair_line(p: p)) })
+    fold_list(xs: m.not_derived, empty: with_pairs, cons: fn(a, b) {
+      fold_list(xs: epc_not_derived_lines(b: b), empty: a, cons: fn(a2, l) { list_snoc_item(xs: a2, item: l) })
+    })
+  })
+}
+
+// Held (0) when the census observed at least one module; no observation (2) when it observed none, so a
+// route that strands the whole pool can never exit green. Whether the CONTROLS agree is judged by the
+// claim files, not here.
+fn effect_pair_census_exit(r: EffectPairCensusReport) -> Int {
+  if length(xs: r.modules) > 0 { 0 } else { 2 }
 }
