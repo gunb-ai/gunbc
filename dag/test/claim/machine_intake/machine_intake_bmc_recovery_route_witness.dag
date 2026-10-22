@@ -44,6 +44,11 @@ import gunbc.machine_intake.bmc_recovery_route_frontier {
 }
 import extdeps.ssh.known_hosts { openssh_standard_port }
 import v2.std.decl_index { DeclFact, decl_facts }
+// THE NAME-TO-PATH RULE, asked directly: the pending census walks the directory THAT RULE resolves a
+// trigger's module to (see recovery_trigger_pool_roots), so the population is derived from the trigger,
+// never from a hand-kept list of directories this file could quietly keep stale.
+import gunbc.source_layout { layout_module_storage_path }
+import std.filesystem { path_parent_directory }
 import gunbc.machine_intake.bmc_recovery_route {
   ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_rescue_host_address, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_proof_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
@@ -659,34 +664,47 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
 // does not accept as evidence. They are rows now, and a row differs from a comment in one way that
 // matters: it is read by a fold, so it can turn red.
 
-// The population the trigger check is answered from: every module a row's trigger NAMES, walked by the
-// compiler's own census. The machine_intake roots alone were not enough -- the onboarding row's trigger
-// lives in gunbc.tools.bmc_onboard, so with a machine_intake-only population "pending" there was decided
-// by a census that could not see the module, and repointing the trigger at a declaration that exists
-// there stayed invisible. falsification row "the onboarding row dissolves against a declaration that
-// already exists" found exactly that and went green. The falsification found the hole; this closes it.
-data recovery_trigger_pool_roots: List<String> = [
-  "dag/gunbc/machine_intake",
-  "dag/gunbc/tools",
-]
-
-data recovery_trigger_decl_facts: List<DeclFact> = decl_facts(pool_roots: recovery_trigger_pool_roots)
+// THE POPULATION THE TRIGGER CHECK IS ANSWERED FROM, DERIVED FROM THE TRIGGER ITSELF. A hand-kept list
+// of directories was tried first ("just add the module the trigger lives in") and the side chat held it:
+// a restricted census is a restricted census whether it is restricted by file or by directory, so a
+// trigger pointed at a declaration under, say, gunbc.auth would still have read "pending". What decides
+// now is the name-to-path rule itself (DESIGN §3: module `a.b.c` is stored at `<root(a)>/b/c.dag`, the
+// one authority gunbc.source_layout.layout_module_storage_path), so the population for a row is exactly
+// the directory the rule resolves THAT row's trigger module to -- the same resolution the compiler and
+// the layout check use, and nothing this file can edit. Two falsification rows found the shapes of this
+// hole in sequence: "the onboarding row dissolves against a declaration that already exists" (a trigger
+// repointed inside the hand-listed roots) and "a pairing trigger is pointed at a declaration outside
+// the rostered modules and the census still says pending" (one repointed OUTSIDE them, which the
+// hand-listed version passed green). A trigger whose module name resolves to no path at all is pending
+// by construction: a name the storage rule refuses cannot be declared anywhere.
+fn recovery_trigger_pool_roots(row: FrontierRow) -> List<String> {
+  match row.dissolution {
+    BoundDissolution { trigger: t } =>
+      match layout_module_storage_path(module: dissolution_trigger_ref(trigger: t).module_path as String) {
+        Present { value: path } => [path_parent_directory(path: path)]
+        Absent => []
+      }
+    UnboundDissolution { description: _ } => []
+  }
+}
 
 // Is this row's trigger a declaration the live tree's own census does NOT declare? The population is
-// recovery_trigger_decl_facts -- what the compiler found under every module a trigger names -- so
+// the compiler's census of the directory the storage rule resolves this row's trigger module to, so
 // "pending" is answered by the tree, not by this file's belief about it. An UnboundDissolution is never
 // pending: it is a description, nothing can discharge it, and that is the shape these rows were written
 // to avoid.
 fn recovery_frontier_pending(row: FrontierRow) -> Bool {
   match row.dissolution {
-    BoundDissolution { trigger: t } =>
-      !any(xs: recovery_trigger_decl_facts, predicate: fn(d) {
-        d.qualified_name
-          == concat(
-            dissolution_trigger_ref(trigger: t).module_path as String,
-            concat(".", dissolution_trigger_ref(trigger: t).decl_name as String),
-          )
+    BoundDissolution { trigger: t } => {
+      let trigger_ref = dissolution_trigger_ref(trigger: t)
+      let wanted = concat(
+        trigger_ref.module_path as String,
+        concat(".", trigger_ref.decl_name as String),
+      )
+      !any(xs: decl_facts(pool_roots: recovery_trigger_pool_roots(row: row)), predicate: fn(d) {
+        d.qualified_name == wanted
       })
+    }
     UnboundDissolution { description: _ } => false
   }
 }
