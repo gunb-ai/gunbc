@@ -5298,7 +5298,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("");
-                names.iter().any(|want| name == *want)
+                names.contains(&name)
             })
             .cloned()
             .collect::<Vec<_>>()

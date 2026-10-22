@@ -16,8 +16,7 @@ import v2.lens.affected_set {
 }
 import gunbc.ci.ci_spec {
   Gate,
-  gunbc_ci_gates,
-  gunbc_ci_falsifier_gates
+  gunbc_ci_gates
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -72,7 +71,7 @@ test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
       ps: processes_or_empty(o: ci_gate_processes(pool_roots: affected_set_universe_pool_roots))
     ),
     ys: gate_discriminants(
-      gates: concat(gunbc_ci_gates, gunbc_ci_falsifier_gates)
+      gates: gunbc_ci_gates
     ),
     eq: symbol_eq
   )

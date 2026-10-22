@@ -5,6 +5,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority }
 import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+import extdeps.ampere.mt_collins_product_brief.platform { mt_collins_product_brief_authority }
+import extdeps.board_soc { BoardSocEdge }
+import extdeps.cpu.ampere { ampere_altra_soc_family, ampere_altra_max_soc_family }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { FactCitation }
+import std.algebra { FreeSemigroup }
 
 data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_gsg_authority
 
@@ -40,4 +46,23 @@ data mt_collins_board_authority: BoardAuthorityRef = BoardAuthorityRef {
     decl_name: "mt_collins_board",
     field: WholeDeclaration
   }
+}
+
+// THE BOARD -> SoC EDGE. The Mt. Collins board is designed for the Ampere Altra and Altra Max SoC
+// families. It is a grouping fact cited to the public product brief (whose platform note states the
+// board is "for Altra and Altra Max"), not an inference, and it names BOTH families: the board
+// admits two, and the firmware architecture it establishes is derived from whether the two agree
+// (extdeps.board_soc.board_soc_architecture), never defaulted to the first.
+data mt_collins_board_soc_edge: BoardSocEdge = BoardSocEdge {
+  board: mt_collins_board_authority,
+  soc_families: FreeSemigroup {
+    head: ampere_altra_soc_family,
+    tail: [ampere_altra_max_soc_family],
+  },
+  citations: [
+    FactCitation {
+      fact: decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.platform", decl_name: "platform_note"),
+      authority: mt_collins_product_brief_authority,
+    },
+  ],
 }
