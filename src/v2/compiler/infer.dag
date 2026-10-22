@@ -6540,9 +6540,10 @@ fn infer_unannotated_let_unsolved_refusal(node: Node, entries: Map<Node, List<In
           match inferred_facts_resolved_type_optional(facts: facts) {
             Absent => outcome_accepted(entries)
             Present { value: produced } =>
-              match infer_produced_open_type_params(produced: produced) {
-                Empty => outcome_accepted(entries)
-                Cons { head: _, tail: _ } => outcome_rejected(infer_unsolved_constructor_type_variable_diagnostic(node: bound))
+              if infer_type_is_open(t: produced) {
+                outcome_rejected(infer_unsolved_constructor_type_variable_diagnostic(node: bound))
+              } else {
+                outcome_accepted(entries)
               }
           }
       }
@@ -7971,7 +7972,7 @@ fn infer_close_held_root_at(declaring: Node, cur: InferHoldResolution, held: Inf
             ArmTypesConflict =>
               InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: infer_arms_declare_conflicting_types_diagnostic(node: held.settled.node)) } }
             ArmTypesJoined { joined: _ } => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
-            ArmTypesNoneDeclare => infer_close_held_root_closed(declaring: declaring, cur: cur, held: held, arm_type: arm_type, unchanged: unchanged, resolved: resolved)
+            ArmTypesNoneDeclare => InferHoldResolution { entries: cur.entries, pending: cur.pending, refused: Present { value: diagnostics_singleton(d: infer_no_arm_declares_a_type_diagnostic(node: held.settled.node)) } }
           }
       }
   }
