@@ -3,7 +3,7 @@ module test.claim.flash_next_serving_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { byte_size_count, token_count_value }
+import std.measure { byte_size_count, token_count_value, token_count }
 import std.dissolution { dissolution_is_bound }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, CitedFigureStanding }
 import extdeps.gpu.types { TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
@@ -22,8 +22,10 @@ import gunbc.serving.flash_next_experiment_identity {
 import gunbc.serving.flash_next_quant_matrix {
   QuantCell, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
   CellRefusedWeightsExceedUsableMemory, CellUnobserved, flash_next_quant_matrix, quant_matrix_outcome,
-  flash_next_quant_matrix_frontier, upstream_v032_run_observations,
+  flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_centi_gib,
+  WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
+import gunbc.serving.gpu_bench_warm_standing { WarmValid, WarmOverCapacity }
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
 import gunbc.serving.flash_next_image_capability_observation {
   Sm90, Sm100, Sm120, Fp8MainKvCache, FlashInferNativeFp4Moe, Nvfp4PleTable, JitIfCompiles, NotBuilt, BuiltIn,
@@ -345,4 +347,12 @@ test fn w_quant_matrix_refuses_bf16_weights_and_never_zeroes_unrun_cells() -> Bo
          _ => false
        }
     && count(upstream_v032_run_observations) == 2
+    && fp8_checkpoint_safetensors_centi_gib == 17280
+}
+
+// A throughput row without an admitted warm standing, or one over capacity, is not scoreable.
+test fn w_warm_throughput_scoreable_only_under_warm_valid() -> Bool {
+  !throughput_scoreable(a: WarmNotYetAdmitted { trigger: bench_v2_records_trigger })
+    && !throughput_scoreable(a: WarmAdmissionStanding { standing: WarmOverCapacity { working_set_tokens: token_count(count: 10), measured_kv_tokens: token_count(count: 5) } })
+    && throughput_scoreable(a: WarmAdmissionStanding { standing: WarmValid { working_set_tokens: token_count(count: 5), measured_kv_tokens: token_count(count: 10) } })
 }

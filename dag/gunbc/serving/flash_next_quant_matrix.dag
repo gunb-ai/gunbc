@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size }
+import gunbc.serving.gpu_bench_warm_standing { GpuBenchWarmStanding, WarmValid }
 import gunbc.serving.gpu_observed_memory_receipt { observed_memory_bytes, h200_nvl_observed_memory, b200_observed_memory, max_q_observed_memory }
 import gunbc.serving.flash_next_experiment_identity { ServingVariant, Pro6000MaxQNative, H200UpstreamV032, B200UpstreamV032, serving_variant_eq }
 
@@ -40,7 +41,24 @@ fn quant_cell_eq(a: QuantCell, b: QuantCell) -> Bool {
 
 // Throughput of one concurrency level of the session-replay bench (base 90k context, +16k new per turn, 1100 output
 // tokens per turn, ignore_eos, MTP-3). Tenths of tok/s and microseconds keep the figures integral.
+// A warm throughput row is scoreable only under WarmValid from gunbc.serving.gpu_bench_warm_standing (working set within
+// the measured KV, prefix reuse proven; recurring failure mode benchmark_warm_capacity_violation_read_as_engine_performance).
+// Rows replayed before the bench emitted gpu-bench/request/v2 records have no standing and are NotYetAdmitted.
+type WarmAdmission
+  = WarmAdmissionStanding { standing: GpuBenchWarmStanding }
+  | WarmNotYetAdmitted { trigger: NonEmptyStr }
+
+fn throughput_scoreable(a: WarmAdmission) -> Bool {
+  match a {
+    WarmAdmissionStanding { standing: WarmValid { working_set_tokens: _, measured_kv_tokens: _ } } => true
+    _ => false
+  }
+}
+
+data bench_v2_records_trigger: NonEmptyStr = "the bench emits gpu-bench/request/v2 records and gpu_bench_warm_run_admission plus gpu_bench_warm_standing_after_replay return WarmValid for this run" as NonEmptyStr
+
 type ConcurrencyReading {
+  admission: WarmAdmission
   concurrency: Nat
   decode_deci_tokens_per_second_per_request: Nat
   inter_token_gap_microseconds: Nat
@@ -91,9 +109,9 @@ fn refused_bf16(memory_bytes: Nat, utilization_bp: Nat) -> CellOutcome {
 }
 
 data h200_nvl_session_replay: List<ConcurrencyReading> = [
-  ConcurrencyReading { concurrency: 1, decode_deci_tokens_per_second_per_request: 2987, inter_token_gap_microseconds: 11700, ttft_median_milliseconds: 1820, ttft_max_milliseconds: none },
-  ConcurrencyReading { concurrency: 4, decode_deci_tokens_per_second_per_request: 981, inter_token_gap_microseconds: 16400, ttft_median_milliseconds: 1900, ttft_max_milliseconds: none },
-  ConcurrencyReading { concurrency: 8, decode_deci_tokens_per_second_per_request: 580, inter_token_gap_microseconds: 22000, ttft_median_milliseconds: 2040, ttft_max_milliseconds: Present { value: 18100 } },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 1, decode_deci_tokens_per_second_per_request: 2987, inter_token_gap_microseconds: 11700, ttft_median_milliseconds: 1820, ttft_max_milliseconds: none },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 4, decode_deci_tokens_per_second_per_request: 981, inter_token_gap_microseconds: 16400, ttft_median_milliseconds: 1900, ttft_max_milliseconds: none },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 8, decode_deci_tokens_per_second_per_request: 580, inter_token_gap_microseconds: 22000, ttft_median_milliseconds: 2040, ttft_max_milliseconds: Present { value: 18100 } },
 ]
 
 fn kv_cell(weights: WeightDtype, kv: KvDtype) -> QuantCell {
@@ -131,11 +149,17 @@ fn quant_matrix_outcome(rows: List<QuantMatrixRow>, v: ServingVariant, c: QuantC
   }
 }
 
+// The Qwen/Qwen3.8-Flash-Next-FP8 checkpoint at revision 236dfdf285828023ca3bcd3f37366c58a3469b13 is 172.8 GiB of
+// safetensors (HF tree API sum, 131 files; PLE table FP8). Upstream offloads the PLE table to host, so the GPU-resident
+// share is below this and unmeasured: the FP8 cells stay Unobserved until a matrix row reports; they may refuse.
+data fp8_checkpoint_safetensors_centi_gib: Nat = 17280
+
 // OBSERVATIONS of the upstream 0.32.0 runs, relayed by the operator (run receipts; the remaining ServingRunReceipt
 // fields — vbios, digests, backends per layer — are owed with the snapshots).
 type UpstreamRunObservation {
   variant: ServingVariant
   gpu_uuid: NonEmptyStr
+  vbios: NonEmptyStr
   power_limit_deci_watts: Nat
   driver_version: NonEmptyStr
   moe_backend: NonEmptyStr
@@ -148,10 +172,10 @@ type UpstreamRunObservation {
 data upstream_ple_note: NonEmptyStr = "PLE table re-expressed BF16: upstream rejected the checkpoint NVFP4 PLE geometry (expected (2500012,160), got (2500012,80)); cpu_offload on" as NonEmptyStr
 
 data upstream_v032_run_observations: List<UpstreamRunObservation> = [
-  UpstreamRunObservation { variant: H200UpstreamV032, gpu_uuid: "GPU-db782247-b35d-34cf-3f2a-02c3d8c2918e" as NonEmptyStr, power_limit_deci_watts: 5000, driver_version: "615.71.09" as NonEmptyStr, moe_backend: "marlin W4A16 (recipe triton refuses NVFP4)" as NonEmptyStr, mtp_expert_backend: "marlin" as NonEmptyStr, linear_backend: "Humming MXFP8" as NonEmptyStr, attention_note: "fp8 KV + fp8 indexer KV" as NonEmptyStr, ple_note: upstream_ple_note },
-  UpstreamRunObservation { variant: B200UpstreamV032, gpu_uuid: "unrecorded" as NonEmptyStr, power_limit_deci_watts: 10000, driver_version: "580.126.09" as NonEmptyStr, moe_backend: "FLASHINFER_TRTLLM NVFP4 native FP4 (main experts)" as NonEmptyStr, mtp_expert_backend: "marlin W4A16 (2 MTP expert layers)" as NonEmptyStr, linear_backend: "unrecorded" as NonEmptyStr, attention_note: "FA4 Blackwell head_size 256 does not support fp8 KV; falls back to FA2 (upstream warning)" as NonEmptyStr, ple_note: upstream_ple_note },
+  UpstreamRunObservation { variant: H200UpstreamV032, gpu_uuid: "GPU-db782247-b35d-34cf-3f2a-02c3d8c2918e" as NonEmptyStr, vbios: "96.00.D9.00.0E" as NonEmptyStr, power_limit_deci_watts: 5000, driver_version: "615.71.09" as NonEmptyStr, moe_backend: "NvFp4 MoE MARLIN (recipe triton refuses NVFP4)" as NonEmptyStr, mtp_expert_backend: "marlin" as NonEmptyStr, linear_backend: "HummingMxfp8LinearKernel" as NonEmptyStr, attention_note: "fp8 KV + fp8 indexer KV" as NonEmptyStr, ple_note: upstream_ple_note },
+  UpstreamRunObservation { variant: B200UpstreamV032, gpu_uuid: "GPU-801c30bc-4111-f820-3b13-16318ba8f211" as NonEmptyStr, vbios: "97.00.C5.00.2D" as NonEmptyStr, power_limit_deci_watts: 10000, driver_version: "580.126.09" as NonEmptyStr, moe_backend: "NvFp4 MoE FLASHINFER_TRTLLM (main experts)" as NonEmptyStr, mtp_expert_backend: "NvFp4 MoE MARLIN W4A16 (MTP experts)" as NonEmptyStr, linear_backend: "MXFP8 FlashInferCutedslMxfp8LinearKernel (main) + MarlinMxfp8LinearKernel (one other group)" as NonEmptyStr, attention_note: "FA4 Blackwell head_size 256 does not support fp8 KV; falls back to FA2 (upstream warning)" as NonEmptyStr, ple_note: upstream_ple_note },
 ]
 
 data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver and the B200 uuid are committed, the FP8-weights size is read from the checkpoint index so that cell can be classified, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver is committed, the FP8 cells report their GPU-resident weights, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr
 )
