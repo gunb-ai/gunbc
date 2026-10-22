@@ -3,6 +3,8 @@ module gunbc.fleet.fleet_revision_acceptance
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.github.workflow_runs {
+  GitHubWorkflowRunId,
+  github_workflow_run_id_wire_text, github_workflow_run_id_of_wire,
   WorkflowRun, WorkflowRunList, WorkflowRunConclusion, Success, Cancelled, Skipped, Completed,
 }
 import extdeps.github.actions { github_event_name_merge_group }
@@ -213,11 +215,11 @@ type RequiredCiRefusal
   | CiContractMemoryRequirementUnreadable { raw: String }
   | RequiredCiMergeGroupRunAbsent { revision: GitObjectId }
   | RequiredCiMergeGroupRunsTruncated { observed: Int, total: Int }
-  | RequiredCiMergeGroupRunUnconcluded { revision: GitObjectId, run_ids: List<Int> }
-  | RequiredCiRunsNotEventScoped { run_ids: List<Int> }
-  | RequiredCiRunAttemptHistoryUnestablished { revision: GitObjectId, run_ids: List<Int> }
-  | RequiredCiMergeGroupRunsNotSuccess { revision: GitObjectId, run_ids: List<Int> }
-  | RequiredCiContradictoryRuns { revision: GitObjectId, success_run_ids: List<Int>, non_success_run_ids: List<Int> }
+  | RequiredCiMergeGroupRunUnconcluded { revision: GitObjectId, run_ids: List<GitHubWorkflowRunId> }
+  | RequiredCiRunsNotEventScoped { run_ids: List<GitHubWorkflowRunId> }
+  | RequiredCiRunAttemptHistoryUnestablished { revision: GitObjectId, run_ids: List<GitHubWorkflowRunId> }
+  | RequiredCiMergeGroupRunsNotSuccess { revision: GitObjectId, run_ids: List<GitHubWorkflowRunId> }
+  | RequiredCiContradictoryRuns { revision: GitObjectId, success_run_ids: List<GitHubWorkflowRunId>, non_success_run_ids: List<GitHubWorkflowRunId> }
 
 type RequiredCiAdmission<E>
   = RequiredCiAdmitted { succeeded: RequiredCiSucceeded<E> }
@@ -456,8 +458,8 @@ fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> D
 // floor's on R), then the epoch, then attempt history, then outcome agreement -- identity before
 // outcome, as in the workflow_run binding. A partial page refuses before anything is judged from it,
 // because absence in a truncated page is ignorance, not absence.
-fn run_id_list_text(ids: List<Int>) -> String {
-  join(map(ids, i => to_string(i)), ",")
+fn run_id_list_text(ids: List<GitHubWorkflowRunId>) -> String {
+  join(map(ids, i => github_workflow_run_id_wire_text(id: i)), ",")
 }
 
 fn merge_group_run_is_floor_on(run: WorkflowRun, revision: GitObjectId) -> Bool {
@@ -541,7 +543,7 @@ fn accept_required_ci_merge_group_runs(
       cause: RequiredCiMergeGroupRunsTruncated { observed: length(runs.workflow_runs), total: runs.total_count },
     }
   } else if length(off_event) > 0 {
-    RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: map(off_event, r => r.id) } }
+    RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: map(off_event, r => github_workflow_run_id_of_wire(n: r.id)) } }
   } else if length(floor_runs) == 0 {
     RequiredCiRefused { cause: RequiredCiMergeGroupRunAbsent { revision: revision } }
   } else {
@@ -550,27 +552,27 @@ fn accept_required_ci_merge_group_runs(
       ContractEpochAgrees =>
         if length(rerun) > 0 {
           RequiredCiRefused {
-            cause: RequiredCiRunAttemptHistoryUnestablished { revision: revision, run_ids: map(rerun, r => r.id) },
+            cause: RequiredCiRunAttemptHistoryUnestablished { revision: revision, run_ids: map(rerun, r => github_workflow_run_id_of_wire(n: r.id)) },
           }
         } else if length(verdicts) == 0 {
           RequiredCiRefused {
-            cause: RequiredCiMergeGroupRunUnconcluded { revision: revision, run_ids: map(floor_runs, r => r.id) },
+            cause: RequiredCiMergeGroupRunUnconcluded { revision: revision, run_ids: map(floor_runs, r => github_workflow_run_id_of_wire(n: r.id)) },
           }
         } else if length(others) == 0 {
           required_ci_admit(
             revision: revision,
-            evidence: concat("merge_group runs ", run_id_list_text(ids: map(successes, r => r.id))) as NonEmptyStr,
+            evidence: concat("merge_group runs ", run_id_list_text(ids: map(successes, r => github_workflow_run_id_of_wire(n: r.id)))) as NonEmptyStr,
           )
         } else if length(successes) == 0 {
           RequiredCiRefused {
-            cause: RequiredCiMergeGroupRunsNotSuccess { revision: revision, run_ids: map(others, r => r.id) },
+            cause: RequiredCiMergeGroupRunsNotSuccess { revision: revision, run_ids: map(others, r => github_workflow_run_id_of_wire(n: r.id)) },
           }
         } else {
           RequiredCiRefused {
             cause: RequiredCiContradictoryRuns {
               revision: revision,
-              success_run_ids: map(successes, r => r.id),
-              non_success_run_ids: map(others, r => r.id),
+              success_run_ids: map(successes, r => github_workflow_run_id_of_wire(n: r.id)),
+              non_success_run_ids: map(others, r => github_workflow_run_id_of_wire(n: r.id)),
             },
           }
         }

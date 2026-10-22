@@ -329,10 +329,10 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     },
     WetScheduledClaim {
       identity: WitnessIdentity {
-        module_path: "test.claim.examples.blackjack_shuffle_wet_witness_test",
+        module_path: "test.claim.examples.blackjack_shuffle_wet_witness",
         function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       },
-      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness_test.dag",
+      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness.dag",
       function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       expectation: ExpectedToHold {},
     },
@@ -358,6 +358,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
       function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3181,6 +3199,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "a_missing_file_is_the_real_unreadable_arm" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "a_missing_file_is_the_real_unreadable_arm",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.seeded_filler_real_execution", function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution" },
       entry: "dag/test/claim/seeded_filler_real_execution.dag",
       function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution",
@@ -3346,6 +3382,34 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_activation_ensure_wet_witness", function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does" },
       entry: "dag/test/claim/roadmap/session_activation_ensure_wet_witness.dag",
       function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does",
+      expectation: ExpectedToHold {}
+    },
+    // THE THREE WET ROUTES FOR THE BUILD-OUTPUT CAPTURE (Charter 2, review 82782). WITHOUT THESE
+    // ROWS NOTHING EXECUTES THE FILE: this schedule IS the route, and a wet witness that is written
+    // but not scheduled is a declaration no consumer runs -- DESIGN 3c's dangling row, and the
+    // exact incomplete triple chunk_06's header says nothing will refuse. Each row EXECUTES
+    // production's compute_return_outputs wet against a real temp checkout and the real
+    // /usr/bin/git, so the effects are shell.Mktemp.DirWithTemplate, shell.Remove.RecursiveForce, the Filesystem
+    // list/read/write verbs, and -- through production's own compute_exec --
+    // gunbc.WitnessBin.Run. Triple enrollment as for host_capacity_wet_witness: these rows,
+    // the gunbc.ci.ci_layer_roots row for output_capture_absence_wet_witness.dag, and the
+    // v2.workflow.floor_route_gap rows.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_returns_the_blob_git_hash_object_itself_printed" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_returns_the_blob_git_hash_object_itself_printed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
