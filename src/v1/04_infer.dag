@@ -10904,6 +10904,18 @@ fn alias_chain_carrier(n: Node) -> Node {
 // application (generic_declaration_application) from its ALREADY RESOLVED arguments: sending them
 // back through resolve_node_bounded would read them as authored type names. A parameterized alias
 // has no member body to apply, so its cache is dropped and the receiver settles as an authored use.
+// n IS the declaration body (its children are the declaration's own members), not an application of it:
+// a record with as many fields as the declaration has parameters would otherwise pass the arity test
+fn children_are_declaration_body(n: Node, decl: Node) -> Bool {
+  match n.children |> first {
+    Present { value: head } => match decl.children |> first {
+      Present { value: member } => head.name != "" && head.name == member.name
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
 fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
   let carries_resolved_target = match n.inferred {
     Present { value: Resolved { node: _ } } => n.connective == NoConnective && (n.children |> count) > 0
@@ -10913,7 +10925,7 @@ fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
     let type_name = authored_name(env: env, node: n)
     let decl = resolve_generic_use_decl(env: env, n: n)
     let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
-    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) {
+    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) || children_are_declaration_body(n: n, decl: decl) {
       node_with_inferred(n: n, inferred: none)
     } else {
       let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
