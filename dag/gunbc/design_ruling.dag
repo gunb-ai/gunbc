@@ -357,6 +357,7 @@ data runner_listener_admission_is_mask_roster_and_no_worker: DesignRuling = Desi
   decided: "2026-10-21",
   section: "4b",
   provenance: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.",
+  standing: LedgerOnly { reason: "operational admission rule for stopping runner listeners, owned by gunbc.runner.runner_host_cap_bracket; DESIGN.md does not state it" },
 }
 
 fn design_rulings() -> List<DesignRuling> {
