@@ -83,7 +83,7 @@ import gunbc.host.host_layout {
   srv1_host_layout,
   srv2_host_layout,
 }
-import extdeps.rust.cargo { cargo_default_release_dir_rel }
+import extdeps.rust.cargo { cargo_default_release_dir, cargo_default_release_dir_rel }
 
 type DashboardActuationPosture
   = DashboardObserveOnly
@@ -1010,7 +1010,7 @@ fn linux_service_directory_owner() -> PosixOwnerNames {
   }
 }
 
-data macbook_local_serve_binary: FilePath = "/Users/briansrls/gunbc/target/release/gunbc" as FilePath
+data macbook_local_serve_binary: FilePath = join([cargo_default_release_dir(build_root: "/Users/briansrls/gunbc"), "/gunbc"], "") as FilePath
 
 // THE PROVIDER EXECUTABLE THIS INSTANCE OFFERS, and it is the field whose absence made the whole
 // inventory empty.
@@ -1310,7 +1310,7 @@ data srv2_deploy_repo_root: FilePath = "/home/briansrls/gunbc-srv2-deploy" as Fi
 
 data srv2_deploy_instance_root: FilePath = materialization_store_persistent_srv2_scope as FilePath
 
-data srv2_deploy_serve_binary: FilePath = "/home/briansrls/gunbc-srv2-deploy/target/release/gunbc" as FilePath
+data srv2_deploy_serve_binary: FilePath = join([cargo_default_release_dir(build_root: srv2_deploy_repo_root as String), "/gunbc"], "") as FilePath
 
 // THE BRANCH ATTEMPTS ARE PUBLISHED AGAINST IS THE BRANCH THEIR BASE REVISION BELONGS TO, declared per
 // instance (publication_base_branch) rather than derived. Reading the repository's default_branch
@@ -2052,7 +2052,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       controller_repo: dashboard_instance_controller_workdir(instance: instance),
       built_binary: dashboard_instance_child(
         root: dashboard_instance_controller_workdir(instance: instance),
-        child: cargo_default_release_dir_rel,
+        child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
       ),
       path: instance.serve_binary,
     },
