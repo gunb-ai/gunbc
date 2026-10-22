@@ -1,0 +1,17 @@
+module test.probe.workflow_run_id_axis_int_field
+
+// THE CONTROL FOR THE WHOLE MIGRATION'S PREMISE, planted as an executable RED: a run-id position
+// declared Int accepts a carrier by reference (the seed floor defect), so only a position that HOLDS
+// the carrier refuses a rule id. This source plants the Int position on purpose; the witness asserts the
+// census sees NO refusal here, which is the measured reason every production run-id position must be
+// the carrier rather than Int. Read by an_int_declared_run_position_does_not_guard_the_axis.
+import std.types { Int }
+import extdeps.github.deployment_protection_rule { GitHubDeploymentProtectionRuleId }
+
+type PlantedRunRecord {
+  run_id: Int
+}
+
+data a_rule_planted: GitHubDeploymentProtectionRuleId = GitHubDeploymentProtectionRuleId { value: 1 }
+
+data planted: PlantedRunRecord = PlantedRunRecord { run_id: a_rule_planted }
