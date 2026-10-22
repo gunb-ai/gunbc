@@ -135,3 +135,12 @@ test fn nfr_unbound_head_has_no_module() -> Bool {
 test fn nfr_site_key_joins_file_and_fn() -> Bool {
   site_join_key(file: "dag/m/r.dag", fn_name: "pick") == "dag/m/r.dag::pick"
 }
+
+data nfr_zero_arity_src: String = "module m.z\n\ntype C = A | B\n\nfn pick() -> C {\n  A\n}\n\nfn zero() -> Int {\n  match pick() {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+// A fn with no parameters is read, not unread: its empty Conj domain is the accessor's "no binding", and the
+// scrutinee (necessarily not a parameter) is classified. Before the fix this was Unread parameters-unreadable
+// (8 production fns at the first exact-head run); the RED is that Unread count being 1.
+test fn nfr_zero_arity_fn_is_classified_not_unread() -> Bool {
+  nfr_count_unread(reads: nfr_reads_of(text: nfr_zero_arity_src)) == 0 && nfr_count_classified(reads: nfr_reads_of(text: nfr_zero_arity_src), want: "scrutinee-is-an-expression") == 1
+}

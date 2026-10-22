@@ -2,9 +2,9 @@ module v2.compiler.nfr_wildcard_census
 
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, length, list_at_optional, list_snoc_item }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.types { List }
+import std.types { Bool, List }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Arrow, Edge, Atom, Authored, ComputationNode, Disj, Instantiation, Match, MatchArmPatternEdge, Node, Positional, StructuralLabel, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
+import v2.std.node { Arrow, Edge, Atom, Authored, Conj, ComputationNode, Disj, Instantiation, Match, MatchArmPatternEdge, Node, Positional, StructuralLabel, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child, find_binder_type, find_core_child, is_wildcard_pattern }
 import v2.compiler.decl_ref_census { ImportPair, field_target, pair_target, string_value, tag_path_text, last_segment }
 import v2.std.node_query { construct_field_edges }
@@ -40,9 +40,24 @@ type ParamHead {
 }
 
 // Absent when the arrow's parameters cannot be read: the caller refuses rather than reading "no parameters".
+// A fn with no parameters has an empty Conj domain, which the owning accessor refuses as malformed
+// (arrow_domain_named_param_bindings answers Rejected for zero bindings). That refusal is the accessor's
+// statement that it has no binding to return, not that the arrow is unreadable, so a zero-arity arrow is
+// read here as the empty parameter list it is; every other Rejected stays Absent and is counted Unread.
+fn arrow_domain_is_empty_conj(arrow: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } => is_empty(xs: domain.children)
+        _ => false
+      }
+    Absent => false
+  }
+}
+
 fn param_heads_optional(arrow: Node) -> Optional<List<ParamHead>> {
   match arrow_domain_named_param_bindings(arrow: arrow) {
-    Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => if arrow_domain_is_empty_conj(arrow: arrow) { optional_present(value: []) } else { optional_absent() }
     Accepted { value: names, diagnostics: _ } =>
       match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
         Absent => optional_absent()

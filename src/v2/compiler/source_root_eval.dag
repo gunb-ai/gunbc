@@ -3618,6 +3618,23 @@ fn native_nfr_add_row(s: NativeNfrState, key: String) -> NativeNfrState {
   }
 }
 
+// A function holding a wildcard match the reader could not turn into a site is still a function with a
+// wildcard match, so a roster row naming it is not stale: it is unjudged, and the Classified / Unread /
+// ambient line already counts it. It enters `sites` (the identity lookup stale reads) and never `site_keys`
+// (the list unrostered reads), so it cannot manufacture an unrostered finding.
+fn native_nfr_add_judged(s: NativeNfrState, key: String, cause: String) -> NativeNfrState {
+  match map_lookup(m: s.sites, key: key) {
+    Present { value: _ } => s
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, cause), site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+  }
+}
+
+// A file the ingest refused cannot say which functions it holds, so a row under it is unobserved (already
+// counted as `refused`), not stale.
+fn native_nfr_key_under_refused_file(refused: List<String>, key: String) -> Bool {
+  fold_list(xs: refused, empty: false, cons: fn(acc, f) { acc || starts_with(s: key, prefix: concat(f, "::")) })
+}
+
 fn native_nfr_add_classified(s: NativeNfrState, item: String) -> NativeNfrState {
   NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: list_snoc_item(xs: s.classified, item: item), unread: s.unread }
 }
@@ -3638,14 +3655,14 @@ fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan
         empty: native_nfr_state_with_alloc(s: s, alloc: result.alloc),
         cons: fn(acc, r) {
           match r {
-            Classified { fn_name: f, cause: c } => native_nfr_add_classified(s: acc, item: concat(file, "::", f, " ", c))
-            Unread { fn_name: f, cause: c } => native_nfr_add_unread(s: acc, item: concat(file, "::", f, " ", c))
+            Classified { fn_name: f, cause: c } => native_nfr_add_judged(s: native_nfr_add_classified(s: acc, item: concat(file, "::", f, " ", c)), key: site_join_key(file: file, fn_name: f), cause: c)
+            Unread { fn_name: f, cause: c } => native_nfr_add_judged(s: native_nfr_add_unread(s: acc, item: concat(file, "::", f, " ", c)), key: site_join_key(file: file, fn_name: f), cause: c)
             Site { fn_name: f, type_head: h } =>
               let head = native_nfr_head_read(s: acc, plan: plan, front: front, ingest_scope: ingest_scope, self_root: tree.root, pairs: pairs, head: h)
               if head.closed {
                 native_nfr_add_site(s: head.state, key: site_join_key(file: file, fn_name: f), head: h)
               } else if head.ambient {
-                native_nfr_add_ambient(s: head.state, head: h)
+                native_nfr_add_judged(s: native_nfr_add_ambient(s: head.state, head: h), key: site_join_key(file: file, fn_name: f), cause: "ambient-head")
               } else {
                 head.state
               }
@@ -3691,7 +3708,7 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
           let scanned = fold_list(xs: candidates, empty: start, cons: fn(acc, r) { native_nfr_scan_candidate(s: acc, read: r, plan: plan, front: front, ingest_scope: ingest_scope) })
           let done = fold_list(xs: holders, empty: scanned, cons: fn(acc, r) { native_nfr_scan_holder(s: acc, read: r, front: front, ingest_scope: ingest_scope) })
           let unrostered = fold_list(xs: done.site_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.rows, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
-          let stale = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.sites, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
+          let stale = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.sites, key: k) { Present { value: _ } => acc  Absent => if native_nfr_key_under_refused_file(refused: done.refused, key: k) { acc } else { list_snoc_item(xs: acc, item: k) } } })
           let unobserved = length(xs: done.refused) + length(xs: done.unread)
           let bad = length(xs: unrostered) + length(xs: stale) + length(xs: done.duplicates)
           NativeNfrOutput {

@@ -55,6 +55,7 @@ data nfr_reason_nat_keyed_lookup_table: String = "a Nat-keyed lookup table autho
 data nfr_dissolve_nat_keyed_lookup_table: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: the pin table is authored as keyed data rows (pin number to signal, one row each) read by a keyed lookup that returns Absent for a missing key, so the board's pin map is rows and not a match; or the typed census classifies a Nat scrutinee as an open domain and no longer reports it")
 
 data nfr_reason_wildcard_landed_after_join_measurement: String = "a top-level wildcard arm over a closed coproduct found unrostered by the row-to-wildcard identity measurement re-run on the merge of main eed4a900e23e into the join-data branch (fallback_arm_census_facts joined to the frontier union; measured, not gated); it landed on main after the 8f00f69fd5b7 measurement. Un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
+data nfr_reason_wildcard_found_by_native_census: String = "a top-level wildcard arm over a closed coproduct found unrostered by the native nfr-wildcard-census (gunbc test //gunbc/instruments:nfr-wildcard-census) over the roster union at the head of its first exact-head run. Un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
 
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
@@ -251,6 +252,31 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::listener_restart_refusal" },
       reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/verified_archive_install.dag::run_archive_commands" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/verified_archive_install.dag::publish_staged_tree_wet" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/known_red_derivation.dag::known_red_safety_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/known_red_derivation.dag::known_red_ground_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/replica_incarnation.dag::after_host_facts" },
+      reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
     },
 ]
