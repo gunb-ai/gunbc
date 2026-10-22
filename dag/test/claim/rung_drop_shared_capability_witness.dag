@@ -1,9 +1,10 @@
 module test.claim.rung_drop_shared_capability_witness
 
 import std.types { String, Bool, NonEmptyStr, List }
+import std.algebra { FreeSemigroup }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 import gunbc.rung_drop {
-  RungDrop, RungDropStanding, TypedDeclaration, AuthoredProse, FloorCutFalsifierCadence,
+  RungDrop, RungDropStanding, TypedDeclaration, Enumerated, AuthoredProse, FloorCutFalsifierCadence,
   DeletedWithoutReplacement, Standing, Retired,
 }
 import gunbc.rung_drop.roster { rung_drop_roster }
@@ -25,7 +26,7 @@ fn fixture_drop(id: String, standing: RungDropStanding, trigger: String) -> Rung
       previous: Mitigatable,
       temporary: OutsideTheLadder,
       reason: DeletedWithoutReplacement,
-      population: ["fixture.population"],
+      population: Enumerated { members: FreeSemigroup { head: "fixture.population", tail: [] } },
       restoration_trigger: trigger
     }
   }
