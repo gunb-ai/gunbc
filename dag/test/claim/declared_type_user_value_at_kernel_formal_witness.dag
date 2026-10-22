@@ -195,8 +195,10 @@ test fn ut_map_get_checked_binding_at_string_formal_is_the_admitted_residual() -
 // paired with an accepted control at the same position.
 //  (a) a Map<K, V> formal given an Optional actual     (call argument)
 //  (b) a List<T> formal given a Map actual             (call argument)
-//  (c) a raw List<String> in a record field declared RungDropPopulation (gunbc.rung_drop; row
-//      falsifier_rehomed_rows_unexecuted), control: a population_from_list value (record field)
+//  (c) a raw List<String> in a record field declared as the nonempty carrier that RungDropPopulation's
+//      Enumerated variant holds (FreeSemigroup<String>; row falsifier_rehomed_rows_unexecuted), control: a
+//      FreeSemigroup value (record field). The RungDropPopulation spelling itself is not authorable until the
+//      gunbc.rung_drop import closure compiles in the probe harness (C1.2d).
 fn ut_map_formal_optional_actual_source() -> String {
   "module ut.probe\n\nimport std.optional { Optional }\n\nfn takes_map<K, V>(m: Map<K, V>) -> Int {\n  0\n}\n\nfn probe(o: Optional<Int>) -> Int {\n  takes_map(m: o)\n}\n"
 }
@@ -214,11 +216,11 @@ fn ut_list_formal_list_actual_source() -> String {
 }
 
 fn ut_population_field_raw_list_source() -> String {
-  "module ut.probe\n\nimport gunbc.rung_drop { RungDropPopulation }\n\ntype PopulationHolder { population: RungDropPopulation }\n\nfn probe(xs: List<String>) -> PopulationHolder {\n  PopulationHolder { population: xs }\n}\n"
+  "module ut.probe\n\nimport std.algebra { FreeSemigroup }\n\ntype Pop\n  = Enumerated { members: FreeSemigroup<String> }\n  | NotYetCounted { n: Int }\n\ntype PopulationHolder { population: Pop }\n\nfn probe(xs: List<String>) -> PopulationHolder {\n  PopulationHolder { population: xs }\n}\n"
 }
 
-fn ut_population_field_population_from_list_source() -> String {
-  "module ut.probe\n\nimport gunbc.rung_drop { RungDropPopulation, population_from_list }\n\ntype PopulationHolder { population: RungDropPopulation }\n\nfn probe(xs: List<String>) -> PopulationHolder {\n  PopulationHolder { population: population_from_list(xs: xs) }\n}\n"
+fn ut_population_field_nonempty_source() -> String {
+  "module ut.probe\n\nimport std.algebra { FreeSemigroup }\n\ntype Pop\n  = Enumerated { members: FreeSemigroup<String> }\n  | NotYetCounted { n: Int }\n\ntype PopulationHolder { population: Pop }\n\nfn probe(h: String, t: List<String>) -> PopulationHolder {\n  PopulationHolder { population: Enumerated { members: FreeSemigroup { head: h, tail: t } } }\n}\n"
 }
 
 test fn ut_map_formal_optional_actual_must_refuse() -> Bool {
@@ -241,6 +243,6 @@ test fn ut_raw_list_in_population_field_must_refuse() -> Bool {
   !compile_dag_rust_emit_check(ut_population_field_raw_list_source(), "src/ut_probe.rs", [], [])
 }
 
-test fn ut_population_from_list_in_population_field_still_compiles() -> Bool {
-  compile_dag_rust_emit_check(ut_population_field_population_from_list_source(), "src/ut_probe.rs", [], [])
+test fn ut_nonempty_in_population_field_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_population_field_nonempty_source(), "src/ut_probe.rs", [], [])
 }

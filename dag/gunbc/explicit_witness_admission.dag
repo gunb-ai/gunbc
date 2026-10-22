@@ -168,14 +168,6 @@ data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness re
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   known_red_probe(
-    entry: "dag/test/claim/declared_type_user_value_at_kernel_formal_witness.dag",
-    f: "ut_list_head_opt_binding_at_string_formal_must_refuse",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "Receipt for gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel (specimen six residual, below ceiling). The assertion RUNS and returns false: a user Opt<Int> reaching a String formal through the match binding of list_head(xs: List<Opt<Int>>) is ACCEPTED, because the binding carries the callee's uninstantiated parameter T and TypeReferenceUninstantiatedTypeParameter (a name declared as a type parameter by an enclosing generic declaration) is unjudged by the declared-type wall.",
-    dissolution: unbound_dissolution(description: "pattern bindings carry the instantiated type (pattern_binding_type C1.2b, arity C1.2c, tail/split C1.2d): the binding is typed Opt<Int>, the source is refused, this witness greens and the row retires in the change that lands the last of them")
-  ),
-  known_red_probe(
     entry: "dag/test/claim/constructor_tag_route_probe_red.dag",
     f: "same_arm_one_t_two_coproducts_must_refuse",
     kind: CorpusWitnessKind,

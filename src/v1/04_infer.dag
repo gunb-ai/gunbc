@@ -4636,6 +4636,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   }
   if optional_produced_at_required_declared(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedOptionalAtRequired }
+  } else if collection_head_conflict(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
   } else if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
   } else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
@@ -4873,6 +4875,37 @@ fn side_is_established_non_collection_identity(n: Node, scope: InferScope) -> Bo
         || type_head_exposure_is_product(exposure: exposure)
         || type_head_exposure_is_coproduct(exposure: exposure)
     }
+  }
+}
+
+// A BUILT-IN CONTAINER HEAD IS AN ESTABLISHED IDENTITY BEFORE ITS ARGUMENTS ARE (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, specimen seven). A declared List<T> or Map<K, V> is
+// generic, and the generic and optional early exits of declared_type_inhabitance answered undecided for it, so
+// a Map actual at a List formal and an Optional actual at a Map formal were never judged: the head is
+// settled whatever its arguments are. The head is read by arity after the alias peel (one element child, or a
+// key and a value), the same reading collection_versus_established_identity uses, and the pair conflicts when
+// the declared head is a collection and the produced side is an Optional carrier or a collection of the other
+// arity. A declared Optional carrier is not judged here (the lift direction is the optional arms'), and a
+// produced side with no established head (a type variable, an erased identity) conflicts with nothing.
+fn collection_head_arity(n: Node, scope: InferScope) -> Int {
+  let si = scope.type_env.source_indices
+  let peeled = expand_nominal_alias_rhs(n: n, env: scope.type_env, module_name: scope.module_name)
+  if node_is_keyed_collection(n: n, source_indices: si) || node_is_keyed_collection(n: peeled, source_indices: si) {
+    2
+  } else if node_is_element_collection(n: n, source_indices: si) || node_is_element_collection(n: peeled, source_indices: si) {
+    1
+  } else { 0 }
+}
+
+fn collection_head_conflict(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let declared_arity = collection_head_arity(n: declared, scope: scope)
+  if declared_arity == 0 || declared_type_carries_optional(declared: declared, scope: scope) {
+    false
+  } else if declared_type_carries_optional(declared: produced, scope: scope) {
+    true
+  } else {
+    let produced_arity = collection_head_arity(n: produced, scope: scope)
+    produced_arity > 0 && produced_arity != declared_arity
   }
 }
 
@@ -5550,6 +5583,16 @@ fn condition_obligation_diags(label: String, typed: Node, scope: InferScope) -> 
       produced: resolved_type(n: typed), span: typed.span
     },
     scope: scope)
+}
+
+// The refusals of declared_type_inhabitance alone: a position that already answers its own undecidable
+// verdicts (the record-literal field) consumes the one judgment without gaining a new diagnostic class.
+fn declared_type_refusal_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
+  match declared_type_inhabitance(obligation: obligation, scope: scope) {
+    InhabitanceRefused { reason: _ } => declared_type_obligation_diags(obligation: obligation, scope: scope)
+    Inhabits => []
+    InhabitanceUndecidable { reason: _ } => []
+  }
 }
 
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
@@ -11895,7 +11938,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
           []
         } else {
-          optional_at_required_obligation_diags(
+          declared_type_refusal_diags(
             obligation: DeclaredTypeObligation {
               position: PositionRecordLiteralField,
               subject: fi_name,
