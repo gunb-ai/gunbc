@@ -1,6 +1,6 @@
 module v2.std.decl_ref_resolution
 
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.compiler.name_resolve { ResolutionContext }
@@ -79,7 +79,24 @@ fn decl_ref_named_field_present(ref: DeclarationRef, declaration: Node) -> Bool 
         xs: node_labeled_child_edges(node: declaration_field_owner_node(declaration: declaration)),
         predicate: fn(e) { named_edge_sort_key(e: e) == f as String }
       )
-    TypeParameter { name: _ } => false
+    TypeParameter { name: n } =>
+      match declaration_type_binders(declaration: declaration) {
+        Absent => false
+        Present { value: b } => any(xs: node_labeled_child_edges(node: b), predicate: fn(e) { named_edge_sort_key(e: e) == n as String })
+      }
+  }
+}
+
+// A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER'S HEADER (std.decl_ref DeclField): the binders node
+// of a generic, aliased or opaque type declaration carries one labelled child per parameter. A
+// declaration with no binders has no type parameter to name, so the citation is absent, never true.
+fn declaration_type_binders(declaration: Node) -> Optional<Node> {
+  match type_decl_view(target: declaration) {
+    GenericTypeDecl { binders: b, member: _ } => Present { value: b }
+    TypeAlias { binders: b, aliased: _ } => Present { value: b }
+    OpaqueTypeDecl { binders: b } => Present { value: b }
+    PlainTypeDecl { member: _ } => Absent
+    NotATypeDecl => Absent
   }
 }
 
