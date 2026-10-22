@@ -117,7 +117,30 @@ fn canon_shape_v1(node: Node) -> String {
       } else {
         "?"
       }
+    // A RECORD LITERAL: v1's parser builds ExprRecordLit with the field inits as children
+    // (src/v1/02_parse.dag parse_record_literal_named), each init a FieldInit node whose single
+    // child is the value (00_core.dag make_field_init_node, ChildRole "value" at position 0). The
+    // v2 side lowers the same literal to a CONJ spine and its walker prints F(F(l)) for one field
+    // (measured, PR-body receipt): the record itself is one F, each field init another. Same
+    // reasoning as F above: field VALUES stay visible (nesting is the defect), field NAMES are
+    // dropped (v1 carries them in the init node's name, v2 in trailing atoms). An empty record is
+    // "?" rather than "F()", never a silent leaf: no arm here spells one, and "?" on a shape the
+    // contract does not carry is the failure this walker exists to make loud.
+    ExprRecordLit { parent_enum: _ } =>
+      if node.children |> count == 0 {
+        "?"
+      } else {
+        concat("F(", node.children |> map(f => canon_field_init_v1(node: f)) |> join(separator: ","), ")")
+      }
     _ => "l"
+  }
+}
+
+fn canon_field_init_v1(node: Node) -> String {
+  if node.children |> count == 1 {
+    concat("F(", canon_first_child_v1(node: node), ")")
+  } else {
+    "?"
   }
 }
 

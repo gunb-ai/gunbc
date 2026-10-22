@@ -95,11 +95,11 @@ data rust_postfix_operators: List<PostfixOperatorSpec> = [
   PostfixOperatorSpec { symbol: "(", binding_power: 21 },
   PostfixOperatorSpec { symbol: "[", binding_power: 21 },
   PostfixOperatorSpec { symbol: "as", binding_power: 19 },
-  // The record-literal arm's threshold. Historically the parser REFUSED the brace when
-  // `14 <= min_bp`, i.e. consumed it only at min_bp <= 13; on this table's consume-iff-scale that
-  // is 13, and the row is declared there so the shared read reproduces the historical decision
-  // exactly (`-Foo { x: 1 }` keeps binding its record literal inside a unary operand).
-  PostfixOperatorSpec { symbol: "{", binding_power: 13 }
+  // The record-literal arm's threshold. Declared at 18 beside its dag sibling: at 13 the
+  // consume-iff read moved a record literal OUT of a unary operand the prefix row at 18 used to
+  // keep it inside (review 84349; measured over both routes, invocation jd1752ffb). See
+  // dag_postfix_operators in extdeps.languages.dag.syntax for the full receipt.
+  PostfixOperatorSpec { symbol: "{", binding_power: 18 }
 ]
 
 data rust_syntax_spec: SyntaxSpec = SyntaxSpec {

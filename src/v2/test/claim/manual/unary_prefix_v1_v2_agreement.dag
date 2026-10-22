@@ -36,8 +36,9 @@ import v2.test.claim.manual.unary_prefix_v2_canon_lib { v2_canon }
 // (-a.b -> P(F(l)), (-a).b -> F(P(l))) and pipe (-a |> f, !a |> f -> M(P(l))): each is a shape one
 // parser can get wrong if a postfix gate is a literal instead of a declared row. The 12-arm list
 // this replaces advertised a dot and pipe arm it did not contain and collapsed `.`/`|>`/`as` to a
-// leaf in both walkers, so those shapes agreed vacuously; all 22 arms are MEASURED (see the expected
-// map) and the walkers key on node kind and head identity.
+// leaf in both walkers, so those shapes agreed vacuously; all 32 arms (22 binding + 10 record-literal
+// from review 84349) are MEASURED (see the expected map) and the walkers key on node kind and head
+// identity.
 data agreement_arms: List<String> = [
   "-1 - 2",
   "-(1 - 2)",
@@ -60,7 +61,17 @@ data agreement_arms: List<String> = [
   "-a |> f",
   "!a |> f",
   "!a.b",
-  "-a.b + c"
+  "-a.b + c",
+  "Foo { x: 1 }",
+  "Foo.Bar { x: 1 }",
+  "-Foo { x: 1 }",
+  "!Foo { x: 1 }",
+  "-Foo.Bar { x: 1 }",
+  "!Foo.Bar { x: 1 }",
+  "a + Foo { x: 1 }",
+  "a * Foo { x: 1 }",
+  "a + Foo.Bar { x: 1 }",
+  "a * Foo.Bar { x: 1 }"
 ]
 
 // THE SHAPE EACH SIDE MUST PRODUCE, stated from v2's closed production and v1's declared table --
@@ -99,6 +110,26 @@ fn agreement_expected(body: String) -> String {
     "!a |> f" => "M(P(l))"
     "!a.b" => "P(F(l))"
     "-a.b + c" => "I(P(F(l)),l)"
+    // THE RECORD-LITERAL ARMS (review 84349). Strings MEASURED at the head with the "{" row
+    // declared at 18 (invocation jb773f4f1): the record itself is one F, each field init another
+    // (v1's ExprRecordLit/FieldInit arms mirror v2's CONJ-spine lowering). With the row left at 13
+    // these arms go RED: v1 prints the unary over the bare dot (`P(F(l))`) with the record split
+    // into a second statement, while v2 keeps `P(F(F(l)))` -- the exact divergence the review
+    // predicted and measurement confirmed (invocation jd1752ffb, 12 cells x both routes x both
+    // bindings). The pipe-right family (`a |> Foo { x: 1 }`) is NOT here: v1 reads it as a call
+    // (`l`), v2 as a call over a record (`M(l)`), and the row value does not move either side --
+    // a pre-existing divergence with zero corpus sites, declared in the PR body rather than
+    // pinned by an arm that could not pass.
+    "Foo { x: 1 }" => "F(F(l))"
+    "Foo.Bar { x: 1 }" => "F(F(l))"
+    "-Foo { x: 1 }" => "P(F(F(l)))"
+    "!Foo { x: 1 }" => "P(F(F(l)))"
+    "-Foo.Bar { x: 1 }" => "P(F(F(l)))"
+    "!Foo.Bar { x: 1 }" => "P(F(F(l)))"
+    "a + Foo { x: 1 }" => "I(l,F(F(l)))"
+    "a * Foo { x: 1 }" => "I(l,F(F(l)))"
+    "a + Foo.Bar { x: 1 }" => "I(l,F(F(l)))"
+    "a * Foo.Bar { x: 1 }" => "I(l,F(F(l)))"
     _ => "?"
   }
 }
