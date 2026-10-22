@@ -15,7 +15,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // WHAT HOLDS MEANWHILE: the census bodies are pure functions of supplied captures and their
 // witness claims execute on supplied inputs; only the live capture is unexecuted at corpus scale.
 data census_live_routes_interpreted_only_stall: GuaranteeStall = GuaranteeStall {
-  subject: "the claim-coverage census live route (gunbc.claim_coverage_census_live and gunbc.claim_coverage_census_s1_live) runs to completion over the tracked corpus and prints its head",
+  subject: "the claim-coverage census live route (gunbc.claim_coverage_census_live and v2.workflow.claim_coverage_census_s1_live) runs to completion over the tracked corpus and prints its head",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
