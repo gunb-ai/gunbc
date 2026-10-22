@@ -885,3 +885,6 @@ A=97 T=9 S=115 U=240  total=461
 - Nothing writes `__applied_type_args`, so every arm reading it is dead and is deleted.
 - `type_needs_rc_seen` follows the expansion chain without a seen-guard and would not terminate on an authored self-reference: newly found List 2 site.
 - Before cutting `map_/set_*_type_in_env`, enumerate every consumer by grep.
+
+### Substitution-key site reported by gentle-carp-16 (pending parent's PR-2 vs #14750 decision)
+`instantiate_generic_call` substitutes formal NAMES in actual nodes, so a caller's own `K` that shares the spelling of the callee's binder `K` is rewritten to the bound type before unification sees it (parent's shadow-formal case: corpus `type K` passed as actual to `f<K>` is accepted). Rule applied: substitution touches only leaves stamped `(callee-decl, TypeParameter)` by `binder_marked_type`; an unstamped leaf is never a binder. Enrolled RED: `dag/test/claim/applied_constructor_type_equals.dag :: corpus_type_shadow_named_like_formal_still_refuses` (fails today). Whether #14750 carries it is the parent's call; if it does, this is the sixth control and the RED is ours.
