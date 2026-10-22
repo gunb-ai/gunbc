@@ -20,7 +20,16 @@ import extdeps.boards.supermicro_h11ssl {
   supermicro_h11ssl_fan_pin, FanPwm,
   supermicro_h11ssl_dimm_capacity_stated, Rdimm2R, Rdimm2Dr, Lrdimm3ds4R, Lrdimm3ds8R,
   supermicro_h11ssl_storage_support, VariantI, VariantC, VariantNc,
+  supermicro_h11ssl_dimm_placements, supermicro_h11ssl_features, supermicro_h11ssl_frame,
+  supermicro_h11ssl_io_edge_left_to_right, supermicro_h11ssl_fan_headers, supermicro_h11ssl_dimm_slots,
+  supermicro_h11ssl_fan_headers_bottom_edge_left_to_right, supermicro_h11ssl_dimm_population_read_standing,
 }
+import extdeps.boards.physical_layout {
+  dimm_slots_named, dimm_label_names_one_slot, dimm_is_socket_adjacent, dimms_share_bank, dimm_nearer_socket_than,
+  features_labelled, features_of_kind, LeftOfSocket, RightOfSocket, NeighbourFeature, NeighbourBoardEdge, EdgeRight, EdgeTop,
+  KindFanHeader, KindPcieSlot, KindJumper, KindLed,
+}
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_factory_login_producer_admitted,
   supermicro_h11ssl_redfish_root_answered_after_activation, H11sslFirstContactReceipt,
@@ -30,6 +39,7 @@ import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   ServiceRootRefused, ServiceRootAnswered,
   UnitVariantObserved, UnitStorageProjected, UnitStorageRefusedVariantUnread,
   supermicro_h11ssl_receipt_bmc_identity_coherent, H11sslLabelObservation, H11sslLicenceActivation, supermicro_h11ssl_unit_variant_standing, supermicro_h11ssl_unit_storage_projection,
+  supermicro_h11ssl_unit_population_observation, supermicro_h11ssl_unit_fan_wiring, supermicro_h11ssl_unit_wired_fans_are_board_headers, H11sslUnitFanWiring,
 }
 
 // The 4-DIMM guides differ by CPU family: the 7001 guide is C1,A1,E1,H1 and the 7002 guide is
@@ -261,4 +271,95 @@ test fn w_receipt_bmc_identity_is_one_mac() -> Bool {
     && !supermicro_h11ssl_receipt_bmc_identity_coherent(r: receipt_moved)
     && !supermicro_h11ssl_receipt_bmc_identity_coherent(r: label_moved)
     && !supermicro_h11ssl_receipt_bmc_identity_coherent(r: licence_moved)
+}
+
+// "Where is C1": third slot from the socket on the left bank, between B1 and D1, D1 beside SLOT6.
+test fn w_c1_is_left_bank_third_from_socket() -> Bool {
+  let c = dimm_slots_named(placements: supermicro_h11ssl_dimm_placements, label: "C1")
+  count(c) == 1
+    && all(c, p => p.side == LeftOfSocket && p.rank_from_socket == 3 && p.silkscreen == "P1-DIMMC1" && p.callout == "DIMMC1")
+    && dimm_nearer_socket_than(placements: supermicro_h11ssl_dimm_placements, near: "A1", far: "C1")
+}
+
+test fn w_h1_is_on_the_right_board_edge() -> Bool {
+  all(dimm_slots_named(placements: supermicro_h11ssl_dimm_placements, label: "H1"), p =>
+    p.side == RightOfSocket && p.rank_from_socket == 4 && p.beyond == NeighbourBoardEdge { edge: EdgeRight })
+}
+
+test fn w_d1_is_beside_pcie_slot6() -> Bool {
+  all(dimm_slots_named(placements: supermicro_h11ssl_dimm_placements, label: "D1"), p => p.beyond == NeighbourFeature { label: "SLOT6" })
+}
+
+test fn w_socket_adjacent_slots_are_a1_and_e1_only() -> Bool {
+  all(supermicro_h11ssl_dimm_slots, s => dimm_is_socket_adjacent(placements: supermicro_h11ssl_dimm_placements, label: s) == (s == "A1" || s == "E1"))
+}
+
+test fn w_a1_and_c1_share_a_bank_and_a1_and_e1_do_not() -> Bool {
+  dimms_share_bank(placements: supermicro_h11ssl_dimm_placements, a: "A1", b: "C1")
+    && dimms_share_bank(placements: supermicro_h11ssl_dimm_placements, a: "A1", b: "E1") == false
+}
+
+// All three spellings of every slot name exactly one slot, and the placed slots are the
+// population model's slots.
+test fn w_every_dimm_spelling_names_one_slot() -> Bool {
+  count(supermicro_h11ssl_dimm_placements) == count(supermicro_h11ssl_dimm_slots)
+    && all(supermicro_h11ssl_dimm_placements, p =>
+      dimm_label_names_one_slot(placements: supermicro_h11ssl_dimm_placements, label: p.short_name)
+        && dimm_label_names_one_slot(placements: supermicro_h11ssl_dimm_placements, label: p.silkscreen)
+        && dimm_label_names_one_slot(placements: supermicro_h11ssl_dimm_placements, label: p.callout)
+        && any(supermicro_h11ssl_dimm_slots, s => s == p.short_name))
+}
+
+// RED control: a label the board does not have names no slot.
+test fn w_unknown_dimm_label_names_no_slot() -> Bool {
+  dimm_label_names_one_slot(placements: supermicro_h11ssl_dimm_placements, label: "I1") == false
+    && dimm_label_names_one_slot(placements: supermicro_h11ssl_dimm_placements, label: "P1-DIMMZ1") == false
+}
+
+test fn w_fan_headers_placed_match_the_header_list() -> Bool {
+  count(features_of_kind(features: supermicro_h11ssl_features, kind: KindFanHeader)) == count(supermicro_h11ssl_fan_headers)
+    && all(supermicro_h11ssl_fan_headers, h => count(features_labelled(features: supermicro_h11ssl_features, label: h)) == 1)
+    && count(supermicro_h11ssl_fan_headers_bottom_edge_left_to_right) == 6
+}
+
+test fn w_six_pcie_slots_are_placed_and_labels_are_unique() -> Bool {
+  count(features_of_kind(features: supermicro_h11ssl_features, kind: KindPcieSlot)) == 6
+    && all(supermicro_h11ssl_features, f => count(features_labelled(features: supermicro_h11ssl_features, label: f.label)) == 1)
+}
+
+test fn w_jpg1_and_led_heartbeat_are_placed() -> Bool {
+  count(features_labelled(features: supermicro_h11ssl_features, label: "JPG1")) == 1
+    && count(features_labelled(features: supermicro_h11ssl_features, label: "JBT1")) == 1
+    && count(features_labelled(features: supermicro_h11ssl_features, label: "LEDM1")) == 1
+    && count(features_of_kind(features: supermicro_h11ssl_features, kind: KindJumper)) == 7
+}
+
+test fn w_io_edge_order_starts_at_uid_and_ends_at_com1() -> Bool {
+  count(supermicro_h11ssl_io_edge_left_to_right) == 8
+    && all(supermicro_h11ssl_io_edge_left_to_right, l => count(features_labelled(features: supermicro_h11ssl_features, label: l)) == 1)
+}
+
+test fn w_population_read_is_cited_to_authority() -> Bool {
+  match supermicro_h11ssl_dimm_population_read_standing {
+    CitedToAuthority { authority: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+// Unit observation: DIMMA1 is A1, same bank as the pictured C1 and nearer the socket; the
+// standing is unestablished placement, not a refusal.
+test fn w_unit_dimma1_is_an_observation_not_a_refusal() -> Bool {
+  let o = supermicro_h11ssl_unit_population_observation(family: Epyc7002, reported_callout: "DIMMA1")
+  o.reported_short_name == "A1"
+    && o.pictured_single_dimm_slot == "C1"
+    && o.same_bank_as_pictured_slot
+    && o.nearer_socket_than_pictured_slot
+    && match o.standing { PlacementUnestablished { slots: _ } => true  _ => false }
+}
+
+test fn w_unit_fan3_is_a_board_header_and_chassis_fans_are_not() -> Bool {
+  supermicro_h11ssl_unit_wired_fans_are_board_headers(wiring: supermicro_h11ssl_unit_fan_wiring)
+    && supermicro_h11ssl_unit_fan_wiring.chassis_fans_on_board_headers == false
+    && supermicro_h11ssl_unit_wired_fans_are_board_headers(wiring: H11sslUnitFanWiring { wired_headers: ["FAN9"], chassis_fans_on_board_headers: false, basis: "control" }) == false
 }

@@ -1,0 +1,97 @@
+module extdeps.boards.physical_layout
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import extdeps.external_authority { CitedFigureStanding }
+
+// Board-generic vocabulary for WHERE things are on a motherboard as a vendor manual pictures it.
+// It carries no board's facts: a board's extdeps module supplies the rows and cites each to its
+// manual page and diagram. The electrical and population model stays in extdeps.boards.types.
+//
+// FRAME. Positions are read in the manual's board figure with the I/O shield edge drawn at the
+// TOP (the board's own frame, BoardFrame), so 'left' and 'right' are the figure's, not the
+// builder's. A DIMM slot is placed by RELATION (which side of the socket, how far from it, what
+// lies beyond it), because a relation is what the figure's arrows establish. Every other feature is
+// placed in a 3x3 cell of the board outline, a coarse reading whose tolerance is the cell, never a
+// coordinate.
+
+type BoardEdge = EdgeTop | EdgeBottom | EdgeLeft | EdgeRight
+
+// A figure and the page it is on. 'page' is the 1-based PDF page index of the held manual.
+type ManualCite { page: Nat, diagram: NonEmptyStr }
+
+type BoardFrame { io_shield_edge: BoardEdge, cite: ManualCite }
+
+type SocketSide = LeftOfSocket | RightOfSocket
+
+// What lies beyond a slot or feature, away from the socket.
+type LayoutNeighbour = NeighbourBoardEdge { edge: BoardEdge } | NeighbourFeature { label: NonEmptyStr }
+
+// One DIMM slot. Three spellings of one slot are carried because the manual uses all three:
+// the silkscreen (P1-DIMMA1), the figure callout (DIMMA1, which the BMC also reports) and the
+// population-table column (A1). rank_from_socket is 1 for the slot adjacent to the socket.
+type DimmSlotPlacement {
+  short_name: NonEmptyStr
+  silkscreen: NonEmptyStr
+  callout: NonEmptyStr
+  side: SocketSide
+  rank_from_socket: Nat
+  beyond: LayoutNeighbour
+  cite: ManualCite
+  standing: CitedFigureStanding
+}
+
+type FeatureKind
+  = KindCpuSocket | KindPcieSlot | KindM2Slot | KindSataConnector | KindSasConnector
+  | KindNvmeConnector | KindFanHeader | KindPowerConnector | KindFrontPanelHeader
+  | KindJumper | KindBattery | KindLed | KindRearPort | KindHeader
+
+type FrameRow = RowTop | RowMiddle | RowBottom
+type FrameColumn = ColumnLeft | ColumnCentre | ColumnRight
+
+// A feature in its 3x3 cell, with the board edge it sits on when the figure shows it on one.
+type FeaturePlacement {
+  label: NonEmptyStr
+  kind: FeatureKind
+  row: FrameRow
+  column: FrameColumn
+  on_edge: BoardEdge?
+  cite: ManualCite
+  standing: CitedFigureStanding
+}
+
+// Slots whose silkscreen, callout or short name is the given label.
+fn dimm_slots_named(placements: List<DimmSlotPlacement>, label: NonEmptyStr) -> List<DimmSlotPlacement> {
+  filter(placements, p => p.short_name == label || p.silkscreen == label || p.callout == label)
+}
+
+fn dimm_label_names_one_slot(placements: List<DimmSlotPlacement>, label: NonEmptyStr) -> Bool {
+  count(dimm_slots_named(placements: placements, label: label)) == 1
+}
+
+fn dimm_is_socket_adjacent(placements: List<DimmSlotPlacement>, label: NonEmptyStr) -> Bool {
+  count(dimm_slots_named(placements: placements, label: label)) == 1
+    && all(dimm_slots_named(placements: placements, label: label), p => p.rank_from_socket == 1)
+}
+
+// Two labels name slots on the same side of the socket (one bank).
+fn dimms_share_bank(placements: List<DimmSlotPlacement>, a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  any(dimm_slots_named(placements: placements, label: a), pa =>
+    any(dimm_slots_named(placements: placements, label: b), pb => pa.side == pb.side))
+}
+
+// Whether the first label names a slot strictly nearer the socket than the second, on one bank.
+fn dimm_nearer_socket_than(placements: List<DimmSlotPlacement>, near: NonEmptyStr, far: NonEmptyStr) -> Bool {
+  any(dimm_slots_named(placements: placements, label: near), pn =>
+    any(dimm_slots_named(placements: placements, label: far), pf =>
+      pn.side == pf.side && pn.rank_from_socket < pf.rank_from_socket))
+}
+
+fn features_labelled(features: List<FeaturePlacement>, label: NonEmptyStr) -> List<FeaturePlacement> {
+  filter(features, f => f.label == label)
+}
+
+fn features_of_kind(features: List<FeaturePlacement>, kind: FeatureKind) -> List<FeaturePlacement> {
+  filter(features, f => f.kind == kind)
+}

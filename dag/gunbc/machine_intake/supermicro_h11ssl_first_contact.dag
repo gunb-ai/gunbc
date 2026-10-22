@@ -6,7 +6,12 @@ import gunbc.machine_intake.bmc_operator_credential_inventory { OperatorHeldSecr
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_compare, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable }
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyUnobserved }
-import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority, H11sslVariant, H11sslStorageSupport, supermicro_h11ssl_storage_support }
+import extdeps.boards.supermicro_h11ssl {
+  supermicro_h11ssl_board_authority, H11sslVariant, H11sslStorageSupport, supermicro_h11ssl_storage_support,
+  H11sslCpuFamily, H11sslPopulationStanding, supermicro_h11ssl_population_standing,
+  supermicro_h11ssl_dimm_placements, supermicro_h11ssl_fan_headers,
+}
+import extdeps.boards.physical_layout { dimm_slots_named, dimms_share_bank, dimm_nearer_socket_than }
 import extdeps.board_authority { BoardAuthorityRef }
 import std.measure { Mebibyte, mebibyte }
 
@@ -372,4 +377,49 @@ fn licence_inventory_mac(l: H11sslLicenceActivation) -> Eui48Address {
 fn supermicro_h11ssl_receipt_bmc_identity_coherent(r: H11sslFirstContactReceipt) -> Bool {
   r.label.bmc_factory_credential.bmc_mac == r.bmc_mac
     && all(r.licences, l => licence_inventory_mac(l: l) == r.bmc_mac)
+}
+
+// ---- Observed physical placement of THIS unit (receipt; the manual's layout is in
+// extdeps.boards.supermicro_h11ssl and is not edited by what this unit shows).
+// 2026-10-18: the single DIMM sits in DIMMA1, read from the BMC's per-DIMM temperature sensor (no
+// effect on the BMC beyond a read). The manual's single-DIMM guide pictures C1 for both CPU
+// families, so this is an observation against the guide, not a refusal: the guide states
+// 'supported but not recommend' for one DIMM and never forbids another slot.
+type H11sslUnitPopulationObservation {
+  reported_callout: NonEmptyStr
+  reported_short_name: NonEmptyStr
+  pictured_single_dimm_slot: NonEmptyStr
+  standing: H11sslPopulationStanding
+  same_bank_as_pictured_slot: Bool
+  nearer_socket_than_pictured_slot: Bool
+}
+
+fn h11ssl_short_name_of_callout(callout: NonEmptyStr) -> NonEmptyStr {
+  fold(supermicro_h11ssl_dimm_placements, init: callout, f: (acc, p) => if p.callout == callout { p.short_name } else { acc })
+}
+
+fn supermicro_h11ssl_unit_population_observation(family: H11sslCpuFamily, reported_callout: NonEmptyStr) -> H11sslUnitPopulationObservation {
+  H11sslUnitPopulationObservation {
+    reported_callout: reported_callout,
+    reported_short_name: h11ssl_short_name_of_callout(callout: reported_callout),
+    pictured_single_dimm_slot: "C1",
+    standing: supermicro_h11ssl_population_standing(family: family, candidate: [h11ssl_short_name_of_callout(callout: reported_callout)]),
+    same_bank_as_pictured_slot: dimms_share_bank(placements: supermicro_h11ssl_dimm_placements, a: h11ssl_short_name_of_callout(callout: reported_callout), b: "C1"),
+    nearer_socket_than_pictured_slot: dimm_nearer_socket_than(placements: supermicro_h11ssl_dimm_placements, near: h11ssl_short_name_of_callout(callout: reported_callout), far: "C1"),
+  }
+}
+
+// Fan wiring as the operator reports it (2026-10-18): only FAN3 carries a fan, and the chassis
+// fans are not on board headers. An operator report, not a measurement of ours.
+type H11sslUnitFanWiring { wired_headers: List<NonEmptyStr>, chassis_fans_on_board_headers: Bool, basis: NonEmptyStr }
+
+data supermicro_h11ssl_unit_fan_wiring: H11sslUnitFanWiring = H11sslUnitFanWiring {
+  wired_headers: ["FAN3"],
+  chassis_fans_on_board_headers: false,
+  basis: "operator report 2026-10-18; no BMC fan-sensor read recorded here",
+}
+
+// Every wired header the receipt names exists on the board.
+fn supermicro_h11ssl_unit_wired_fans_are_board_headers(wiring: H11sslUnitFanWiring) -> Bool {
+  all(wiring.wired_headers, h => any(supermicro_h11ssl_fan_headers, b => b == h))
 }
