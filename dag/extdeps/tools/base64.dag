@@ -1,0 +1,102 @@
+module extdeps.tools.base64
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { String, NonEmptyStr, FilePath, Bool, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/base64-invocation.html"
+  }
+}
+
+fn base64_program() -> ProgramIdentity = cataloged_program(invocation: "base64")
+
+data base64_cli_tool: CliTool = CliTool {
+  program: base64_program(),
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.base64",
+      decl_name: "base64_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.base64.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A FILE'S OCTETS AS ONE LINE OF RFC 4648 BASE64 TEXT, as a modeled operation. A binary file cannot
+// cross the String-only fleet stdin leg or Filesystem.Read as itself, so the interface is the
+// coreutils encoder: `-w 0` disables line wrapping (the whole encoding is one line, no newline
+// to strip) and `--` ends option parsing so a path beginning with a dash is read as a path. This is
+// INTERFACE SHAPE only: the digest of the file, and whether the far side decoded the same bytes,
+// are observations the consuming layer makes (DESIGN 3, shape vs observation); nothing here
+// compares anything.
+//
+// A missing or unreadable path exits non-zero with base64's own diagnostic on stderr, and this
+// operation does not decide what that means beyond the status table below. PRECEDENT: the shape and
+// transport class are extdeps.tools.sha256sum DigestFile (a shell-transport read of a path),
+// whose consumer is the chainloader placement step of
+// gunbc.fleet.site_pxe_edge_converge. CONSUMER STATUS (DESIGN 3c): consumed by a NAMED LATER CHANGE, a declared
+// frontier. Trigger: the placement-step PR that stages the pinned chainloader onto srv4, which cannot land
+// before the srv4 install is released by the operator; until then this module has no importer.
+service base64.Encode {
+  operation File {
+    requires none
+    input { path: NonEmptyStr }
+    output {
+      text: String from "stdout"
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["base64", "-w", "0", "--", "{path}"] }
+    exit {
+      0 => Unit "the file's octets were printed as one base64 line"
+      1 => String "base64 could not read the path (every file error, undivided)"
+      nonzero => String "base64 exited with a status this table has no row for; base64_file_read refuses it"
+    }
+    mock_response {
+      0 => { text: "", success: true, exit_code: 0, stderr: "" } "hermetic coreutils base64: an empty file encodes to the empty string"
+    }
+  }
+}
+
+// THE EXIT-STATUS TABLE, one row per status, and the status is the only discriminator read. MEASURED on
+// GNU coreutils 9.7: a missing path, a permission-denied path and a directory ALL exit 1 (only
+// stderr's locale-dependent wording differs), so the exit status cannot tell those apart and this
+// module does not pretend it can. 0 = the octets were printed, 1 = base64 could not read the path
+// (every file error, undivided), anything else = a status this table has no row for. The last row
+// is the one that holds when upstream changes its statuses: it refuses, it is never read as a read.
+// stderr is carried verbatim for a reader and never classified. Missing versus denied belongs to the
+// typed error_kind channel of extdeps.filesystem.filesystem_io, consumed by the placement step.
+type Base64FileRead
+  = Base64FileEncoded { text: String }
+  | Base64FileUnreadable { stderr: String }
+  | Base64FileStatusUnrecognized { exit_code: Int, stderr: String }
+
+fn base64_file_read(text: String, exit_code: Int, stderr: String) -> Base64FileRead {
+  if exit_code == 0 {
+    Base64FileEncoded { text: text }
+  } else if exit_code == 1 {
+    Base64FileUnreadable { stderr: stderr }
+  } else {
+    Base64FileStatusUnrecognized { exit_code: exit_code, stderr: stderr }
+  }
+}
+
+fn base64_encode_file_via_shell(path: NonEmptyStr) -> Base64FileRead {
+  let r = base64.Encode.File(path: path)
+  base64_file_read(text: r.text, exit_code: r.exit_code, stderr: r.stderr)
+}
