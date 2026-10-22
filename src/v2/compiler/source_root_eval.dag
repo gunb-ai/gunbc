@@ -6700,11 +6700,7 @@ fn census_diff_stage_pair(before_row: CensusComparableRow, after_row: CensusComp
 
 fn census_stage_behind_matches(outcome: CensusComparableOutcome, earlier: NativeCensusCauseStage) -> Bool {
   match outcome {
-    CensusComparableUnobservedBehindAcquisitionBlock =>
-      match earlier {
-        NativeCensusCauseFrontEnd => true
-        _ => false
-      }
+    CensusComparableUnobservedBehindAcquisitionBlock => earlier is NativeCensusCauseFrontEnd
     CensusComparableUnobservedBehindStage { stage: s } =>
       match earlier {
         NativeCensusCauseFrontEnd =>

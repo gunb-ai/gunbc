@@ -7183,16 +7183,21 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
   )
 }
 
-// THE `is` TEST NODE. `x is V` is Transform[kw_is, x, V] where V is the arm's SOURCE SPELLING, an
-// atom and never a reference: it is not resolved here or by v2.compiler.resolve. Infer matches it
-// against the roster of x's type declaration and records the decided arm as the node's fact.
+// `x is V` IS SUGAR FOR `match x { V => true  _ => false }` and lowers to exactly that Match, the one the
+// seed parser builds for the same source (src/v1/02_parse.dag parse_is_arm_test), so there is one lowering
+// of one concept in two pipelines. V is the arm's SOURCE SPELLING, so the variant pattern IS the authored
+// atom at its own occurrence: infer's Match path reads x's roster and a misspelt or foreign V refuses
+// (infer_match_pattern_variant_not_declared) located at V, inside the `is` expression. The synthesized
+// `true`, `false` and `_` take V's occurrence for their locus; no node of the `is` is a position of its own.
 fn body_lower_is_node(operand: Node, arm: Node) -> Node {
-  node_synthetic(
-    kind: ComputationNode { behavior: Transform },
-    children: [
-      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_is } }, children: []) },
-      Edge { label: Positional, target: operand },
-      Edge { label: Positional, target: arm }
+  lower_match(
+    scrutinee: operand,
+    arms: [
+      body_lower_match_arm_wire(pat_node: arm, body: body_lower_param_ref_atom(source: arm, identity: ^dag_token_kw_true)),
+      body_lower_match_arm_wire(
+        pat_node: body_lower_param_ref_atom(source: arm, identity: wildcard_pattern_identity()),
+        body: body_lower_param_ref_atom(source: arm, identity: ^dag_token_kw_false)
+      )
     ]
   )
 }

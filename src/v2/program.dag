@@ -1,6 +1,5 @@
 module v2.program
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { Int, List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -390,8 +389,7 @@ fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
 fn program_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: program_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: program_facts_lookup }
   }
 }
 
@@ -451,8 +449,7 @@ fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
 fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
   InferredTree {
     root: callee,
-    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup }
   }
 }
 

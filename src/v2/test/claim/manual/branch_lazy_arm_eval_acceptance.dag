@@ -1,6 +1,5 @@
 module v2.test.claim.manual.branch_lazy_arm_eval_acceptance
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import v2.std.arrow_signature { declared_signature }
@@ -500,8 +499,7 @@ fn lazy_arm_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn lazy_arm_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: lazy_arm_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: lazy_arm_facts_lookup }
   }
 }
 

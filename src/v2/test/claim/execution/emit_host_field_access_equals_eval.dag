@@ -1,6 +1,5 @@
 module v2.test.claim.execution.emit_host_field_access_equals_eval
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -145,8 +144,7 @@ fn emit_field_eval_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: PartialFunction { lookup: emit_field_eval_composed_facts },
-      arm_resolutions: constructed_root_arm_resolutions()
+      facts: PartialFunction { lookup: emit_field_eval_composed_facts }
     }
   )
 }
@@ -155,8 +153,7 @@ fn emit_field_eval_alt_descent_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: PartialFunction { lookup: emit_field_eval_alt_descent_composed_facts },
-      arm_resolutions: constructed_root_arm_resolutions()
+      facts: PartialFunction { lookup: emit_field_eval_alt_descent_composed_facts }
     }
   )
 }

@@ -1,6 +1,5 @@
 module v2.test.claim.manual.rust_add_emit_translate
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -324,8 +323,7 @@ data rust_add_inferred_tree: InferredTree = InferredTree {
   root: rust_add_emitted_root,
   facts: PartialFunction {
     lookup: rust_add_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn anchor_rust_add_emit_accepts() -> Outcome<Medium<String>> {
