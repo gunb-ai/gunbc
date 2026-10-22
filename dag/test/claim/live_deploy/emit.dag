@@ -226,6 +226,25 @@ fn retract_plan_text(spec: DeploymentSpec) -> String {
   }
 }
 
+fn retract_leg_text(leg: DeployRetractLeg) -> String {
+  match leg {
+    RetractServeOff { endpoint: e } => join(["serve-off ", join(tailscale_serve_off_argv(endpoint: e), " ")], "")
+    RetractDisableIfLoaded { unit: u } => join(["disable-if-loaded ", u as String], "")
+    RetractRemoveForce { paths: ps } => join(["remove-files ", join(non_empty_to_list(xs: ps) |> map(p => p as String), " ")], "")
+    RetractRemoveEmptyDirectory { path: p } => join(["remove-empty-directory ", p as String], "")
+    RetractRemoveRecursive { path: p } => join(["remove-tree ", p as String], "")
+    RetractDaemonReload => "daemon-reload"
+    RetractUnitGoneReadback { unit: u } => join(["unit-gone-readback ", u as String], "")
+  }
+}
+
+fn retract_plan_text(spec: DeploymentSpec) -> String {
+  match deploy_retract_plan_legs(spec: spec) {
+    RetractPlanRefused { step: st, reason: r } => join(["REFUSED ", st, ": ", r], "")
+    RetractPlanReady { legs: ls } => join(ls |> map(l => retract_leg_text(leg: l)), "\n")
+  }
+}
+
 fn witness_retract_script() -> String {
   retract_plan_text(spec: deployment_spec_srv1())
 }
