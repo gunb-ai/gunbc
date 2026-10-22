@@ -15,12 +15,30 @@ type ItemKind
   | ServiceItem
   | OtherItem
 
+// THE STANDING OF A REFINEMENT'S PREDICATES, ON THE FACT THAT CARRIES THEM. It is a fact about the
+// PRODUCER of the fact (the host reflection route cannot elaborate a where-predicate, so it reflects
+// the captured predicates as source spellings), never an edge in the clause tree: resolve and infer
+// fold every child of the captured predicate set as a predicate call, so a mark inside it would be
+// read as one. ItemKind carries no payload (v1 item_kind is frozen and `kind == TypeItem` is compared
+// throughout), so the standing sits on DeclFact itself, with a real arm for every fact that is not a
+// refinement. Every producer must name an arm; there is no default.
+// CONSUMER (declared frontier, Charter 5): the decl door emit_semantic_type_decl printing a refinement
+// type from a reflected fact. It must refuse RefinementPredicatesSourceSpelled, and its own RED lands
+// with it. Until then nothing reads predicates from a reflected fact; the claim
+// test.claim.decl_facts_alias_refinement_reflection pins the standing of the real reflected facts.
+// Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
+// RefinementPredicatesSourceSpelled and the host stamp (coproduct_reflection reflected_predicate_standing).
+type PredicateStanding
+  = NotARefinement
+  | RefinementPredicatesSourceSpelled
+
 type DeclFact {
   qualified_name: String
   name: String
   kind: ItemKind
   node: Node
   rel_path: String
+  predicate_standing: PredicateStanding
 }
 
 fn decl_facts(pool_roots: List<String>) -> List<DeclFact> {
@@ -82,7 +100,8 @@ fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<Dec
               name: fact.name,
               kind: fact.kind,
               node: node,
-              rel_path: fact.rel_path
+              rel_path: fact.rel_path,
+              predicate_standing: fact.predicate_standing
             }))
           })
         _ => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))

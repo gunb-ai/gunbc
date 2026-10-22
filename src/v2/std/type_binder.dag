@@ -313,57 +313,6 @@ fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration>
   }
 }
 
-// THE STANDING OF A REFINEMENT'S WHERE CLAUSE, AS A CLOSED SUM. Each route that builds a clause stamps
-// the edge reflected_predicate_standing on the captured predicates: the elaborating route
-// (body_lowering_fold body_lower_kept_where_clause) stamps `elaborated`, the host reflection route
-// (coproduct_reflection marshal_non_connective_type_item), which cannot elaborate a where-predicate,
-// stamps `source_spelled_unelaborated` beside the predicates' source spellings. ElaboratedWhere
-// requires the positive `elaborated` mark; a clause with no mark, an unknown value, or missing
-// production or captured-projection structure is MalformedWhere, never read as elaborated.
-// CONSUMER (declared frontier, Charter 5): the decl door emit_semantic_type_decl printing a refinement
-// type from a reflected fact. It reads the clause through this sum, must refuse SourceSpelledWhere and
-// MalformedWhere (only ElaboratedWhere may be printed), and its own RED lands with it. Until it
-// lands nothing reads predicates from a reflected fact. The claim
-// test.claim.decl_facts_alias_refinement_reflection pins that the real reflected NonEmptyStr is
-// SourceSpelledWhere; test.claim.parse.parameter_refinement pins that a clause lowered through the
-// real body_lower_kept_where_clause is ElaboratedWhere and an unmarked clause is MalformedWhere.
-// type_declaration_use_census where_clause_references reads r.where_clause
-// directly: its inputs are compile-derived symbol-index nodes, which carry no mark, and it has no
-// refusal channel; it is NOT routed through this sum.
-// Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
-// SourceSpelledWhere, the source_spelled_unelaborated value in coproduct_reflection, and the refusal arm.
-type WhereStanding
-  = ElaboratedWhere { clause: Node }
-  | SourceSpelledWhere { clause: Node }
-  | MalformedWhere { missing: Symbol }
-
-fn where_clause_standing(clause: Node) -> WhereStanding {
-  match find_labeled_child(root: clause, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
-    Rejected { diagnostics: _ } => MalformedWhere { missing: ^where_clause_production }
-    Accepted { value: production, diagnostics: _ } =>
-      match find_named_child(root: production, name: ^grammar_production_captured_node_projection) {
-        Rejected { diagnostics: _ } => MalformedWhere { missing: ^captured_predicate_projection }
-        Accepted { value: captured, diagnostics: _ } =>
-          match find_named_child(root: captured, name: ^reflected_predicate_standing) {
-            Rejected { diagnostics: _ } => MalformedWhere { missing: ^reflected_predicate_standing }
-            Accepted { value: mark, diagnostics: _ } =>
-              match mark.kind {
-                TypeNode { connective: Atom { identity: id } } =>
-                  if id == ^elaborated {
-                    ElaboratedWhere { clause: clause }
-                  } else if id == ^source_spelled_unelaborated {
-                    SourceSpelledWhere { clause: clause }
-                  } else {
-                    MalformedWhere { missing: ^reflected_predicate_standing }
-                  }
-                TypeNode { connective: _ } => MalformedWhere { missing: ^reflected_predicate_standing }
-                ComputationNode { behavior: _ } => MalformedWhere { missing: ^reflected_predicate_standing }
-              }
-          }
-      }
-  }
-}
-
 // A DECLARATION'S BINDER EDGE: the <type-parameters> edge of a type-declaration wrapper -- a generic
 // member, an alias or an opaque declaration, as type_decl_view classifies the parent -- never the same
 // marker on an Arrow. It carries names the binder authority checks and resolve scopes, not values, so

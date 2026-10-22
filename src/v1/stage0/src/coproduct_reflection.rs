@@ -755,10 +755,10 @@ fn concept_decl_node(
 // where-clause production edge: clause } (refinement_declaration_of_node). The carrier is the
 // authored type name, the same flattening a field type gets (marshal_type_expr_ref). The host cannot
 // elaborate a where-predicate (v2 body_lower_kept_where_clause resolves calls), so the captured
-// predicates carry the standing edge `reflected_predicate_standing` -> `source_spelled_unelaborated`
-// beside each predicate's source spelling; a reader that interprets predicates refuses on that mark
-// (v2.std.type_binder where_clause_standing -> SourceSpelledWhere). Dissolves when the v2 reflection
-// route elaborates where-predicates through body_lowering_fold: delete this edge and SourceSpelledWhere.
+// predicates are source spellings and the fact that carries them says so on DeclFact
+// (reflected_predicate_standing, v2.std.decl_index PredicateStanding), never as an edge in the clause
+// tree where resolve and infer would fold it as a predicate. Dissolves when the v2 reflection route
+// elaborates where-predicates through body_lowering_fold.
 fn marshal_non_connective_type_item(
     ctx: &InterpContext,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -802,11 +802,7 @@ fn marshal_non_connective_type_item(
         rhs.children.len(),
     ) {
         let carrier = marshal_type_expr_ref(ctx, si, &rhs.children[0])?;
-        let mut captured = vec![edge_named(
-            ctx,
-            "reflected_predicate_standing",
-            atom_identity_node(ctx, "source_spelled_unelaborated"),
-        )];
+        let mut captured = Vec::new();
         for pred in predicate.children.iter() {
             let spelling = predicate_spelling(pred);
             captured.push(edge_positional(ctx, atom_identity_node(ctx, &spelling)));
@@ -2076,6 +2072,32 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
     decl_facts_corpus_walk(pool_roots).facts
 }
 
+// THE STANDING OF A REFINEMENT'S PREDICATES, FOR THE FACT THAT CARRIES THEM (v2.std.decl_index
+// PredicateStanding): a TypeItem whose right-hand side is a one-child Conj with a predicate is the
+// refinement marshal_non_connective_type_item reflects with source-spelled predicates; every other
+// fact is NotARefinement. The same test as that function's refinement arm, so the two cannot disagree.
+fn reflected_predicate_standing(ctx: &InterpContext, kind: ItemKind, item: &Rc<Node>) -> Value {
+    let is_refinement = kind == ItemKind::TypeItem
+        && item
+            .inferred
+            .as_ref()
+            .and_then(|inf| inferred_to_node(inf.clone()))
+            .is_some_and(|rhs| {
+                rhs.connective == Connective::Conj
+                    && rhs.type_annotation.is_some()
+                    && rhs.children.len() == 1
+            });
+    Value::Variant {
+        type_name: ctx.sym("PredicateStanding"),
+        variant_name: ctx.sym(if is_refinement {
+            "RefinementPredicatesSourceSpelled"
+        } else {
+            "NotARefinement"
+        }),
+        fields: Rc::new(vec![]),
+    }
+}
+
 fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
     let variant = match kind {
         ItemKind::FnItem => "FnItem",
@@ -2210,6 +2232,10 @@ pub fn eval_export_signature_facts(
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), str_value(fact.rel_path)),
+                (
+                    ctx.sym("predicate_standing"),
+                    reflected_predicate_standing(ctx, fact.kind, &fact.node),
+                ),
             ])),
         });
     }
@@ -2350,6 +2376,10 @@ fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpRes
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), str_value(fact.rel_path.clone())),
+                (
+                    ctx.sym("predicate_standing"),
+                    reflected_predicate_standing(ctx, fact.kind, &fact.node),
+                ),
             ])),
         });
     }

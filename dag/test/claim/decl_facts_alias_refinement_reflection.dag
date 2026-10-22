@@ -2,9 +2,9 @@ module test.claim.decl_facts_alias_refinement_reflection
 
 import std.types { String, List, Bool, Int }
 import std.optional { Optional, Present, Absent }
-import v2.std.decl_index { decl_facts_at, DeclFact, TypeItem }
+import v2.std.decl_index { decl_facts_at, DeclFact, TypeItem, PredicateStanding, NotARefinement, RefinementPredicatesSourceSpelled }
 import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.type_binder { type_decl_view, TypeAlias, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl, refinement_declaration_of_node, where_clause_standing, ElaboratedWhere, SourceSpelledWhere, MalformedWhere }
+import v2.std.type_binder { type_decl_view, TypeAlias, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl, refinement_declaration_of_node }
 
 // THE INHABITANCE CLAIM for the host reflection of an alias and a refinement: decl_facts_at yields a
 // TypeItem whose node type_binder reads UNCHANGED (type_decl_view, refinement_declaration_of_node), so
@@ -43,14 +43,16 @@ fn refinement_carrier(n: Node) -> String {
   }
 }
 
-fn refinement_unelaborated(n: Node) -> Bool {
-  match refinement_declaration_of_node(decl: n) {
-    Present { value: r } =>
-      match where_clause_standing(clause: r.where_clause) {
-        SourceSpelledWhere { clause: _ } => true
-        ElaboratedWhere { clause: _ } => false
-        MalformedWhere { missing: _ } => false
-      }
+fn is_source_spelled(f: DeclFact) -> Bool {
+  match f.predicate_standing {
+    RefinementPredicatesSourceSpelled => true
+    NotARefinement => false
+  }
+}
+
+fn refinement_unelaborated(f: DeclFact) -> Bool {
+  is_source_spelled(f: f) && match refinement_declaration_of_node(decl: f.node) {
+    Present { value: _ } => true
     Absent => false
   }
 }
@@ -62,35 +64,23 @@ test fn a_plain_alias_reflects_as_a_type_item_aliasing_its_carrier() -> Bool {
 
 test fn a_refinement_reflects_its_carrier_and_an_unelaborated_predicate() -> Bool {
   let hits = fact_of(qn: "std.types.NonEmptyStr")
-  count(hits) == 1 && all(hits, f => f.kind == TypeItem && refinement_carrier(n: f.node) == "String" && refinement_unelaborated(n: f.node))
+  count(hits) == 1 && all(hits, f => f.kind == TypeItem && refinement_carrier(n: f.node) == "String" && refinement_unelaborated(f: f))
 }
 
 test fn a_branded_refinement_reflects_the_refinement_it_brands() -> Bool {
   let hits = fact_of(qn: "std.types.LeaseToken")
-  count(hits) == 1 && all(hits, f => f.kind == TypeItem && refinement_carrier(n: f.node) == "NonEmptyStr" && refinement_unelaborated(n: f.node))
+  count(hits) == 1 && all(hits, f => f.kind == TypeItem && refinement_carrier(n: f.node) == "NonEmptyStr" && refinement_unelaborated(f: f))
 }
 
-// RED: a clause lacking the production structure is MalformedWhere not as elaborated (a bare carrier atom stands for the malformed clause).
-fn standing_label(c: Node) -> String {
-  match where_clause_standing(clause: c) {
-    ElaboratedWhere { clause: _ } => "elaborated"
-    SourceSpelledWhere { clause: _ } => "source_spelled"
-    MalformedWhere { missing: m } => symbol_lexeme(sym: m)
-  }
-}
-
-test fn a_clause_without_production_structure_is_malformed_not_elaborated() -> Bool {
+// RED: the standing is read off the FACT, so the reflected refinements read source-spelled and the
+// reflected alias reads NotARefinement. The mark is not in the clause tree (resolve and infer fold the
+// captured set's children as predicate calls), so this is the only place a reader finds it.
+test fn the_reflected_refinement_fact_is_source_spelled() -> Bool {
   let hits = fact_of(qn: "std.types.NonEmptyStr")
-  count(hits) == 1 && all(hits, f => match refinement_declaration_of_node(decl: f.node) {
-    Present { value: r } => standing_label(c: r.carrier) == "where_clause_production"
-    Absent => false
-  })
+  count(hits) == 1 && all(hits, f => is_source_spelled(f: f))
 }
 
-test fn the_reflected_where_clause_is_source_spelled() -> Bool {
-  let hits = fact_of(qn: "std.types.NonEmptyStr")
-  count(hits) == 1 && all(hits, f => match refinement_declaration_of_node(decl: f.node) {
-    Present { value: r } => standing_label(c: r.where_clause) == "source_spelled"
-    Absent => false
-  })
+test fn a_reflected_alias_fact_is_not_a_refinement() -> Bool {
+  let hits = fact_of(qn: "std.types.Timestamp")
+  count(hits) == 1 && all(hits, f => !is_source_spelled(f: f))
 }
