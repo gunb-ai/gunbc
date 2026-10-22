@@ -10900,19 +10900,35 @@ fn alias_chain_carrier(n: Node) -> Node {
 // parameter names, which are not the declaration's parameters: a permuting return type
 // (-> Pair<B, A>) captures them, and a callee whose names differ from the declaration's leaves the
 // body uninstantiated. The application's own type arguments against the declaration's parameter
-// identity are the only sound instantiation, and they are what an authored use site is read from,
-// so the cached target is dropped and the receiver settles through that one relation.
-fn generic_application_without_resolved_target(n: Node, env: TypeEnv) -> Node {
+// identity are the only sound instantiation, so the carrier is rebuilt by the one construction of an
+// application (generic_declaration_application) from its ALREADY RESOLVED arguments: sending them
+// back through resolve_node_bounded would read them as authored type names. A parameterized alias
+// has no member body to apply, so its cache is dropped and the receiver settles as an authored use.
+fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
   let carries_resolved_target = match n.inferred {
     Present { value: Resolved { node: _ } } => n.connective == NoConnective && (n.children |> count) > 0
     _ => false
   }
-  if carries_resolved_target && is_user_generic_use_site(n: n, env: env) { node_with_inferred(n: n, inferred: none) }
-  else { n }
+  if carries_resolved_target && is_user_generic_use_site(n: n, env: env) {
+    let type_name = authored_name(env: env, node: n)
+    let decl = resolve_generic_use_decl(env: env, n: n)
+    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) {
+      node_with_inferred(n: n, inferred: none)
+    } else {
+      let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+        match n.children |> skip(pair.first) |> first {
+          Present { value: arg } => map_insert(acc, authored_name_at(source_indices: env.source_indices, node: pair.second), arg)
+          Absent => acc
+        }
+      )
+      generic_declaration_application(n: n, decl: decl, type_name: type_name, resolved_args: n.children, slot_bindings: slot_bindings, env: env)
+    }
+  } else { n }
 }
 
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
-  let application = generic_application_without_resolved_target(n: n, env: env)
+  let application = generic_application_reapplied(n: n, env: env)
   let peel_result = if needs_alias_field_expansion(n: application, env: env) {
     peel_alias_once_for_field_access(n: application, env: env, module_name: module_name)
   } else {
