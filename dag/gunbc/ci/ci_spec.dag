@@ -578,10 +578,13 @@ fn ci_release_build_line() -> String {
 fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
   let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
   let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
+  // The release dir comes from cargo's default-layout home, as in ci_release_artifact_word; with the
+  // shell var as build_root the emitted text is byte-identical, so the fleet pack key does not move.
+  let release_dir = cargo_default_release_dir(build_root: "$ROOT")
   join([
-    "rm -rf ", dir, " && \"$ROOT/target/release/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
+    "rm -rf ", dir, " && \"", release_dir, "/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
     " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
-    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"$ROOT/target/release/", bin.name, "\"",
+    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"", release_dir, "/", bin.name, "\"",
   ], "")
 }
 
