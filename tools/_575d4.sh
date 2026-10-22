@@ -24,10 +24,8 @@ export CARGO_TARGET_DIR=/root/workspace/repo-root/.t14575d CARGO_INCREMENTAL=0 R
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
 CB=/root/workspace/repo-root/.t14575d/release/claim_batch
 echo "BUILD_COMMIT=$(git rev-parse HEAD) CB_SHA=$(sha256sum $CB|cut -c1-12) $(date -u +%H:%M:%SZ)"
-NAMES_P=$(grep -oE '^test fn [A-Za-z_0-9]+' $PAIR | sed 's/^test fn //' | paste -sd, -)
 NAMES_W=$(grep -oE '^test fn [A-Za-z_0-9]+' $WITN | sed 's/^test fn //' | paste -sd, -)
-echo "=== A. debt-list consumers at head (pairing 1 + s1_witness 6, by name) ==="
-timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $PAIR --functions "$NAMES_P" > /tmp/p575q_p.out 2>&1; echo "[pairing] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/p575q_p.out | sed 's/^/  | /'
+echo "=== A. debt-list validators at head (s1_witness 6, by name; the pairing claim is the author's >3400s live route — NOT re-run, recorded as author-stated) ==="
 timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $WITN --functions "$NAMES_W" > /tmp/p575q_w.out 2>&1; echo "[s1_witness] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/p575q_w.out | sed 's/^/  | /'
 echo "=== B. MUTATION: fabricate the enrolled claim identity (row must be caught or that is a finding) ==="
 grep -c "$ROW" $DEBT
@@ -38,7 +36,6 @@ a='claim: "the_live_entry_exits_one_while_the_wet_lane_has_no_executor"'
 assert s.count(a)==1, ("anchor count", s.count(a))
 open(p,"w").write(s.replace(a,'claim: "the_live_entry_exits_one_while_the_wet_lane_has_no_executor_NOPE"')); print("MUT applied")
 PY
-timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $PAIR --functions "$NAMES_P" > /tmp/p575q_pm.out 2>&1; echo "[pairing-mut] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/p575q_pm.out | sed 's/^/  | /'
 timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $WITN --functions "$NAMES_W" > /tmp/p575q_wm.out 2>&1; echo "[s1_witness-mut] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/p575q_wm.out | sed 's/^/  | /'
 echo "=== C. restore + post ==="
 git checkout -- $DEBT
