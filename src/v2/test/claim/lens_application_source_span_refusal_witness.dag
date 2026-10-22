@@ -1,0 +1,66 @@
+module v2.test.claim.lens_application_source_span_refusal_witness
+
+import v2.compiler.source_root_eval { native_lane_file_refusal_index, native_test_context_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.algebra { Cons, Empty }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.test.claim.resolve.namespace_candidate_rule { NcrAbsent, NcrRefused, NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of }
+import v2.std.text { String }
+import v2.std.node { Symbol }
+
+// SourceSpan HAS ONE HOME, std.types. v2.lens.application once declared an empty second SourceSpan
+// (a nickname, deleted with its only users), so an import of it from there must refuse and an
+// import of it from std.types must resolve. SOURCES ARE SUPPLIED AND THE ROUTE IS REAL: the fixture
+// modules are source text handed to native_test_context_from_ingest and resolved by the production
+// resolver. The stand-in v2.lens.application declares `Lens` only, so the sibling control that
+// imports `Lens` from it resolves: the refusal is about the missing NAME, not the module.
+//
+// PAIRING OBLIGATION, stated divergence: that the REAL v2.lens.application lacks SourceSpan is not
+// read here (no corpus read in a claim). It is read by the pinned claim_batch run recorded in the
+// PR that landed this: the same import fixture exits 0 at the parent and 1 at the deletion head.
+
+data lasf_home_source: String = "module v2.lens.application\n\nimport std.types { Bool }\n\ntype Lens = Bool\n"
+
+data lasf_red_source: String = "module v2.lasf_red\n\nimport std.types { Bool }\nimport v2.lens.application { SourceSpan }\n\nfn lasf_red(p: SourceSpan) -> Bool { true }\n"
+
+data lasf_name_control_source: String = "module v2.lasf_name_control\n\nimport std.types { Bool }\nimport v2.lens.application { Lens }\n\nfn lasf_name_control(p: Lens) -> Bool { p }\n"
+
+data lasf_types_control_source: String = "module v2.lasf_types_control\n\nimport std.types { Bool, SourceSpan }\n\nfn lasf_types_control(p: SourceSpan) -> Bool { true }\n"
+
+data lasf_ingest: SourceRootIngest = Cons {
+  head: ncr_read(source: lasf_home_source, id: ^lasf_home_artifact, unit: ^lasf_home_cu, path: "dag/lasf_home.dag"),
+  tail: Cons {
+    head: ncr_read(source: lasf_red_source, id: ^lasf_red_artifact, unit: ^lasf_red_cu, path: "dag/lasf_red.dag"),
+    tail: Cons {
+      head: ncr_read(source: lasf_name_control_source, id: ^lasf_name_control_artifact, unit: ^lasf_name_control_cu, path: "dag/lasf_name_control.dag"),
+      tail: Cons { head: ncr_read(source: lasf_types_control_source, id: ^lasf_types_control_artifact, unit: ^lasf_types_control_cu, path: "dag/lasf_types_control.dag"), tail: Empty }
+    }
+  }
+}
+
+fn lasf_verdict(module_name: String) -> NcrVerdict {
+  match native_test_context_from_ingest(ingest: lasf_ingest) {
+    Rejected { diagnostics: _ } => NcrAbsent
+    Accepted { value: context, diagnostics: _ } =>
+      ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: native_lane_file_refusal_index(refusals: context.file_refusals), ingest: lasf_ingest, module_name: module_name))
+  }
+}
+
+fn lasf_refused(v: NcrVerdict) -> Bool {
+  match v {
+    NcrRefused { reason: _, competing: _, reasons: _ } => true
+    _ => false
+  }
+}
+
+test fn importing_source_span_from_lens_application_refuses() -> Bool {
+  lasf_refused(v: lasf_verdict(module_name: "v2.lasf_red"))
+}
+
+test fn importing_a_declared_name_from_the_same_module_resolves() -> Bool {
+  ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.lasf_name_control"))
+}
+
+test fn importing_source_span_from_std_types_resolves() -> Bool {
+  ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.lasf_types_control"))
+}
