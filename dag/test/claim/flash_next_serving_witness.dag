@@ -19,6 +19,11 @@ import gunbc.serving.flash_next_experiment_identity {
   VariantUnobserved, VariantObserved, VariantHypothesis, VariantStatus, flash_next_variant_rows, variant_status,
   flash_next_experiment_identity_frontier, kv_arithmetic_capacity, serving_variant_eq,
 }
+import gunbc.serving.flash_next_quant_matrix {
+  QuantCell, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
+  CellRefusedWeightsExceedUsableMemory, CellUnobserved, flash_next_quant_matrix, quant_matrix_outcome,
+  flash_next_quant_matrix_frontier, upstream_v032_run_observations,
+}
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
 import gunbc.serving.flash_next_image_capability_observation {
   Sm90, Sm100, Sm120, Fp8MainKvCache, FlashInferNativeFp4Moe, Nvfp4PleTable, JitIfCompiles, NotBuilt, BuiltIn,
@@ -222,6 +227,7 @@ test fn w_declared_frontiers_are_open() -> Bool {
     && !dissolution_is_bound(condition: flash_next_image_observation_frontier)
     && !dissolution_is_bound(condition: observed_memory_frontier)
     && !dissolution_is_bound(condition: flash_next_experiment_identity_frontier)
+    && !dissolution_is_bound(condition: flash_next_quant_matrix_frontier)
     && !dissolution_is_bound(condition: flash_next_roofline_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_measured_readings_frontier)
 }
@@ -313,4 +319,30 @@ test fn w_kv_arithmetic_leaves_slo_bound_capacity_absent() -> Bool {
   let c = kv_arithmetic_capacity(retained_tokens: 1700000, max_context_tokens: 262144)
   match c.gpu_resident_warm_sessions_at_slo { none => true, Present { value: _ } => false }
     && match c.aggregate_retained_tokens { Present { value: v } => v == 1700000, none => false }
+}
+
+// Raw matrix: measured cells keep their numbers, BF16 weights are refused on every card with both byte counts, an
+// unrun cell is Unobserved, and the measured H200 cell keeps its token count.
+test fn w_quant_matrix_refuses_bf16_weights_and_never_zeroes_unrun_cells() -> Bool {
+  let fp8 = QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 }
+  let bf16w = QuantCell { weights: WeightBf16, kv: KvFp8 }
+  let fp8w = QuantCell { weights: WeightFp8Qwen128Blocks, kv: KvBf16 }
+  count(flash_next_quant_matrix) == 18
+    && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: H200UpstreamV032, c: fp8) {
+         Present { value: CellMeasured { weights_centi_gib: w, kv_centi_gib: _, kv_tokens: t, gpu_memory_utilization_basis_points: u, throughput: tp } } => w == 7339 && t == 2626530 && u == 8500 && count(tp) == 3
+         _ => false
+       }
+    && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: bf16w) {
+         Present { value: CellRefusedWeightsExceedUsableMemory { weights_bytes: _, usable_bytes: _ } } => true
+         _ => false
+       }
+    && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: H200UpstreamV032, c: fp8w) {
+         Present { value: CellUnobserved { trigger: _ } } => true
+         _ => false
+       }
+    && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200PredictedNativeStack, c: fp8) {
+         none => true
+         _ => false
+       }
+    && count(upstream_v032_run_observations) == 2
 }

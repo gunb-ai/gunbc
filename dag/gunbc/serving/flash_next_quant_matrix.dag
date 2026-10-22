@@ -1,0 +1,157 @@
+module gunbc.serving.flash_next_quant_matrix
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size }
+import gunbc.serving.gpu_observed_memory_receipt { observed_memory_bytes, h200_nvl_observed_memory, b200_observed_memory, max_q_observed_memory }
+import gunbc.serving.flash_next_experiment_identity { ServingVariant, Pro6000MaxQNative, H200UpstreamV032, B200UpstreamV032, serving_variant_eq }
+
+// THE QUANTIZATION MATRIX: raw capacity and throughput per card x weight dtype x KV dtype, no quality assessment (the
+// operator infers quality from the dtype). The indexer KV follows the KV dtype. A cell that does not fit is Refused with
+// the cause; a cell nobody ran is Unobserved; neither is ever a zero.
+type WeightDtype = WeightNvfp4LilQad | WeightFp8Qwen128Blocks | WeightBf16
+
+type KvDtype = KvFp8 | KvBf16
+
+type QuantCell {
+  weights: WeightDtype
+  kv: KvDtype
+}
+
+fn weight_dtype_eq(a: WeightDtype, b: WeightDtype) -> Bool {
+  match a {
+    WeightNvfp4LilQad => match b { WeightNvfp4LilQad => true, _ => false }
+    WeightFp8Qwen128Blocks => match b { WeightFp8Qwen128Blocks => true, _ => false }
+    WeightBf16 => match b { WeightBf16 => true, _ => false }
+  }
+}
+
+fn kv_dtype_eq(a: KvDtype, b: KvDtype) -> Bool {
+  match a {
+    KvFp8 => match b { KvFp8 => true, _ => false }
+    KvBf16 => match b { KvBf16 => true, _ => false }
+  }
+}
+
+fn quant_cell_eq(a: QuantCell, b: QuantCell) -> Bool {
+  weight_dtype_eq(a: a.weights, b: b.weights) && kv_dtype_eq(a: a.kv, b: b.kv)
+}
+
+// Throughput of one concurrency level of the session-replay bench (base 90k context, +16k new per turn, 1100 output
+// tokens per turn, ignore_eos, MTP-3). Tenths of tok/s and microseconds keep the figures integral.
+type ConcurrencyReading {
+  concurrency: Nat
+  decode_deci_tokens_per_second_per_request: Nat
+  inter_token_gap_microseconds: Nat
+  ttft_median_milliseconds: Nat
+  ttft_max_milliseconds: Nat?
+}
+
+type CellOutcome
+  = CellMeasured {
+      weights_centi_gib: Nat
+      kv_centi_gib: Nat
+      kv_tokens: Nat
+      gpu_memory_utilization_basis_points: Nat
+      throughput: List<ConcurrencyReading>
+    }
+  | CellRefusedWeightsExceedUsableMemory { weights_bytes: Nat, usable_bytes: Nat }
+  | CellRefusedOther { cause: NonEmptyStr }
+  | CellUnobserved { trigger: NonEmptyStr }
+
+type QuantMatrixRow {
+  variant: ServingVariant
+  cell: QuantCell
+  outcome: CellOutcome
+}
+
+// A weight set larger than the utilization-scaled observed memory cannot be loaded: refused, with both numbers.
+fn weights_outcome_for(memory_bytes: Nat, utilization_bp: Nat, weights_bytes: Nat, fits: CellOutcome) -> CellOutcome {
+  let usable = memory_bytes * utilization_bp / 10000
+  if weights_bytes >= usable {
+    CellRefusedWeightsExceedUsableMemory { weights_bytes: weights_bytes, usable_bytes: usable }
+  } else {
+    fits
+  }
+}
+
+data bf16_weights_bytes: Nat = byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 335)))
+
+data cell_needs_run_trigger: NonEmptyStr = "a committed run receipt of this card with this weight and KV dtype" as NonEmptyStr
+
+data maxq_unobserved_trigger: NonEmptyStr = "a spare RTX PRO 6000 is rented and this cell is run; the production card serves only the fork b12x NVFP4 + FP8 KV path" as NonEmptyStr
+
+fn unobserved() -> CellOutcome {
+  CellUnobserved { trigger: cell_needs_run_trigger }
+}
+
+fn refused_bf16(memory_bytes: Nat, utilization_bp: Nat) -> CellOutcome {
+  weights_outcome_for(memory_bytes: memory_bytes, utilization_bp: utilization_bp, weights_bytes: bf16_weights_bytes, fits: unobserved())
+}
+
+data h200_nvl_session_replay: List<ConcurrencyReading> = [
+  ConcurrencyReading { concurrency: 1, decode_deci_tokens_per_second_per_request: 2987, inter_token_gap_microseconds: 11700, ttft_median_milliseconds: 1820, ttft_max_milliseconds: none },
+  ConcurrencyReading { concurrency: 4, decode_deci_tokens_per_second_per_request: 981, inter_token_gap_microseconds: 16400, ttft_median_milliseconds: 1900, ttft_max_milliseconds: none },
+  ConcurrencyReading { concurrency: 8, decode_deci_tokens_per_second_per_request: 580, inter_token_gap_microseconds: 22000, ttft_median_milliseconds: 2040, ttft_max_milliseconds: Present { value: 18100 } },
+]
+
+fn kv_cell(weights: WeightDtype, kv: KvDtype) -> QuantCell {
+  QuantCell { weights: weights, kv: kv }
+}
+
+data flash_next_quant_matrix: List<QuantMatrixRow> = [
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: 7339, kv_centi_gib: 4223, kv_tokens: 2626530, gpu_memory_utilization_basis_points: 8500, throughput: h200_nvl_session_replay } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: unobserved() },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: unobserved() },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: unobserved() },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: h200_nvl_observed_memory), utilization_bp: 8500) },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: h200_nvl_observed_memory), utilization_bp: 8500) },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: 7434, kv_centi_gib: 8125, kv_tokens: 5051998, gpu_memory_utilization_basis_points: 9000, throughput: [] } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: unobserved() },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: unobserved() },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: unobserved() },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization_bp: 9000) },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization_bp: 9000) },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: 7186, kv_centi_gib: 1424, kv_tokens: 773026, gpu_memory_utilization_basis_points: 9600, throughput: [] } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: max_q_observed_memory), utilization_bp: 9600) },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: max_q_observed_memory), utilization_bp: 9600) },
+]
+
+// One row per (variant, cell); a duplicate or missing pair reads as absent, never as the first hit.
+fn quant_matrix_outcome(rows: List<QuantMatrixRow>, v: ServingVariant, c: QuantCell) -> CellOutcome? {
+  let hits = rows |> filter(r => serving_variant_eq(a: r.variant, b: v) && quant_cell_eq(a: r.cell, b: c))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, r) => Present { value: r.outcome })
+  } else {
+    none
+  }
+}
+
+// OBSERVATIONS of the upstream 0.32.0 runs, relayed by the operator (run receipts; the remaining ServingRunReceipt
+// fields — vbios, digests, backends per layer — are owed with the snapshots).
+type UpstreamRunObservation {
+  variant: ServingVariant
+  gpu_uuid: NonEmptyStr
+  power_limit_deci_watts: Nat
+  driver_version: NonEmptyStr
+  moe_backend: NonEmptyStr
+  mtp_expert_backend: NonEmptyStr
+  linear_backend: NonEmptyStr
+  attention_note: NonEmptyStr
+  ple_note: NonEmptyStr
+}
+
+data upstream_ple_note: NonEmptyStr = "PLE table re-expressed BF16: upstream rejected the checkpoint NVFP4 PLE geometry (expected (2500012,160), got (2500012,80)); cpu_offload on" as NonEmptyStr
+
+data upstream_v032_run_observations: List<UpstreamRunObservation> = [
+  UpstreamRunObservation { variant: H200UpstreamV032, gpu_uuid: "GPU-db782247-b35d-34cf-3f2a-02c3d8c2918e" as NonEmptyStr, power_limit_deci_watts: 5000, driver_version: "615.71.09" as NonEmptyStr, moe_backend: "marlin W4A16 (recipe triton refuses NVFP4)" as NonEmptyStr, mtp_expert_backend: "marlin" as NonEmptyStr, linear_backend: "Humming MXFP8" as NonEmptyStr, attention_note: "fp8 KV + fp8 indexer KV" as NonEmptyStr, ple_note: upstream_ple_note },
+  UpstreamRunObservation { variant: B200UpstreamV032, gpu_uuid: "unrecorded" as NonEmptyStr, power_limit_deci_watts: 10000, driver_version: "580.126.09" as NonEmptyStr, moe_backend: "FLASHINFER_TRTLLM NVFP4 native FP4 (main experts)" as NonEmptyStr, mtp_expert_backend: "marlin W4A16 (2 MTP expert layers)" as NonEmptyStr, linear_backend: "unrecorded" as NonEmptyStr, attention_note: "FA4 Blackwell head_size 256 does not support fp8 KV; falls back to FA2 (upstream warning)" as NonEmptyStr, ple_note: upstream_ple_note },
+]
+
+data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver and the B200 uuid are committed, the FP8-weights size is read from the checkpoint index so that cell can be classified, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr
+)
