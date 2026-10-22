@@ -5,7 +5,6 @@ import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, Ru
 
 data witnesses_red_on_main_with_no_failure_mode_row: RecurringFailureMode = RecurringFailureMode {
   identity: "witnesses_red_on_main_with_no_failure_mode_row" as NonEmptyStr,
-  identity: "witnesses_red_on_main_with_no_failure_mode_row" as NonEmptyStr,
 
   // Prose states a RUNG FOUND AT position; the ledger reads prose positions as
   // ambiguous until a structured rung row exists (sibling precedent: rows whose prose
