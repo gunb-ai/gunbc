@@ -8,6 +8,11 @@ import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import std.occurrence_identity { OccurrenceId }
 import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites }
+import v2.compiler.dependency_demand {
+  CalleeOutsideClosure, DemandDerived, DemandDidNotSettle, DemandUndecided, DependencyDemandRow, FunctionFact,
+  FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources,
+  RequiresUndeclared, UndeclaredOperationCalled, UndecidedCause, dependency_demand_of
+}
 
 // THE EFFECT-PAIR CENSUS (DESIGN D16 TRIGGER, gunbc.plans.demand_engine_program): per function body,
 // every pair of effect-reaching call occurrences that no derived relation orders. It is MEASUREMENT
@@ -24,6 +29,7 @@ type ReachReason
   = ReachesHostObservation
   | ReachesHostActuation
   | ReachesExecutionSemanticsUnknown
+  | ReachesDeclaredResource { operation: QualifiedName }
   | ReachesOpaqueOperation { operation: QualifiedName }
   | ReachesUndeclaredOperation { operation: QualifiedName }
   | ReachesFunctionValueCall { function: QualifiedName }
@@ -250,5 +256,77 @@ fn body_effect_facts(module: QualifiedName, body: FactBodySites, uses: List<UseE
     }),
     orders: extract_order_edges(sites: body.sites, uses: uses),
     exclusive: Empty
+  }
+}
+
+// WHICH CALLEES REACH AN EFFECT, by reusing D13's reducer unchanged over a TRANSFORMED operation
+// table: every operation that is not declared RequiresNone becomes RequiresOpaque, so a function's
+// demand is Undecided exactly when some call chain from it reaches an operation, an opaque or
+// undeclared one, a function value or a callee outside the closure. No second call graph.
+// An operation declared RequiresNone is the one thing that does not reach; whether its execution
+// semantics row says otherwise is reported by the census, never promoted here.
+type EffectReachTable {
+  reasons: Map<QualifiedName, ReachReason>
+  known: Map<QualifiedName, Bool>
+}
+
+fn reach_operation_table(operations: List<OperationFact>) -> List<OperationFact> {
+  fold_list(xs: operations, empty: Empty, cons: fn(acc, op) {
+    match op.requirement {
+      RequiresNone => list_snoc_item(xs: acc, item: op)
+      RequiresResources { resources: _ } => list_snoc_item(xs: acc, item: OperationFact { path: op.path, requirement: RequiresOpaque })
+      RequiresOpaque => list_snoc_item(xs: acc, item: op)
+      RequiresUndeclared => list_snoc_item(xs: acc, item: OperationFact { path: op.path, requirement: RequiresOpaque })
+    }
+  })
+}
+
+fn reach_reason_of_cause(cause: UndecidedCause) -> ReachReason {
+  match cause {
+    OpaqueOperationCalled { operation: o } => ReachesOpaqueOperation { operation: o }
+    UndeclaredOperationCalled { operation: o } => ReachesUndeclaredOperation { operation: o }
+    FunctionValueCalled { function: f } => ReachesFunctionValueCall { function: f }
+    CalleeOutsideClosure { callee: c } => ReachesUnresolvedCallee { callee: c }
+    DemandDidNotSettle { function: f } => ReachesThroughCallee { callee: f }
+  }
+}
+
+fn reach_operation_reason(op: OperationFact) -> Optional<ReachReason> {
+  match op.requirement {
+    RequiresNone => Absent
+    RequiresResources { resources: _ } => Present { value: ReachesDeclaredResource { operation: op.path } }
+    RequiresOpaque => Present { value: ReachesOpaqueOperation { operation: op.path } }
+    RequiresUndeclared => Present { value: ReachesUndeclaredOperation { operation: op.path } }
+  }
+}
+
+fn effect_reach_table(functions: List<FunctionFact>, operations: List<OperationFact>) -> EffectReachTable {
+  let rows = dependency_demand_of(functions: functions, operations: reach_operation_table(operations: operations))
+  let from_functions = fold_list(xs: rows, empty: empty_map(), cons: fn(m, r) {
+    match r.demand {
+      DemandDerived { resources: _ } => m
+      DemandUndecided { cause: c } => map_insert(m: m, key: r.function, value: reach_reason_of_cause(cause: c))
+    }
+  })
+  let with_ops = fold_list(xs: operations, empty: from_functions, cons: fn(m, op) {
+    match reach_operation_reason(op: op) {
+      Present { value: r } => map_insert(m: m, key: op.path, value: r)
+      Absent => m
+    }
+  })
+  let known_fns = fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.path, value: true) })
+  let known = fold_list(xs: operations, empty: known_fns, cons: fn(m, op) { map_insert(m: m, key: op.path, value: true) })
+  EffectReachTable { reasons: with_ops, known: known }
+}
+
+// A callee with no fact row at all is outside the closure and reaches by definition.
+fn effect_reach_reason(table: EffectReachTable, callee: QualifiedName) -> Optional<ReachReason> {
+  match map_lookup(m: table.reasons, key: callee) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match map_lookup(m: table.known, key: callee) {
+        Present { value: _ } => Absent
+        Absent => Present { value: ReachesUnresolvedCallee { callee: callee } }
+      }
   }
 }
