@@ -14,6 +14,7 @@ import gunbc.runner.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota,
 import gunbc.runner.runner_throughput_qualification {
   WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
   RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority, leg_is_wired,
+  LegWired,
 }
 
 // THE EXECUTION ROUTE IS A TYPED STAGE PLAN, AND EVERY STAGE SAYS WHAT IT MUTATES AND UNDER WHOM.
