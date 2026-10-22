@@ -1,0 +1,35 @@
+module gunbc.approve_ios_swift_join_live
+
+import std.types { String, List, Bool, GitRef }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.algebra { length }
+import extdeps.git
+import extdeps.git.inspect
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.approve_ios_swift_join { swift_join_is_clean, is_approve_ios_swift }
+
+// THE INHABITANCE CLAIM for gunbc.approve_ios_swift_join: the listing it joins is the HEAD tree as
+// git reports it (git.Inspect.HeadCommit then ListTreePathsAtRevision, the route
+// gunbc.rust_item_host_observation head_rust_sources uses), not a hand copy. It reaches git, which
+// the hermetic per-PR envelope has no route for, so it is an operator instrument and not a floor
+// claim: gunbc.guarantee_stall approve_ios_swift_join_live_off_the_merge_path_stall declares that.
+//   gunbc run --entry dag/gunbc/approve_ios_swift_join_live.dag --function approve_ios_swift_join_live_report
+// The report judges the OBSERVED tree only: nothing is appended to what git returned. A clean
+// checkout exits 0; a revision whose committed tree holds an unaccounted apps/approve-ios swift file
+// refuses, naming the observed revision. Run it at a clean revision and at a scratch commit adding a
+// stray file (never pushed); the receipt pins the code revision and the observed revision separately.
+
+fn head_tree_paths() -> List<String> {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  let tree = git.Inspect.ListTreePathsAtRevision(ref: (head.sha as String) as GitRef, expect: ExpectSuccess)
+  if head.success && tree.success { split(s: tree.paths_nul, delimiter: "\u{0}") } else { [] }
+}
+
+fn approve_ios_swift_join_live_report() -> ProcessExit {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  let tree = head_tree_paths()
+  let swift = length(filter(tree, p => is_approve_ios_swift(path: p)))
+  if swift == 0 { exit_failure(reason: "UNOBSERVED: no apps/approve-ios swift file in the HEAD listing") }
+  else if swift_join_is_clean(tree: tree) { ExitSuccess }
+  else { exit_failure(reason: concat("RED: observed tree at ", concat(head.sha as String, " holds an unaccounted apps/approve-ios swift file"))) }
+}

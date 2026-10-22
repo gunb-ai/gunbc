@@ -1,5 +1,7 @@
 module v2.test.claim.parameter_reference
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.algebra { empty_map, map_insert, Cons, Empty, FreeMonoid, PartialFunction, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
@@ -342,7 +344,7 @@ test fn pr_unkeyed_lexical_reference_refuses_and_type_parameter_stays_atom_holds
 test fn pr_eval_lexical_reference_miss_refuses_holds() -> Bool {
   let reference = lexical_reference_node(label: ^pr_x, occurrence_id: OccurrenceSynthetic)
   match eval_with_context(
-    tree: InferredTree { root: reference, facts: PartialFunction { lookup: pr_facts_lookup } },
+    tree: InferredTree { root: reference, facts: PartialFunction { lookup: pr_facts_lookup }, arm_resolutions: constructed_root_arm_resolutions() },
     context: eval_context_with_semantics(
       runtime_identity: ^parameter_reference_runtime_id,
       interpretation: v2_evaluator_interpretation(),
@@ -370,7 +372,7 @@ fn pr_facts_lookup(key: Node) -> Optional<InferredFacts> {
 test fn pr_eval_refuses_a_parameter_reference_holds() -> Bool {
   let reference = parameter_reference_node(qn: pr_qn(dotted: "p.f.x"), occurrence_id: OccurrenceSynthetic)
   match eval_with_context(
-    tree: InferredTree { root: reference, facts: PartialFunction { lookup: pr_facts_lookup } },
+    tree: InferredTree { root: reference, facts: PartialFunction { lookup: pr_facts_lookup }, arm_resolutions: constructed_root_arm_resolutions() },
     context: eval_context_with_semantics(
       runtime_identity: ^parameter_reference_runtime_id,
       interpretation: v2_evaluator_interpretation(),
