@@ -1,5 +1,7 @@
 module v2.test.claim.execution.emit_host_loop_equals_eval
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List, Map }
 import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
@@ -106,7 +108,8 @@ fn emit_loop_eval_producer_tree() -> Outcome<InferredTree> {
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: emit_loop_eval_composed_facts }
+          facts: PartialFunction { lookup: emit_loop_eval_composed_facts },
+          arm_resolutions: constructed_root_arm_resolutions()
         }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -119,7 +122,8 @@ fn emit_loop_eval_wrong_value_producer_tree() -> Outcome<InferredTree> {
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: emit_loop_eval_composed_facts }
+          facts: PartialFunction { lookup: emit_loop_eval_composed_facts },
+          arm_resolutions: constructed_root_arm_resolutions()
         }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }

@@ -4,7 +4,7 @@ import extdeps.tools.gnu_coreutils { readlink_command }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
 import std.algebra { trim, list_snoc_item }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
   OperationObserved, OperationHarnessFault, ShellObserved, FileObserved,
@@ -32,7 +32,7 @@ import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings, wall_cloc
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { millisecond }
-import v2.std.operation_argv { InputText, InputTextList }
+import std.operation_argv { InputText, InputTextList }
 
 // THE DRY REALIZATION OF ONE mtcollins1 BOOT ATTEMPT'S WHOLE EFFECT DEMAND. The scenario world
 // composes the one BMC model with what the worker running the attempt has around it: its filesystem

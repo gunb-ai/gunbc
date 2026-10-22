@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.repair_enumerates_its_own_blast_radius_by_inspection
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data repair_enumerates_its_own_blast_radius_by_inspection: RecurringFailureMode = RecurringFailureMode {
   identity: "repair_enumerates_its_own_blast_radius_by_inspection" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a repair enumerates its own blast radius by inspection** (INVALID STATE: a change that falsifies a standing claim states a COUNT of the sites it makes false -- in its title, its body, or both -- and that count was never derived from a decidable search over the corpus.",

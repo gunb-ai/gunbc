@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.kernel_type_float_has_no_v2_value_type_node
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
 
 data kernel_type_float_has_no_v2_value_type_node: RecurringFailureMode = RecurringFailureMode {
   identity: "kernel_type_float_has_no_v2_value_type_node" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
     "INVALID STATE: a value is judged at a position declared Float on the v2 resolve-to-infer route and the judgment cannot be decided, because nothing says what Float denotes. Float is a kernel type (std.types kernel_type_set) with no value-type node in any v2 std authority, so it has no row in v2.extdeps.languages.dag dag_kernel_value_type_roster: no canonical binding, no spelling row, and no denotation.",

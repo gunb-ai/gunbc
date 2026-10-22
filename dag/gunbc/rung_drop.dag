@@ -1,6 +1,9 @@
 module gunbc.rung_drop
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { FreeSemigroup, non_empty_to_list }
+import extdeps.bazel.label { Label, render_label }
+import gunbc.instrument_targets { instrument_targets }
 import gunbc.guarantee_rung {
   GuaranteeRung, OutsideTheLadder, Mitigatable, MechanicallyPreventable,
   StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_label,
@@ -216,7 +219,7 @@ import gunbc.guarantee_rung {
 // operator relays and dashboard message ids rather than gunbc.design_ruling symbols, and
 // `population_gone` is prose (section 4c: a String only where nothing typed exists, and never
 // evidence that the population is gone). Admission is mechanical: gunbc.rung_drop.standing
-// dissolved_populations_empty admits a Dissolved row only over an empty TypedDeclaration population.
+// dissolved_populations_empty admits a Dissolved row only over a TypedDeclaration whose population is PopulationDeleted.
 type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }
@@ -256,22 +259,16 @@ type LegacyProseIdentity
   | FloorCostClaimQualificationUnavailable
   | SparkRoleScopedRetirementProductionRoot
   | FloorCutHeal
-  | FloorCutEffectGates
   | FloorCutFmtGate
   | FloorCutMergeAdmissionStamping
   | FloorCutFalsifierCadence
-  | BuiltinSignatureArityPairingFabricates
   | ConcatBinarySignatureExemptFromArgBinding
   | NamespaceAdmissionConsumedRowDeletion
   | SparkServingLocalArtifactNotReproducible
   | DashboardMergeReadySemanticAdmissibility
-  | FloorCutRegenSecondGenerationAgreement
   | FloorCutReceiptDiscriminatingArms
   | FloorCutBehaviouralRegressionDifferential
   | RustUnitTestsOffTheMergePath
-  | EmitCopyQualificationWithoutAConsumer
-  | FloorCostHighCpuWithheld
-  | DeterminismTransitiveReachability
 
 fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
   match l {
@@ -285,25 +282,19 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     TextBoundaryIdentityWall => "text_boundary_identity_wall"
     FabricEvidenceGating => "fabric_evidence_gating"
     RustUnitTestsOffTheMergePath => "rust_unit_tests_off_the_merge_path"
-    EmitCopyQualificationWithoutAConsumer => "emit_copy_qualification_without_a_consumer"
-    FloorCostHighCpuWithheld => "floor_cost_high_cpu_withheld"
-    DeterminismTransitiveReachability => "determinism_transitive_reachability"
     EmittedBytesWitnessRequiredLane => "emitted_bytes_witness_required_lane"
     DirectCallArgSeamV2Exemption => "direct_call_arg_seam_v2_exemption"
     DirectCallUnboundCarriedGenericCompat => "direct_call_unbound_carried_generic_compat"
     FloorCostClaimQualificationUnavailable => "floor_cost_claim_qualification_unavailable"
     SparkRoleScopedRetirementProductionRoot => "spark_role_scoped_retirement_production_root"
     FloorCutHeal => "floor_cut_heal"
-    FloorCutEffectGates => "floor_cut_effect_gates"
     FloorCutFmtGate => "floor_cut_fmt_gate"
     FloorCutMergeAdmissionStamping => "floor_cut_merge_admission_stamping"
     FloorCutFalsifierCadence => "floor_cut_falsifier_cadence"
-    BuiltinSignatureArityPairingFabricates => "builtin_signature_arity_pairing_fabricates"
     ConcatBinarySignatureExemptFromArgBinding => "concat_binary_signature_exempt_from_arg_binding"
     NamespaceAdmissionConsumedRowDeletion => "namespace_admission_consumed_row_deletion"
     SparkServingLocalArtifactNotReproducible => "spark_serving_local_artifact_not_reproducible"
     DashboardMergeReadySemanticAdmissibility => "dashboard_merge_ready_semantic_admissibility"
-    FloorCutRegenSecondGenerationAgreement => "floor_cut_regen_second_generation_agreement"
     FloorCutReceiptDiscriminatingArms => "floor_cut_receipt_discriminating_arms"
     FloorCutBehaviouralRegressionDifferential => "floor_cut_behavioural_regression_differential"
   }
@@ -312,12 +303,51 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
 // THE DECLARATION ITSELF: SECTION 4b(3)'s FIVE FIELDS, OR THE PARAGRAPH THAT PREDATES THEM.
 // `TypedDeclaration` is the shape 4b(3) specifies -- previous rung, temporary rung, reason, bounded
 // population, restoration trigger -- and it is the arm every new drop is declared through.
+// THE BOUNDED POPULATION OF A TYPED DROP: THE SUBJECTS THE LOST RUNG COVERED, NOT A NAME FOR THE
+// LOSS. Two readable forms and no third. `Enumerated` lists the members; a population that a
+// `gunbc test` label re-derives is `DerivedBy` that label, so the count is the producer's to state
+// and no row transcribes it (DESIGN section 6). A label that is not a row of
+// `gunbc.instrument_targets instrument_targets` names a producer that cannot run, and
+// `rung_drop_population_is_readable` refuses it. A prose sentence in a `String` is the
+// unreadable form this type removes.
+// `Enumerated` is non-empty BY CONSTRUCTION (std.algebra FreeSemigroup, ruling nonemptiness_is_constructed_or_proved):
+// an empty enumeration has no constructor. The two arms that say "no countable members" are named
+// for what they are. `NotYetCounted` is a population nobody counts yet, with a typed cause;
+// `PopulationDeleted` is the form of a loss whose members no longer exist, the only form a
+// Dissolved row is admitted over. Neither is readable for a Standing drop.
+// EACH ARM NAMES THE MISSING CAPABILITY, NOT THE ROW THAT LACKS IT, so two rows sharing a gap share an arm.
+type UncountedCause
+  = NoInstrumentObservesTheZero
+  | DerivedEnumerationYieldedNoMember
+
+fn uncounted_cause_label(c: UncountedCause) -> String {
+  match c {
+    NoInstrumentObservesTheZero => "no instrument observes the zero"
+    DerivedEnumerationYieldedNoMember => "a derived enumeration yielded no member"
+  }
+}
+
+type RungDropPopulation
+  = Enumerated { members: FreeSemigroup<String> }
+  | DerivedBy { label: Label }
+  | NotYetCounted { cause: UncountedCause }
+  | PopulationDeleted
+
+// THE TOTAL CONSTRUCTOR FOR A POPULATION DERIVED FROM A LIST: a list with a member is Enumerated, an
+// empty one is a typed NotYetCounted, never an empty Enumerated.
+fn population_from_list(xs: List<String>) -> RungDropPopulation {
+  match xs {
+    Cons { head: h, tail: t } => Enumerated { members: FreeSemigroup { head: h, tail: t } }
+    Empty => NotYetCounted { cause: DerivedEnumerationYieldedNoMember }
+  }
+}
+
 type RungDropDeclaration
   = TypedDeclaration {
       previous: GuaranteeRung
       temporary: GuaranteeRung
       reason: RungDropReason
-      population: List<String>
+      population: RungDropPopulation
       restoration_trigger: String
     }
   | AuthoredProse { legacy: LegacyProseIdentity, authored: String }
@@ -344,12 +374,35 @@ fn rung_drop_declaration_message(d: RungDrop) -> String {
       concat(
         concat(" -> ", concat(guarantee_rung_label(r: t), concat(" (", rung_drop_reason_label(r: rs)))),
         concat(
-          concat("). Population: ", join(pop, ", ")),
+          concat("). Population: ", rung_drop_population_label(p: pop)),
           concat(". Restored when: ", sentence_terminated(s: rt))
         )
       )
     )
     AuthoredProse { legacy: _, authored: a } => a
+  }
+}
+
+fn rung_drop_population_label(p: RungDropPopulation) -> String {
+  match p {
+    Enumerated { members: ms } => join(non_empty_to_list(xs: ms), ", ")
+    NotYetCounted { cause: c } => concat("not yet counted (", concat(uncounted_cause_label(c: c), ")"))
+    PopulationDeleted => "deleted"
+    DerivedBy { label: l } => concat("derived by `gunbc test ", concat(render_label(l: l), "`"))
+  }
+}
+
+// A POPULATION IS READABLE WHEN SOMETHING CAN BE COUNTED FROM IT. An enumeration with no member
+// reads as "nothing was lost", which is the Dissolved claim and is admitted only there
+// (`dissolved_is_admissible`); a derivation is readable only when its label is a row the instrument
+// roster holds, so a retired or misspelled label refuses instead of citing a producer that
+// does not exist.
+fn rung_drop_population_is_readable(p: RungDropPopulation) -> Bool {
+  match p {
+    Enumerated { members: _ } => true
+    NotYetCounted { cause: _ } => false
+    PopulationDeleted => false
+    DerivedBy { label: l } => length(xs: filter(instrument_targets(), t => render_label(l: t) == render_label(l: l))) == 1
   }
 }
 
@@ -437,26 +490,21 @@ data legacy_prose_identity_roster: List<LegacyProseIdentity> = [
   TextBoundaryIdentityWall,
   FabricEvidenceGating,
   RustUnitTestsOffTheMergePath,
-  EmitCopyQualificationWithoutAConsumer,
-  FloorCostHighCpuWithheld,
   EmittedBytesWitnessRequiredLane,
   DirectCallArgSeamV2Exemption,
   DirectCallUnboundCarriedGenericCompat,
   FloorCostClaimQualificationUnavailable,
   SparkRoleScopedRetirementProductionRoot,
   FloorCutHeal,
-  FloorCutEffectGates,
   FloorCutFmtGate,
   FloorCutMergeAdmissionStamping,
   FloorCutFalsifierCadence,
-  BuiltinSignatureArityPairingFabricates,
   ConcatBinarySignatureExemptFromArgBinding,
   NamespaceAdmissionConsumedRowDeletion,
   SparkServingLocalArtifactNotReproducible,
   DashboardMergeReadySemanticAdmissibility,
   FloorCutBehaviouralRegressionDifferential,
   FloorCutReceiptDiscriminatingArms,
-  FloorCutRegenSecondGenerationAgreement,
 ]
 
 // EVERY PROSE ROW NAMES ITS OWN IDENTITY. Set equality between the arms and the rows would pass on
@@ -515,8 +563,8 @@ fn every_consolidated_typed_drop_is_rostered_once(ds: List<RungDrop>) -> Bool {
 
 // THE ONE VALIDITY FUNCTION FOR DISSOLVED. A Dissolved row erases a drop from live accounting, so every
 // consumer that would drop its loss asks this first and treats an invalid one as STILL STANDING:
-// counted live and outstanding, never erased (fail closed). Admitted only over an empty
-// TypedDeclaration population; a non-empty typed population or an AuthoredProse declaration is
+// counted live and outstanding, never erased (fail closed). Admitted only over a
+// TypedDeclaration whose population is PopulationDeleted; a non-empty typed population or an AuthoredProse declaration is
 // invalid. A row that is not Dissolved has nothing to refuse.
 fn dissolved_is_admissible(drop: RungDrop) -> Bool {
   match drop.standing {
@@ -524,8 +572,56 @@ fn dissolved_is_admissible(drop: RungDrop) -> Bool {
     Retired { trigger_fired: _ } => true
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
     Dissolved { ruling: _, decision_record: _, population_gone: _ } => match drop.declaration {
-      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => length(xs: p) == 0
+      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => match p {
+        PopulationDeleted => true
+        Enumerated { members: _ } => false
+        DerivedBy { label: _ } => false
+        NotYetCounted { cause: _ } => false
+      }
       AuthoredProse { legacy: _, authored: _ } => false
     }
   }
+}
+
+// THE READABILITY JUDGMENT A STANDING TYPED DROP OWES. Only a Standing row is judged: a Retired,
+// Superseded or Dissolved row records a loss that already ended or moved, and holding it to a
+// population now would launder that loss with an empty or invented one. A Standing AuthoredProse
+// row is not judged here either -- it is the debt `authored_prose_rung_drops` counts.
+fn rung_drop_is_readable(d: RungDrop) -> Bool {
+  match d.standing {
+    Standing => match d.declaration {
+      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } =>
+        rung_drop_population_is_readable(p: p)
+      AuthoredProse { legacy: _, authored: _ } => true
+    }
+    Retired { trigger_fired: _ } => true
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => true
+  }
+}
+
+// THE STANDING DROPS WHOSE POPULATION IS NOT READABLE, DERIVED FROM THE ROSTER RATHER THAN LISTED.
+// A genuine zero is an observation, so it is readable only as a `DerivedBy` label whose executed run
+// yields the empty population; an empty `Enumerated` has no constructor. No such producer
+// exists for provider_path_jurisdiction_unread_admits, so it is counted here with that reason.
+fn unreadable_standing_drops(ds: List<RungDrop>) -> List<RungDrop> {
+  filter(ds, d => !rung_drop_is_readable(d: d))
+}
+
+fn population_is_not_yet_counted(d: RungDrop) -> Bool {
+  match d.declaration {
+    TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => match p {
+      NotYetCounted { cause: _ } => true
+      Enumerated { members: _ } => false
+      DerivedBy { label: _ } => false
+      PopulationDeleted => false
+    }
+    AuthoredProse { legacy: _, authored: _ } => false
+  }
+}
+
+// THE ONLY ADMITTED CAUSE OF UNREADABILITY IS A TYPED NotYetCounted POPULATION: an unknown DerivedBy
+// label or any other unreadable shape is a new defect and refuses.
+fn every_unreadable_standing_drop_is_not_yet_counted(ds: List<RungDrop>) -> Bool {
+  length(xs: filter(unreadable_standing_drops(ds: ds), d => !population_is_not_yet_counted(d: d))) == 0
 }
