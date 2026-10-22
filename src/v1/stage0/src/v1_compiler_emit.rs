@@ -80,8 +80,8 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
-    type_reference_declaration_ref, GlobalBareLookupState, TypeBinding, TypeEnv,
+    authored_name, carried_declaration_ref, empty_symbol_index, lookup_type_for,
+    type_reference_declaration_reading, GlobalBareLookupState, TypeBinding, TypeEnv,
     TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
@@ -6863,7 +6863,7 @@ pub fn cast_source_grounded_onto_target_carrier(
 ) -> bool {
     match expr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
-            match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+            match crate::v1_compiler_infer_env::carried_declaration_ref(
                 n.clone(),
                 source_indices.clone(),
                 env.clone(),

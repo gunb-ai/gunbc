@@ -202,7 +202,6 @@ pub fn refinement_cast_rules() -> Rc<Vec<Rc<RefinementCastRule>>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredWideningRule {
     pub from_declaration: Rc<DeclarationRef>,
-    pub from_type: String,
     pub to_type: String,
 }
 
@@ -211,7 +210,6 @@ pub fn declared_widening_rules() -> Rc<Vec<Rc<DeclaredWideningRule>>> {
             static CACHED: Rc<Vec<Rc<DeclaredWideningRule>>> = {
                 Rc::new(vec![Rc::new(DeclaredWideningRule {
         from_declaration: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
-        from_type: "Nat".to_string(),
         to_type: "Int".to_string(),
     })])
             };
