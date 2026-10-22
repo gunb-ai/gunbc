@@ -50,7 +50,7 @@ import gunbc.instruments.known_red_derivation {
   known_red_marker_entry_resolve, known_red_marker_budget_word, known_red_marker_budget_unmeasured,
   known_red_marker_ground_unpublished_mock, known_red_marker_ground_filesystem_removal,
   known_red_marker_ground_no_mock_response,
-  known_red_word_pass, known_red_word_fail, known_red_word_panicked,
+  known_red_word_pass, known_red_word_fail, known_red_word_panicked, known_red_word_unobserved,
   known_red_terminal_of_line
 }
 import std.dissolution { dissolution_is_bound }
@@ -1048,7 +1048,7 @@ fn route_gap_verdict(subject: KnownRedSubject) -> String {
 fn route_gap_verdict_ground(subject: KnownRedSubject, ground: String) -> String {
   let head = concat(known_red_marker_route_gap, concat("Filesystem.IsFile: ", ground))
   let tail = " — the claim never reached its subject, so this is a route gap and not a verdict)"
-  concat("FAIL ", concat(subject.function, concat(" ", concat(head, concat(tail, "\n")))))
+  concat(known_red_word_unobserved, concat(" ", concat(subject.function, concat(" ", concat(head, concat(tail, "\n"))))))
 }
 
 // THE ABORTED ARMS, IN THE TRANSPORT'S OWN SHAPE, each carrying the field the ledger arm is named for. Both
@@ -1079,10 +1079,10 @@ fn not_attempted_verdict(subject: KnownRedSubject, halted_behind: String) -> Str
 // carrying the print.
 fn entry_resolve_verdict(subject: KnownRedSubject, entry: String) -> String {
   concat(
-    "FAIL ",
+    known_red_word_unobserved,
     concat(
-      subject.function,
-      concat(" ", concat(known_red_marker_entry_resolve, concat(entry, ")\n")))
+      " ",
+      concat(subject.function, concat(" ", concat(known_red_marker_entry_resolve, concat(entry, ")\n"))))
     )
   )
 }
@@ -1934,7 +1934,13 @@ fn known_red_arm_matches(marker: String, arm: KnownRedPrintedArm) -> Bool {
       if marker == known_red_marker_panicked {
         arm.word == known_red_word_panicked
       } else {
-        arm.word == known_red_word_fail
+        if marker == known_red_marker_route_gap || marker == known_red_marker_entry_resolve {
+          // #14539 moved these two arms' print under UNOBSERVED; the arm must be registered under it or the
+          // classifier would be looking for the wrong word and the arm would be dead.
+          arm.word == known_red_word_unobserved
+        } else {
+          arm.word == known_red_word_fail
+        }
       }
     }
   word_agrees

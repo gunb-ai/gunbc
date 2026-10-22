@@ -182,13 +182,19 @@ data known_red_max_claims_per_child: Int = 64
 // as a `ByteSize`, so the carrier is what the transport consumes — the width is applied, not described.
 data known_red_stderr_tail: ByteSize = byte_size(count: 65536)
 
-// THE THREE VERDICT WORDS, IN ONE PLACE. The prefix functions below read these, the decoder's predicates
+// THE VERDICT WORDS, IN ONE PLACE. The prefix functions below read these, the decoder's predicates
 // read the arm markers, and `known_red_print_authorities` ties both to the file that prints them -- so the
 // spelling of a verdict has exactly one author (DESIGN §3) and is checked against `claim_batch.rs` on every
 // run (review 83992).
 data known_red_word_pass: String = "PASS"
 data known_red_word_fail: String = "FAIL"
 data known_red_word_panicked: String = "PANICKED"
+// The word the transport (#14539, after gunbc's own label contract) prints for an outcome that NEVER REACHED
+// A VERDICT because the run never happened on the needed route or the group's entry never resolved: hermetic
+// route gaps and entry-resolve failures. It is a distinct word, not FAIL, so a reader of stdout can tell "the
+// claim honestly said false" from "the claim was never asked"; the instrument decodes it to the same
+// before-verdict terminals but it must be spelled from here once, like the others.
+data known_red_word_unobserved: String = "UNOBSERVED"
 
 fn known_red_pass_prefix() -> String {
   concat(known_red_word_pass, " ")
@@ -204,6 +210,15 @@ fn known_red_fail_prefix() -> String {
 // must not collapse into it.
 fn known_red_panicked_prefix() -> String {
   concat(known_red_word_panicked, " ")
+}
+
+// `UNOBSERVED ` is recognized the way PASS, FAIL and PANICKED are: `claim_batch` prints it (#14539) from the
+// two arms whose run never happened -- a hermetic route with no arm for the operation, and an entry that
+// failed to resolve. Those lines are verdict lines FOR THE INSTRUMENT (they must be seen, decoded, and filed
+// as the before-verdict terminals), even though their whole point is that no verdict exists. Dropping them
+// at recognition is what would make the arms dead.
+fn known_red_unobserved_prefix() -> String {
+  concat(known_red_word_unobserved, " ")
 }
 
 // The cause printed for the floor subject, spelled FROM the withdrawal row rather than invented here: the
@@ -860,6 +875,7 @@ fn known_red_verdict_lines(stdout: String) -> List<String> {
       starts_with(s: l, prefix: known_red_pass_prefix())
         || starts_with(s: l, prefix: known_red_fail_prefix())
         || starts_with(s: l, prefix: known_red_panicked_prefix())
+        || starts_with(s: l, prefix: known_red_unobserved_prefix())
     }
   )
 }
@@ -870,13 +886,16 @@ fn known_red_verdict_lines(stdout: String) -> List<String> {
 // Those lines say "this is a route gap and not a verdict" in the harness's own words
 // (`src/v1/stage0/src/bin/claim_batch.rs`), and counting one as an observed false would let the instrument
 // report a claim it never evaluated as a HELD known-red — a fabricated verdict, the exact defect class this
-// module exists to refuse. A never-reached line is therefore not a fail for the claim, which sends it to
-// `Absent` — the same no-observation the instrument already gives a claim the child never mentioned. The
-// genuinely-evaluated falses keep their meaning: bare `FAIL <fn>`, and `FAIL <fn> (returned
-// ProcessExit::ExitFailure, code N: <reason>)`, which is how a claim that ran and honestly refused prints
-// (its reason channel is load-bearing for the wet real-execution reds). `UNOBSERVED <fn> (…)` — the form a
-// sibling harness change is adopting for the same outcomes — needs no handling here: it is not a `FAIL`
-// prefix, so it is already not a fail.
+// module exists to refuse. A never-reached line is therefore not a fail for the claim: the route gap and the
+// entry-resolve go to their before-verdict terminals (`RouteGap`, `NotAttempted`), which the ledger files as
+// no-observation, never as a held red. The genuinely-evaluated falses keep their meaning: bare `FAIL <fn>`,
+// and `FAIL <fn> (returned ProcessExit::ExitFailure, code N: <reason>)`, which is how a claim that ran and
+// honestly refused prints (its reason channel is load-bearing for the wet real-execution reds). Since #14539
+// the transport prints the route gap and the entry resolve under a distinct word, `UNOBSERVED`, not `FAIL`;
+// the decoder recognises that word and dispatches its bracketed tail through the SAME body classifier, so the
+// two arms stay live rather than going dead-by-not-matching. A bare `UNOBSERVED <fn>` with no bracketed tail
+// (the subject-unresolved print, whose harness line is not one of this instrument's classification arms) is a
+// no-observation and stays `Absent`.
 // THE VERDICT LINE, DECODED INTO THE LEDGER'S OWN TERMINAL — NOT INTO 'DID IT FAIL'.
 //
 // WHY THIS REPLACED A BOOLEAN. The reader here used to ask whether a line existed for a function and, if
@@ -902,9 +921,9 @@ fn known_red_verdict_lines(stdout: String) -> List<String> {
 //   FAIL <f> (reported as not-attempted behind H, which this path never mints)
 //                                                                         NotAttempted { halted_by }
 //   FAIL <f> (host tool unresolved: "N" (probed: P))                      HostToolUnresolved { name, probed }
-//   FAIL <f> (hermetic route has no arm for OP: L — ... not a verdict)    RouteGap { operation, ground }
+//   UNOBSERVED <f> (hermetic route has no arm for OP: L — ... not a verdict)  RouteGap { operation, ground }
 //   FAIL <f> (<k> budget <B>ms EXCEEDED; cost=...)                        BudgetRefused { safety }
-//   FAIL <f> (entry resolve failed: E)                                    NotAttempted { halted_by }
+//   UNOBSERVED <f> (entry resolve failed: E)                              NotAttempted { halted_by }
 //
 // THE WORDING EACH ARM PRINTS, IN ONE PLACE, CHECKED AGAINST THE FILE THAT PRINTS IT (review 83992).
 //
@@ -979,11 +998,14 @@ data known_red_print_authorities: List<KnownRedPrintAuthority> = [
   KnownRedPrintAuthority {
     source: known_red_transport_source_claim_batch,
     markers: [
-      // The three verdict words, tied as the harness's own format literals and built from the same
-      // constants the prefix functions read, so 'PASS' has exactly one author.
+      // The verdict words, tied as the harness's own format literals and built from the same
+      // constants the prefix functions read, so 'PASS' has exactly one author. `UNOBSERVED` is tied too:
+      // after #14539 it is the word two of the classification arms (hermetic route gap, entry resolve) are
+      // printed under, so a reword of it must fail here like any other verdict word would.
       concat(known_red_word_pass, " {}"),
       concat(known_red_word_fail, " {}"),
       concat(known_red_word_panicked, " {}"),
+      concat(known_red_word_unobserved, " {}"),
       known_red_marker_exit_failure,
       known_red_marker_not_bool,
       known_red_marker_not_bool_tail,
@@ -1006,8 +1028,8 @@ data known_red_print_authorities: List<KnownRedPrintAuthority> = [
       KnownRedPrintedArm { word: known_red_word_panicked, marker: known_red_marker_panicked },
       KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_not_attempted },
       KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_host_tool },
-      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_route_gap },
-      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_entry_resolve }
+      KnownRedPrintedArm { word: known_red_word_unobserved, marker: known_red_marker_route_gap },
+      KnownRedPrintedArm { word: known_red_word_unobserved, marker: known_red_marker_entry_resolve }
     ]
   },
   KnownRedPrintAuthority {
@@ -1231,7 +1253,21 @@ fn known_red_terminal_of_printed(printed: KnownRedPrintedLine) -> Optional<Claim
       if printed.verdict_word == known_red_word_panicked {
         known_red_terminal_of_body(body: printed.body)
       } else {
-        Absent
+        // The two arms the transport relabelled to `UNOBSERVED` (#14539) -- hermetic route gap and entry-resolve
+        // -- still carry the same bracketed tail as they did under FAIL, so the SAME body classifier decides
+        // them. Routed here rather than dropped to `Absent`: a line that is recognised but never dispatched is
+        // the dead-arm hole the tie check exists to catch. A bare `UNOBSERVED <fn>` with no bracketed tail is a
+        // no-observation and stays Absent (the third UNOBSERVED print, the subject-unresolved one, whose verdict
+        // the harness does not yet render -- it is not one of this instrument's classification arms).
+        if printed.verdict_word == known_red_word_unobserved {
+          if printed.body == "" {
+            Absent
+          } else {
+            known_red_terminal_of_body(body: printed.body)
+          }
+        } else {
+          Absent
+        }
       }
     }
   }
@@ -1253,6 +1289,7 @@ fn known_red_line_body(line: String, function: String) -> Optional<KnownRedPrint
   let pass_head = concat(known_red_pass_prefix(), function)
   let fail_head = concat(known_red_fail_prefix(), function)
   let panic_head = concat(known_red_panicked_prefix(), function)
+  let unobserved_head = concat(known_red_unobserved_prefix(), function)
   if line == pass_head {
     Present { value: KnownRedPrintedLine { verdict_word: known_red_word_pass, body: "" } }
   } else {
@@ -1268,7 +1305,11 @@ fn known_red_line_body(line: String, function: String) -> Optional<KnownRedPrint
           if starts_with(s: line, prefix: concat(panic_head, " (")) {
             Present { value: KnownRedPrintedLine { verdict_word: known_red_word_panicked, body: trim(s: known_red_after(s: line, n: string_length(s: panic_head) + 1)) } }
           } else {
-            Absent
+            if starts_with(s: line, prefix: concat(unobserved_head, " (")) {
+              Present { value: KnownRedPrintedLine { verdict_word: known_red_word_unobserved, body: trim(s: known_red_after(s: line, n: string_length(s: unobserved_head) + 1)) } }
+            } else {
+              Absent
+            }
           }
         }
       }
@@ -2083,8 +2124,11 @@ fn known_red_claim_explaining(claims: List<ClaimRun>, printed: String) -> Option
 }
 
 // THE NAME THE HARNESS PRINTED: from the verdict keyword down to the first separator. The keywords are the
-// transport's own (`known_red_pass_prefix`, `known_red_fail_prefix`, `known_red_panicked_prefix`), so this
-// cannot drift from `known_red_verdict_lines` -- the two read the same three prefixes.
+// transport's own (`known_red_pass_prefix`, `known_red_fail_prefix`, `known_red_panicked_prefix`,
+// `known_red_unobserved_prefix`), so this cannot drift from `known_red_verdict_lines` -- the two read the same
+// prefixes. UNOBSERVED is stripped here too: a name that kept the `UNOBSERVED ` prefix could not be matched to
+// the claim it reports, which would leave the two re-labelled arms dead in the fold even though the decoder
+// dispatches them.
 fn known_red_verdict_name_of(line: String) -> String {
   known_red_name_cut(s: known_red_strip_verdict_prefix(line: line), i: 0)
 }
@@ -2099,7 +2143,11 @@ fn known_red_strip_verdict_prefix(line: String) -> String {
       if starts_with(s: line, prefix: known_red_panicked_prefix()) {
         known_red_after(s: line, n: string_length(s: known_red_panicked_prefix()))
       } else {
-        trim(s: line)
+        if starts_with(s: line, prefix: known_red_unobserved_prefix()) {
+          known_red_after(s: line, n: string_length(s: known_red_unobserved_prefix()))
+        } else {
+          trim(s: line)
+        }
       }
     }
   }
