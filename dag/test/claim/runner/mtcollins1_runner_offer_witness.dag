@@ -289,14 +289,13 @@ test fn mtcollins1_RED_unread_receipt_is_not_an_unbegun_capture() -> Bool {
   }
 }
 
-test fn mtcollins1_production_committed_width_is_unresolved_until_catalog_enrolment() -> Bool {
+// Through fleet_intent_offers, with no supplied offer: enrolling the host is what moved its committed width
+// off WidthComputeOfferAbsent. The figure is the one mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots
+// derives from supplied values; this is its pairing inhabitance claim over the production route.
+test fn mtcollins1_production_committed_width_is_derived_through_the_enrolled_offer() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_mtcollins1) {
-    RunnerWidthUnresolved { cause: c } =>
-      match c {
-        WidthComputeOfferAbsent { host: h } => (h as String) == (operator_host_mtcollins1 as String)
-        _ => false
-      }
-    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthDerived { slots: n } => n == 5
+    RunnerWidthUnresolved { cause: _ } => false
   }
 }
 

@@ -67,7 +67,7 @@ import gunbc.host.host_memory_observation {
   HostFixedOverheadAllowance,
   HostFixedOverheadUnmeasured,
 }
-import gunbc.ci.ci_fleet { fleet_intent_offers }
+import gunbc.ci.ci_fleet { fleet_intent_offers, fleet_converge_applied_offers, fleet_image_baked_offers }
 
 type WorkloadClass
   = BatchLatencyTolerant
@@ -748,9 +748,20 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
   runner_deployment_plan_under_placement(control_plane_placement: fabric_control_plane_placement)
 }
 
+// THE PLAN IS THE CONVERGE-APPLIED ARM: the hosts a converge installs onto in place. Every reader of it
+// (the converge policy, the unit-file, file-converge and deploy emitters) therefore never sees a RAM-image
+// host, and a new reader cannot SSH-install one. The image-baked arm is runner_image_baked_deployment_plan.
 fn runner_deployment_plan_under_placement(control_plane_placement: FabricControlPlanePlacement) -> RunnerDeploymentPlan {
   RunnerDeploymentPlan {
-    hosts: map(fleet_intent_offers, o => host_deployment_standing(offer: o, control_plane_placement: control_plane_placement)),
+    hosts: map(fleet_converge_applied_offers, o => host_deployment_standing(offer: o, control_plane_placement: control_plane_placement)),
+  }
+}
+
+// THE IMAGE-BAKED ARM over the same per-host derivation: a RAM-image host's slots and knobs, owed to the
+// image build input rather than applied by a converge.
+fn runner_image_baked_deployment_plan() -> RunnerDeploymentPlan {
+  RunnerDeploymentPlan {
+    hosts: map(fleet_image_baked_offers, o => host_deployment_standing(offer: o, control_plane_placement: fabric_control_plane_placement)),
   }
 }
 

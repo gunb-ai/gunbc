@@ -46,7 +46,7 @@ import gunbc.host.host_standup {
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest }
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
   CiRunnerParticipation,
@@ -94,14 +94,16 @@ import gunbc.fleet.fleet_enrollment {
 // over both enums, so a new phase or a new provisioning path does not compile until it is placed.
 fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool {
   match backing {
-    OwnedMachine { provisioning: BmcVirtualMediaInstall } => match p {
-      BmcCredentialConverge => true
-      OsInstallMechanismResolved => true
-      OsInstallActuated => true
+    OwnedMachine { provisioning: OwnedProvisioning { control: c, delivery: d } } => match p {
+      BmcCredentialConverge => match c {
+        Bmc => true
+        NoOutOfBand => false
+      }
+      OsInstallMechanismResolved => delivery_owes_install(d: d)
+      OsInstallActuated => delivery_owes_install(d: d)
       ProviderGuestAdopted => false
-      HostConvergePolicyDerived => true
+      HostConvergePolicyDerived => delivery_owes_install(d: d)
     }
-    OwnedMachine { provisioning: ApplianceFirstBoot } => false
     ProviderGuest { route: _, entitlement: _, resource: _ } => match p {
       BmcCredentialConverge => false
       OsInstallMechanismResolved => false
@@ -109,6 +111,19 @@ fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool
       ProviderGuestAdopted => true
       HostConvergePolicyDerived => false
     }
+  }
+}
+
+// ONLY AN OS INSTALLED OVER VIRTUAL MEDIA OWES THE INSTALL STEPS AND A CONVERGE POLICY. An appliance
+// image arrives through the appliance's own first boot and a RAM image is booted rather than installed,
+// so neither has a mechanism to resolve or an actuation to run. A RAM-image host carries no mutable
+// converged state either: its slots and knobs are inputs to the image, owed by the image-baked arm of
+// gunbc.host.host_converge fleet_converge_policy_from rather than applied by a converge.
+fn delivery_owes_install(d: OwnedOsDelivery) -> Bool {
+  match d {
+    InstalledViaVirtualMedia => true
+    ApplianceImage => false
+    RamImageBoot => false
   }
 }
 

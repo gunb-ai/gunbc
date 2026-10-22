@@ -43,14 +43,27 @@ type ProviderResourceBinding
   = ProviderResourceAwaited { read_obligation: NonEmptyStr }
   | ProviderResourceAcquired { acquisition: ProviderResourceAcquisition }
 
-// HOW AN OWNED MACHINE'S OPERATING SYSTEM ARRIVES. This is not implied by ownership: an Ampere
-// Altra server is installed over its BMC's virtual media, while an appliance such as a DGX Spark has
-// no BMC to converge and provisions itself through its own first boot. A provider guest has no arm
-// here because its OS always arrives as the provider's image -- that is what ProviderGuest means --
-// so a rented guest owing a BMC operation has no constructor.
-type OwnedProvisioning
-  = BmcVirtualMediaInstall
-  | ApplianceFirstBoot
+// TWO INDEPENDENT FACTS ABOUT AN OWNED MACHINE, which one fused enum used to state as one. HOW IT IS
+// CONTROLLED and HOW ITS OPERATING SYSTEM ARRIVES are separate: an Ampere Altra server is controlled
+// over a BMC and installed over that BMC's virtual media; a DGX Spark appliance has no BMC and
+// provisions itself through its own first boot; and a diskless Altra board is controlled over a BMC
+// yet receives no install at all, because its OS is a RAM image it boots from. The fused arms could
+// not say the third (a BMC-controlled host owing no install), and a consumer keyed on the fused arm
+// answered one fact from the other. Each consumer keys on exactly the fact it asks about: BMC
+// credential convergence and the enrolled control route on the control route, the install phases and
+// the converge realization on the delivery. A provider guest has no constructor here because its OS
+// always arrives as the provider's image and its control is the provider's API -- that is what
+// ProviderGuest means -- so a rented guest owing a BMC operation cannot be written.
+type OwnedControlRoute
+  = Bmc
+  | NoOutOfBand
+
+type OwnedOsDelivery
+  = InstalledViaVirtualMedia
+  | ApplianceImage
+  | RamImageBoot
+
+type OwnedProvisioning { control: OwnedControlRoute, delivery: OwnedOsDelivery }
 
 type HostBacking
   // The `unit` fact is the host-to-hardware allocation: the UnitKey this owned machine
@@ -63,6 +76,26 @@ type HostBacking
   // duplicated is not the same fact as one never read.
   = OwnedMachine { provisioning: OwnedProvisioning, unit: UnitKeyStanding? }
   | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }
+
+// HOW A HOST'S RUNNER PROGRAM REACHES IT. A host whose OS carries mutable state is converged in place
+// (ConvergeApplied: the SSH-applied knobs of gunbc.host.host_converge). A host that boots a RAM image
+// holds no state a converge could apply or re-read, so the same slots and knobs are inputs to the image
+// build instead (ImageBaked). The partition is exhaustive over OwnedOsDelivery, so a new delivery does
+// not compile until it names its arm: a host can neither be converge-applied by accident nor dropped.
+type ConvergeRealization
+  = ConvergeApplied
+  | ImageBaked
+
+fn backing_converge_realization(backing: HostBacking) -> ConvergeRealization {
+  match backing {
+    OwnedMachine { provisioning: OwnedProvisioning { control: _, delivery: d }, unit: _ } => match d {
+      InstalledViaVirtualMedia => ConvergeApplied
+      ApplianceImage => ConvergeApplied
+      RamImageBoot => ImageBaked
+    }
+    ProviderGuest { route: _, entitlement: _, resource: _ } => ConvergeApplied
+  }
+}
 
 // THE ONE RULE FOR WHETHER A BACKING CAN HOST THE FLEET'S MICROVM EXECUTION PATH, before anything is
 // observed: an owned machine can (its readiness is then observed), and a provider guest can only when

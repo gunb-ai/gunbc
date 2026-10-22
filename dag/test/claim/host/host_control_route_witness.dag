@@ -10,7 +10,8 @@ import product.supplier.hetzner { hetzner_helsinki_route }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.decl_ref { decl_ref }
 import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
-import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited }
+import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited, OwnedMachine, OwnedProvisioning, OwnedControlRoute, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation }
 import gunbc.host.host_control_route {
@@ -112,5 +113,41 @@ test fn a_read_answering_about_another_server_is_not_control() -> Bool {
   match control_of_with(host: operator_host_183527, reads: [read_of(acquisition: hetzner_cax41_nbg1_1_acquisition, answered_id: 169308796)]) {
     Present { value: HostControlRefused { refusal: ProviderControlUnobserved { host: _, resource_id: _, cause: c } } } => c.contains("answered about server 169308796")
     _ => false
+  }
+}
+
+// RED: THE CONTROL ROUTE KEYS ON THE CONTROL FACT ALONE. A RAM-image host that is controlled over a BMC
+// can never be refused as having no out-of-band route, whatever its OS delivery says; keyed on delivery
+// (or on the fused arm) this refuses it. The enrolment is read off the production row.
+test fn a_ram_image_boot_host_cannot_refuse_no_out_of_band_control() -> Bool {
+  match control_of(host: operator_host_mtcollins1) {
+    Present { value: HostControlRefused { refusal: NoOutOfBandRoute { host: _ } } } => false
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The converse control: the same RAM delivery with no BMC IS refused as having no out-of-band route, and a
+// BMC-less appliance image stays refused, so the first claim is not satisfied by a keying that never refuses.
+test fn control_refusal_follows_the_control_route_whatever_the_delivery() -> Bool {
+  match enrolled_host_control(intent: owned_intent(control: NoOutOfBand, delivery: RamImageBoot), provider_reads: []) {
+    HostControlRefused { refusal: NoOutOfBandRoute { host: _ } } =>
+      match enrolled_host_control(intent: owned_intent(control: NoOutOfBand, delivery: ApplianceImage), provider_reads: []) {
+        HostControlRefused { refusal: NoOutOfBandRoute { host: _ } } =>
+          match enrolled_host_control(intent: owned_intent(control: Bmc, delivery: InstalledViaVirtualMedia), provider_reads: []) {
+            HostControlRefused { refusal: NoOutOfBandRoute { host: _ } } => false
+            _ => true
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn owned_intent(control: OwnedControlRoute, delivery: OwnedOsDelivery) -> HostEnrollmentIntent {
+  HostEnrollmentIntent {
+    host: operator_host_mtcollins1,
+    participation: ci_runner_enrollment_participation,
+    backing: OwnedMachine { provisioning: OwnedProvisioning { control: control, delivery: delivery }, unit: Absent },
   }
 }

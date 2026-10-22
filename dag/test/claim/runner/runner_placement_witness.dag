@@ -416,7 +416,7 @@ test fn a_refusal_cause_does_not_reach_a_derived_deployment() -> Bool {
 // A HOST-TARGETED CONVERGE ADMITS srv3 WHILE srv2 IS REFUSED. Convergence is a host-targeted
 // transaction, so the fleet's incompleteness is not a fact about srv3.
 test fn converge_admits_a_derived_host_while_another_is_refused() -> Bool {
-  match fleet_converge_policy_from(plan: live_plan()) {
+  match fleet_converge_policy_from(plan: live_plan(), image_baked: runner_image_baked_deployment_plan()) {
     ConvergePolicyDerived { hosts: hs } =>
       any(hs, h => (h.identity as String) == (operator_host_srv3 as String))
         && !any(hs, h => (h.identity as String) == (operator_host_srv2 as String))
@@ -542,4 +542,26 @@ test fn a_bypassed_join_with_a_constant_quota_fails_the_claim() -> Bool {
     runner: d.runner,
     workload_class: d.workload_class,
   })
+}
+
+// RED: THE PLAN AND THE POLICY PARTITION BY HOW THE HOST IS REALIZED. A RamImageBoot host in
+// fleet_intent_offers emits no converge target and emits an image-baked entry; mutating the partition so
+// the converge-applied arm takes it reds the first two conjuncts. Control: a converge-delivered host is a
+// converge target and not image-baked.
+test fn ram_image_boot_host_is_image_baked_and_never_a_converge_target() -> Bool {
+  match fleet_converge_policy_from(plan: live_plan(), image_baked: runner_image_baked_deployment_plan()) {
+    ConvergePolicyDerived { hosts: applied, image_baked: baked } =>
+      !any(applied, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && any(baked, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && !any(baked, h => (h.identity as String) == (operator_host_srv3 as String))
+        && any(applied, h => (h.identity as String) == (operator_host_srv3 as String))
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
+test fn the_converge_applied_plan_does_not_name_a_ram_image_host() -> Bool {
+  match runner_host_deployment_for(p: live_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostNotEnrolledInFleet } } => true
+    _ => false
+  }
 }
