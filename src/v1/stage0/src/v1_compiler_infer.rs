@@ -5054,6 +5054,15 @@ pub fn equality_inadmissible_declaration_identities() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
+pub fn equality_walk_boundary_declaration_identities() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec![crate::v1_compiler_type_head_exposure::type_declaration_identity_key("src/v2/std/node.dag".to_string(), "Node".to_string())])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
 pub fn equality_inadmissible_type_refusal(
     identity: String,
     name: String,
@@ -5195,6 +5204,11 @@ pub fn equality_operand_admission(
                                         identity.clone(),
                                         name.clone(),
                                     )
+                                } else if equality_walk_boundary_declaration_identities()
+                                    .iter()
+                                    .any(|i| *i == identity)
+                                {
+                                    std::option::Option::None
                                 } else {
                                     if (peeled.connective.clone() == Connective::Arrow) {
                                         equality_refused(
