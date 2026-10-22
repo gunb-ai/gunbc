@@ -1160,5 +1160,15 @@ fn occurrence_count(s: String, pattern: String) -> Int {
   count(split(s: s, sep: pattern)) - 1
 }
 
-
-
+// The retract half of #14332's a_refused_serve_unit_is_not_reloaded_enabled_or_restarted. Its apply
+// half read the deleted bash fragments. Typed, an unreadable OIDC clock refuses the plan
+// (live_deploy_apply_plan_witness lab_apply_oidc_refuses_without_an_observer_clock) and a refused plan
+// dispatches no leg (the orchestrate controls in live_deploy_apply_run_witness). A ready plan is
+// required here so that a plan refusal cannot satisfy the absence.
+test fn the_retract_plan_never_restarts_the_serve_unit() -> Bool {
+  let spec = srv1_twin_spec()
+  let unit = spec.service.unit_name as String
+  let retract_text = retract_plan_text(spec: spec)
+  !string_contains(s: retract_text, pattern: "REFUSED ")
+    && !string_contains(s: retract_text, pattern: join(["restart ", unit], ""))
+}

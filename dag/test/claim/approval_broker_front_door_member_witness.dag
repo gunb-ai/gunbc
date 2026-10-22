@@ -102,3 +102,16 @@ fn retract_serve_off_texts(plan: DeployRetractPlan) -> List<String> {
       })
   }
 }
+
+// The retract half of #14332's apply_and_teardown_realize_both_mappings, whose apply half asserted
+// the text of the deleted bash upsert. The typed apply has no front-door-specific claim yet; its
+// families are pinned only as a whole by live_deploy_apply_plan_witness. This half reads the real
+// retract plan.
+test fn teardown_retracts_both_front_door_mappings() -> Bool {
+  let spec = deployment_spec_srv1()
+  let down_art = DeploymentArtifactStep { kind: UpsertOwned { kind: ApprovalBrokerFrontDoor }, path: "/approve" as NonEmptyStr }
+  let down = retract_serve_off_texts(plan: deploy_retract_artifact_plan(art: down_art, spec: spec))
+  let plan = approval_broker_front_door_endpoints(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)
+  count(plan) > 0
+    && down == map(plan, e => join(tailscale_serve_off_argv(endpoint: e), " "))
+}
