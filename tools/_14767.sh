@@ -28,12 +28,12 @@ echo "BUILD_COMMIT=$(git rev-parse HEAD) CB_SHA=$(sha256sum $CB|cut -c1-12) $(da
 NAMES=$(grep -oE '^test fn [A-Za-z_0-9]+' $TST | sed 's/^test fn //' | paste -sd, -)
 echo "HEAD_CLAIM_COUNT=$(echo $NAMES | tr ',' '\n' | wc -l)"
 echo "=== A. head: all claims by name (expect PASS=10) ==="
-timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $TST --functions "$NAMES" > /tmp/o67h.out 2>&1; echo "[head] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67h.out | sed 's/^/  | /'
+timeout 2400 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $TST --functions "$NAMES" > /tmp/o67h.out 2>&1; echo "[head] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67h.out | sed 's/^/  | /'
 echo "=== B. base 08437488ec1 same head-built binary (expect claims 1,2 FAIL; PASS=7) ==="
 cd /tmp/wt67b
 NB=$(grep -oE '^test fn [A-Za-z_0-9]+' $TST | sed 's/^test fn //' | paste -sd, -)
 echo "BASE_CLAIM_COUNT=$(echo $NB | tr ',' '\n' | wc -l)"
-timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $TST --functions "$NB" > /tmp/o67b.out 2>&1; echo "[base] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67b.out | sed 's/^/  | /'
+timeout 2400 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $TST --functions "$NB" > /tmp/o67b.out 2>&1; echo "[base] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67b.out | sed 's/^/  | /'
 echo "=== C. seam additive static checks ==="
 cd /tmp/wt67h
 python3 - <<'PY'
@@ -86,9 +86,9 @@ s=s.replace(a1, f'  spark_host_standings_over_roster(store: store, at: at, units
 s=s.replace(a2, f'  spark_host_standings_current_roster(units: {fxu}, arm_claims: {fxa}, current: current, host_claims: host_claims)')
 open(p,"w").write(s); print("MUT applied (both live delegations now pass fixture rosters)")
 PY
-timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $TST --functions "$NAMES" > /tmp/o67m.out 2>&1; echo "[mut] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67m.out | sed 's/^/  | /'
+timeout 2400 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $TST --functions "$NAMES" > /tmp/o67m.out 2>&1; echo "[mut] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67m.out | sed 's/^/  | /'
 echo "=== E. restore + post ==="
 git checkout -- $HC
 git status --porcelain -- dag/gunbc/ | head -2; echo "DIRTY_ABOVE (empty = byte-exact)"
-timeout 2400 $CB --claim-run --source-root dag --source-root src/v2 --entry $TST --functions "$NAMES" > /tmp/o67p.out 2>&1; echo "[post] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67p.out | sed 's/^/  | /'
+timeout 2400 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $TST --functions "$NAMES" > /tmp/o67p.out 2>&1; echo "[post] rc=$?"; grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/o67p.out | sed 's/^/  | /'
 echo DONE_14767 $(date -u +%H:%M:%SZ)
