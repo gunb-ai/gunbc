@@ -3,7 +3,7 @@ REPO=/root/workspace/repo-root
 HEADSHA=$1
 BASESHA=$2
 LEDGER=dag/test/claim/ledger_row_coherence.dag
-SCHED=dag/test/wet_evidence.dag
+SCHED=src/v2/workflow/local_repo_wet_terminal.dag
 cd $REPO
 git fetch --force origin $HEADSHA $BASESHA 2>&1 | tail -1
 git worktree add -f /tmp/wt14671b $HEADSHA 2>&1 | tail -1
@@ -33,7 +33,9 @@ grep -A2 '^+' /tmp/sched671.diff | grep -c 'WetScheduledClaim {}' | sed 's/^/EMP
 grep '^+' /tmp/sched671.diff | grep -oE 'expectation: [A-Za-z_]+' | sort | uniq -c | awk '$1>1' | head -3 | sed 's/^/DUP_FIELD| /'
 python3 - <<'PY'
 import re
-s=open('/tmp/wt14671b/'+ "dag/test/wet_evidence.dag").read()
+import os
+p=[q for q in [os.path.join(r,x) for r,_,fs in os.walk("/tmp/wt14671b/src/v2/workflow") for x in fs if "local_repo_wet_terminal" in q]][:1]
+s=open(p[0]).read()
 ids=re.findall(r'claim_identity: "([^"]+)"', s)
 dup=[i for i in set(ids) if ids.count(i)>1]
 print("SCHED_TOTAL_ROWS=", len(ids), "DUPES=", dup[:5])
