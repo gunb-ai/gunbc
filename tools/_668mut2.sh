@@ -51,13 +51,16 @@ run4() {
 cp -f $EMIT /tmp/emitn_head_orig
 echo "=== A. baseline (expect 4 PASS):"
 run4 base
-echo "=== B. MUTATION: kill the AmbiguousAnonymousRecordLiteral diagnostic node:"
+echo "=== B. MUTATION: kill the AmbiguousAnonymousRecordLiteral diagnostic node AND the emitted refusal text:"
 BEFORE=$(grep -acF 'Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {' $EMIT)
-echo "  anchor before=$BEFORE (1 expected)"
-[ "$BEFORE" = "1" ] || { echo "MUT_ANCHOR_FAIL -- NOT a mutation run"; }
-perl -0777 -pi -e 's/Rc::new\(vec!\[crate::v1_std_core::make_error_node\(Rc::new\(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral \{.*?module_name\.clone\(\)\)\)\])/Rc::new(vec![])/s' $EMIT
+BEFORE2=$(grep -acF 'compile_error!("ambiguous anonymous record literal shape; add a nominal type")' $EMIT)
+echo "  anchors before=$BEFORE,$BEFORE2 (1,2 expected)"
+{ [ "$BEFORE" = "1" ] && [ "$BEFORE2" = "2" ]; } || { echo "MUT_ANCHOR_FAIL -- NOT a mutation run"; }
+perl -0777 -pi -e 's/Rc::new\(vec!\[crate::v1_std_core::make_error_node\(Rc::new\(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral \{.*?module_name\.clone\(\)\)\]\)/Rc::new(vec![])/s' $EMIT
+perl -pi -e 's/compile_error!\("ambiguous anonymous record literal shape; add a nominal type"\)/()/g' $EMIT
 AFTER=$(grep -acF 'make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral' $EMIT)
-[ "$AFTER" = "0" ] || { echo "MUT_REPLACE_FAIL after=$AFTER -- NOT a mutation run"; }
+AFTER2=$(grep -acF 'ambiguous anonymous record literal shape; add a nominal type' $EMIT)
+[ "$AFTER" = "0" ] && [ "$AFTER2" = "0" ] || { echo "MUT_REPLACE_FAIL after=$AFTER,$AFTER2 -- NOT a mutation run"; }
 echo "  mutated sha=$(sha $EMIT) orig=$(sha /tmp/emitn_head_orig)"
 cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -2
 echo "  mut CB_SHA=$(sha $CB)"
