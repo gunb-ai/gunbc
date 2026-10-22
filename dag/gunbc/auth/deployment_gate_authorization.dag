@@ -1248,8 +1248,9 @@ fn mint_accepted_rule_review(
 // 5c. THE ORDER OF THE ANSWER IS CONSTRUCTED, NOT TRUSTED
 // ---------------------------------------------------------------------------
 //
-// Every authority-bearing token between the route's phases is sealed, so a phase's only input is the
-// previous phase's output and no module can enter the chain in the middle: ObservedGateInstallation and
+// Every authority-bearing token between the route's phases is sealed, and each observation wrapper that
+// mints one is confined to its phase, so sealed authority from the previous phase cannot be obtained
+// except through the admitted phase route and no module can enter the chain in the middle: ObservedGateInstallation and
 // ObservedRuleOwnership (above), then BrokerAdmission, ReviewClearance and ReviewRequest (here). A review
 // request is the only thing a transport may POST, and one can exist only if the broker admitted the
 // answer AND the protection read, taken last, showed no required reviewer. With a reviewer standing there

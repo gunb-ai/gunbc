@@ -17,9 +17,10 @@ module gunbc.fleet.deployment_gate_answer
 //   5. review_phase        the recorded response to the POST; the only caller of mint_accepted_rule_review.
 //
 // THE ORDER IS CONSTRUCTED, NOT TRUSTED. Every authority-bearing token between phases is sealed
-// (gunbc.auth.deployment_gate_authorization, "THE ORDER OF THE ANSWER IS CONSTRUCTED"): a phase's only
-// input is the previous phase's sealed output, so no module can enter the chain in the middle or choose
-// the decision a review carries.
+// (gunbc.auth.deployment_gate_authorization, "THE ORDER OF THE ANSWER IS CONSTRUCTED"): sealed
+// authority from the previous phase cannot be obtained except through the admitted phase route (each
+// observation wrapper is confined to its one phase), so no module can enter the chain in the middle or
+// choose the decision a review carries.
 //
 // DARK. While the environment still lists RequiredReviewers, clear_review refuses, so NO ReviewRequest
 // VALUE EXISTS and no actuator built on this interface can POST a review, whatever responses it holds.
@@ -251,7 +252,14 @@ fn observe_gate_installation_for_route(
   boundary: DeploymentGateBoundary,
   response: InstallationReadResponse,
   claim: GateInstallationClaim
-) -> InstallationObservation {
+) -> InstallationObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "installation_phase"
+    ),
+  ]
+{
   observe_gate_installation(
     owner: boundary_owner(boundary: boundary),
     repo: boundary_repo(boundary: boundary),
@@ -296,7 +304,14 @@ fn observe_rule_ownership_for_route(
   boundary: DeploymentGateBoundary,
   response: RuleReadResponse,
   observed: ObservedGateInstallation
-) -> EnvironmentRuleOwnership {
+) -> EnvironmentRuleOwnership
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "ownership_phase"
+    ),
+  ]
+{
   observe_rule_ownership(rules: response.rules, environment_name: boundary.environment_name, observed: observed)
 }
 
@@ -358,7 +373,14 @@ fn broker_phase(
 fn observe_environment_protection_for_route(
   boundary: DeploymentGateBoundary,
   response: ProtectionReadResponse
-) -> EnvironmentProtectionRead {
+) -> EnvironmentProtectionRead
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.fleet.deployment_gate_answer",
+      decl_name: "protection_phase"
+    ),
+  ]
+{
   observe_environment_protection(
     owner: boundary_owner(boundary: boundary),
     repo: boundary_repo(boundary: boundary),

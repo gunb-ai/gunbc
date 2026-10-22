@@ -22,6 +22,10 @@ import gunbc.auth.deployment_gate_authorization {
   DeploymentGateBoundary,
   GateRequestClaim,
   EnvironmentRuleOwnership,
+  GateInstallationClaim,
+  InstallationObservation,
+  ObservedGateInstallation,
+  EnvironmentProtectionRead,
   ObservedRuleOwnership,
   EnvironmentProtectionObservation,
   BrokerAdmission,
@@ -33,6 +37,14 @@ import gunbc.auth.deployment_gate_authorization {
   admit_broker_answer,
   clear_review,
   review_request_of,
+}
+import gunbc.fleet.deployment_gate_answer {
+  InstallationReadResponse,
+  RuleReadResponse,
+  ProtectionReadResponse,
+  observe_gate_installation_for_route,
+  observe_rule_ownership_for_route,
+  observe_environment_protection_for_route,
 }
 
 fn forge_an_admission(run_id: GitHubWorkflowRunId, observation: ObservedRuleOwnership) -> BrokerAdmission {
@@ -76,4 +88,29 @@ fn call_the_clearance(
 
 fn call_the_request(clearance: ReviewClearance) -> ReviewRequestOutcome {
   review_request_of(clearance: clearance)
+}
+
+// (c) the three observation wrappers, called by a foreign module with supplied responses: each wrapper
+// calls a stage-1 mint whose roster admits it, so each is confined to its one phase.
+fn call_the_installation_wrapper(
+  boundary: DeploymentGateBoundary,
+  response: InstallationReadResponse,
+  claim: GateInstallationClaim
+) -> InstallationObservation {
+  observe_gate_installation_for_route(boundary: boundary, response: response, claim: claim)
+}
+
+fn call_the_ownership_wrapper(
+  boundary: DeploymentGateBoundary,
+  response: RuleReadResponse,
+  observed: ObservedGateInstallation
+) -> EnvironmentRuleOwnership {
+  observe_rule_ownership_for_route(boundary: boundary, response: response, observed: observed)
+}
+
+fn call_the_protection_wrapper(
+  boundary: DeploymentGateBoundary,
+  response: ProtectionReadResponse
+) -> EnvironmentProtectionRead {
+  observe_environment_protection_for_route(boundary: boundary, response: response)
 }

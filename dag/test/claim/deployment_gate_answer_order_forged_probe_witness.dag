@@ -34,7 +34,7 @@ fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
   }
 }
 
-data control_source: String = "module probe_deployment_gate_answer_order_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { BrokerAdmission, ReviewClearance, ReviewRequest, admit_broker_answer, clear_review, review_request_of }\nfn label() -> String { \"control names the sealed records and the confined mints, builds none and calls none\" }\n"
+data control_source: String = "module probe_deployment_gate_answer_order_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { BrokerAdmission, ReviewClearance, ReviewRequest, admit_broker_answer, clear_review, review_request_of }\nimport gunbc.fleet.deployment_gate_answer { observe_gate_installation_for_route, observe_rule_ownership_for_route, observe_environment_protection_for_route }\nfn label() -> String { \"control names the sealed records and the confined mints, builds none and calls none\" }\n"
 
 test fn a_source_that_only_names_the_order_tokens_forges_none() -> Bool {
   refusals(c: control_census(), class: "SoleConstructorViolation", subject: "BrokerAdmission") == 0
@@ -43,6 +43,9 @@ test fn a_source_that_only_names_the_order_tokens_forges_none() -> Bool {
     && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "admit_broker_answer") == 0
     && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "clear_review") == 0
     && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "review_request_of") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_gate_installation_for_route") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_rule_ownership_for_route") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_environment_protection_for_route") == 0
 }
 
 test fn a_foreign_admission_literal_is_refused_at_the_record() -> Bool {
@@ -67,4 +70,16 @@ test fn a_foreign_call_to_the_clearance_mint_is_refused_at_the_callee() -> Bool 
 
 test fn a_foreign_call_to_the_review_request_mint_is_refused_at_the_callee() -> Bool {
   refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "review_request_of") >= 1
+}
+
+test fn a_foreign_call_to_the_installation_wrapper_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_gate_installation_for_route") >= 1
+}
+
+test fn a_foreign_call_to_the_ownership_wrapper_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_rule_ownership_for_route") >= 1
+}
+
+test fn a_foreign_call_to_the_protection_wrapper_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_environment_protection_for_route") >= 1
 }
