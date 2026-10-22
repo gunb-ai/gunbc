@@ -8,7 +8,7 @@ import gunbc.guarantee_rung {
 import gunbc.rung_drop {
   RungDrop, TypedDeclaration, Enumerated, NotYetCounted, NoInstrumentObservesTheZero, DerivedBy, DeletedWithoutReplacement, Standing,
   rung_drop_is_readable, every_unreadable_standing_drop_is_not_yet_counted,
-  rung_drop_declaration_message, rung_drop_off_ladder_judgment, authored_prose_rung_drops, every_legacy_arm_is_claimed_exactly_once,
+  population_from_list, rung_drop_declaration_message, rung_drop_off_ladder_judgment, authored_prose_rung_drops, every_legacy_arm_is_claimed_exactly_once,
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
 import extdeps.bazel.label { Label, TargetName }
@@ -196,13 +196,27 @@ test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() 
 
 // A TYPED NOT-YET-COUNTED ROW RENDERS THE CAPABILITY ITS CAUSE NAMES. The cause names the MISSING CAPABILITY, so the
 // rendering is the only consumer that makes an arm more than a spelling. RED: a renderer that dropped the cause, or a row
-// naming the wrong capability, fails the needle; the two rows carry DIFFERENT causes (population join, observation of the
-// zero), so one constant string cannot satisfy both assertions.
+// naming the wrong capability, fails the needle; the two rows carry DIFFERENT causes (an unobserved zero; an empty derived
+// enumeration through population_from_list), so one constant string cannot satisfy all four assertions.
+data empty_derived_enumeration_conversion: RungDrop = RungDrop {
+  identity: "empty_derived_enumeration_conversion" as NonEmptyStr,
+  subject: "control.subject",
+  declared: "2026-01-01",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: population_from_list(xs: []),
+    restoration_trigger: "control restoration trigger"
+  }
+}
+
 test fn each_typed_uncounted_row_renders_the_capability_it_lacks() -> Bool {
-  contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "is not modeled")
-    && !contains_text(haystack: rung_drop_declaration_message(d: floor_cut_regen_second_generation_agreement), needle: "no instrument observes the zero")
+  contains_text(haystack: rung_drop_declaration_message(d: empty_derived_enumeration_conversion), needle: "a derived enumeration yielded no member")
+    && !contains_text(haystack: rung_drop_declaration_message(d: empty_derived_enumeration_conversion), needle: "no instrument observes the zero")
     && contains_text(haystack: rung_drop_declaration_message(d: typed_text_boundary_conversion), needle: "no instrument observes the zero")
-    && !contains_text(haystack: rung_drop_declaration_message(d: typed_text_boundary_conversion), needle: "is not modeled")
+    && !contains_text(haystack: rung_drop_declaration_message(d: typed_text_boundary_conversion), needle: "a derived enumeration yielded no member")
 }
 
 // POSITIVE CONTROL / BOUND: the multi-population rows (2, 4) and the rows whose prose does not state every typed field (1, 6) stay counted prose debt, while

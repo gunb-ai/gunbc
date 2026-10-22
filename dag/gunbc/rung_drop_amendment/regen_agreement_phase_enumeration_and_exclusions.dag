@@ -1,0 +1,14 @@
+module gunbc.rung_drop_amendment.regen_agreement_phase_enumeration_and_exclusions
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+data regen_agreement_phase_enumeration_and_exclusions: RungDropAmendment = RungDropAmendment {
+  drop_identity: "floor_cut_regen_second_generation_agreement" as NonEmptyStr,
+
+  amended: "2026-10-22",
+
+  later_event: "The drop's bounded population became a typed enumeration over the two required phases it names, `regen` and `generated-artifact` (the ids `gunbc.required_ci_phase_roster` declares), replacing prose that said the same thing. The enumeration was authored 2026-09-04 and is NOT observed: no instrument derives it.",
+
+  bearing: "THE DISCRIMINATOR IS WHETHER A PHASE REGENERATES A COMMITTED ARTIFACT POPULATION, NOT WHETHER IT WRITES FILES. The roster declares parse, namespace-wave-admission, regen, generated-artifact and floor. REGEN qualifies (`required_regen_host.rs` reaches the emitted population of mirror paths). GENERATED-ARTIFACT qualifies (its population is `gunbc.generated_artifact_registry` `committed_generated_artifacts`). PARSE and NAMESPACE-WAVE-ADMISSION hold no such population and emit nothing. FLOOR writes files and is still out: they are run receipts, not a regeneration of a committed baseline. A trigger covering REGEN alone would be the section 4b(3) grain mismatch (plural loss, singular trigger). How many files floor writes is deliberately not stated: three readings disagreed within one review because they measure three populations, and the count is not what excludes floor."
+}

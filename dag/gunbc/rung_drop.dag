@@ -319,13 +319,11 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
 type UncountedCause
   = NoInstrumentObservesTheZero
   | DerivedEnumerationYieldedNoMember
-  | NoModeledPopulationJoin
 
 fn uncounted_cause_label(c: UncountedCause) -> String {
   match c {
     NoInstrumentObservesTheZero => "no instrument observes the zero"
     DerivedEnumerationYieldedNoMember => "a derived enumeration yielded no member"
-    NoModeledPopulationJoin => "the join from the subject to its population is not modeled"
   }
 }
 
