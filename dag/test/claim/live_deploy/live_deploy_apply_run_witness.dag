@@ -439,7 +439,7 @@ fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
 
 test fn the_unit_plan_installs_the_sandbox_grant_before_the_unit_and_restarts_after() -> Bool {
   let spec = deployment_spec_srv1()
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent, source_root: "/src") {
     ApplyPlanReady { legs: legs } => {
       let slice = step_index(legs: legs, step: "attempt-worker-slice")
       let grant = step_index(legs: legs, step: "attempt-launcher-grant")
@@ -455,7 +455,7 @@ test fn the_unit_plan_installs_the_sandbox_grant_before_the_unit_and_restarts_af
 // never read as a unit with nothing to write.
 test fn an_unreadable_oidc_clock_refuses_the_unit_plan() -> Bool {
   let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent, source_root: "/src") {
     ApplyPlanRefused { step: s, reason: r } => s == "serve-unit" && string_contains(s: r, pattern: "observer clock unreadable")
     ApplyPlanReady { legs: _ } => false
   }
@@ -464,7 +464,7 @@ test fn an_unreadable_oidc_clock_refuses_the_unit_plan() -> Bool {
 // The launcher grant's port refusal stops the run at that leg, and no later leg is dispatched.
 test fn a_refused_launcher_grant_stops_the_run_before_the_serve_unit() -> Bool {
   let spec = deployment_spec_srv1()
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent, source_root: "/src") {
     ApplyPlanReady { legs: legs } =>
       match deploy_apply_run_legs(legs: legs, ports: ports(command_code: 0, stdin_code: 0)) {
         ApplyRunFailed { step: s, reason: r, legs_run: n } =>

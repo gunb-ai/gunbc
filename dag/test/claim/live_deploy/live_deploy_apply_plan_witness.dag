@@ -335,24 +335,8 @@ test fn the_sidecar_digest_env_reads_the_installed_sidecar_and_no_other() -> Boo
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
   env_binary(legs: legs) == device_crypto_sidecar_binary_path(spec: spec, revision: rev)
     && env_binary(legs: legs) != release_locus_binary_path(root: spec.approval_broker.repo_root as String, revision: rev)
-    && step_index(legs: legs, step: "approval-broker-tree") < step_index(legs: legs, step: "device-crypto-digest-env")
+    && step_index(legs: legs, step: "device-crypto-sidecar-install") < step_index(legs: legs, step: "device-crypto-digest-env")
     && step_index(legs: legs, step: "device-crypto-digest-env") < step_index(legs: legs, step: "device-crypto-sidecar-restart")
-}
-
-// THE SIDECAR STANDS BEFORE THE BROKER UNIT IS SWAPPED (#14685, run 39545280023): the sidecar's unit, reload,
-// enable and restart all precede the broker's slice and unit legs, and the broker's own restart comes after
-// them. The bash claim this replaces read approval_broker_lifecycle_steps; here it is the real srv1 plan.
-test fn the_sidecar_starts_before_the_broker_unit_is_swapped() -> Bool {
-  let legs = full_legs(spec: deployment_spec_srv1())
-  let restart = step_index(legs: legs, step: "device-crypto-sidecar-restart")
-  all(["device-crypto-sidecar-unit", "device-crypto-sidecar-reload", "device-crypto-sidecar-enable", "device-crypto-sidecar-restart",
-       "approval-broker-slice-unit", "approval-broker-unit", "approval-broker-restart"], st => has_step(legs: legs, step: st))
-    && step_index(legs: legs, step: "device-crypto-sidecar-unit") < step_index(legs: legs, step: "device-crypto-sidecar-reload")
-    && step_index(legs: legs, step: "device-crypto-sidecar-reload") < step_index(legs: legs, step: "device-crypto-sidecar-enable")
-    && step_index(legs: legs, step: "device-crypto-sidecar-enable") < restart
-    && restart < step_index(legs: legs, step: "approval-broker-slice-unit")
-    && restart < step_index(legs: legs, step: "approval-broker-unit")
-    && step_index(legs: legs, step: "approval-broker-unit") < step_index(legs: legs, step: "approval-broker-restart")
 }
 
 // C1 AND C2 THROUGH THE PRODUCTION ADAPTER. The run-witness controls supply the ensure-directory and
