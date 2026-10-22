@@ -3431,9 +3431,10 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
-    // INVARIANT, NOT A PLACEHOLDER: validate_cast (04_infer) refuses a cast with no declared std.coercion
-    // route at type check, so an Accepted program never reaches this arm; the abort spelling is the
-    // generic emit_error_expr because nothing can observe it.
+    // RESIDUAL GAP, NOT AN INVARIANT: validate_cast (04_infer) refuses only a cast from a declaration
+    // that has std.coercion declared_widening_rules; a cast outside the cast domain (a user-declared
+    // Nat `as Int`) is skipped by the checker and reaches this arm as a runtime abort. Below ceiling;
+    // trigger: every `as` without a declared route refuses at type check, after a corpus cast census.
     emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }
