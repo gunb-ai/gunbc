@@ -13,6 +13,7 @@ import gunbc.rung_drop {
 }
 import extdeps.bazel.label { Label, TargetName }
 import gunbc.instrument_targets { instruments_package, compile_clean_diagnostic_census_label }
+import gunbc.required_ci_phase_roster { ParsePhase, GeneratedArtifactPhase, FloorPhase, required_ci_phases, regenerating_phase_names }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 import gunbc.rung_drop.floor_cut_heal { floor_cut_heal }
@@ -252,4 +253,12 @@ test fn a_converted_row_left_in_the_legacy_roster_is_refused_and_the_real_roster
   let converted = list_append(left: filter(rung_drop_roster, d => d.identity != "text_boundary_identity_wall"), right: [typed_text_boundary_conversion])
   every_legacy_arm_is_claimed_exactly_once(ds: rung_drop_roster)
     && !every_legacy_arm_is_claimed_exactly_once(ds: converted)
+}
+
+// RED + CONTROL, THE POPULATION IS DERIVED FROM THE PROPERTY AND NOT SPELLED FROM THE TYPE: a roster that enrols a regenerating phase
+// yields it, one that does not yields nothing, and a non-regenerating enrolled phase never enters. The real roster is the positive control.
+test fn the_regen_population_is_the_required_phases_that_regenerate() -> Bool {
+  regenerating_phase_names(phases: [ParsePhase, GeneratedArtifactPhase, FloorPhase]) == ["generated-artifact"]
+    && length(xs: regenerating_phase_names(phases: [ParsePhase, FloorPhase])) == 0
+    && regenerating_phase_names(phases: required_ci_phases) == ["generated-artifact"]
 }
