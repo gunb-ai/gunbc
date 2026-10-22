@@ -878,3 +878,10 @@ Rows: 276
 
 A=97 T=9 S=115 U=240  total=461
 
+
+### Confidence and open checks (stated honestly)
+- Not every body was fully re-read: about 47 U rows (Part A) were classified from names and about 38 A/U splits in 05_emit_rust from earlier reads. They are provisional until each reader is converted; conversion of a reader re-reads its body first.
+- Emit policy: today `child_type_node(ch)` is the expansion, so emitted Rust names the expansion for alias arguments. Argument-spelling functions (`render_node_type`, `render_rust_type`, `render_rust_decl_type`, `render_rust_fn_sig_type`, `render_rust_applied_type`, `render_rust_alias_rhs_type`) are S: settle before spelling so emitted bytes do not change. Naming the alias would need proof it is emitted and imported in scope.
+- Nothing writes `__applied_type_args`, so every arm reading it is dead and is deleted.
+- `type_needs_rc_seen` follows the expansion chain without a seen-guard and would not terminate on an authored self-reference: newly found List 2 site.
+- Before cutting `map_/set_*_type_in_env`, enumerate every consumer by grep.
