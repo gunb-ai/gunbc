@@ -2902,15 +2902,22 @@ pub fn run_required_emit_compile(
 }
 
 /// THE BUILD'S FLAGS, ONCE: the argv after the cargo binary and before the crate-specific
-/// `--manifest-path`, read from the constant `gunbc.emitted_build_seed_constants_emit` renders from
-/// `gunbc.repo.repo_self_emitted_build` `repo_self_emitted_cargo_build_flags`, so the build that runs
-/// them, the native product key that names them (`probe_build_configuration_for_key`) and the release
-/// job that packs the entry cannot disagree.
+/// `--manifest-path`, spelled here and nowhere else so the build that runs them and the native
+/// product key that names them cannot disagree (`probe_build_configuration_for_key`).
 fn probe_cargo_build_flags() -> Vec<String> {
-    crate::emitted_build_seed_constants_generated::EMITTED_CARGO_BUILD_FLAGS
-        .iter()
-        .map(|flag| flag.to_string())
-        .collect()
+    vec![
+        "build".to_string(),
+        "--release".to_string(),
+        // The fetch is its own spawn (`probe_cargo_fetch_command`); the build may not touch the
+        // network, so no transport outcome can reach the build's verdict.
+        "--offline".to_string(),
+        // The structured stream is what `read_cargo_json` joins on: warnings are counted per
+        // package from `compiler-message` records, never by scanning text.
+        "--message-format".to_string(),
+        "json".to_string(),
+        "--color".to_string(),
+        "never".to_string(),
+    ]
 }
 
 /// The build-configuration axis of a native product's key: the flags the build runs
@@ -3237,6 +3244,25 @@ mod tests {
         assert!(axis.starts_with(&flags.join(" ")));
         assert!(axis.contains(&invocation.rustflags));
         assert!(axis.contains(WARNING_DENIAL_ENCODED_RUSTFLAGS));
+    }
+
+    // `probe_cargo_build_flags` is a declared mirror of `gunbc.repo.repo_self_emitted_build`
+    // `repo_self_emitted_cargo_build_flags`, the row the release job packs an emitted entry under.
+    // The packed binary and the binary the probe's controls ran are one artifact only while these
+    // two agree, so the mirror is compared with the row's own source text.
+    // SCAFFOLD (operator-approved on gunbc#14570): dissolves when the v2-native build probe takes its flags
+    // from the row, which deletes the mirror and this test.
+    #[test]
+    fn the_probe_build_flags_are_the_row_the_release_job_packs_under() {
+        let row = include_str!("../../../../dag/gunbc/repo/repo_self_emitted_build.dag");
+        let declared = format!(
+            "data repo_self_emitted_cargo_build_flags: String = \"{}\"",
+            probe_cargo_build_flags().join(" ")
+        );
+        assert!(
+            row.contains(&declared),
+            "row and mirror disagree: {declared}"
+        );
     }
 
     #[test]
