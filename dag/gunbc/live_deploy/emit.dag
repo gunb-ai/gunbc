@@ -2493,6 +2493,25 @@ fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
 // absent directory, a plain directory, and a HEAD-less skeleton all fail. The gate FAILS CLOSED: on
 // failure it prints a refusal naming the read and the path, then false -- and set -euo pipefail
 // aborts the apply before any member mutates anything.
+// THE REFUSAL AS A TYPED THEN-BRANCH: the sentence goes to STDERR and the branch ends in `false`, so
+// the whole if exits nonzero. The sentence goes to stderr -- not stdout -- because the host route drops
+// stdout on a nonzero exit (gunbc.command_runner keeps only exit_code+stderr on ProcessRefused), so a
+// refusal written to stdout is invisible both to the operator and to a claim; on stderr it survives and
+// names itself. Each refusal names WHICH premise failed, so a decomposed run points straight at the state.
+fn dashboard_git_worker_repository_premise_refusal_branch(sentence: String) -> List<Node> {
+  [
+    bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "printf"),
+        bash_build_word_lit(text: "%s\n"),
+        bash_build_word_lit(text: sentence),
+      ]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    ),
+    bash_build_command_from_lits(lits: ["false"]),
+  ]
+}
+
 fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
   bash_build_if_else(
     cond: bash_build_test_bracket(words: [
@@ -2507,15 +2526,27 @@ fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
       bash_build_word_lit(text: "!="),
       bash_build_word_lit(text: concat(repo, "/.git")),
     ]),
-    then_body: bash_build_stmt_list_from_nodes(stmts: [
-      bash_build_command_with_words(words: [
-        bash_build_word_lit(text: "printf"),
-        bash_build_word_lit(text: "%s\n"),
-        bash_build_word_lit(text: dashboard_git_worker_repository_premise_refusal_sentence(repo: repo)),
-      ]),
-      bash_build_command_from_lits(lits: ["false"]),
-    ]),
-    else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
+    then_body: bash_build_stmt_list_from_nodes(
+      stmts: dashboard_git_worker_repository_premise_refusal_branch(
+        sentence: dashboard_git_worker_repository_premise_refusal_sentence(repo: repo))),
+    // NOT the same directory: fall through to the HEAD premise. A HEAD-less .git (a fabricated tree with
+    // objects/refs/logs but no HEAD) must be refused too, and --absolute-git-dir is not enough to catch
+    // it: git 2.43 (srv1) resolves --absolute-git-dir against such a tree with exit 0, so a path-equality
+    // gate admits the fabrication. A MODELLED git read decides it, version-independently: `git symbolic-ref
+    // HEAD` succeeds on a bootstrapped/unborn repository (git init writes .git/HEAD -> refs/heads/<br>) and
+    // fails on a HEAD-less tree, so it distinguishes "established, not yet committed" from "fabricated"
+    // where rev-parse alone cannot. Not a directory test.
+    else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_if_else(
+      cond: bash_build_with_redir(
+        inner: bash_build_command_with_words(words: concat(
+          map(git_in_trusted_repository_args(repo: repo as NonEmptyStr), w => bash_build_word_lit(text: w)),
+          concat([bash_build_word_lit(text: git_program_word)], [bash_build_word_lit(text: "symbolic-ref"), bash_build_word_lit(text: "HEAD")]))),
+        redir: ^bash_production_fold_redir_stderr_null),
+      then_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
+      else_body: bash_build_stmt_list_from_nodes(
+        stmts: dashboard_git_worker_repository_premise_refusal_branch(
+          sentence: dashboard_git_worker_repository_premise_headless_refusal_sentence(repo: repo))),
+    )]),
   )
 }
 
@@ -2540,6 +2571,15 @@ fn dashboard_git_worker_repository_premise_refusal_sentence(repo: String) -> Str
     "gunbc-deploy-refused: repository premise: git rev-parse --absolute-git-dir at ",
     concat(repo, " is not ", concat(repo, "/.git -- the deployment tree step must establish the repository first"))
   )
+}
+
+// The HEAD premise's refusal, naming itself distinctly from the path premise's. Two named causes, so a
+// decomposed run and an operator both know WHICH premise the tree failed. A HEAD-less .git is the
+// fabrication the old standing step left behind (objects/refs/logs present, no HEAD).
+fn dashboard_git_worker_repository_premise_headless_refusal_sentence(repo: String) -> String {
+  concat(
+    "gunbc-deploy-refused: repository premise: git symbolic-ref HEAD at ",
+    concat(repo, " failed -- .git has no HEAD; a fabricated tree (objects/refs/logs but no HEAD) is not an established repository"))
 }
 
 // Does this spec carry the step that establishes the repository tree? The group moves only for that
