@@ -165,16 +165,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/provisioning/altra_autoinstall_seed.dag::crypt_layout" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/provisioning/altra_autoinstall_seed.dag::reject_layout" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_busy" },
       reason: nfr_reason_variant_test_predicate,
       dissolution: nfr_dissolve_derived_variant_test,

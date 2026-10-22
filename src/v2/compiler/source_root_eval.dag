@@ -3618,6 +3618,10 @@ fn native_nfr_add_row(s: NativeNfrState, key: String) -> NativeNfrState {
   }
 }
 
+fn native_nfr_count_of(xs: List<String>, want: String) -> Int {
+  length(xs: fold_list(xs: xs, empty: [], cons: fn(acc, u) { if u == want { list_snoc_item(xs: acc, item: u) } else { acc } }))
+}
+
 // A function holding a wildcard match the reader could not turn into a site is still a function with a
 // wildcard match, so a roster row naming it is not stale: it is unjudged, and the Classified / Unread /
 // ambient line already counts it. It enters `sites` (the identity lookup stale reads) and never `site_keys`
@@ -3709,11 +3713,12 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
           let done = fold_list(xs: holders, empty: scanned, cons: fn(acc, r) { native_nfr_scan_holder(s: acc, read: r, front: front, ingest_scope: ingest_scope) })
           let unrostered = fold_list(xs: done.site_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.rows, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
           let stale = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.sites, key: k) { Present { value: _ } => acc  Absent => if native_nfr_key_under_refused_file(refused: done.refused, key: k) { acc } else { list_snoc_item(xs: acc, item: k) } } })
+          let unjudged = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { if native_nfr_key_under_refused_file(refused: done.refused, key: k) { list_snoc_item(xs: acc, item: "refused-file") } else { match map_lookup(m: done.sites, key: k) { Present { value: c } => if c == "scrutinee-is-an-expression" || c == "scrutinee-is-not-a-parameter" || c == "ambient-head" { list_snoc_item(xs: acc, item: c) } else { acc }  Absent => acc } } })
           let unobserved = length(xs: done.refused) + length(xs: done.unread)
           let bad = length(xs: unrostered) + length(xs: stale) + length(xs: done.duplicates)
           NativeNfrOutput {
             lines: list_append(
-              left: [concat("[nfr-wildcard-census] files=", to_string(n: length(xs: ingest)), " wildcard_files=", to_string(n: length(xs: wild)), " excluded_test_layer=", to_string(n: excluded), " candidates=", to_string(n: length(xs: candidates)), " holders=", to_string(n: length(xs: holders)), " sites=", to_string(n: length(xs: done.site_keys)), " rows=", to_string(n: length(xs: done.row_keys)), " unrostered=", to_string(n: length(xs: unrostered)), " stale=", to_string(n: length(xs: stale)), " duplicates=", to_string(n: length(xs: done.duplicates)), " refused=", to_string(n: length(xs: done.refused)), " unread=", to_string(n: length(xs: done.unread)), " classified=", to_string(n: length(xs: done.classified)), " ambient_heads=", to_string(n: length(xs: done.ambient_list)))],
+              left: [concat("[nfr-wildcard-census] files=", to_string(n: length(xs: ingest)), " wildcard_files=", to_string(n: length(xs: wild)), " excluded_test_layer=", to_string(n: excluded), " candidates=", to_string(n: length(xs: candidates)), " holders=", to_string(n: length(xs: holders)), " sites=", to_string(n: length(xs: done.site_keys)), " rows=", to_string(n: length(xs: done.row_keys)), " unrostered=", to_string(n: length(xs: unrostered)), " stale=", to_string(n: length(xs: stale)), " duplicates=", to_string(n: length(xs: done.duplicates)), " refused=", to_string(n: length(xs: done.refused)), " unread=", to_string(n: length(xs: done.unread)), " classified=", to_string(n: length(xs: done.classified)), " ambient_heads=", to_string(n: length(xs: done.ambient_list)), " unjudged_rows=", to_string(n: length(xs: unjudged)), " unjudged_expression=", to_string(n: native_nfr_count_of(xs: unjudged, want: "scrutinee-is-an-expression")), " unjudged_non_parameter=", to_string(n: native_nfr_count_of(xs: unjudged, want: "scrutinee-is-not-a-parameter")), " unjudged_ambient_head=", to_string(n: native_nfr_count_of(xs: unjudged, want: "ambient-head")), " unjudged_refused_file=", to_string(n: native_nfr_count_of(xs: unjudged, want: "refused-file")), " verified_rows=", to_string(n: length(xs: done.row_keys) - length(xs: unjudged)))],
               right: list_append(
                 left: fold_list(xs: unrostered, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] unrostered ", k)) }),
                 right: list_append(
