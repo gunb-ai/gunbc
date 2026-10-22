@@ -217,8 +217,10 @@ import gunbc.guarantee_rung {
 // class that still has members stays Standing, or Superseded when its loss moved to a standing
 // drop. Like Superseded it is not a kind of Retired: the trigger did not fire. It carries no loss
 // holder because there is none; its RemovalTombstone (std.removal_tombstone) names the modules that
-// were deleted, the commit they are gone from, the ruling and the decision record, and a tombstone
-// naming a module still in the tree is judged a refusal by that module's verdict.
+// were deleted, the commit they are gone from, the ruling and the decision record, and
+// `removal_tombstone_verdict` judges a tombstone naming a module still in the tree a refusal. No
+// production gate runs that verdict over the roster yet (the witness does; the standing row
+// `dissolved_tombstone_module_absence_judged_only_by_a_witness` declares the drop).
 //
 // THE DECLARATION IS CARRIED BY THE STANDING, BECAUSE WHETHER A POPULATION EXISTS IS A FACT OF THE
 // STANDING. A Standing or Superseded drop still has a population its loss covers, so it carries the

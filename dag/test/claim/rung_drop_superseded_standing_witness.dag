@@ -5,11 +5,11 @@ import std.algebra { FreeSemigroup }
 import std.markdown { MarkdownDocument }
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.optional { Optional, Present, Absent }
-import std.removal_tombstone { RemovalTombstone, RemovalVerdict, RemovalHolds, RemovedModuleStillExists, RemovedModuleUnobservable, RemovalCommitDoesNotResolve, RemovalCommitUnobservable, ModuleObservation, ModulePresent, ModuleAbsent, ModuleUnobservable, CommitObservation, CommitResolves, CommitDoesNotResolve, CommitUnobservable, removal_tombstone_verdict, removal_tombstone_holds }
+import std.removal_tombstone { RemovalTombstone, RemovalVerdict, RemovalHolds, RemovedModuleStillExists, RemovedModuleUnobservable, RemovalCommitDoesNotResolve, RemovalCommitUnobservable, ModuleObservation, ModulePresent, ModuleAbsent, ModuleUnobservable, CommitObservation, CommitResolves, CommitDoesNotResolve, CommitUnobservable, removal_tombstone_verdict }
 import v2.lens.module_impact_query { ModuleIdentity }
 import gunbc.source_layout { layout_module_storage_path }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import gunbc.compile_census_probe { total_blocking_count_for }
+import gunbc.compile_census_probe { total_blocking_census, census_delta_verdict, CensusHeld, CensusDisagreed, CensusUnobserved }
 import gunbc.rung_drop { rung_drop_population, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, EndedTypedDeclaration, RetiredTypedDeclaration, NotYetCounted, MembersNeverEnumeratedBeforeRetirement, rung_drop_population_at_retirement, rung_drop_population_label, rung_drop_declaration_message, RungDropPopulation, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
@@ -232,15 +232,23 @@ fn prose_source(extra_field: String) -> String {
 data probe_population_field: String = "population: Enumerated { members: FreeSemigroup { head: \"x\", tail: [] } }, "
 
 test fn w_RED_a_population_on_a_dissolved_row_is_a_compile_refusal() -> Bool {
-  let control = total_blocking_count_for(source: dissolved_source(extra_field: ""))
-  let red = total_blocking_count_for(source: dissolved_source(extra_field: probe_population_field))
-  control >= 0 && red > control
+  let control = total_blocking_census(source: dissolved_source(extra_field: ""))
+  let red = total_blocking_census(source: dissolved_source(extra_field: probe_population_field))
+  match census_delta_verdict(red: red, control: control, holds: fn(n) { n > 0 }) {
+    CensusHeld {} => true
+    CensusDisagreed { reason: _ } => false
+    CensusUnobserved { cause: _ } => false
+  }
 }
 
 test fn w_RED_an_authored_prose_row_cannot_spell_a_population() -> Bool {
-  let control = total_blocking_count_for(source: prose_source(extra_field: ""))
-  let red = total_blocking_count_for(source: prose_source(extra_field: probe_population_field))
-  control >= 0 && red > control
+  let control = total_blocking_census(source: prose_source(extra_field: ""))
+  let red = total_blocking_census(source: prose_source(extra_field: probe_population_field))
+  match census_delta_verdict(red: red, control: control, holds: fn(n) { n > 0 }) {
+    CensusHeld {} => true
+    CensusDisagreed { reason: _ } => false
+    CensusUnobserved { cause: _ } => false
+  }
 }
 
 data fixture_removed_commit: CommitSha = "fa44b9810259b88f721e55ae0a3bd3cf7bc9b46f" as CommitSha
@@ -298,7 +306,7 @@ test fn w_RED_a_tombstone_naming_a_still_present_module_refuses() -> Bool {
 
 // THE LIVE DISSOLVED ROWS ARE CHECKED AGAINST THE TREE: each live tombstone names modules the tree no
 // longer holds, and with no commit observation the verdict is the typed RemovalCommitUnobservable,
-// never Holds; two rows are expected so the fold is not vacuous.
+// never Holds; at least one row is required so the fold is not vacuous, and the count is not copied from the tree.
 test fn the_live_roster_tombstones_name_only_absent_modules() -> Bool {
   let verdicts = flat_map(rung_drop_roster, d => match d.standing {
     Dissolved { removal: t, declaration: _ } => [removal_tombstone_verdict(tombstone: t, observe_module: tree_module_observer, observe_commit: commit_not_observable)]
@@ -306,6 +314,6 @@ test fn the_live_roster_tombstones_name_only_absent_modules() -> Bool {
     Retired { trigger_fired: _, declaration: _ } => []
     Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => []
   })
-  length(xs: verdicts) == 2
-    && length(xs: filter(verdicts, v => match v { RemovalCommitUnobservable => true  RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false })) == 2
+  length(xs: verdicts) >= 1
+    && length(xs: filter(verdicts, v => match v { RemovalCommitUnobservable => true  RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false })) == length(xs: verdicts)
 }

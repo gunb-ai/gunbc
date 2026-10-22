@@ -63,17 +63,3 @@ fn removal_tombstone_verdict(
     }
   }
 }
-
-fn removal_tombstone_holds(
-  tombstone: RemovalTombstone,
-  observe_module: fn(ModuleIdentity) -> ModuleObservation,
-  observe_commit: fn(CommitSha) -> CommitObservation
-) -> Bool {
-  match removal_tombstone_verdict(tombstone: tombstone, observe_module: observe_module, observe_commit: observe_commit) {
-    RemovalHolds => true
-    RemovedModuleStillExists { module: _ } => false
-    RemovedModuleUnobservable { module: _ } => false
-    RemovalCommitDoesNotResolve => false
-    RemovalCommitUnobservable => false
-  }
-}
