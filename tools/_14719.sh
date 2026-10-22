@@ -10,7 +10,7 @@ echo "REPO=$REPO"
 git remote set-url origin https://github.com/gunb-ai/gunbc 2>/dev/null || true
 [ "$(git rev-parse origin/session/nimble-badger-800 2>/dev/null)" != "$(git rev-parse HEAD 2>/dev/null)" ] && git fetch -q origin +refs/heads/session/nimble-badger-800:refs/heads/session/nimble-badger-800 2>/dev/null
 git checkout -q -f -B session/nimble-badger-800 origin/session/nimble-badger-800 2>/dev/null || true
-OID=73a3b4dd59004416984c8e0e070a2f79ffb2f87d  # gh pr view 14719 --json headRefOid
+OID=3da8211eaf95fdde05fed47ec5d550f5f3d47a6c  # gh pr view 14719 --json headRefOid
 echo "HEADSHA_expected=$OID"
 [ -d /sys/fs/cgroup ] || { echo "NO_CGROUP2 -- STOP"; exit 9; }
 echo +memory > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
