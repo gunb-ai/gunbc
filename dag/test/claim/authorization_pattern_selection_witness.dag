@@ -637,6 +637,7 @@ fn manual_row_conforms_as_a_named_step(key: String) -> Bool {
 }
 
 test fn no_api_physical_steps_are_named_and_conform() -> Bool {
-  manual_row_conforms_as_a_named_step(key: "gunbc.spark.dgx_pxe_boot::spark_pxe_firmware_enablement_intervention")
+  manual_row_conforms_as_a_named_step(key: "gunbc.cloudflare.r2_origin::cloudflare_account_allocation_intervention")
+    && manual_row_conforms_as_a_named_step(key: "gunbc.spark.dgx_pxe_boot::spark_pxe_firmware_enablement_intervention")
     && manual_row_conforms_as_a_named_step(key: "gunbc.fleet.mtcollins_firmware_converge::mtcollins1_ac_power_cycle_effect")
 }

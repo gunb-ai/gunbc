@@ -23,7 +23,7 @@ import gunbc.spark.bootstrap_provision {
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
-import gunbc.cloudflare.r2_origin { cloudflare_bootstrap_custody_intervention }
+import gunbc.cloudflare.r2_origin { cloudflare_bootstrap_custody_intervention, cloudflare_account_allocation_intervention }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
 import gunbc.review_sheet_operator { shared_drive_create_intervention, spreadsheet_create_intervention }
 import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
@@ -1654,6 +1654,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: manual_operator_api_effect(subject: "apply the srv1-production environment protection (deployment branch rule main only, required reviewers) in GitHub repository settings" as NonEmptyStr, cause: "environment protection is a repository-admin setting; no fleet principal holds repository administration, and no fold observes its standing" as NonEmptyStr, reach: MintsNoCredential),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.r2_origin", decl_name: "cloudflare_account_allocation_intervention"),
+    effect: manual_physical_effect(subject: "create the Cloudflare account that owns the fleet's R2 storage, billed to the LLC (dashboard signup; no API creates an account)" as NonEmptyStr, step: cloudflare_account_allocation_intervention()),
+    realized: RealizedHumanStep,
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.spark.dgx_pxe_boot", decl_name: "spark_pxe_firmware_enablement_intervention"),
