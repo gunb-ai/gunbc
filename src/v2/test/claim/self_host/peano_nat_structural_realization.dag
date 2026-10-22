@@ -172,6 +172,7 @@ test fn peano_row_is_found_by_exact_destination() -> Bool {
         PeanoUnfold { zero: z, succ: s, prev_field: p } =>
           (z.decl_name as String) == "StructuralZero" && (s.decl_name as String) == "StructuralSucc" && (p as String) == "prev"
         UnicodeScalarSequenceUnfold => false
+        NonEmptyUnicodeScalarSequenceUnfold => false
       }
     LiteralHomomorphismAbsent => false
     LiteralHomomorphismAmbiguous { row_count: _ } => false
