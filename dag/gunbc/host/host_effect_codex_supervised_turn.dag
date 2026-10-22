@@ -4,6 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import extdeps.git.inspect
 import extdeps.gunbc
+import extdeps.rust.cargo { cargo_default_release_dir }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
@@ -21,7 +22,7 @@ fn host_effect_codex_supervised_session_preamble_path(
 }
 
 fn host_effect_codex_supervised_session_bin_path(root: String) -> String {
-  concat(root, concat("/target/release/", host_effect_codex_supervised_turn_bin_name))
+  join([cargo_default_release_dir(build_root: root), "/", host_effect_codex_supervised_turn_bin_name], "")
 }
 
 fn host_effect_codex_supervised_session_preamble_content(
