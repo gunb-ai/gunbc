@@ -203,6 +203,22 @@ test fn an_admitted_pair_arrives_with_both_figures_intact_and_distinct() -> Bool
 // THE SEAL, measured against synthetic sources rather than asserted.
 // ---------------------------------------------------------------------------
 
+// KNOWN INSTRUMENT LIMIT, named not hidden (DESIGN §5). The NotRunnable arm
+// collapses to 0 - 1, so "the census could not run" and "the census ran and
+// found nothing" are indistinguishable at this seam — a -1 fails a >= 1
+// conjunct AND an == 0 conjunct at once, and the cause string is discarded by
+// the pattern. Measured on this head, not inferred: the same file driven
+// through claim_batch with --source-root src/v1 among its roots returns
+// CensusNotRunnable for EVERY source, including a two-line clean module, and
+// reddens the committed sibling dag/test/claim/admit_callers_roster_integrity_witness.dag
+// 6/6; under the sanctioned driver (gunbc run --claim-run, roots dag and
+// src/v2) the census runs and every claim here passes. So a red on this file
+// is only evidence once its driver is named. The fix is host-side, not here:
+// Charter 4 (warm-wolf-570) reclassifies NotRunnable-plus-false to
+// UNOBSERVED/exit 2 in claim_batch, behind #14692, consuming
+// gunbc.guarantee_measurement::ProbeObservation — which already separates
+// "absent, which is a verdict" from "could not run, which is not". Do not
+// hand-roll a second probe algebra beside it (DESIGN §3).
 fn violation_count(source: String, wanted: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
