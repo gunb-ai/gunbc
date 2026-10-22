@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.parallel_representation_debt
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data parallel_representation_debt: RecurringFailureMode = RecurringFailureMode {
   identity: "parallel_representation_debt" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "parallel-representation debt (an honestly-marked scaffold duplicating a canonical fact is still a violation.",

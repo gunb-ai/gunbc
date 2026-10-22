@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.closed_variant_partition_read_as_a_default_arm
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data closed_variant_partition_read_as_a_default_arm: RecurringFailureMode = RecurringFailureMode {
   identity: "closed_variant_partition_read_as_a_default_arm" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "closed variant partition read as a default arm (a selector over a CLOSED coproduct tests some of its variants by name and treats every other reading as the remaining one, so a reading that matches nothing renders a plausible arm instead of refusing; the coproduct's exhaustiveness is asserted in prose and lost at the string boundary where the variant name is read back off the source)",

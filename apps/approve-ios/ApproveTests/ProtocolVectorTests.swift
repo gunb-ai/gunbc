@@ -66,6 +66,12 @@ struct Vectors: Decodable {
         var encoded: String
     }
 
+    struct Escape: Decodable {
+        var input: String
+        var string_json: String
+        var object_json: String
+    }
+
     struct Surface: Decodable {
         var name: String
         var value: String
@@ -96,6 +102,11 @@ struct Vectors: Decodable {
     var path_segment: [PathSegment]
     /// surface: the one method, and the route paths, by name.
     var surface: [Surface]
+    /// escape: characters the emitter has to escape, with the bytes serialize_json gives them.
+    /// Optional in the Codable so that a fixture predating the section (it is emitted by
+    /// gunbc.auth.approval_device_redemption_fixtures escape_specimens) fails ONLY the test that
+    /// reads it, never the whole suite; that test refuses nil loudly.
+    var escape: [Escape]?
     /// stored_request: the store's own rendering, so the detail screen's reader is joined to it.
     /// Optional in the Codable so that a fixture predating the section (it is emitted by
     /// gunbc.auth.approval_device_redemption_fixtures stored_request_specimens) fails ONLY the test
@@ -329,9 +340,13 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertTrue(seg.hasPrefix("id-") && !seg.contains("+") && !seg.contains("/"))
     }
 
-    /// The emitter's escaping is serialize_json's: controls as \u00XX upper-case, "/" literal.
-    func testEmitterEscapesLikeSerializeJson() {
-        XCTAssertEqual(WireJson.string("a\u{1F}b/\"c\\").serialized, #""a\u001Fb/\"c\\""#)
-        XCTAssertEqual(WireJson.object([("k", .array([.string("x")]))]).serialized, #"{"k": ["x"]}"#)
+    /// The emitter's escaping is serialize_json's, over every specimen the fixture carries.
+    func testEmitterEscapesLikeSerializeJson() throws {
+        let vectors = try XCTUnwrap(try load().escape, "vectors.json has no escape section \u{2014} it is emitted by gunbc.auth.approval_device_redemption_fixtures escape_specimens")
+        XCTAssertFalse(vectors.isEmpty, "no escape specimens")
+        for v in vectors {
+            XCTAssertEqual(WireJson.string(v.input).serialized, v.string_json, v.input)
+            XCTAssertEqual(WireJson.object([("k", .array([.string(v.input)]))]).serialized, v.object_json, v.input)
+        }
     }
 }

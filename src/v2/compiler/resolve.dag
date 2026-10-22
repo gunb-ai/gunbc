@@ -4,7 +4,7 @@ import v2.std.language_model { LanguageModel }
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
 import v2.compiler.body_lowering_fold { TypeDeclModuleModifierRows, TypeDeclarationModifierChannel, TypeDeclarationModifiersCaptured }
 import v2.std.member_declaration_kind { DeclaredMember, declared_members_have_duplicate, MemberKindChannel, MemberKindsCaptured, MemberKindsUnavailable, QualifiedDeclaredMember, no_member_declaration_kinds }
-import v2.compiler.lexical_scope { ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlotScope, ArrowTypeParamsSlot, BindBinderSlot, BindBodySlot, BindValueSlot, PatternBinderCandidate, SlotScopeOuter, SlotScopeParamsOverOuter, SlotScopeParamsOverTypeParams, SlotScopeTypeParams, arrow_domain_binder_names, arrow_domain_binders, arrow_slot, arrow_slot_scope, bind_binder, bind_carries_arm_scope_exit, bind_positional_slot, declaration_names_value, module_root_bindings, pattern_binder_candidates, try_edge_declared_binding }
+import v2.compiler.lexical_scope { ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlotScope, ArrowTypeParamsSlot, PatternBinderCandidate, SlotScopeOuter, SlotScopeParamsOverOuter, SlotScopeParamsOverTypeParams, SlotScopeTypeParams, arrow_domain_binder_names, arrow_domain_binders, arrow_slot, arrow_slot_scope, bind_binder, bind_value, bind_carries_arm_scope_exit, declaration_names_value, module_root_bindings, pattern_binder_candidates, try_edge_declared_binding }
 import v2.std.declaration_marker { ReachesNoTestCode, ReachesTestMarkedDeclaration, TestCodeIndex, test_code_index_add_module, test_code_index_empty, test_code_reach }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -16,17 +16,17 @@ import v2.std.anonymous_binder { is_anonymous_param_label }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
 import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
-import v2.std.optional_layers { wrap_type_node_occupancy_at }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
 import v2.std.diagnostic { Correction, CorrectionNotModeled, Diagnostic, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
 import v2.compiler.primitive_authority { primitive_authority_path, primitive_authority_row_names_head }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
-import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node, declaration_denotation_of_type }
+import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node, declaration_denotation_of_type, declaration_denotation_is_optional }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { ExcludedCandidate, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
-import v2.std.node { positional_child_target_nodes, BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
+import v2.compiler.arm_resolution { node_is_arm_test }
+import v2.std.node { positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, match_positional_slot, node_child_slots }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentForwardedKindDiffers, ArgumentForwardedUnkinded, ArgumentForwardedUnresolved, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of }
 import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -889,7 +889,6 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
     TypeNode { connective: Atom { identity: _ } } => acc
     TypeNode { connective: Disj } => acc
     TypeNode { connective: Arrow } => acc
-    TypeNode { connective: Occupancy } => acc
     TypeNode { connective: Instantiation } => acc
     ComputationNode { behavior: Value } => acc
     ComputationNode { behavior: Transform } => acc
@@ -975,7 +974,7 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
         name: b.name,
         binding: LexicalBinding {
           binder_site: b.atom.occurrence_id,
-          standing: match list_at_optional(xs: positional_child_target_nodes(node: n), index: 1) {
+          standing: match bind_value(n: n) {
             Present { value: v } => LexicalValued { node: v }
             Absent => LexicalUntyped
           }
@@ -2952,6 +2951,15 @@ fn resolve_transform_operator_child(
   }
 }
 
+// THE ARM OF `x is V` IS A SPELLING, NOT A REFERENCE. V names a variant of x's TYPE, which only infer
+// knows (v2.compiler.infer infer_arm_resolutions resolves it against that type's declared roster and
+// refuses a misspelt or foreign arm there), so resolve neither binds it to a declaration nor refuses it
+// as unbound: it is carried through unread, the way a symbol literal's payload is.
+
+fn resolve_is_arm_spelling_kept(arm: Node) -> ResolveNodeWalk {
+  ResolveWalkAccepted { value: arm, diagnostics: None, bindings: [] }
+}
+
 fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
@@ -2964,6 +2972,8 @@ fn resolve_transform_children(
         Positional =>
           if acc.ordinal == 0 {
             resolve_transform_operator_child(ctx: ctx, n: e.target)
+          } else if acc.ordinal == 2 && node_is_arm_test(node: n) {
+            resolve_is_arm_spelling_kept(arm: e.target)
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
@@ -4084,20 +4094,31 @@ fn resolve_arm_scope_exit_bind(arm_ctx: ResolveContext, outer_ctx: ResolveContex
   }
 }
 
-// children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
-// every child, refused or not, so a refused scrutinee never promotes the first arm into its place.
+// A MATCH'S CHILDREN BY THEIR SLOT (v2.std.node match_positional_slot): positional 0 is the scrutinee,
+// resolved in the enclosing scope; every later positional child is an arm, resolved under its own pattern's
+// binders; a labeled child is resolved in the enclosing scope. The ordinal is POSITIONAL, the same one
+// lexical scope and inference read, so a labeled child never shifts which child is the scrutinee. Slots
+// are read off the tree, not off resolution's outcome, so a refused scrutinee never promotes the first arm
+// into its place.
 fn resolve_match_node_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
-    child_walk_step(
-      w: acc,
-      e: e,
-      r: if acc.ordinal == 0 {
-        resolve_node_walk(ctx: ctx, n: e.target)
-      } else {
-        resolve_match_arm_walk(ctx: ctx, arm: e.target)
-      }
-    )
+  child_walk_node(n: n, w: fold(node_child_slots(n: n), init: child_walk_init(), f: fn(acc, s) {
+    resolve_match_child_step(ctx: ctx, acc: acc, slot: s)
   }))
+}
+
+fn resolve_match_child_step(ctx: ResolveContext, acc: ChildWalk, slot: ChildSlot) -> ChildWalk {
+  child_walk_step(
+    w: acc,
+    e: slot.edge,
+    r: match slot.ordinal {
+      PositionalOrdinal { index: i } =>
+        match match_positional_slot(ordinal: i) {
+          MatchScrutineeSlot => resolve_node_walk(ctx: ctx, n: slot.edge.target)
+          MatchArmSlot => resolve_match_arm_walk(ctx: ctx, arm: slot.edge.target)
+        }
+      LabeledChild => resolve_node_walk(ctx: ctx, n: slot.edge.target)
+    }
+  )
 }
 
 // THE LEGACY ENTRY: one node, one chain. Every caller that asks for an Outcome keeps the answer
@@ -4173,8 +4194,6 @@ fn resolve_node_walk_entered(
       }
     TypeNode { connective: Instantiation } =>
       resolve_type_application(ctx: ctx, walked: resolve_instantiation_children(ctx: ctx, n: n))
-    TypeNode { connective: Occupancy } =>
-      resolve_occupancy(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
@@ -4208,7 +4227,10 @@ fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk:
   match resolve_instantiation_head_kinds(ctx: ctx, head_walk: head_walk) {
     InstantiationKindsDeclared { admitted: declared } =>
       if count(declared) != count(positional_child_target_nodes(node: n)) - 1 {
-        resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n)))
+        match resolve_optional_application_contract_refusal_optional(ctx: ctx, n: n) {
+          Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+          Absent => resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n)))
+        }
       } else {
         resolve_instantiation_walk_arguments(ctx: ctx, n: n, head_walk: head_walk, kinds: declared)
       }
@@ -4347,7 +4369,7 @@ fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> Res
       match resolve_type_application_refusal_optional(ctx: ctx, n: resolved) {
         Absent =>
           match resolve_optional_application_contract_refusal_optional(ctx: ctx, n: resolved) {
-            Absent => ResolveWalkAccepted { value: resolve_type_application_normalized(n: resolved), diagnostics: d, bindings: l }
+            Absent => ResolveWalkAccepted { value: resolved, diagnostics: d, bindings: l }
             Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
           }
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
@@ -5599,11 +5621,11 @@ fn resolve_walk_with_namespace_policy(
   }
 }
 
-// AN EXPLICIT `Optional<T>` WHOSE HEAD RESOLVED BY IDENTITY TO std.optional.Optional IS THE SAME TYPE AS `T?`
-// (ruling gunbc.design_ruling optional_sugar_is_declaration_bound), so it becomes the one Occupancy node the sugar
-// lowers to, at the application's own occurrence. The head is the resolved declaration path, never the leaf name: a
-// local type named Optional resolves to its own declaration and stays an Instantiation.
-// THE DECLARATION `T?` LOWERS FROM MUST BACK THE OCCUPANCY IT LOWERS TO (ruling gunbc.design_ruling
+// AN APPLICATION OF std.optional.Optional -- authored `Optional<T>` or the marked reference `T?` lowers to -- IS ONE
+// Instantiation (ruling gunbc.design_ruling optional_sugar_is_declaration_bound); the head is read by declaration
+// identity (declaration_denotation_of_type), never the leaf name: a local type named Optional resolves to its own
+// declaration and owes nothing here.
+// THE DECLARATION `T?` LOWERS FROM MUST BACK THE OPTIONAL IT LOWERS TO (ruling gunbc.design_ruling
 // optional_sugar_is_declaration_bound). Acquisition proves only that SOME declaration sits at the canonical path
 // (optional_declaration_identity); the contract is read here, from the declaration the index holds there, by
 // structure: exactly one type parameter, an `Absent` arm carrying no payload, and a `Present` arm whose one field
@@ -5612,7 +5634,7 @@ fn resolve_optional_declaration_refusal_optional(ctx: ResolveContext, at: Node) 
   match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: optional_declaration_identity()) {
     Absent => optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_optional_declaration_unavailable, at: at))
     Present { value: decl } =>
-      if optional_declaration_backs_occupancy(ctx: ctx, decl: decl) {
+      if optional_declaration_backs_optional(ctx: ctx, decl: decl) {
         optional_absent()
       } else {
         optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_optional_declaration_incompatible, at: at))
@@ -5620,24 +5642,13 @@ fn resolve_optional_declaration_refusal_optional(ctx: ResolveContext, at: Node) 
   }
 }
 
-fn resolve_occupancy(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNodeWalk {
-  match walked {
-    ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: _ } =>
-      match resolve_optional_declaration_refusal_optional(ctx: ctx, at: resolved) {
-        Absent => walked
-        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
-      }
-    ResolveWalkRefused { first: _, rest: _, observation: _, partial: _ } => walked
-  }
-}
-
-// An explicit application whose head resolves to the canonical Optional is rewritten to Occupancy, so it owes the same contract.
+// An explicit application whose head resolves to the canonical Optional owes the same contract.
 fn resolve_optional_application_contract_refusal_optional(ctx: ResolveContext, n: Node) -> Optional<Diagnostic> {
   match positional_child_target_nodes(node: n) {
     Cons { head: _, tail: Cons { head: _, tail: Empty } } =>
       match declaration_denotation_of_type(t: n) {
         Present { value: denotation } =>
-          if denotation.declaration == optional_declaration_identity() {
+          if declaration_denotation_is_optional(denotation: denotation) {
             resolve_optional_declaration_refusal_optional(ctx: ctx, at: n)
           } else {
             optional_absent()
@@ -5648,14 +5659,14 @@ fn resolve_optional_application_contract_refusal_optional(ctx: ResolveContext, n
   }
 }
 
-fn optional_declaration_backs_occupancy(ctx: ResolveContext, decl: Node) -> Bool {
+fn optional_declaration_backs_optional(ctx: ResolveContext, decl: Node) -> Bool {
   match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: optional_declaration_identity()) {
     Present { value: binders } =>
       match binder_conj_names(conj: binders) {
         Cons { head: param, tail: Empty } =>
           match type_decl_view(target: decl) {
-            PlainTypeDecl { member: m } => optional_member_backs_occupancy(member: m, param: param)
-            GenericTypeDecl { binders: _, member: m } => optional_member_backs_occupancy(member: m, param: param)
+            PlainTypeDecl { member: m } => optional_member_backs_optional(member: m, param: param)
+            GenericTypeDecl { binders: _, member: m } => optional_member_backs_optional(member: m, param: param)
             _ => false
           }
         _ => false
@@ -5664,7 +5675,7 @@ fn optional_declaration_backs_occupancy(ctx: ResolveContext, decl: Node) -> Bool
   }
 }
 
-fn optional_member_backs_occupancy(member: Node, param: Symbol) -> Bool {
+fn optional_member_backs_optional(member: Node, param: Symbol) -> Bool {
   node_is_coproduct(node: member)
     && (count(member.children) == 2)
     && optional_arm_holds(member: member, arm: ^Absent, param: param)
@@ -5721,22 +5732,6 @@ fn optional_arm_carries_the_parameter(payload: Node, param: Symbol) -> Bool {
         _ => false
       }
     _ => false
-  }
-}
-
-fn resolve_type_application_normalized(n: Node) -> Node {
-  match positional_child_target_nodes(node: n) {
-    Cons { head: head, tail: Cons { head: argument, tail: Empty } } =>
-      match declaration_reference_path_optional(node: head) {
-        Present { value: path } =>
-          if path == optional_declaration_identity() {
-            wrap_type_node_occupancy_at(base: argument, occurrence_id: n.occurrence_id)
-          } else {
-            n
-          }
-        Absent => n
-      }
-    _ => n
   }
 }
 

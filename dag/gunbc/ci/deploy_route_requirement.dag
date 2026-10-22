@@ -1,0 +1,64 @@
+module gunbc.ci.deploy_route_requirement
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import gunbc.auth.authorization_pattern_selection { MintedCredentialReach, MintsHostRootReach }
+
+// ── WHAT THE DEPLOY ROUTE MUST HOLD BEFORE ITS ROOT MAY SWITCH ─────────────────────────────────
+// Removing the whole-binary sudo grants from the job user does not remove root reach while a pull
+// request job and a dispatched deploy run share one uid on one host: slot units run as root with
+// PrivateTmp=no, ProtectSystem=no and no namespace directives, jobs run as ghrunner, and the in-run
+// ssh-agent socket (gunbc.ci.ci_spec) is reachable by any same-uid job (host-observed 2026-10-19;
+// socket use in a live run is implied, not exercised). Pattern selection is per effect and cannot
+// see a co-tenant, so the fact is a requirement on the ROUTE, stated here, not a pattern.
+// gunbc.plans.srv1_deploy_principal_split section 5, D3.
+type DeployRouteJobTenancy
+  = SharesJobUidWithPullRequestJobs
+  | SoleTenantOfJobUid
+
+type DeployRouteRequirement {
+  effect_reach: MintedCredentialReach
+  required_tenancy: DeployRouteJobTenancy
+}
+
+// An effect of host-root reach is performed only by a main-pinned dispatch that runs on a runner
+// label and uid taking no pull request jobs.
+data srv1_deploy_route_requirement: DeployRouteRequirement = DeployRouteRequirement {
+  effect_reach: MintsHostRootReach,
+  required_tenancy: SoleTenantOfJobUid,
+}
+
+// What srv1 was observed to be on 2026-10-19: every slot unit's jobs run as ghrunner and take
+// same-repository pull request jobs.
+data srv1_observed_job_tenancy: DeployRouteJobTenancy = SharesJobUidWithPullRequestJobs
+
+fn deploy_route_tenancy_meets(required: DeployRouteJobTenancy, observed: DeployRouteJobTenancy) -> Bool {
+  match required {
+    SharesJobUidWithPullRequestJobs => true
+    SoleTenantOfJobUid =>
+      match observed {
+        SoleTenantOfJobUid => true
+        SharesJobUidWithPullRequestJobs => false
+      }
+  }
+}
+
+// THE GATE THE STAGE-2 TRANSITION OWES: the root of the deploy route is switched only when the
+// requirement holds of the observed tenancy.
+fn deploy_route_switch_admitted(r: DeployRouteRequirement, observed: DeployRouteJobTenancy) -> Bool {
+  deploy_route_tenancy_meets(required: r.required_tenancy, observed: observed)
+}
+
+// DECLARED FRONTIER, NOT IMPLEMENTATION. No runner label that takes no pull request jobs exists and
+// no observation of one is modeled, so srv1_observed_job_tenancy can only read as shared.
+data deploy_route_requirement_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.ci.deploy_route_requirement", decl_name: "srv1_observed_job_tenancy"),
+    reason: "srv1's job uid is shared between pull request jobs and dispatched deploy runs, so the deploy route cannot be switched to the administrator edge without leaving root reachable through the in-run key agent",
+    dissolution: unbound_dissolution(
+      description: "NAMED CAPABILITY: a runner label whose slots take only main-pinned dispatches, with the host readback of that group and uid (gunbc.ci.deploy_slot_tenancy DeploySlotReading) produced from the live org groups and the slot unit. SUFFICIENT FOR replacing srv1_observed_job_tenancy with deploy_slot_observed_tenancy over that read and deploy_route_switch_admitted answering true for srv1_deploy_route_requirement; a per-job microvm migration also retires it" as NonEmptyStr,
+    ),
+  ),
+]

@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.admission_roster_read_as_the_whole_membership_rule
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable }
 
 data admission_roster_read_as_the_whole_membership_rule: RecurringFailureMode = RecurringFailureMode {
   identity: "admission_roster_read_as_the_whole_membership_rule" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: Mitigatable, ceiling_reason: "mitigatable, and the reason is decidability rather than unbuilt work: the invalid state is a belief a reader forms about what a mechanism selects." as NonEmptyStr } },
 
   receipts: [
     "**an admission roster is read as the whole membership rule** (INVALID STATE: a hand-authored roster states a NECESSARY condition for a subject to be selected, a reader verifies the subject against that roster, and the roster's answer is then treated as the SUFFICIENT and only answer -- while the selecting mechanism carries additional admission paths the roster does not mention, and a completed run has already published which subjects it actually selected.",

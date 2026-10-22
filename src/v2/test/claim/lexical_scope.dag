@@ -21,11 +21,19 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { list_head, list_map }
+import std.algebra { fold_list, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { symbol_lexeme }
+import v2.std.node { symbol_lexeme, EdgeLabel, Authored, CoreMarker, Positional, ProductionEdge, StructuralLabel, BinderTypeEdge, TypeAnnotationEdge }
+import std.occurrence_identity {
+  LabelPosition,
+  PatternTagPosition,
+  ReferencePosition,
+  ReturnPosition,
+  TypeAnnotationPosition,
+  ValuePosition
+}
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -62,6 +70,17 @@ fn scope_env(prepared: PreparedGrammar) -> AcquisitionEnv {
   )
 }
 
+// THE POSITION FACT, printed, as ONE authority issued it (v2.compiler.occurrence_role).
+fn position_text(position: ReferencePosition) -> String {
+  match position {
+    ValuePosition => "value"
+    TypeAnnotationPosition => "type"
+    ReturnPosition => "return"
+    LabelPosition => "label"
+    PatternTagPosition => "tag"
+  }
+}
+
 fn head_text(head: SiteHeadBinding) -> String {
   match head {
     HeadBoundInFrame => "frame"
@@ -88,16 +107,70 @@ fn head_of_site(content: String, spelling: String) -> String {
   }
 }
 
+// THE POSITION AND THE BINDING OF THE FIRST SITE spelling `spelling`, as "position/head". The two facts
+// are separate fields on the site (tidy-ant-251's D3), so a control that pins one must not be able to pass
+// on the other: this prints both, so a swap of the two readings fails.
+fn site_pair(content: String, spelling: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          match list_head(xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })).sites |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling })) {
+            Absent => "no-site"
+            Present { value: found } =>
+              position_text(position: found.position) + "/" + head_text(head: found.head)
+          }
+      }
+  }
+}
+
 // ---- Arrow ---------------------------------------------------------------------------------------------
 
 test fn a_parameter_is_bound_in_the_body() -> Bool {
   head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  x.y\n}\n", spelling: "x.y") == "frame"
 }
 
-// The unbound edge of the pair: the same spelling in a sibling parameter's type, where the type scope holds
-// no value binder.
+// #14338's specimen, pinned where the classifier decides, site by SITE rather than first-site: the subject
+// spells `chars` twice (its own binder, then the call) and `x` twice, and `head_of_site` reads only the head
+// of the first match, which for `chars` is the signature row. EACH SITE IS PINED EXACTLY, in walk order, with
+// NO tolerance for the two orders (tidy-ant-251 item 4): the signature row is `label/unbound` -- the
+// ArrowSignatureOrder mention of a parameter, a LABEL position, which no value frame explains, so it is never a
+// name the sweep may import (this is the site #14338's sweep read as a free name) -- and the body's call head is
+// `value/frame`, a value mention its parameter binds. `x` pairs its binder-type mention `type/unbound` with the
+// value mention `value/frame`. Reverting the position authority sends both signature rows to `value/unbound`,
+// which is the red the sweep acted on, and the strings cannot match in any other order.
+fn specimen_sites(spelling: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: "module v2.test.subject\n\nfn u(chars: fn(String) -> Int, x: String) -> Int {\n  chars(s: x)\n}\n") {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          fold_list(
+            xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })).sites
+              |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling }),
+            empty: "",
+            cons: fn(acc, s) { acc + position_text(position: s.position) + "/" + head_text(head: s.head) + "," }
+          )
+      }
+  }
+}
+
+test fn the_called_parameter_head_at_the_call_is_bound_in_the_frame() -> Bool {
+  specimen_sites(spelling: "chars") == "value/frame,"
+    && specimen_sites(spelling: "x") == "value/frame,"
+}
+
+// The non-value edge of the pair: the same spelling in a sibling parameter's type. It was asserted `unbound`
+// -- "a free name" -- which is what made the roster sweep propose an import for a name the module already
+// declares (gunb-ai/gunbc#14338). The head sits at a BINDER TYPE, which no value binder can ever own, so the
+// position authority says the free-name question does not apply. Unbound stays reserved for a head that COULD
+// name a value and does not (a_head_nothing_binds_is_unbound); acquisition still requests this module (see
+// module_acquisition's a_binder_type_head_still_requests_its_module).
 test fn a_parameter_is_not_bound_in_a_sibling_parameter_type() -> Bool {
-  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n", spelling: "x.T") == "unbound"
+  site_pair(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n", spelling: "x.T") == "type/unbound"
 }
 
 // ---- Bind ----------------------------------------------------------------------------------------------
@@ -110,10 +183,12 @@ test fn a_let_binder_is_not_bound_in_its_own_value() -> Bool {
   head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n", spelling: "x.y") == "unbound"
 }
 
-// A type annotation is resolved in the type scope, which holds no value binder, so a parameter does not bind
-// the head of an annotation that mentions the same name.
+// A type annotation is resolved in the type scope, which holds no value binder -- so the correct fact is not
+// "free name" (the old assertion, which #14338's roster sweep obeyed and then imported a nonexistent module)
+// but "not a value position". Same rule as the sibling-parameter pair above: one rule for every non-value
+// position. What the annotation asks the binder to be is still refused: type_binder d_x_annotation_not_a_value.
 test fn a_type_annotation_sees_no_value_binder() -> Bool {
-  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n", spelling: "x.T") == "unbound"
+  site_pair(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n", spelling: "x.T") == "type/unbound"
 }
 
 // Frames compose: an enclosing parameter stays visible through a nested `let`.
@@ -310,6 +385,41 @@ test fn the_plain_collection_is_the_scoped_collection_with_the_head_dropped() ->
           join(list_map(xs: collect_module_reference_sites(root: front.tree.root).sites, f: fn(s) { qualified_name_to_dotted_string(qn: s.spelling) }), ",")
             == join(list_map(xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: []).sites, f: fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) }), ",")
             && scoped_reference_site_collection_is_total(collection: collect_scoped_module_reference_sites(root: front.tree.root, imported: []))
+      }
+  }
+}
+
+// THE WAVE-2 FIXTURE, PINNED SITE BY SITE (wise-moth-707's control specimen, gunb-ai/gunbc#14338/#14435): module
+// w2.fixture with `fn f(xs: List<Int>) -> List<Int> { xs }`. The digest is every recorded site as spelling/position, in
+// the collector's walk order -- pinned, not counted, so a site that moves position or a codomain recorded twice is
+// visible rather than averaged away. The two return sites per codomain name are the arrow's codomain recorded under
+// both of the bare Positional children the signature walk visits (v2.compiler.lexical_scope arrow_slot gives the
+// codomain slot for ordinal > 0 under Positional); wise-moth-707's probe saw sites 2/3 of its three List rows this
+// way and does not count it as a collector defect. The binder-type site is what #14435 exists for: `List` in `xs:
+// List<Int>` is a TYPE position, so the roster must consult the home's declared kind (v2.workflow.roster_home_kind),
+// never the spelling -- its four controls live in v2.workflow.roster_import_sweep roster_kind_controls.
+test fn the_wave_two_fixture_sites_are_pinned() -> Bool {
+  w2_fixture_digest() == "List/type,Int/type,List/return,Int/return,List/return,Int/return,xs/value,"
+}
+
+fn w2_fixture_digest() -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(
+        env: scope_env(prepared: prepared),
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        content: "module w2.fixture\nimport std.algebra { Empty }\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n"
+      ) {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          fold(
+            collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })).sites,
+            init: "",
+            f: fn(a, s) {
+              a + qualified_name_to_dotted_string(qn: s.site.spelling) + "/" + position_text(position: s.position) + ","
+            }
+          )
       }
   }
 }

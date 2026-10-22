@@ -1,0 +1,253 @@
+module std.generated_provider
+
+import std.types { Bool, List, NonEmptyStr, SourceSpan, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup, non_empty_singleton, non_empty_append }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.occurrence_identity { NodeOccurrenceIdentity }
+
+// A COMPILER-GENERATED DECLARATION REFERENCE DEMANDS ITS PROVIDER. When the compiler, not the author,
+// introduces a reference to a declaration -- the route of an admitted conversion plan, the head a
+// list, map or string template elaborates to -- the closure owes that declaration's provider. It is
+// neither an authored import nor an ambient built-in (operator ruling N2b, 2026-10-15; option 1b of
+// the host-text crossing, 2026-10-20). The demand is keyed by the exact DeclarationRef the compiler
+// chose, never by a carrier whose presence suggests one: a closure that merely contains
+// std.algebra FreeMonoid owes no conversion route.
+//
+// The declaration is the acquisition key. Cause, span and occurrence are provenance: two sites
+// demanding one declaration acquire it once and stay two sites, so an unavailable provider is
+// reported at every site that needed it and no acquisition order decides which location survives.
+type GeneratedProviderCause
+  = GeneratedConversionRoute
+  | GeneratedListHead
+  | GeneratedMapHead
+  | GeneratedTemplateHead
+
+// The location is the AUTHORED boundary the author can act on (the crossed value), never the
+// generated node, whose occurrence is synthetic and locates nothing.
+type GeneratedProviderSite {
+  cause: GeneratedProviderCause
+  at: SourceSpan
+  occurrence: NodeOccurrenceIdentity?
+}
+
+type GeneratedProviderDemand {
+  declaration: DeclarationRef
+  sites: FreeSemigroup<GeneratedProviderSite>
+}
+
+fn generated_provider_demand(declaration: DeclarationRef, site: GeneratedProviderSite) -> GeneratedProviderDemand {
+  GeneratedProviderDemand { declaration: declaration, sites: non_empty_singleton(item: site) }
+}
+
+// Group by declaration identity, keeping every site. First-seen order of declarations; the
+// acquisition decision below reads the grouped demands as a set, so order never selects.
+fn group_provider_demands(demands: List<GeneratedProviderDemand>) -> List<GeneratedProviderDemand> {
+  let no_groups: List<GeneratedProviderDemand> = []
+  reverse(demands |> fold(init: no_groups, f: fn(acc, d) {
+    if acc |> any(g => declaration_ref_eq(a: g.declaration, b: d.declaration)) {
+      acc |> map(g =>
+        if declaration_ref_eq(a: g.declaration, b: d.declaration) {
+          GeneratedProviderDemand { declaration: g.declaration, sites: non_empty_append(left: g.sites, right: d.sites) }
+        } else {
+          g
+        }
+      )
+    } else {
+      concat([d], acc)
+    }
+  }))
+}
+
+// WHAT A CLOSURE BUILDER OBSERVED ABOUT ONE DEMANDED DECLARATION. Builders observe their own storage
+// surface (an index, the source layout, a hermetic manifest) and report one of these facts; none of
+// them decides whether to acquire, finish or refuse -- provider_acquisition_step does.
+//   ProviderSatisfied           the declaration is declared, unrefused, in the current closure
+//   ProviderModuleAvailable     its module is not in the closure and the pool holds exactly one readable copy
+//   ProviderModuleAbsent        the pool has no such module
+//   ProviderModuleUnreadable    the pool names it but it could not be read
+//   ProviderModuleAmbiguous     the pool holds several candidates; none is selected
+//   ProviderDeclarationAbsent   the module is in the closure and does not declare it
+//   ProviderDeclarationRefused  the module declares it and that declaration was refused
+type GeneratedProviderObservation
+  = ProviderSatisfied
+  | ProviderModuleAvailable
+  | ProviderModuleAbsent
+  | ProviderModuleUnreadable
+  | ProviderModuleAmbiguous
+  | ProviderDeclarationAbsent
+  | ProviderDeclarationRefused
+
+type ObservedProviderDemand {
+  demand: GeneratedProviderDemand
+  observation: GeneratedProviderObservation
+}
+
+type GeneratedProviderUnavailableCause
+  = UnavailableModuleAbsent
+  | UnavailableModuleUnreadable
+  | UnavailableModuleAmbiguous
+  | UnavailableDeclarationAbsent
+  | UnavailableDeclarationRefused
+  | AcquisitionMadeNoProgress
+
+type UnavailableProviderDemand {
+  demand: GeneratedProviderDemand
+  cause: GeneratedProviderUnavailableCause
+}
+
+type ProviderAcquisitionStep
+  = AcquisitionComplete
+  | AcquireModules { modules: FreeSemigroup<NonEmptyStr> }
+  | ProviderAcquisitionRefused { refusals: FreeSemigroup<UnavailableProviderDemand> }
+
+type ProviderObservationVerdict
+  = VerdictSatisfied
+  | VerdictAcquire { module: NonEmptyStr }
+  | VerdictUnavailable { cause: GeneratedProviderUnavailableCause }
+
+// A module the builder reports available but which is already in the closure is not progress: the
+// builder's observation and its closure disagree, and acquiring it again would loop.
+fn provider_observation_verdict(o: ObservedProviderDemand, closure_modules: List<NonEmptyStr>) -> ProviderObservationVerdict {
+  match o.observation {
+    ProviderSatisfied => VerdictSatisfied
+    ProviderModuleAvailable =>
+      if closure_modules |> any(m => m == o.demand.declaration.module_path) {
+        VerdictUnavailable { cause: AcquisitionMadeNoProgress }
+      } else {
+        VerdictAcquire { module: o.demand.declaration.module_path }
+      }
+    ProviderModuleAbsent => VerdictUnavailable { cause: UnavailableModuleAbsent }
+    ProviderModuleUnreadable => VerdictUnavailable { cause: UnavailableModuleUnreadable }
+    ProviderModuleAmbiguous => VerdictUnavailable { cause: UnavailableModuleAmbiguous }
+    ProviderDeclarationAbsent => VerdictUnavailable { cause: UnavailableDeclarationAbsent }
+    ProviderDeclarationRefused => VerdictUnavailable { cause: UnavailableDeclarationRefused }
+  }
+}
+
+fn observed_unavailable(o: ObservedProviderDemand, closure_modules: List<NonEmptyStr>) -> List<UnavailableProviderDemand> {
+  match provider_observation_verdict(o: o, closure_modules: closure_modules) {
+    VerdictUnavailable { cause: c } => [UnavailableProviderDemand { demand: o.demand, cause: c }]
+    VerdictSatisfied => []
+    VerdictAcquire { module: _ } => []
+  }
+}
+
+fn observed_acquire(o: ObservedProviderDemand, closure_modules: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  match provider_observation_verdict(o: o, closure_modules: closure_modules) {
+    VerdictAcquire { module: m } => [m]
+    VerdictSatisfied => []
+    VerdictUnavailable { cause: _ } => []
+  }
+}
+
+fn distinct_module_paths(xs: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  let no_modules: List<NonEmptyStr> = []
+  reverse(xs |> fold(init: no_modules, f: fn(acc, m) {
+    if acc |> any(a => a == m) { acc } else { concat([m], acc) }
+  }))
+}
+
+// ONE ACQUISITION DECISION FOR EVERY CLOSURE BUILDER. Any unavailable demand refuses the step with
+// every unavailable demand named (never the first found); otherwise any acquirable module is
+// acquired, one acquisition per module however many of its declarations are demanded; otherwise the
+// closure is at its fixed point. Physical acquisition is module-grained because a module is the
+// storage unit; the reason for acquiring it is declaration-grained, and the module path is read
+// from the demanded DeclarationRef, never from a carrier.
+//
+// Termination: the closure only grows, AcquireModules names only modules outside it, and the pool
+// is finite, so a builder that re-observes after each acquisition reaches Complete or Refused.
+fn provider_acquisition_step(observed: List<ObservedProviderDemand>, closure_modules: List<NonEmptyStr>) -> ProviderAcquisitionStep {
+  let refusals = observed |> flat_map(o => observed_unavailable(o: o, closure_modules: closure_modules))
+  match refusals |> first {
+    Present { value: r } => ProviderAcquisitionRefused { refusals: FreeSemigroup { head: r, tail: refusals.skip(n: 1) } }
+    Absent =>
+      let modules = distinct_module_paths(xs: observed |> flat_map(o => observed_acquire(o: o, closure_modules: closure_modules)))
+      match modules |> first {
+        Present { value: m } => AcquireModules { modules: FreeSemigroup { head: m, tail: modules.skip(n: 1) } }
+        Absent => AcquisitionComplete
+      }
+  }
+}
+
+// WHAT A BUILDER KNOWS ABOUT ONE DEMANDED DECLARATION'S MODULE, before any policy: whether the module
+// is in the current closure (and which declarations it has there), or how its pool answered. The
+// builder reports this fact; observe_provider_demand turns it into the observation the step judges,
+// so no builder decides what a missing declaration or a missing module means.
+type ProviderModuleFact
+  = ModuleInClosure { declarations: List<NonEmptyStr>, refused: List<NonEmptyStr> }
+  | ModuleInPool
+  | ModuleNotInPool
+  | ModuleUnreadableInPool
+  | ModuleAmbiguousInPool
+
+fn observe_provider_demand(demand: GeneratedProviderDemand, fact: ProviderModuleFact) -> ObservedProviderDemand {
+  let wanted = demand.declaration.decl_name
+  ObservedProviderDemand {
+    demand: demand,
+    observation: match fact {
+      ModuleInClosure { declarations: ds, refused: rs } =>
+        if rs |> any(r => r == wanted) {
+          ProviderDeclarationRefused
+        } else if ds |> any(d => d == wanted) {
+          ProviderSatisfied
+        } else {
+          ProviderDeclarationAbsent
+        }
+      ModuleInPool => ProviderModuleAvailable
+      ModuleNotInPool => ProviderModuleAbsent
+      ModuleUnreadableInPool => ProviderModuleUnreadable
+      ModuleAmbiguousInPool => ProviderModuleAmbiguous
+    }
+  }
+}
+
+fn generated_provider_cause_label(c: GeneratedProviderCause) -> String {
+  match c {
+    GeneratedConversionRoute => "conversion route"
+    GeneratedListHead => "list head"
+    GeneratedMapHead => "map head"
+    GeneratedTemplateHead => "string template head"
+  }
+}
+
+fn generated_provider_unavailable_cause_label(c: GeneratedProviderUnavailableCause) -> String {
+  match c {
+    UnavailableModuleAbsent => "its module is not in the source pool"
+    UnavailableModuleUnreadable => "its module could not be read"
+    UnavailableModuleAmbiguous => "its module has several candidates in the pool and none is selected"
+    UnavailableDeclarationAbsent => "its module does not declare it"
+    UnavailableDeclarationRefused => "its declaration was refused"
+    AcquisitionMadeNoProgress => "acquisition made no progress: the module is already in the closure"
+  }
+}
+
+// ONE MESSAGE FOR THE REFUSAL, read by v1.std.core's GeneratedProviderUnavailable diagnostic,
+// which every closure builder raises once per demanding site at the authored boundary that site names.
+fn generated_provider_unavailable_message(declaration: DeclarationRef, cause: GeneratedProviderUnavailableCause) -> String {
+  concat(
+    "generated provider unavailable: ", declaration.module_path, ".", declaration.decl_name, " -- ",
+    generated_provider_unavailable_cause_label(c: cause),
+    "; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it"
+  )
+}
+
+// WHAT A BUILDER'S POOL ANSWERED FOR ONE DEMANDED MODULE OUTSIDE THE CLOSURE. The builder supplies one
+// per demanded module path; the closure fact, when the module is already in the closure, comes from
+// the checked closure and takes precedence.
+type ProviderPoolObservation {
+  module_path: String
+  fact: ProviderModuleFact
+}
+
+// A STALLED ACQUISITION, AS THE MODEL'S OWN REFUSAL: the builder asked for modules and its pool's
+// closures added nothing to the sources, so the demanded modules count as already held while still
+// unsatisfied -- provider_acquisition_step's AcquisitionMadeNoProgress, never a builder's prose.
+fn stalled_acquisition_step(demands: List<GeneratedProviderDemand>, stalled_modules: List<NonEmptyStr>) -> ProviderAcquisitionStep {
+  provider_acquisition_step(
+    observed: demands
+      |> filter(d => stalled_modules |> any(m => m == d.declaration.module_path))
+      |> map(d => ObservedProviderDemand { demand: d, observation: ProviderModuleAvailable }),
+    closure_modules: stalled_modules
+  )
+}

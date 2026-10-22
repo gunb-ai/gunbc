@@ -1,0 +1,40 @@
+module gunbc.live_deploy.serve_binary
+
+import std.types { String, NonEmptyStr }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionNotInstalled, release_locus_binary_path }
+
+// WHICH BINARY A SERVICE RUNS IS A TWO-ARMED FACT, AND THE TYPE HOLDS BOTH ARMS. A service either runs one
+// binary at a fixed path (the roadmap's frozen /opt/gunbc/bin/gunbc) or the binary copied into the per-candidate
+// release locus for the revision being deployed (gunbc.live_deploy.release_locus release_locus_binary_path). The
+// approval broker used to carry a refusal marker in this field because the type could only hold the first arm; a
+// field read as authoritative while the real answer lived elsewhere is the fork that marker papered over.
+// Named ServeBinarySource because UpsertArtifactKind already has a ServeBinary variant (DESIGN section 3, one name one meaning).
+type ServeBinarySource
+  = FixedServeBinary { binary: AdmittedFixedServeBinary }
+  | PerReleaseBinary
+
+// The path a unit executes, resolved over the revision it is rendered for. Total over both arms: a per-release
+// binary under RevisionNotInstalled resolves to release_locus_binary_path's own unbound marker, which is not a valid
+// executable path, so the unit fails loudly rather than naming a binary that is not there (DESIGN section 5).
+fn serve_binary_path(binary: ServeBinarySource, release_root: String, revision: ReleaseRevisionBinding) -> String {
+  match binary {
+    FixedServeBinary { binary: b } => b.path as String
+    PerReleaseBinary => release_locus_binary_path(root: release_root, revision: revision)
+  }
+}
+
+// A fixed path no revision can change, minted only here (sole_constructor), so a renderer that has no revision in hand
+// takes this type and a PerReleaseBinary has no constructor path to it. The sole_constructor wall itself is executed
+// generically (sole_constructor_completeness_audit_probe); no RED here is specific to this type, so the rung is
+// construction by declaration, not established by a type-specific refusal (DESIGN section 4b). DeploymentSpec.service is typed over it; the broker's config is typed over the sum.
+type AdmittedFixedServeBinary sole_constructor {
+  path: NonEmptyStr
+}
+
+fn admit_fixed_serve_path(path: NonEmptyStr) -> AdmittedFixedServeBinary {
+  AdmittedFixedServeBinary { path: path }
+}
+
+fn fixed_serve_binary_path(binary: AdmittedFixedServeBinary) -> String {
+  binary.path as String
+}
