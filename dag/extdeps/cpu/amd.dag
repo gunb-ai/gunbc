@@ -70,10 +70,16 @@ data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   line_size: byte_size(64),
 }
 
+// The Zen 2 L1/L2 citations were a Ryzen product page that states no cache geometry; they now cite the
+// Family 17h Models 30h+ guide that does, in place, for every model sharing these rows (Ryzen and EPYC).
 data amd_zen2_l1_cache_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "data_capacity_per_core"),
-    authority: amd_ryzen_5_3600_authority,
+    authority: amd_family_17h_zen2_sog_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "instruction_capacity_per_core"),
+    authority: amd_family_17h_zen2_sog_authority,
   },
 ]
 
@@ -85,7 +91,7 @@ data amd_zen2_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
 data amd_zen2_l2_cache_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l2_cache_geometry", field_name: "capacity_per_core"),
-    authority: amd_ryzen_5_3600_authority,
+    authority: amd_family_17h_zen2_sog_authority,
   },
 ]
 
@@ -337,25 +343,6 @@ data amd_zen1_l2_cache_citations: List<FactCitation> = [
   },
 ]
 
-// The Zen 2 geometry rows above were cited to a Ryzen product page that states no cache geometry;
-// the EPYC rows cite the guide that does, over the same declarations.
-data amd_zen2_epyc_l1_cache_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "data_capacity_per_core"),
-    authority: amd_family_17h_zen2_sog_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "instruction_capacity_per_core"),
-    authority: amd_family_17h_zen2_sog_authority,
-  },
-]
-
-data amd_zen2_epyc_l2_cache_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l2_cache_geometry", field_name: "capacity_per_core"),
-    authority: amd_family_17h_zen2_sog_authority,
-  },
-]
 
 // SOCKET SP3 IS CARRIED UNCITED. No AMD or socket-vendor document stating the LGA termination or the 4094
 // contact count was retrievable on 2026-10-21 (the AMD EPYC 7002 data sheet and product brief state the
@@ -440,9 +427,9 @@ data epyc_7702p_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   socket_citations: socket_sp3_citations,
   tdp_watts: watt(200),
   l1_cache: amd_zen2_l1_cache_geometry,
-  l1_cache_citations: amd_zen2_epyc_l1_cache_citations,
+  l1_cache_citations: amd_zen2_l1_cache_citations,
   l2_cache: amd_zen2_l2_cache_geometry,
-  l2_cache_citations: amd_zen2_epyc_l2_cache_citations,
+  l2_cache_citations: amd_zen2_l2_cache_citations,
   l3_cache: amd_epyc_7702p_l3_cache_geometry,
   l3_cache_citations: amd_epyc_7702p_l3_cache_citations,
 }
