@@ -25,6 +25,14 @@ import gunbc.serving.flash_next_quant_matrix {
   flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_centi_gib,
   WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
+import gunbc.serving.flash_next_buying_model {
+  PurchasableUnit, UnitB200, UnitRtxPro6000MaxQ, ShipsAsStandardNode, ExistenceIsAQuoteFact, purchasable_unit,
+  flash_next_candidate_units, scale_out, ScaleOutPrediction, flash_next_measured_knees, rho_milli, duty_mean_basis_points,
+  duty_p95_basis_points, DutyCycleP95BasisPoints, DutyCycleUnreachable, BuyingParameters, ConfigurationInputs,
+  configuration_row, ConfigurationRowOk, ConfigurationRowRefused, tco_cents, price_ratio_threshold_milli,
+  b_is_cheaper_per_slot, flash_next_maxq_layout_plan, rental_power_cap_sweep, PowerCapSweepUnobserved,
+  flash_next_buying_model_frontier,
+}
 import gunbc.serving.gpu_bench_warm_standing { WarmValid, WarmOverCapacity }
 import gunbc.serving.flash_next_topology {
   ServingTopology, CardBudget, TopologyFits, TopologyRefused, topology_capacity, card_budget_from_measured_cell,
@@ -238,6 +246,7 @@ test fn w_declared_frontiers_are_open() -> Bool {
     && !dissolution_is_bound(condition: observed_memory_frontier)
     && !dissolution_is_bound(condition: flash_next_experiment_identity_frontier)
     && !dissolution_is_bound(condition: flash_next_quant_matrix_frontier)
+    && !dissolution_is_bound(condition: flash_next_buying_model_frontier)
     && !dissolution_is_bound(condition: flash_next_topology_frontier)
     && !dissolution_is_bound(condition: flash_next_recipe_throughput_frontier)
     && !dissolution_is_bound(condition: flash_next_roofline_consumer_frontier)
@@ -453,4 +462,65 @@ test fn w_bf16_kv_decode_ceiling_exceeds_fp8_on_both_cards() -> Bool {
   count(flash_next_measured_ceilings) == 5
     && nat_greater(a: ceiling_for(v: H200UpstreamV032, kv: KvBf16), b: ceiling_for(v: H200UpstreamV032, kv: KvFp8))
     && nat_greater(a: ceiling_for(v: B200UpstreamV032, kv: KvBf16), b: ceiling_for(v: B200UpstreamV032, kv: KvFp8))
+}
+
+// Buying model, on synthetic inputs (no real price or site value exists in the corpus).
+test fn w_units_are_quote_facts_except_the_hgx_node() -> Bool {
+  let hgx = purchasable_unit(family: UnitB200, cards: 8)
+  let one = purchasable_unit(family: UnitB200, cards: 1)
+  count(flash_next_candidate_units) == 15
+    && match hgx.standing { ShipsAsStandardNode { cited: _ } => true, _ => false }
+    && match one.standing { ExistenceIsAQuoteFact { hypothesis: _ } => true, _ => false }
+}
+
+test fn w_scale_out_is_a_prediction_with_its_efficiency() -> Bool {
+  let p = scale_out(n: 4, kv_tokens_one: 1000, knee_one: 8, throughput_deci_one: 5000, efficiency_basis_points: 9000)
+  p.resident_tokens == 4000 && p.knee_sessions == 32 && p.throughput_deci_tokens_per_second == 18000
+    && rho_milli(resident: 20, knee: 8) == Present { value: 2500 }
+    && rho_milli(resident: p.resident_tokens / 100, knee: p.knee_sessions) == rho_milli(resident: 10 * 4, knee: 8 * 4)
+    && count(flash_next_measured_knees) == 4
+}
+
+// Exact cases: R=B*=10 needs d^10 >= 0.95 (d >= 0.99488); R=2,B*=1 needs 1-(1-d)^2 >= 0.95 (d >= 0.77639).
+test fn w_p95_duty_cycle_matches_closed_forms_and_refuses_unreachable() -> Bool {
+  match duty_p95_basis_points(resident: 10, knee: 10) {
+    DutyCycleP95BasisPoints { basis_points: a } => match duty_p95_basis_points(resident: 2, knee: 1) {
+      DutyCycleP95BasisPoints { basis_points: b } => a >= 9948 && a <= 9950 && b >= 7763 && b <= 7765
+        && duty_mean_basis_points(resident: 20, knee: 8) == Present { value: 4000 }
+        && match duty_p95_basis_points(resident: 5, knee: 8) { DutyCycleUnreachable { resident: _, knee: _ } => true, _ => false }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn synthetic_inputs(kv: Nat, context: Nat, knee: Nat) -> ConfigurationInputs {
+  ConfigurationInputs {
+    unit: purchasable_unit(family: UnitRtxPro6000MaxQ, cards: 4),
+    parameters: BuyingParameters { delivered_price_cents: 100000, host_cost_cents: 20000, wall_power_watts: 1000, energy_milli_cents_per_kwh: 10000, cooling_cents: 5000, tco_hours: 1000 },
+    kv_tokens: kv, context_tokens: context, knee_sessions: knee, knee_is_lower_bound: false,
+    throughput_deci_tokens_per_second: 10000, tokens_per_turn: 1000,
+    continuation_p95_milliseconds: none, continuation_p99_milliseconds: none, restore_fraction_basis_points: none
+  }
+}
+
+test fn w_configuration_row_computes_tco_and_refuses_zero_context() -> Bool {
+  match configuration_row(i: synthetic_inputs(kv: 2000, context: 100, knee: 8)) {
+    ConfigurationRowOk { row: r } => r.resident_sessions == 20 && r.turns_per_hour == 3600 && r.turns_per_kwh == 3600
+      && r.tco_cents == 100000 + 20000 + 10000 + 5000 && r.tco_cents_per_slo_slot == Present { value: 135000 / 8 }
+      && r.continuation_p95_milliseconds == none
+    _ => false
+  } && match configuration_row(i: synthetic_inputs(kv: 2000, context: 0, knee: 8)) {
+    ConfigurationRowRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn w_price_ratio_threshold_is_a_function_not_a_claim() -> Bool {
+  price_ratio_threshold_milli(slots_b: 16, slots_r: 8) == Present { value: 2000 }
+    && price_ratio_threshold_milli(slots_b: 16, slots_r: 0) == none
+    && b_is_cheaper_per_slot(tco_b: 1900, slots_b: 16, tco_r: 1000, slots_r: 8)
+    && !b_is_cheaper_per_slot(tco_b: 2100, slots_b: 16, tco_r: 1000, slots_r: 8)
+    && count(flash_next_maxq_layout_plan) == 6
+    && match rental_power_cap_sweep { PowerCapSweepUnobserved { cause: _ } => true }
 }
