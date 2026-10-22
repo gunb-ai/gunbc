@@ -583,12 +583,12 @@ fn refresh_pair(
             auth_token: auth_token,
             owner: owner,
             repo: repo,
-            run_id: pair.live_head_run as String,
+            run_id: github_workflow_run_id_wire_text(id: pair.live_head_run),
           ) {
             RestRefused { refusal } =>
               RefreshReadRefused {
                 cause: census_read_refusal_cause(
-                  operation: join(["github.WorkflowRuns.ListJobs for run ", pair.live_head_run as String], ""),
+                  operation: join(["github.WorkflowRuns.ListJobs for run ", github_workflow_run_id_wire_text(id: pair.live_head_run)], ""),
                   refusal: refusal,
                 )
               }
