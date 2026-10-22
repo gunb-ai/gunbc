@@ -48,13 +48,6 @@ data amd_am4_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
   designation: "AM4",
 }
 
-data socket_am5_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "en.wikipedia.org/wiki/Socket_AM5"
-  }
-}
-
 data amd_ryzen_9_7950x3d_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -140,28 +133,6 @@ data amd_socket_am5: CpuSocket = CpuSocket {
   figure_standing: amd_socket_am5_standing,
 }
 
-data socket_am4_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "termination"),
-    authority: amd_ryzen_5_3600_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "contact_count"),
-    authority: amd_ryzen_5_3600_authority,
-  },
-]
-
-data socket_am5_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "termination"),
-    authority: socket_am5_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "contact_count"),
-    authority: socket_am5_authority,
-  },
-]
-
 data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   data_capacity_per_core: byte_size(32768),
   instruction_capacity_per_core: byte_size(32768),
@@ -208,7 +179,6 @@ data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(12),
   nominal_sustained_per_thread_hz: hertz(3600000000),
   socket: amd_socket_am4,
-  socket_citations: socket_am4_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen2_l1_cache_geometry,
   l1_cache_citations: amd_zen2_l1_cache_citations,
@@ -227,7 +197,6 @@ data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(16),
   nominal_sustained_per_thread_hz: hertz(3300000000),
   socket: amd_socket_am5,
-  socket_citations: socket_am5_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
@@ -246,7 +215,6 @@ data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(32),
   nominal_sustained_per_thread_hz: hertz(4200000000),
   socket: amd_socket_am5,
-  socket_citations: socket_am5_citations,
   tdp_watts: watt(120),
   l1_cache: amd_zen4_l1_cache_geometry,
   l1_cache_citations: amd_zen4_l1_cache_citations,
@@ -377,8 +345,6 @@ data amd_socket_sp3: CpuSocket = CpuSocket {
   figure_standing: socket_sp3_standing,
 }
 
-data socket_sp3_citations: List<FactCitation> = []
-
 // L3 line size is not stated by the product pages, so only the capacity is cited, as the existing
 // Zen 2 row does.
 data amd_epyc_7551p_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
@@ -415,7 +381,6 @@ data epyc_7551p_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(2000000000),
   socket: amd_socket_sp3,
-  socket_citations: socket_sp3_citations,
   tdp_watts: watt(180),
   l1_cache: amd_zen1_l1_cache_geometry,
   l1_cache_citations: amd_zen1_l1_cache_citations,
@@ -435,7 +400,6 @@ data epyc_7702p_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(128),
   nominal_sustained_per_thread_hz: hertz(2000000000),
   socket: amd_socket_sp3,
-  socket_citations: socket_sp3_citations,
   tdp_watts: watt(200),
   l1_cache: amd_zen2_l1_cache_geometry,
   l1_cache_citations: amd_zen2_l1_cache_citations,

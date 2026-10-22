@@ -268,19 +268,6 @@ data ampere_lga4926_socket: CpuSocket = CpuSocket {
   figure_standing: CitedToAuthority { authority: ampere_altra_max_rev_a1_datasheet_authority },
 }
 
-// The citations sit beside the family socket they ground, not on each SKU row, because the fact
-// they cite is the family's.
-data socket_lga4926_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "termination"),
-    authority: ampere_altra_max_rev_a1_datasheet_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "contact_count"),
-    authority: ampere_altra_max_rev_a1_datasheet_authority,
-  },
-]
-
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
   oem_listing_id: none,
@@ -290,7 +277,6 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(128),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(183),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -309,7 +295,6 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(124),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -364,7 +349,6 @@ data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(80),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(161),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -417,7 +401,7 @@ data ampere_altra_max_soc_family: SoCFamily = SoCFamily {
 // sit beside the set as a separate list: a row no fold reads is dangling, and a reader who takes
 // ampere_smpro_carrying_soc_families without its companion gets an uncited claim about silicon. Carrying
 // the citation inside the row is the corpus's own shape for exactly this — CpuModelCatalogRow keeps
-// socket_citations and l1_cache_citations next to the facts they ground.
+// l1_cache_citations next to the facts they ground.
 type SmproCarryingSocFamily {
   family: SoCFamily
   citations: List<FactCitation>

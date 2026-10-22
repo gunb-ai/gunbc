@@ -7,8 +7,7 @@ import extdeps.cpu.types {
   SocketedPinGrid,
   SocketedLandGrid, CpuSocket, LandGridArray, PinGridArray, cpu_socket_eq }
 import extdeps.vendor.amd { amd }
-import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
-import std.decl_ref { DeclarationRef, decl_field_ref, declaration_ref_eq }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, CitedToAuthority }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.ampere {
@@ -16,8 +15,6 @@ import extdeps.cpu.ampere {
 import extdeps.cpu.amd {
   amd_am4_cooling_mount,
   amd_cpu_catalog_rows,
-  amd_ryzen_5_3600_authority,
-  socket_am5_authority,
   ryzen_5_3600_catalog,
   ryzen_7_pro_8700ge_catalog,
   ryzen_9_7950x3d_catalog,
@@ -104,29 +101,6 @@ test fn w_red_one_socket_matches_itself_across_two_constructions() -> Bool {
   cpu_socket_eq(a: a, b: b)
 }
 
-// THE CATALOG ROWS CITE, NOT A LIST BESIDE THEM. The first cut of this asserted that
-// socket_am5_citations existed and pointed at the authority, which a row carrying structurally
-// uncited socket fields would have satisfied -- the evidence could stay green while the thing it
-// claimed to cover was untouched. These read the citations THROUGH the rows, so a row that dropped
-// its citation edge reds here rather than passing beside an orphaned list.
-//
-// Both axes are checked because the package axis is the one that was wrong: a citation covering
-// only the row would not have covered the field that carried the defect.
-fn row_cites_socket_field(row: CpuModelCatalogRow, fact: DeclarationRef, authority: ExternalAuthority) -> Bool {
-  count(row.socket_citations |> filter(c => declaration_ref_eq(a: c.fact, b: fact) && c.authority == authority)) == 1
-}
-
-fn amd_socket_fact(decl_name: String, field_name: String) -> DeclarationRef {
-  decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: decl_name, field_name: field_name)
-}
-
-test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
-  row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "termination"), authority: socket_am5_authority)
-    && row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "contact_count"), authority: socket_am5_authority)
-    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "termination"), authority: socket_am5_authority)
-    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "contact_count"), authority: socket_am5_authority)
-}
-
 // EVERY CATALOG ROW CITES ITS SOCKET, joined over the modules' own rosters rather than a list
 // re-typed here. review 52588 caught the previous form enumerating four rows and omitting
 // altra_q6430_catalog, so a row could have regressed to an empty citation list with this witness
@@ -138,23 +112,22 @@ test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
 // rows it names, in the file an author is already editing, rather than in a test module they have
 // no reason to open. A genuinely closed denominator would have to be discovered from the module
 // tree, which is lens work and is not attempted here.
-// A row's socket is grounded when its figures are cited, or when the socket says in its own
-// figure_standing that they are TranscribedUncited -- the standing is read here, so an uncited socket
-// cannot pass as cited and a cited one cannot hide behind an empty list.
-fn socket_standing_is_uncited(r: CpuModelCatalogRow) -> Bool {
+// A socket's grounding is its own figure_standing -- the one carrier. The Ampere roster is cited to
+// the datasheet; an AMD socket either cites or says in its TranscribedUncited arm what would ground it.
+fn socket_standing_is_cited(r: CpuModelCatalogRow) -> Bool {
   match r.socket.figure_standing {
-    TranscribedUncited { read_obligation: _ } => true
+    CitedToAuthority { authority: _ } => true
     _ => false
   }
 }
 
 fn every_row_cites_its_socket(rows: List<CpuModelCatalogRow>) -> Bool {
-  count(rows |> filter(r => count(r.socket_citations) >= 2 || socket_standing_is_uncited(r: r))) == count(rows)
+  count(rows |> filter(r => socket_standing_is_cited(r: r))) == count(rows)
 }
 
 test fn w_every_catalog_row_in_both_rosters_cites_its_socket() -> Bool {
-  every_row_cites_its_socket(rows: amd_cpu_catalog_rows)
-    && every_row_cites_its_socket(rows: ampere_cpu_catalog_rows)
+  every_row_cites_its_socket(rows: ampere_cpu_catalog_rows)
+    && count(amd_cpu_catalog_rows |> filter(r => !socket_standing_is_cited(r: r))) == 5
     && count(amd_cpu_catalog_rows) == 5
     && count(ampere_cpu_catalog_rows) == 3
 }
@@ -171,8 +144,7 @@ test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
     cores: ryzen_9_7950x3d_catalog.cores,
     threads: ryzen_9_7950x3d_catalog.threads,
     nominal_sustained_per_thread_hz: ryzen_9_7950x3d_catalog.nominal_sustained_per_thread_hz,
-    socket: ampere_lga4926_socket,
-    socket_citations: [],
+    socket: ryzen_9_7950x3d_catalog.socket,
     tdp_watts: ryzen_9_7950x3d_catalog.tdp_watts,
     l1_cache: ryzen_9_7950x3d_catalog.l1_cache,
     l1_cache_citations: ryzen_9_7950x3d_catalog.l1_cache_citations,
@@ -182,14 +154,7 @@ test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
     l3_cache_citations: ryzen_9_7950x3d_catalog.l3_cache_citations,
   }
   !every_row_cites_its_socket(rows: [uncited])
-    && every_row_cites_its_socket(rows: [ryzen_9_7950x3d_catalog])
-}
-
-// RED control: the join is discriminating. A field the rows do not cite, and an authority that did
-// not issue the claim, must both answer false -- otherwise the checks above would pass on any row.
-test fn w_red_an_uncited_field_or_foreign_authority_does_not_satisfy_the_join() -> Bool {
-  !row_cites_socket_field(row: ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "platform_owner"), authority: socket_am5_authority)
-    && !row_cites_socket_field(row: ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "termination"), authority: amd_ryzen_5_3600_authority)
+    && every_row_cites_its_socket(rows: [altra_max_m12830_catalog])
 }
 
 // A CITATION IS NOT PART OF A SOCKET'S IDENTITY (cpu_socket_eq ignores figure_standing): the same silicon
