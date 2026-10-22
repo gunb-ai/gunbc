@@ -59,7 +59,7 @@ test fn the_live_merge_path_runs_on_the_fleet_and_is_the_required_job() -> Bool 
 // head checkout means nothing ever builds head merged with the base, and two individually green pull
 // requests broke main (#14539, #14675). github.sha is refs/pull/N/merge on pull_request and the
 // triggering commit elsewhere. The first claim is the discriminating RED: the old head ref is a
-// different value, so restoring it fails the second. Residue stated in compiler_gate_checkout_step:
+// different value, so restoring it fails the second. Residue stated in compiler_gate_fleet_checkout_step:
 // the merge ref is fixed when the event fires, so this is a mitigation, not the queue's guarantee.
 test fn the_required_job_checks_out_the_merge_ref() -> Bool {
   compiler_gate_checkout_ref == ContextAccess { context: Github, path: ["sha"] }
