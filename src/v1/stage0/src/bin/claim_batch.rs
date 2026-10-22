@@ -792,21 +792,6 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     validate_explicit_functions(&parsed.entry_groups)?;
     partition.mark("args");
 
-    // NO BOUND, NO OBSERVATION. A run that names no memory limit for itself (an unbounded cgroup)
-    // cannot be allowed to start the resolve: it would be killed (rc=137) rather than refuse.
-    // Asked here, ahead of every consumer, so the refusal is typed and located: UNOBSERVED, exit 2.
-    if let Err(refusal) = v1_compiler::cli_run::host_budget_preflight() {
-        let as_refusal = EntryResolveRefusal::ResolveInfrastructure {
-            message: refusal.to_string(),
-        };
-        let mut timings = ResolveTimings::default();
-        for group in &parsed.entry_groups {
-            report_unresolved_group(group, &as_refusal, &mut timings);
-        }
-        eprintln!("claim_batch: UNOBSERVED cause={refusal}");
-        return Err(ExitCode::from(batch_exit_code(true, false)));
-    }
-
     // The harness's real subject. Built here, ahead of the preparation that first reads it, so its
     // cost is its own row rather than part of whichever consumer touched it first.
     let index = process_shared_index(&source_roots);
