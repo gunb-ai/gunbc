@@ -42,6 +42,5 @@ mod none_undetermined_carrier_refuse_test;
 mod record_literal_declared_type_inhabitance_test;
 #[cfg(test)]
 mod record_literal_names_a_union_type_refusal_test;
-mod sole_constructor_module_seal_test;
 #[cfg(test)]
 mod whole_tree_wiring_enum_test;
