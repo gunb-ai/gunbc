@@ -2530,27 +2530,33 @@ fn dashboard_git_worker_premise_captured_read(read: Node) -> Node {
   bash_build_word_concat_from_nodes(parts: [bash_build_word_cmdsubst(body: read)])
 }
 
-// THE HEAD PREMISE, VERSION-INDEPENDENT: HEAD resolves as a branch OR as a commit. Two MODELLED git
-// reads, captured (never printed), and the premise is the EMPTINESS of the capture:
+// THE HEAD PREMISE, VERSION-INDEPENDENT: HEAD resolves as a branch OR as a commit. Refuse only when
+// NEITHER read resolves, i.e. when both captures are empty:
+//   [ -z "$(git symbolic-ref -q HEAD)" -a -z "$(git rev-parse --verify -q HEAD)" ]
 //   git symbolic-ref -q HEAD   succeeds on an unborn repository and on any branch (prints the refname)
 //   git rev-parse --verify -q HEAD   succeeds on a DETACHED HEAD (prints the resolved commit)
-// A repository checked out at a revision rather than a branch is real and must NOT be refused, so a
-// symbolic-ref-only premise is wrong (it fails on detached HEAD and would take the whole deploy down).
-// The HEAD-less fabrication -- objects/refs/logs but no HEAD -- has neither a branch nor a commit to
-// resolve, so BOTH reads fail and the capture is empty. Running both inside $( ... ) captures their
-// stdout into the substitution (a successful read prints its ref/sha, which makes the capture
-// non-empty); it is NEVER echoed to the gate's own stdout, so an admitted gate still writes nothing
-// there and the wet claim's admit-state "stdout is empty" check holds. Redirected stderr keeps git's
-// own error text out of both the stdout and the result. Not a directory test.
-fn dashboard_git_worker_premise_head_probe_words(repo: String) -> Node {
-  bash_build_or_else(
-    left: bash_build_with_redir(
+// A working tree pinned to a revision (not a branch) is real and must NOT be refused, so a
+// symbolic-ref-only premise is wrong -- it fails on a detached HEAD and would take the whole deploy
+// down. The HEAD-less fabrication has neither a branch nor a commit, so BOTH reads print nothing and
+// the emptiness test is true. Each read is captured inside its OWN quoted "$( ... )" (the project's
+// blessed test -z "$(...)" idiom): (a) the refname/sha a successful read prints is captured, not
+// echoed, so an ADMITTED gate writes NOTHING to stdout -- which the admit-state claims assert; (b) a
+// failed read contributes the explicit "" instead of a vanished word, so [ -z "" -a -z "" ] is
+// well-formed rather than an arity error read as false. The whole thing sits in the if-condition, so a
+// failing substitution does not trip the script's errexit (probed under set -e). Redirected stderr
+// keeps git's own error text out of stdout. Not a directory test.
+fn dashboard_git_worker_premise_head_is_unresolvable_test(repo: String) -> Node {
+  bash_build_test_bracket(words: [
+    bash_build_word_lit(text: "-z"),
+    dashboard_git_worker_premise_captured_read(read: bash_build_with_redir(
       inner: bash_build_command_with_words(words: dashboard_git_worker_premise_trusted_git_words(repo: repo, verbs: ["symbolic-ref", "-q", "HEAD"])),
-      redir: ^bash_production_fold_redir_stderr_null),
-    right: bash_build_with_redir(
+      redir: ^bash_production_fold_redir_stderr_null)),
+    bash_build_word_lit(text: "-a"),
+    bash_build_word_lit(text: "-z"),
+    dashboard_git_worker_premise_captured_read(read: bash_build_with_redir(
       inner: bash_build_command_with_words(words: dashboard_git_worker_premise_trusted_git_words(repo: repo, verbs: ["rev-parse", "--verify", "-q", "HEAD"])),
-      redir: ^bash_production_fold_redir_stderr_null),
-  )
+      redir: ^bash_production_fold_redir_stderr_null)),
+  ])
 }
 
 fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
@@ -2567,14 +2573,11 @@ fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
         sentence: dashboard_git_worker_repository_premise_refusal_sentence(repo: repo))),
     // NOT the same directory: fall through to the HEAD premise. --absolute-git-dir is GIT-VERSION-
     // SENSITIVE: git 2.43 (srv1) resolves it against a HEAD-less .git with exit 0, so the path premise
-    // alone ADMITS the fabrication. The head probe decides it on any git: an empty capture (no branch,
-    // no commit) is a fabricated tree; a non-empty one is an established repository, on a branch,
-    // unborn, or detached. -z says "capture empty" = refuse; else = established, admit.
+    // alone ADMITS the fabrication. The head test decides it on any git: an unresolvable HEAD (neither
+    // a branch nor a commit) is a fabricated tree; a resolvable one is an established repository, on a
+    // branch, unborn, or detached. Not a directory test.
     else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_if_else(
-      cond: bash_build_test_bracket(words: [
-        bash_build_word_lit(text: "-z"),
-        bash_build_word_cmdsubst(body: dashboard_git_worker_premise_head_probe_words(repo: repo)),
-      ]),
+      cond: dashboard_git_worker_premise_head_is_unresolvable_test(repo: repo),
       then_body: bash_build_stmt_list_from_nodes(
         stmts: dashboard_git_worker_repository_premise_refusal_branch(
           sentence: dashboard_git_worker_repository_premise_headless_refusal_sentence(repo: repo))),
