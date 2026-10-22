@@ -86,12 +86,5 @@ test fn a_rule_id_carrier_where_a_run_id_belongs_is_refused_at_the_call() -> Boo
     && refusals(c: control_census(), class: "DeclaredTypeNotInhabited", subject: "direct call argument for parameter 'run_id'") == 0
 }
 
-// (5) THE PREMISE, EXECUTED: a position declared Int accepts the carrier by reference, so the census
-// reads NO DeclaredTypeNotInhabited at the planted field. Only a position holding the carrier guards.
-test fn an_int_declared_run_position_does_not_guard_the_axis() -> Bool {
-  refusals(
-    c: census_of(name: "workflow_run_id_axis_int_field"),
-    class: "DeclaredTypeNotInhabited",
-    subject: "record literal field 'run_id'",
-  ) == 0
-}
+// The wire Int fields are unguarded because a carrier by reference at an Int formal is accepted:
+// gunbc.recurring_failure_mode.product_value_at_a_scalar_formal_is_accepted owns that defect.

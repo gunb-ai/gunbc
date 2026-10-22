@@ -7,7 +7,7 @@ import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, PageFoldSubje
 import gunbc.ci.run_attempt_census {
   AttemptExecution, AttemptExecuted, AttemptDidNotExecute, AttemptUnobserved,
   attempt_execution_from_job_count, attempt_executed,
-  ZeroClaimStanding, ZeroClaimDiscriminating, ZeroClaimIndistinguishable, zero_claim_standing,
+  ZeroClaimStanding, ZeroClaimDiscriminating, ZeroClaimNoControlRun, ZeroClaimIndistinguishable, zero_claim_standing,
   CensusObservation, CensusOutcome, CensusClosed, CensusRefused,
   CensusRefusal, PagesUnclosed, DuplicateRunIdsObserved, FilterDisagreed,
   ProviderTotalUnstable, ProviderTotalUnreconciled, CensusReadRefused,
@@ -138,6 +138,7 @@ test fn witness_all_zero_without_a_control_is_indistinguishable() -> Bool {
   match zero_claim_standing(observations: [AttemptDidNotExecute, AttemptDidNotExecute, AttemptDidNotExecute], control_run_ids: []) {
     ZeroClaimIndistinguishable => true
     ZeroClaimDiscriminating { control_run_id: _, control_job_count: _ } => false
+    ZeroClaimNoControlRun { control_job_count: _ } => false
   }
 }
 
@@ -147,6 +148,16 @@ test fn witness_one_observed_nonzero_makes_the_zeros_evidence() -> Bool {
     control_run_ids: [GitHubWorkflowRunId { value: 34506290069 }]
   ) {
     ZeroClaimDiscriminating { control_run_id, control_job_count } => control_run_id.value == 34506290069 && control_job_count == 5
+    ZeroClaimNoControlRun { control_job_count: _ } => false
+    ZeroClaimIndistinguishable => false
+  }
+}
+
+// RED: a non-zero observation with an empty control list yields the typed no-control arm, never a run id 0.
+test fn witness_an_empty_control_list_names_no_run_rather_than_run_zero() -> Bool {
+  match zero_claim_standing(observations: [AttemptExecuted { job_count: 5 }], control_run_ids: []) {
+    ZeroClaimNoControlRun { control_job_count } => control_job_count == 5
+    ZeroClaimDiscriminating { control_run_id: _, control_job_count: _ } => false
     ZeroClaimIndistinguishable => false
   }
 }
