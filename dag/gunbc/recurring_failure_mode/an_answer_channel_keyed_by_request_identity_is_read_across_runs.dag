@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.an_answer_channel_keyed_by_request_identity_is_read_across_runs
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, AtCeiling, FoundBelowTheLadder, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data an_answer_channel_keyed_by_request_identity_is_read_across_runs: RecurringFailureMode = RecurringFailureMode {
   identity: "an_answer_channel_keyed_by_request_identity_is_read_across_runs" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "the decode refuses an answer whose echoed request body differs; the invalid read has no accepted path, though the form of an answer stays writable" as NonEmptyStr } },
+
   receipts: [
     "INVALID STATE: a durable, root-owned answer channel keyed only by (node, attempt key) is read by a later request for the same key, so the previous request's outcome is returned as this one's. answers/<entry> outlives the request that produced it.",
     "RECEIPT, srv1 lab 2026-10-21 (review of #14619): the wet launcher cells use fixed keys, so a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher (answer arrives AND refused AND marker absent) could pass on the previous run's Refused without the new request being processed. Production retries of one attempt key have the same exposure.",
