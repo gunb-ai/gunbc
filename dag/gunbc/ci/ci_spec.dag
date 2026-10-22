@@ -72,6 +72,7 @@ import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
+import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 
@@ -1155,6 +1156,11 @@ data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = Gunbc
   function: "mtcollins1_census_image_publish_wet",
 }
 
+data gunbc_ci_mtcollins1_runner_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_medium_publish.dag",
+  function: "mtcollins1_runner_image_publish_wet",
+}
+
 data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
   function: "mtcollins1_census_member_readback_wet",
@@ -1441,6 +1447,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
+    gunbc_ci_mtcollins1_runner_image_publish_target,
     gunbc_ci_mtcollins1_census_member_readback_target,
     gunbc_ci_mtcollins1_census_qemu_host_observe_target,
     gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target,
@@ -3206,6 +3213,17 @@ fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
     function: gunbc_ci_mtcollins1_census_image_publish_target.function,
     claim_run: false,
     receipt_rel: mtcollins1_census_image_receipt_path
+  )
+}
+
+// The runner image publish is the census publish's sibling: fleet SSH to srv2, no controller, no prelude.
+fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_runner_image_publish_target.entry,
+    function: gunbc_ci_mtcollins1_runner_image_publish_target.function,
+    claim_run: false,
+    receipt_rel: mtcollins1_runner_image_receipt_path
   )
 }
 

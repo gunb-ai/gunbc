@@ -120,6 +120,7 @@ import extdeps.github.actions_runs {
   workflow_run_settlement,
 }
 import extdeps.github.github { Repository }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import gunbc.repository { gunbc_repository }
 import gunbc.auth.github_deployment_environment {
   srv1_production_environment_name,
@@ -290,7 +291,7 @@ fn gate_app_permission_set_is_exact() -> Bool {
 // carried with the read that would settle it — never as a fact.
 type DeliveryIndependenceStanding
   = StandingUntested { read_obligation: NonEmptyStr }
-  | StandingConfirmed { witnessed_run_id: Int }
+  | StandingConfirmed { witnessed_run_id: GitHubWorkflowRunId }
   | StandingRefuted { refused_because: NonEmptyStr }
 
 data rule_delivery_independence: DeliveryIndependenceStanding = StandingUntested {
@@ -458,7 +459,7 @@ fn the_app_may_answer_its_own_rule_while_a_human_is_configured() -> Bool {
 // environment it waits for is exactly what is worth doubting. Everything the broker acts on is
 // re-derived from GitHub — including the run itself, which arrives as GitHub's record and not as an id.
 type GateRequestClaim {
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   environment: NonEmptyStr,
   escalation_id: NonEmptyStr,
   request_revision: NonEmptyStr,
@@ -650,7 +651,7 @@ fn broker_answer_decision(
 //
 // THE ORDER IS THE CHECKS' ORDER, so the reason reported is the first thing that was actually wrong.
 type BrokerAnswerRefusal
-  = RecordRunIdIsNotTheFiledRun { record_run_id: Int, filed_run_id: Int }
+  = RecordRunIdIsNotTheFiledRun { record_run_id: GitHubWorkflowRunId, filed_run_id: GitHubWorkflowRunId }
   | TheRunHasConcluded { conclusion: RunConclusion }
   | WaitNamesAnotherEnvironment { waiting_environment: NonEmptyStr, filed_environment: NonEmptyStr }
   | RuleOwnershipNotEstablished { because: OwnershipRefusalReason }
@@ -1012,7 +1013,7 @@ fn review_matches_decision(review: DeploymentProtectionRuleReview, decision: Pro
 // the OBSERVED identities (they can only arrive from a sealed ObservedRuleOwnership), so a receipt
 // cannot be minted for a rule nobody established as ours. Minted only by mint_accepted_rule_review below.
 type AcceptedRuleReviewReceipt sole_constructor {
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   environment_name: NonEmptyStr,
   state: ReviewState,
   rule_id: GitHubDeploymentProtectionRuleId,
@@ -1104,7 +1105,7 @@ type AcceptedReviewOutcome
 fn mint_accepted_rule_review(
   owner: NonEmptyStr,
   repo: NonEmptyStr,
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   environment_name: NonEmptyStr,
   // WHAT THE CALLER MEANT TO ANSWER. Checked against the body and never copied into the receipt: the
   // body is the only source of the recorded state. Passing it is how a caller learns it was answering a
@@ -1247,7 +1248,7 @@ fn mint_accepted_rule_review(
 // did not actually release the job is caught in review. It is NOT evidence that the rule approved — an
 // admin bypass and a human reviewer produce the same observation — so no mint reads these.
 type GateRunOutcomeCorroboration {
-  run_id: Int,
+  run_id: GitHubWorkflowRunId,
   environment_name: NonEmptyStr,
   // what the run/pending readbacks showed, kept separate from the state the receipt attests
   expected: ReviewState,
