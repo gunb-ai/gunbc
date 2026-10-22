@@ -478,10 +478,6 @@ fn enrich_base_with_fields(name: String, base: Node, fields: List<Node>) -> Node
   Node { occurrence_identity: base.occurrence_identity, name: name, span: base.span, ident_span: base.ident_span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, module_item_kind: base.module_item_kind, declaration_marker: base.declaration_marker, declaration: base.declaration, expr_data: base.expr_data }
 }
 
-fn placeholder_type_node(name: String) -> Node {
-  nominal_type_ref(name: name)
-}
-
 fn nominal_type_ref(name: String) -> Node {
   leaf_node_with_span(occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name))
 }
@@ -837,22 +833,6 @@ fn callable_return_type(n: Node) -> Node {
         }
       _ => error_type
     }
-  }
-}
-
-fn global_bare_callable_binding(binding: TypeBinding) -> Bool {
-  binding.resolved.transport == none
-    && binding.resolved.expr_data == NoExprData
-    && binding.resolved.connective == NoConnective
-    && binding.resolved.inferred != none
-    && binding.resolved.properties |> count == 0
-    && binding.resolved.type_annotation == none
-}
-
-fn value_binding_expr_type_node(resolved: Node) -> Node {
-  match resolved.inferred {
-    Present { value: Resolved { node: ty } } => ty
-    _ => resolved
   }
 }
 

@@ -4,8 +4,10 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 import std.types { List, Map }
 import std.primitive_projection { never_type_declaration }
 
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic, occurrence_id_eq }
+import v2.std.anonymous_binder { TypeVariableOfBinder, TypeVariableOfConstructorUse, TypeVariableRigid, fresh_constructor_use_variable, type_variable_origin }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceSynthetic, occurrence_id_eq }
 import v2.std.provenance { node_occurrence_id_optional }
+import std.integer { int_to_decimal_string }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
@@ -26,7 +28,8 @@ import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, EqualityNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding }
+import v2.compiler.arm_resolution { ArmDecided, ArmTestDecision, ArmUndecided, ResolvedArm, node_is_arm_test, infer_match_variant_payload, resolve_is_arm }
+import v2.compiler.inferred_tree { ArmResolutions, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, EqualityNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding, constructed_root_arm_resolutions }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
@@ -58,7 +61,7 @@ import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
+import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -175,7 +178,8 @@ fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
       lookup: fn(_key) {
         Absent
       }
-    }
+    },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 
@@ -1469,6 +1473,12 @@ type InferVariantArmReferenceValue
   | VariantArmReferenceValueIdentityContested { claimants: FreeMonoid<QualifiedName> }
   | VariantArmReferenceValueBodyUnavailable
 
+// A CONSTRUCTOR USE INSTANTIATES ITS DECLARATION'S TYPE PARAMETERS AS FRESH INSTANCE VARIABLES, never
+// as the declaration's parameter atom: `^T` of std.optional Optional is spelled like a rigid fn type
+// variable `T`, and closing a produced type by parameter NAME (infer_produced_open_type_params) solved
+// the rigid one as if it were the use's own. The variable is minted by v2.std.anonymous_binder
+// fresh_constructor_use_variable (keyed by the use node's occurrence id, so two uses in one fn are two
+// variables) and its origin is read back only through anonymous_binder type_variable_origin.
 fn infer_open_type_param_atom(name: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: name } },
@@ -1477,7 +1487,7 @@ fn infer_open_type_param_atom(name: Symbol) -> Node {
   }
 }
 
-fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: QualifiedName) -> Node {
+fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: QualifiedName, use_id: OccurrenceId) -> Node {
   let head = declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
   let params = symbol_index_declared_type_params_at(index: bindings, qualified_path: coproduct)
   match params {
@@ -1488,7 +1498,7 @@ fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: Qualified
         children: Cons {
           head: Edge { label: Positional, target: head },
           tail: list_map(xs: params, f: fn(p) {
-            Edge { label: Positional, target: infer_open_type_param_atom(name: p) }
+            Edge { label: Positional, target: infer_open_type_param_atom(name: fresh_constructor_use_variable(use_id: use_id.value, label: p)) }
           })
         },
         occurrence_id: OccurrenceSynthetic
@@ -1619,11 +1629,14 @@ fn infer_variant_arm_value_reference_facts(
     VariantArmReferenceValueNotDerived =>
       inferred_facts_not_derived(site: VariantArmValueNotDerived, node: n, descent: Holds { value: descent_proof })
     VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+      match node_occurrence_id_optional(node: n) {
+      Absent => outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
+      Present { value: use_id } =>
       infer_reference_facts_or_frontier(
         o: infer_facts_denoting(
           o: inferred_facts_from_derived_type(
             node: n,
-            derived_type: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct),
+            derived_type: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use_id: use_id),
             descent: Holds { value: descent_proof }
           ),
           declaration: declared
@@ -1631,6 +1644,7 @@ fn infer_variant_arm_value_reference_facts(
         n: n,
         descent_proof: descent_proof
       )
+      }
   }
 }
 
@@ -2080,8 +2094,12 @@ fn infer_branch_operand_resolved_type_with_entries(
         Present { value: verdict } =>
           match verdict {
             VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
-              Holds {
-                value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct)
+              match node_occurrence_id_optional(node: node) {
+                Absent => Violates { diagnostic: infer_declaration_identity_unavailable_diagnostic(at: node) }
+                Present { value: use_id } =>
+                  Holds {
+                    value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct, use_id: use_id)
+                  }
               }
             VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
             VariantArmReferenceValueIdentityUnavailable =>
@@ -2506,17 +2524,16 @@ fn infer_branch_bool_if_else(
   partials: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
 ) -> Outcome<InferredFacts> {
-  let positional_targets = positional_child_target_nodes(node: node)
-  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+  if !all_edges_positional(children: node.children) {
     outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
   } else {
-    match list_at_optional(xs: positional_targets, index: 0) {
+    match branch_slot_target(n: node, slot: BranchConditionSlot) {
       Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
       Present { value: cond_target } =>
-        match list_at_optional(xs: positional_targets, index: 1) {
+        match branch_slot_target(n: node, slot: BranchThenSlot) {
           Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
           Present { value: then_target } =>
-            match list_at_optional(xs: positional_targets, index: 2) {
+            match branch_slot_target(n: node, slot: BranchElseSlot) {
               Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
               Present { value: else_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
@@ -2731,19 +2748,15 @@ fn infer_match_bool(
   entries: Map<Node, List<InferredFacts>>,
   resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
-  let positional_targets = positional_child_target_nodes(node: node)
-  if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
+  let arm_targets = list_map(xs: match_role_slots(n: node, role: MatchArmSlot), f: fn(a) { child_slot_target(slot: a) })
+  if !all_edges_positional(children: node.children) || length(xs: arm_targets) != 2 {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
-    match list_at_optional(xs: positional_targets, index: 0) {
+    match match_slot_target(n: node, slot: MatchScrutineeSlot) {
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
-        match list_at_optional(xs: positional_targets, index: 1) {
-          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-          Present { value: first_arm_target } =>
-            match list_at_optional(xs: positional_targets, index: 2) {
-              Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-              Present { value: second_arm_target } =>
+        match arm_targets {
+          Cons { head: first_arm_target, tail: Cons { head: second_arm_target, tail: Empty } } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
                   Present { value: scrutinee_facts } =>
@@ -2780,7 +2793,7 @@ fn infer_match_bool(
                         }
                     }
                 }
-            }
+          _ => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
         }
     }
   }
@@ -2827,19 +2840,15 @@ fn infer_match(
   resolved: ResolvedTree,
   expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
-  let positional_targets = positional_child_target_nodes(node: node)
-  match list_tail(xs: positional_targets) {
-    Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
-    Present { value: arms } =>
-      if is_empty(xs: arms) {
-        infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
-      } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
-        infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
-      } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
-        infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
-      } else {
-        infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
-      }
+  let arms = list_map(xs: match_role_slots(n: node, role: MatchArmSlot), f: fn(a) { child_slot_target(slot: a) })
+  if is_empty(xs: arms) {
+    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+  } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
+    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
+  } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
+    infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected)
+  } else {
+    infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
   }
 }
 
@@ -2961,25 +2970,6 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
           }
       }
   }
-}
-
-// A VARIANT'S PAYLOAD IS THE TARGET OF ITS TAG EDGE, NOT A DECLARED FIELD. A coproduct is a Disj whose
-// Authored edges are labelled by variant tag and target the payload Conj directly; declared_field_from_edge
-// answers only for an edge whose target is a binder node (v2.std.node_query binder_node_parts), so reading a
-// variant through it answered Absent for every tag once fields became binder nodes, and every match refused
-// as infer_match_pattern_variant_not_declared. The payload's FIELDS are declared fields and keep that reader.
-fn infer_match_variant_payload(variants: Node, tag: Symbol) -> Optional<Node> {
-  fold(variants.children, init: Absent, f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Authored { name: variant } => if variant == tag { optional_present(value: e.target) } else { Absent }
-          StructuralLabel { label: _ } => Absent
-          Positional => Absent
-        }
-    }
-  })
 }
 
 // A VARIANT FIELD'S TYPE AT THIS INSTANTIATION, OR NOTHING. A field declared as one of the
@@ -3361,16 +3351,13 @@ fn infer_match_coproduct(
   resolved: ResolvedTree,
   expected: Optional<Node>
 ) -> Outcome<InferredFacts> {
-  let positional_targets = positional_child_target_nodes(node: node)
   if !all_edges_positional(children: node.children) {
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
-    match list_at_optional(xs: positional_targets, index: 0) {
+    match match_slot_target(n: node, slot: MatchScrutineeSlot) {
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
-        match list_tail(xs: positional_targets) {
-          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-          Present { value: arms } =>
+        let arms = list_map(xs: match_role_slots(n: node, role: MatchArmSlot), f: fn(a) { child_slot_target(slot: a) })
             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: _, diagnostics: cd } =>
@@ -3417,7 +3404,7 @@ fn infer_match_coproduct(
                     }
                 }
             }
-        }
+        
     }
   }
 }
@@ -4742,22 +4729,19 @@ type InferTypePair {
 // instances that close them (infer_close_produced_at_declared) through the same
 // infer_match_generic_formal used for generic formals -- produced as the formal, declared as
 // the instance source. Not a second solver.
-fn infer_produced_open_type_params(produced: Node, declarations: SymbolIndex) -> List<Symbol> {
-  match declaration_denotation_of_type(t: produced) {
-    Absent => Empty
-    Present { value: denotation } =>
-      fold(
-        symbol_index_declared_type_params_at(index: declarations, qualified_path: denotation.declaration),
-        init: Empty,
-        f: fn(acc, p) {
-          if inhabitance_node_mentions_type_variable(n: produced, type_variables: [p]) {
-            list_snoc_item(xs: acc, item: p)
-          } else {
-            acc
-          }
+fn infer_produced_open_type_params(produced: Node) -> List<Symbol> {
+  fold(node_subtree_nodes(root: produced), init: Empty, f: fn(acc, m) {
+    match m.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        match type_variable_origin(sym: id) {
+          TypeVariableOfConstructorUse =>
+            if !fold(acc, init: false, f: fn(found, v) { found || (v == id) }) { list_snoc_item(xs: acc, item: id) } else { acc }
+          TypeVariableOfBinder => acc
+          TypeVariableRigid => acc
         }
-      )
-  }
+      _ => acc
+    }
+  })
 }
 
 fn infer_close_produced_at_declared(
@@ -4769,7 +4753,7 @@ fn infer_close_produced_at_declared(
 ) -> List<TypeVariableInstance> {
   let declared_n = infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings)
   let produced_n = infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings)
-  let open_params = infer_produced_open_type_params(produced: produced_n, declarations: declarations)
+  let open_params = infer_produced_open_type_params(produced: produced_n)
   match open_params {
     Empty => instances
     Cons { head: _, tail: _ } =>
@@ -6041,6 +6025,36 @@ fn infer_gather_application_row_on_arguments(
   }
 }
 
+fn infer_unsolved_constructor_type_variable_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_unsolved_constructor_type_variable,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// AN UNANNOTATED LET DECLARES NO POSITION, so nothing closes a constructor-use variable its value carries
+// (`let x = Absent`): the variable is minted at the use and stays unbound. An unbound variable is the
+// counted frontier, never an admission -- the let is refused at its value.
+fn infer_unannotated_let_unsolved_refusal(node: Node, entries: Map<Node, List<InferredFacts>>, resolved: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+  match bind_slot_target(n: node, slot: BindValueSlot) {
+    Absent => outcome_accepted(entries)
+    Present { value: bound } =>
+      match lookup_inferred_facts_in_entries(entries: entries, key: bound) {
+        Absent => outcome_accepted(entries)
+        Present { value: facts } =>
+          match inferred_facts_resolved_type_optional(facts: facts) {
+            Absent => outcome_accepted(entries)
+            Present { value: produced } =>
+              match infer_produced_open_type_params(produced: produced) {
+                Empty => outcome_accepted(entries)
+                Cons { head: _, tail: _ } => outcome_rejected(infer_unsolved_constructor_type_variable_diagnostic(node: bound))
+              }
+          }
+      }
+  }
+}
+
 // AN ANNOTATED LET IS A DECLARED-TYPE POSITION. `let x: T = e` is Bind[x, e, body] +
 // <type-annotation> T (v2.std.type_binder); it awaits its children, then e is judged at T through
 // infer_judge_declared_position -- the one relation (v2.std.inhabitance declared_type_inhabitance)
@@ -6055,7 +6069,7 @@ fn infer_bind_annotation_check(node: Node, entries: Map<Node, List<InferredFacts
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(entries)
     Present { value: annotation } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
+      match bind_slot_target(n: node, slot: BindValueSlot) {
         Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
         Present { value: bound } =>
           infer_judge_declared_position_closing(
@@ -6145,6 +6159,8 @@ fn infer_transform_derived_optional(
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, resolved: resolved))
   } else if infer_transform_is_cast(node: node) {
     infer_transform_cast_optional(node: node, entries: entries, resolved: resolved)
+  } else if node_is_arm_test(node: node) {
+    infer_transform_arm_test_optional(node: node, entries: entries)
   } else if arguments_decided {
     infer_transform_application_optional(node: node, entries: entries, instances: instances, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index)
   } else {
@@ -6197,6 +6213,123 @@ fn infer_transform_application_optional(
             }
           }
       }
+      }
+  }
+}
+
+// AN ARM TEST `x is V` is Transform[kw_is, x, V] (v2.compiler.body_lowering_fold body_lower_is_node). The
+// node's own fact is Bool once its operand's type is derived; WHICH ARM V names is the separate
+// ResolvedArm fact infer_arm_resolutions decides, so this reader does no roster work.
+
+fn infer_transform_arm_test_optional(node: Node, entries: Map<Node, List<InferredFacts>>) -> Optional<Outcome<InferredFacts>> {
+  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 1) {
+    Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
+    Present { value: operand } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: node), index: 2) {
+        Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
+        Present { value: _ } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: operand) {
+            Absent => optional_present(value: outcome_rejected(infer_facts_lookup_miss_diagnostic(key: operand)))
+            Present { value: operand_facts } =>
+              match operand_facts.grounding {
+                GroundingNotDerived { node: _ } => optional_absent()
+                DerivedGrounding { grounding: _ } =>
+                  match infer_descent_witness_for_node(n: node) {
+                    Violates { diagnostic: d } => optional_present(value: Rejected { diagnostics: diagnostics_singleton(d: d) })
+                    Holds { value: descent_proof } =>
+                      optional_present(value: inferred_facts_from_derived_type(
+                        node: node,
+                        derived_type: bool_node(),
+                        descent: Holds { value: descent_proof }
+                      ))
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE RESOLVED-ARM FACTS: one entry per arm test whose operand type is derived, keyed by the test node.
+// The roster is the one infer_match_coproduct_of_type reads for a match, so `x is V` and a match arm on V
+// agree on what the type declares. A spelling the roster does not declare refuses (misspelt, or an arm
+// of another type); an operand that is not a declared coproduct refuses at the test. An arm test whose
+// operand type is not derived gets no entry and stays on the counted frontier with its operand.
+fn infer_arm_resolutions(tree: ResolvedTree, entries: Map<Node, List<InferredFacts>>) -> Outcome<Map<Node, ArmTestDecision>> {
+  fold(node_subtree_nodes(root: tree.root), init: outcome_accepted(value: empty_map()), f: fn(acc, n) {
+    if node_is_arm_test(node: n) {
+      infer_arm_resolutions_step(acc: acc, test: n, tree: tree, entries: entries)
+    } else {
+      acc
+    }
+  })
+}
+
+fn infer_arm_resolutions_step(
+  acc: Outcome<Map<Node, ArmTestDecision>>,
+  test: Node,
+  tree: ResolvedTree,
+  entries: Map<Node, List<InferredFacts>>
+) -> Outcome<Map<Node, ArmTestDecision>> {
+  match infer_arm_resolution_of_test(test: test, tree: tree, entries: entries) {
+    Absent => infer_arm_test_recorded(acc: acc, test: test, decision: ArmUndecided)
+    Present { value: decided } =>
+      match decided {
+        Rejected { diagnostics: d } =>
+          match acc {
+            Rejected { diagnostics: prior } => Rejected { diagnostics: non_empty_diagnostics_append(a: prior, b: d) }
+            Accepted { value: _, diagnostics: _ } => Rejected { diagnostics: d }
+          }
+        Accepted { value: arm, diagnostics: _ } =>
+          match acc {
+            Rejected { diagnostics: prior } => Rejected { diagnostics: prior }
+            Accepted { value: m, diagnostics: ad } => Accepted { value: map_insert(m: m, key: test, value: ArmDecided { arm: arm }), diagnostics: ad }
+          }
+      }
+  }
+}
+
+fn infer_arm_decided_flatten(found: Optional<ArmTestDecision>) -> Optional<ResolvedArm> {
+  match found {
+    Present { value: decision } =>
+      match decision {
+        ArmDecided { arm: arm } => optional_present(value: arm)
+        ArmUndecided => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn infer_arm_test_recorded(acc: Outcome<Map<Node, ArmTestDecision>>, test: Node, decision: ArmTestDecision) -> Outcome<Map<Node, ArmTestDecision>> {
+  match acc {
+    Rejected { diagnostics: prior } => Rejected { diagnostics: prior }
+    Accepted { value: m, diagnostics: ad } => Accepted { value: map_insert(m: m, key: test, value: decision), diagnostics: ad }
+  }
+}
+
+fn infer_arm_resolution_of_test(test: Node, tree: ResolvedTree, entries: Map<Node, List<InferredFacts>>) -> Optional<Outcome<ResolvedArm>> {
+  let kids = positional_child_target_nodes(node: test)
+  match list_at_optional(xs: kids, index: 1) {
+    Absent => Absent
+    Present { value: operand } =>
+      match list_at_optional(xs: kids, index: 2) {
+        Absent => Absent
+        Present { value: arm } =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: operand) {
+            Absent => Absent
+            Present { value: operand_facts } =>
+              match operand_facts.grounding {
+                GroundingNotDerived { node: _ } => Absent
+                DerivedGrounding { grounding: g } =>
+                  let owner_type = g.witness.structural.evidence
+                  optional_present(value: match infer_match_coproduct_of_type(scrutinee_type: owner_type, resolved: tree) {
+                    CoproductRead { coproduct: c } =>
+                      resolve_is_arm(owner_path: c.path, owner_type: owner_type, variants: c.variants, arm: arm)
+                    UninhabitedScrutinee => outcome_rejected(infer_match_scrutinee_not_coproduct_diagnostic(node: test))
+                    CoproductNotDeclared => outcome_rejected(infer_match_scrutinee_not_coproduct_diagnostic(node: test))
+                    CoproductArityMismatch => outcome_rejected(infer_match_scrutinee_not_coproduct_diagnostic(node: test))
+                  })
+              }
+          }
       }
   }
 }
@@ -7821,7 +7954,20 @@ fn infer_gather_settled_row(
       )
     Absent =>
       if infer_is_let_bind(bind: acc.node) {
-        infer_gather_let_result_row(node: acc.node, entries: merged_entries, pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
+        match infer_unannotated_let_unsolved_refusal(node: acc.node, entries: merged_entries, resolved: resolved) {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: acc.node,
+              pending: rejected_with_pending(pending: merged_pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: next, diagnostics: _ } =>
+            infer_gather_let_result_row(node: acc.node, entries: next, pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
+        }
       } else {
       match infer_declared_position_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
         Rejected { diagnostics: r } =>
@@ -8861,7 +9007,7 @@ fn infer_match_arm_field_binder(acc: InferMatchArmBinders, rows: List<InferBinde
 fn infer_bind_encodes_collection_fold(bind: Node) -> Bool {
   match bind.kind {
     ComputationNode { behavior: Bind } =>
-      match list_at_optional(xs: positional_child_target_nodes(node: bind), index: 2) {
+      match bind_slot_target(n: bind, slot: BindBodySlot) {
         Present { value: body } => infer_loop_takes_collection_member(loop_node: body)
         Absent => false
       }
@@ -9048,7 +9194,7 @@ fn infer_fold_bind_check(node: Node, entries: Map<Node, List<InferredFacts>>, re
       match infer_settled_type_at(target: init, entries: entries) {
         Absent => Accepted { value: true, diagnostics: Some { diagnostics: infer_fold_member_advisory(reason: ^infer_reason_fold_carrier_type_not_derived, at: init) } }
         Present { value: carrier } =>
-          match list_at_optional(xs: positional_child_target_nodes(node: node), index: 2) {
+          match bind_slot_target(n: node, slot: BindBodySlot) {
             Absent => Accepted { value: true, diagnostics: Some { diagnostics: infer_fold_member_advisory(reason: ^infer_reason_fold_member_formal_unread, at: node) } }
             Present { value: loop_node } =>
               match fold_loop_step(loop_node: loop_node) {
@@ -9311,13 +9457,25 @@ fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
               Rejected { diagnostics: non_empty_diagnostics_append(a: da, b: ned) }
           }
         None =>
-          Accepted {
-            value: ObligatedInferredTree {
-              root: tree.root,
-              facts: facts_partial_function_of_index(index: entries),
-              obligations: Empty
-            },
-            diagnostics: d
+          match infer_arm_resolutions(tree: tree, entries: entries) {
+            Rejected { diagnostics: ard } =>
+              match d {
+                None => Rejected { diagnostics: ard }
+                Some { diagnostics: da } => Rejected { diagnostics: non_empty_diagnostics_append(a: da, b: ard) }
+              }
+            Accepted { value: arms, diagnostics: _ } =>
+              Accepted {
+                value: ObligatedInferredTree {
+                  root: tree.root,
+                  facts: facts_partial_function_of_index(index: entries),
+                  arm_resolutions: ArmResolutions {
+                    tests: map_support_keys(m: arms),
+                    decided: PartialFunction { lookup: fn(key) { infer_arm_decided_flatten(found: map_lookup(m: arms, key: key)) } }
+                  },
+                  obligations: Empty
+                },
+                diagnostics: d
+              }
           }
       }
   }

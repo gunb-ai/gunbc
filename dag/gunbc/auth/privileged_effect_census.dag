@@ -894,6 +894,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: interim_job_user_whole_binary_grants },
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_stall_rearm_at"),
+    effect: PrivilegedEffect {
+      subject: "reset-failed and start the one belt-exit path unit the stalled exit spool tripped (operator release verb)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "the operator's host principal running the release verb" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: interim_job_user_whole_binary_grants },
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
     effect: recurring_credential_read(subject: "heal publisher reads the gunbai-bot App key under its own pool and provider" as NonEmptyStr),
     realized: RealizedFederatedGrant,
@@ -962,7 +977,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
     effect: PrivilegedEffect {
-      subject: "in the service_runner_lost_boot_sweep fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity, mint the controller installation token, and delete every runner registration of the swept managed host whose embedded boot id is not the current admitted one, confirming each absent from the organization listing; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03) and ruling mtcollins1_ci_runner_enrolment_approved. GATED: the current boot is admitted only through a host-observed boot (lost_boot_observe_current_boot, no route until the mtcollins1 enrolment supplies a host transport), so no run performs this deletion until then" as NonEmptyStr as NonEmptyStr,
+      subject: "in the service_runner_lost_boot_sweep fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity, mint the controller installation token, and delete every runner registration of the swept managed host whose embedded boot id is not the current admitted one, confirming each absent from the organization listing; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03) and ruling mtcollins1_ci_runner_enrolment_approved. GATED: the current boot is admitted only through a host-observed boot (lost_boot_observe_current_boot reads boot_id over a HostEffectTransport it is handed; no run holds a host-authenticated transport to mtcollins1 until one is supplied from an executed selection), so no run performs this deletion until then" as NonEmptyStr as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
