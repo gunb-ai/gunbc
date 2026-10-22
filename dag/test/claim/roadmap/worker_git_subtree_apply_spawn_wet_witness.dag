@@ -27,8 +27,24 @@ module test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness
 //   claim_batch --wet --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag --functions <csv>
 
-import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, CommitSha }
 import std.algebra { trim, string_contains, is_empty }
+import std.optional { Present }
+import extdeps.crypto.hash { sha256_digest }
+import std.content_hash { content_hash_atom }
+import gunbc.live_deploy.member_identity {
+  ConvergedMember, RepositorySharedPosture, MemberIdentity,
+  RepositorySharedPostureAt, RepositorySharedPostureIdentity,
+  ObservedMember, MemberAbsentOnHost, MemberUnobservable,
+  ReleaseTarget, derive_member_plan, EffectDerivation, EffectsDerived, EffectsRefused,
+  effect_labels, converged_member_eq,
+}
+import gunbc.live_deploy.member_observe {
+  ObservationArm, OnTheHostItself, observe_repository_shared_posture, posture_document_from_legs,
+  PostureReadUnobservable, PostureConfigLeg, PostureConfigPair, PostureConfigUnobservable,
+  Leg, LegOut, LegRefused, unit_document_leg, UnitDocumentAbsence,
+  AbsentIsTheStanding, AbsentContradictsListing, posture_missing_sentinel,
+}
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
@@ -1174,5 +1190,168 @@ test fn the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit() -> 
       && length(xs: head) == 40
       && dashboard_git_subtree_readback_is_granted(child: dashboard_git_worker_objects_child, group: group as NonEmptyStr, receipt: objects_after)
       && clean
+  }
+}
+
+// ============================================================================================
+// ROUND 8: THE POSTURE OBSERVER'S ABSENCE ARMS, EXECUTED. The re-root's first fresh-lab deploy
+// (composition f953f454) proved these arms were wrong -- a source repository that does not exist YET
+// (the same apply clones it later) was simultaneously "all keys unset" (the config legs' silent
+// sentinel for ANY nonzero git exit) and "unobservable" (the unit legs' refusal), and the refusal
+// named a unit path for a git-config failure. The repairs (member_observe.dag) are graded here over
+// REAL trees, because every one of these distinctions lives in what a real git and a real parent
+// listing print: (1) established absence -- the parent listing SUCCEEDS without the entry -- reads as
+// the member's ordinary MemberAbsentOnHost and the plan CARRIES the posture assert instead of
+// refusing; (2) a present-but-unreadable repository (a plain directory: git dies with 128 inside it)
+// still refuses, and the refusal names the git read and the path; (3) each leg refusal carries its
+// own subject -- the fold passes causes through verbatim, no "service unit:"/"timer unit:" prefix.
+// RED at 7661561e (the head the lab deploy ran): there (1) refused with "service unit: ..." wording,
+// (2) lied "all keys unset" and planned a Replace instead of refusing, and (3) prefixed both subjects
+// by guess.
+// ============================================================================================
+
+fn wre3_posture_member(root: String) -> ConvergedMember {
+  RepositorySharedPosture { path: root as NonEmptyStr }
+}
+
+fn wre3_posture_desired(root: String) -> MemberIdentity {
+  RepositorySharedPostureAt { posture: RepositorySharedPostureIdentity {
+    path: root as NonEmptyStr,
+    document: content_hash_atom(value: "wre3-desired-posture-document" as NonEmptyStr),
+  } }
+}
+
+fn wre3_release_target() -> ReleaseTarget {
+  ReleaseTarget {
+    revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha,
+    executable: sha256_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr),
+    unit: "gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+  }
+}
+
+fn wre3_posture_plan(root: String, obs: ObservedMember) -> EffectDerivation {
+  derive_member_plan(
+    roster: [wre3_posture_member(root: root)],
+    desired: _ => Present { value: wre3_posture_desired(root: root) },
+    observed: _ => obs,
+    target: wre3_release_target(),
+  )
+}
+
+fn wre3_plan_labels(d: EffectDerivation) -> List<String> {
+  match d { EffectsDerived { plan } => effect_labels(plan: plan)  EffectsRefused { refusals: _ } => ["REFUSED"] }
+}
+
+// (1) A FRESH INSTANCE PLANS; IT DOES NOT REFUSE. The parent exists, the source does not: exactly the
+// state the re-root's first deploy met. The observer must establish absence by the listing, answer the
+// member's ordinary absence, and the derived plan must CARRY the posture assert (the emitted script
+// runs it after the step that creates the repository -- the artifact stage precedes the host-script
+// stage). At 7661561e this claim is RED at the first line: the legs read a path with no repository,
+// the units refused, and the member came back MemberUnobservable ("service unit: ...") -- a refusal
+// of a state that is simply not-yet-created.
+test fn the_posture_observer_reads_an_absent_source_as_absence_and_the_plan_carries_the_assert() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-posture-absent-XXXXXX" as NonEmptyStr))
+  let source = join([root, "/source"], "")
+  if root == "" || wet_self_uid() < 0 {
+    false
+  } else {
+    let inst = wet_lab_local_instance(root: source)
+    let obs = observe_repository_shared_posture(arm: OnTheHostItself, instance: inst)
+    let is_absence = match obs {
+      MemberAbsentOnHost { member } => converged_member_eq(a: member, b: wre3_posture_member(root: source))
+      _ => false
+    }
+    let labels = wre3_plan_labels(d: wre3_posture_plan(root: source, obs: obs))
+    let carries = any(xs: labels, predicate: l => string_contains(s: l, pattern: "assert-repository-shared-posture"))
+      && !string_contains(s: join(labels, ","), pattern: "REFUSED")
+    let untouched = wet_ok(command: rm_recursive_force_command(path: root))
+    is_absence && carries && untouched
+  }
+}
+
+// (2) A PRESENT-BUT-UNREADABLE REPOSITORY STILL REFUSES, NAMING THE READ AND THE PATH. The directory
+// exists (the parent listing carries it) but no repository lives inside it: `git config --local --get`
+// dies with 128 ("not a git repository") -- the very exit the old legs silently recorded as "unset",
+// letting the plan see a clean three-unset posture and Replace it. The fixed observer must call this
+// what it is: a failed read, unobservable, naming the key, the command and the path. RED at 7661561e:
+// the keys lied "unset", the member came back OBSERVED, and the plan was a Replace, not a refusal.
+test fn the_posture_observer_refuses_a_present_but_unreadable_repository_naming_the_read() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-posture-unreadable-XXXXXX" as NonEmptyStr))
+  let source = join([root, "/source"], "")
+  if root == "" || wet_self_uid() < 0 {
+    false
+  } else {
+    let planted = wet_ok(command: mkdir_parents_command(path: source))
+    let inst = wet_lab_local_instance(root: source)
+    let obs = observe_repository_shared_posture(arm: OnTheHostItself, instance: inst)
+    let named = match obs {
+      MemberUnobservable { member, cause } =>
+        converged_member_eq(a: member, b: wre3_posture_member(root: source))
+          && string_contains(s: cause, pattern: "git config --get")
+          && string_contains(s: cause, pattern: "git exited 128")
+          && string_contains(s: cause, pattern: source)
+          && !string_contains(s: cause, pattern: "service unit:")
+          && !string_contains(s: cause, pattern: "timer unit:")
+      _ => false
+    }
+    let refused = match wre3_plan_labels(d: wre3_posture_plan(root: source, obs: obs)) {
+      [only] => only == "REFUSED"
+      _ => false
+    }
+    let untouched = wet_ok(command: rm_recursive_force_command(path: root))
+    planted && named && refused && untouched
+  }
+}
+
+// (3) EACH LEG REFUSAL NAMES ITSELF; THE FOLD PASSES CAUSES THROUGH VERBATIM. Pure, no tree: a refused
+// SERVICE leg must surface its own cause -- not a cause with a "service unit:"/"timer unit:" prefix
+// welded on by the fold. The deploy log's refusal blamed a unit path for a git-config failure; this is
+// the claim that makes such a re-label impossible for any leg. RED at 7661561e, where the fold
+// prefixed "service unit: " / "timer unit: " by position regardless of which read failed.
+test fn the_posture_fold_passes_each_leg_cause_through_verbatim() -> Bool {
+  let keys = [
+    PostureConfigPair { key: "core.sharedRepository" as NonEmptyStr, value: "group" },
+    PostureConfigPair { key: "gc.auto" as NonEmptyStr, value: "0" },
+    PostureConfigPair { key: "maintenance.auto" as NonEmptyStr, value: "false" },
+  ]
+  let marker = "the read of /somewhere/x failed: EACCES"
+  let service_refused = match posture_document_from_legs(key_legs: keys, service_leg: LegRefused { cause: marker }, timer_leg: LegOut { stdout: "t" }) {
+    PostureReadUnobservable { cause } => cause == marker
+    _ => false
+  }
+  let timer_refused = match posture_document_from_legs(key_legs: keys, service_leg: LegOut { stdout: "s" }, timer_leg: LegRefused { cause: marker }) {
+    PostureReadUnobservable { cause } => cause == marker
+    _ => false
+  }
+  let key_refused = match posture_document_from_legs(key_legs: [PostureConfigUnobservable { cause: marker }, PostureConfigPair { key: "gc.auto" as NonEmptyStr, value: "0" }, PostureConfigPair { key: "maintenance.auto" as NonEmptyStr, value: "false" }], service_leg: LegOut { stdout: "s" }, timer_leg: LegOut { stdout: "t" }) {
+    PostureReadUnobservable { cause } => cause == marker
+    _ => false
+  }
+  service_refused && timer_refused && key_refused
+}
+
+// (3b) THE SAME ABSENCE, TWO POLICIES, CHOSEN BY WHAT THE CALLER ESTABLISHED. An absent unit document
+// under AbsentIsTheStanding (the posture member's policy -- IT installs those units, so absence is the
+// pre-install standing) reads as the sentinel; under AbsentContradictsListing (the serve unit's and
+// fabric marker's policy -- their callers established presence via entry_presence) the same absence is
+// a refusal naming the contradiction. The tree is a real directory without the file, so the listing
+// genuinely succeeds without the entry -- the state the policies are about. RED at 7661561e: there was
+// no policy; absence was only ever the contradiction refusal, which killed the fresh-lab deploy.
+test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-posture-leg-XXXXXX" as NonEmptyStr))
+  let unit_path = join([root, "/gunbc-git-maintenance.service"], "")
+  if root == "" || wet_self_uid() < 0 {
+    false
+  } else {
+    let standing_ok = match unit_document_leg(arm: OnTheHostItself, path: unit_path, absent: AbsentIsTheStanding) {
+      LegOut { stdout } => stdout == posture_missing_sentinel
+      _ => false
+    }
+    let contradiction_ok = match unit_document_leg(arm: OnTheHostItself, path: unit_path, absent: AbsentContradictsListing) {
+      LegRefused { cause } => string_contains(s: cause, pattern: "vanished between listing and read")
+      _ => false
+    }
+    let untouched = wet_ok(command: rm_recursive_force_command(path: root))
+    standing_ok && contradiction_ok && untouched
   }
 }
