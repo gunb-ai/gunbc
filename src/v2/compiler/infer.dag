@@ -2624,7 +2624,6 @@ fn infer_unify_branch_arm_types(
           match infer_join_arm_types(first: then_type, second: else_type, expected: Absent, resolved: resolved) {
             ArmTypesJoined { joined: joined } => Accepted { value: joined, diagnostics: None }
             ArmTypesNoneDeclare => outcome_rejected(infer_no_arm_declares_a_type_diagnostic(node: then_node))
-            ArmTypesDeferred => outcome_rejected(infer_arm_join_deferred_to_declared_type_diagnostic(node: then_node))
             ArmTypesConflict => outcome_rejected(infer_arms_declare_conflicting_types_diagnostic(node: then_node))
           }
       }
@@ -2640,7 +2639,7 @@ fn infer_branch_bool_if_else(
 ) -> Outcome<InferredFacts> {
   match infer_branch_condition_refusal(node: node, entries: entries) {
     Present { value: d } => outcome_rejected(d)
-    Absent => infer_branch_bool_if_else_admitted(node: node, partials: partials, entries: entries)
+    Absent => infer_branch_bool_if_else_admitted(node: node, partials: partials, entries: entries, resolved: resolved)
   }
 }
 
@@ -2648,6 +2647,7 @@ fn infer_branch_bool_if_else_admitted(
   node: Node,
   partials: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
+  resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
   {
     match branch_slot_target(n: node, slot: BranchConditionSlot) {
