@@ -170,6 +170,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   canonical_operation_op_ge,
   canonical_operation_op_eq,
   canonical_operation_op_ne,
+  canonical_operation_op_not,
   target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
@@ -449,6 +450,8 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_div())
   } else if surface_token == ^dag_token_kw_as {
     outcome_accepted(canonical_operation_op_coerce())
+  } else if surface_token == ^dag_token_bang {
+    outcome_accepted(canonical_operation_op_not())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
