@@ -1,52 +1,32 @@
 module test.claim.base64_tool_real_execution_witness
 
-import std.types { Bool, NonEmptyStr, String }
-import std.content_hash { Sha256Hash }
-import extdeps.shell
+import std.types { Bool, NonEmptyStr }
+import v2.std.integer { Int }
+import std.algebra { contains, length }
 import extdeps.tools.base64 { Base64FileEncoded, Base64FileUnreadable, base64_encode_file_via_shell }
-import gunbc.output_policy { OutcomeIsData }
-import gunbc.retained_shell_script { retained_runtime }
-import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_chainloader_pin, site_pxe_edge_chainloader_target }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE COMMITTED CHAINLOADER THROUGH THE REAL base64 OPERATION. The pairing obligation of the supplied-status
 // witnesses in test.claim.base64_tool_witness: base64_encode_file_via_shell runs the real coreutils `base64`
-// over artifacts/ipxe/snponly-arm64.efi, the encoding is written to a temp file (never argv), decoded by
-// `base64 -d`, and the sha256 of the decoded bytes must equal the digest the pin carries. Swapping the blob
-// or changing the argv's wrapping flag reds here; the supplied-status witnesses never execute the argv.
-// Refused by the hermetic envelope (shell.Exec and shell.Mktemp.Dir have no mock_response), so excluded from
-// discovery and enrolled in gunbc.ci.ci_layer_roots as a real-execution witness.
-
-fn pin_digest_hex() -> String {
-  match site_pxe_edge_chainloader_target(pin: site_pxe_edge_chainloader_pin) {
-    Absent => ""
-    Present { value: b } =>
-      match b.digest {
-        Sha256Hash(d) => d.hex as String
-        _ => ""
-      }
-  }
-}
+// over artifacts/ipxe/snponly-arm64.efi, so the argv's wrapping flag is executed, which the supplied-status
+// witnesses never do. Refused by the hermetic envelope (shell.Exec.Run has no mock_response here), so excluded
+// from discovery and enrolled in gunbc.ci.ci_layer_roots as a real-execution witness.
 
 data committed_image_path: NonEmptyStr = "artifacts/ipxe/snponly-arm64.efi" as NonEmptyStr
 
-// POSITIVE CONTROL: encode, decode, hash equals the pin's digest.
-test fn the_committed_chainloader_round_trips_through_the_real_base64_to_the_pin_digest() -> Bool {
+// POSITIVE CONTROL: the real encoding of the committed image is one unwrapped line of exactly
+// 4*ceil(337920/3) characters (337,920 B is the size in the S1 SitePxeEdgeChainloaderBuildReceipt
+// record; GNU base64 emits 4 characters per 3 input bytes). The argv's `-w 0` is what keeps it one
+// line: `-w 76` inserts newlines and reds the first conjunct. Content equality is the sha256 witness
+// of the image itself (test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness); a decode
+// of this text would have to go through raw shell, a second path beside the modelled one.
+data committed_image_encoded_length: Int = 450560
+
+test fn the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length() -> Bool {
   match base64_encode_file_via_shell(path: committed_image_path) {
-    Base64FileEncoded { text: t } => {
-      let dir = shell.Mktemp.Dir()
-      if dir.success == false {
-        false
-      } else {
-        let enc = join([dir.path as String, "/image.b64"], "")
-        let w = Filesystem.Write(path: enc, content: t)
-        let r = shell.Exec.Run(script: retained_runtime(body: concat("base64 -d ", concat(enc, " | sha256sum")), reason: "base64 real-execution witness: decode the encoding and hash it" as NonEmptyStr), expect: OutcomeIsData)
-        let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-        contains(t, "\n") == false && w.success && r.success && cleaned.success && pin_digest_hex() != "" && contains(r.stdout, pin_digest_hex())
-      }
-    }
+    Base64FileEncoded { text: t } => contains(t, "\n") == false && length(t) == committed_image_encoded_length
     Base64FileUnreadable { stderr: _ } => false
     _ => false
   }

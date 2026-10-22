@@ -15,9 +15,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE EXIT-STATUS TABLE OF extdeps.tools.base64, one witness per row. The statuses are the ones measured
 // on GNU coreutils 9.7 (missing path, permission-denied path and directory all exit 1), supplied here
-// as values at the fold's boundary. THE INHABITANCE CLAIM (a real base64 run over the committed
-// chainloader, round-tripped) IS NOT YET AUTHORED: it is owed by the placement PR, which is this tool's first
-// consumer, and until then only the mock route executes the operation.
+// as values at the fold's boundary. THE INHABITANCE CLAIM is test.claim.base64_tool_real_execution_witness: a real base64 run
+// over the committed chainloader, which executes the argv these supplied-status witnesses never reach.
 
 test fn status_zero_is_the_encoding() -> Bool {
   match base64_file_read(text: "AAEC", exit_code: 0, stderr: "") {

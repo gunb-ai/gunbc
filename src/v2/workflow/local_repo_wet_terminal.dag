@@ -3175,9 +3175,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_round_trips_through_the_real_base64_to_the_pin_digest" },
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length" },
       entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
-      function: "the_committed_chainloader_round_trips_through_the_real_base64_to_the_pin_digest",
+      function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
