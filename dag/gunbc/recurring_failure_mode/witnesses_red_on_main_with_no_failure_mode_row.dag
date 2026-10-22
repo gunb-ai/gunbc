@@ -1,14 +1,10 @@
 module gunbc.recurring_failure_mode.witnesses_red_on_main_with_no_failure_mode_row
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data witnesses_red_on_main_with_no_failure_mode_row: RecurringFailureMode = RecurringFailureMode {
   identity: "witnesses_red_on_main_with_no_failure_mode_row" as NonEmptyStr,
-
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of an instrument label whose run executes the witness population and states, per identity, whether it is green at the default branch head and whether the required path runs it." } },
 
   receipts: [
     "**a witness red at origin/main has no row, so every PR that touches its module rediscovers and re-attributes it** (INVALID STATE: a committed witness fails under `gunbc run --claim-run` at the default branch head and nothing records that, which test, or whether the required path runs it).",
