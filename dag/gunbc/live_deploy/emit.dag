@@ -328,7 +328,6 @@ import gunbc.live_deploy.operations {
   pwd_file_install_privileged_command,
   install_directory_command,
   rm_force_command,
-  rm_empty_directory_command,
   rm_force_recursive_command,
   install_directory_owned_command,
   install_file_owned_command,
@@ -376,8 +375,6 @@ import gunbc.live_deploy.effect_leaf {
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 data live_deploy_apply_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy APPLY intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-apply.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
-
-data live_deploy_retract_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy RETRACT intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-retract.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
 data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ systemd runtime-retirement intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid deploy shell, so the committed retract artifact drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
@@ -501,17 +498,6 @@ fn bash_intent_command_or_poison(intent: Node) -> String {
       }
     Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
   }
-}
-
-fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -> List<PipelineStep> {
-  [
-    deploy_raw(command: bash_intent_command_or_poison(
-      intent: systemctl_load_state_assignment_intent(unit: unit)
-    )),
-    deploy_raw(command: bash_intent_command_or_poison(
-      intent: systemctl_disable_now_when_loaded_intent(unit: unit, privileged: privileged)
-    )),
-  ]
 }
 
 fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
@@ -1166,40 +1152,6 @@ fn apply_publication_path_unit_write_step(spec: DeploymentSpec) -> PipelineStep 
     stage_name: deployment_publication_path_unit_name(names: spec.names) as String,
     content: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
-}
-
-// Leftover timer retirement (FleetConvergeTimerUnit teardown shape): disable if loaded, remove the
-// unit file, daemon-reload, read back LoadState=not-found. Absence is converged — the disable is
-// gated on not-found, and rm -f is a no-op on a missing file.
-data leftover_systemd_timer_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete leftover_systemd_timer_retire_steps and the retired belt/publication timer name functions once every deployed instance's apply readback has reported LoadState=not-found for both leftover units" as NonEmptyStr)
-
-fn leftover_systemd_timer_retire_steps(unit: NonEmptyStr, path: NonEmptyStr) -> List<PipelineStep> {
-  concat(
-    systemctl_disable_now_if_present_steps(unit: unit, privileged: true),
-    [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [path as String])),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_raw(command: bash_intent_command_or_poison(intent: systemctl_load_state_assignment_intent(unit: unit))),
-      deploy_raw(command: bash_intent_command_or_poison(intent: leftover_timer_not_found_readback_intent())),
-    ]
-  )
-}
-
-fn leftover_timer_not_found_readback_intent() -> Node {
-  bash_build_if_from_stmts(
-    cond: bash_build_test_bracket(words: [
-      bash_build_word_var(name: "_gunbc_load_state"),
-      bash_build_word_lit(text: "!="),
-      bash_build_word_lit(text: systemd_unit_load_state_not_found_wire as String),
-    ]),
-    then_stmts: [
-      bash_build_command_from_lits(lits: [
-        "echo",
-        "leftover timer still loaded after retire — LoadState is not not-found (fail-closed)",
-      ]),
-      bash_build_command_from_lits(lits: ["exit", "1"]),
-    ]
-  )
 }
 
 // THE TWO SPOOL DIRECTORIES CARRY OPPOSITE PERMISSIONS, AND THAT IS THE WHOLE ENFORCEMENT.
@@ -2090,12 +2042,6 @@ fn tailscale_serve_mapping_apply_steps(spec: DeploymentSpec) -> List<PipelineSte
   }
 }
 
-fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
-  ))
-}
-
 // THE BINARY PATH BECAME A PARAMETER AND ITS PARENT DIRECTORY DID NOT (review 45197). This PR
 // derives serve_binary from the instance root, so a twin installs to its own tree — but the step
 // that CREATES the destination directory still read `sudo -n install -d -m 0755 /opt/gunbc/bin`,
@@ -2322,6 +2268,10 @@ fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
     shell: fleet_posix_nologin_shell_path,
   })
 }
+
+data deploy_apply_preamble_steps_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: deploy_apply_preamble_steps is the bash body of the deploy preamble, shadowed by the typed gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host (live on the retract route). DISSOLVES WHEN the apply route takes live_deploy_apply_preamble_on_host: the ONE apply PR switches the apply root and deletes this function. NOT satisfied by the typed preamble existing, nor by a claim comparing the two bodies." as NonEmptyStr,
+)
 
 fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
   [
@@ -2585,10 +2535,6 @@ fn composed_artifact_upsert(
     member: "artifact" as NonEmptyStr,
     mutate_steps: emit_artifact_upsert(kind: kind, path: path, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal),
   ))
-}
-
-fn composed_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Pipeline {
-  compose_host_script(fragments: artifact_retract_fragments(art: art, spec: spec))
 }
 
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
@@ -3904,143 +3850,6 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
 // itself, identical to the former rmdir). GunbcSourceTree teardown runs its rm -rf only AFTER that rm -d
 // succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
-fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
-  match art.kind {
-    UpsertOwned { kind: TailscaleServeMapping } => [
-      tailscale_serve_teardown_step(spec: spec),
-    ]
-    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent => [
-        deploy_raw(command: join([
-          fabric_storage_door_unknown_instance_poison,
-          spec.instance_id as String,
-          "\n",
-        ], "")),
-      ]
-      Present { value: door_socket } => [
-        deploy_raw(command: shell_privileged_command_text_of_argv(
-          argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
-        )),
-      ]
-    }
-    UpsertOwned { kind: ApprovalBrokerFrontDoor } => map(
-      deployment_approval_broker_front_door_endpoints(),
-      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
-    )
-    ComposeOwned { kind: TailnetDoorServeUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_tailnet_door_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    ComposeOwned { kind: FabricStorageServeUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    ComposeOwned { kind: SystemdUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: BeltEventPathUnit } => concat(
-      concat(
-        concat(
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), privileged: true),
-        ),
-        leftover_systemd_timer_retire_steps(
-          unit: deployment_retired_belt_timer_unit_name(names: spec.names),
-          path: deployment_retired_belt_timer_unit_path(names: spec.names),
-        ),
-      ),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          art.path as String,
-          deployment_belt_answer_path_unit_path(names: spec.names) as String,
-          deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
-          deployment_belt_discovery_service_unit_path(names: spec.names) as String,
-          deployment_belt_credential_recovery_unit_path(names: spec.names) as String,
-          deployment_belt_credential_recovery_timer_unit_path(names: spec.names) as String,
-          deployment_belt_service_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    ComposeOwned { kind: FleetConvergeTimerUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          art.path as String,
-          deployment_fleet_converge_service_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: PublicationHelperPathUnit } => concat(
-      concat(
-        systemctl_disable_now_if_present_steps(unit: deployment_publication_path_unit_name(names: spec.names), privileged: true),
-        leftover_systemd_timer_retire_steps(
-          unit: deployment_publication_timer_unit_name(names: spec.names),
-          path: deployment_publication_timer_unit_path(names: spec.names),
-        ),
-      ),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          art.path as String,
-          deployment_publication_service_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: DeployedTreeRemoteUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: ServeBinary } => [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-    ]
-    ComposeOwned { kind: OidcConfigArtifact } => [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-    ]
-    UpsertOwned { kind: GunbcSourceTree } => concat(
-      map(dispatch_root_refusal_paths(spec: spec), p => deploy_raw(command: rm_empty_directory_command(path: p))),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          tree_sync_unit_path(names: spec.names) as String,
-          spec.names.tree_sync_env_path as String,
-          deployment_slice_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-        deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
-      ],
-    )
-  }
-}
-
-// THE SOURCE TREE'S TEARDOWN KEEPS THE DISPATCH ROOTS' EMPTY-DIRECTORY REFUSAL. The two roots were
-// owned steps whose teardown ran before the tree's and refused on a live worktree or published attempt
-// evidence; they are owned-directory demands now and a retract does not tear directories down, but
-// deleting the tree a live worktree is registered in is the hazard that refusal stood for, so the
-// tree's own teardown begins with it. The paths are the spec's demands, read by member name.
-fn dispatch_root_refusal_paths(spec: DeploymentSpec) -> List<String> {
-  map(
-    filter(xs: spec.directories, predicate: t =>
-      (owned_directory_member(t: t) as String) == (dashboard_dispatch_worktree_member as String)
-        || (owned_directory_member(t: t) as String) == (dashboard_attempt_state_member as String)),
-    t => owned_directory_path(t: t) as String,
-  )
-}
-
 // The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY
 // (this). One handler for both fold directions — EffectAdd dispatches on member kind to the
 // artifact/dependency install fragments; EffectRemove to the removal fragments. Orchestration is
@@ -4054,7 +3863,7 @@ fn dispatch_root_refusal_paths(spec: DeploymentSpec) -> List<String> {
 // nothing, retract desires nothing), so neither can produce a Modified hunk at all — a replace here
 // would mean a pole stopped being degenerate, which is a real observed-provider arriving and needs
 // its staged-replacement intermediates declared (gunbc.change_realization) before it may emit
-// anything. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located
+// anything. That arm REFUSES loudly (a typed/located
 // poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a
 // silent pass).
 data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
@@ -4064,10 +3873,6 @@ fn emit_deploy_replace_unreachable_refusal(step: DeploymentStep) -> List<Pipelin
 }
 
 data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectRemove of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberRemovalRefused (never an EffectRemove); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
-
-fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> List<PipelineStep> {
-  [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String))]
-}
 
 fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   compose_host_script(fragments: retract_or_apply_effect_fragments(
@@ -4730,40 +4535,6 @@ fn apply_intent_from_effects(
   ))
 }
 
-// THE PARTITION THAT PROTECTED SIBLING TEARDOWNS IS DELETED BECAUSE ITS SUBJECT IS GONE. review
-// 45016 found that a refusal arm ending in `false` aborted the whole fail-fast retract at the FIRST
-// teardown, so the unit, worktree root, serve binary, tree-sync files and repo tree were never
-// removed — every retract, production and twin, tore down nothing. The repair sorted refusing
-// teardowns after acting ones, which was correct for the model as it then stood.\n\nThat model was
-// wrong one layer up. The only refusing owned artifact was TailscaleServeMapping, and it refused on
-// an uncited claim that the CLI has no scoped removal. With the endpoint modeled, its teardown
-// ACTS, and no owned artifact refuses — so the partition sorts a list by a predicate that is now
-// constant, which is a node whose validation cannot fail.\n\nThe class it guarded is closed
-// differently and more strongly: a retract for a host whose client cannot do scoped removal is not
-// EMITTED at all (retract_capability_refusal), so a stop-the-line arm cannot appear among the
-// teardowns in the first place, and there is no ordering left to get right. Keeping the partition
-// would preserve the shape of a fix for a defect that no longer has a way to occur, which is
-// exactly the dead-scaffold class.
-fn retract_unsupported_client_poison(observed: String) -> String {
-  concat(
-    "__GUNBC_DEPLOY_REFUSED__ live-deploy retract NOT EMITTED: this target's tailscale client is ",
-    concat(
-      observed,
-      ", below the 1.52 release that introduced scoped `serve <flags> off`. Removing the serve mapping would require the node-global reset, which destroys every other deployment's routing on this host — so no retract artifact is produced (DESIGN 5: refuse, never widen)",
-    ),
-  )
-}
-
-fn retract_unobserved_client_poison(reason: String) -> String {
-  concat(
-    "__GUNBC_DEPLOY_REFUSED__ live-deploy retract NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
-    concat(
-      reason,
-      "), so whether scoped `serve <flags> off` exists on it is unknown. An unobserved version is not a capable one; observe the client and record it on the target (DESIGN 5: refuse, never widen)",
-    ),
-  )
-}
-
 fn apply_unobserved_client_poison(reason: String) -> String {
   concat(
     "__GUNBC_DEPLOY_REFUSED__ live-deploy apply NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
@@ -4772,49 +4543,6 @@ fn apply_unobserved_client_poison(reason: String) -> String {
       "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)",
     ),
   )
-}
-
-// THE RETRACT FRAME'S COMMENT BLOCK, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE
-// WHOLE PROGRAM.
-//
-// These six lines are the only place the retract fold explains itself to whoever reads the emitted
-// script -- that ensured dependencies are deliberately not purged, that retract may itself be the
-// run that installs the sudoers drop-in, and that the worktree teardown is the empty-dir refusal
-// wall rather than a recursive delete. `witness_retract_preamble_acknowledges_shared_sudoers_install`
-// asserts on the fourth of them, and asserting on it used to mean rendering the entire retract
-// program: 86,034 eval steps against a per-claim ceiling of 72,300 (required floor run 34927164902).
-// Naming the block makes the same fact readable at its producer.
-fn deploy_retract_frame_comments(spec: DeploymentSpec) -> List<PipelineStep> {
-  [
-  Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
-  Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
-  Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
-  Comment { text: "/etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)." },
-  Comment { text: "Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm," },
-  Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
-  ]
-}
-fn artifact_retract_fragments(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<HostScriptFragment> {
-  match art.kind {
-    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent =>
-        host_script_member_refused(
-          member: "fabric-storage" as NonEmptyStr,
-          cause: "fabric storage door unknown",
-          command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""),
-        )
-      Present { value: _ } =>
-        host_script_member_proceed(
-          member: "fabric-storage" as NonEmptyStr,
-          mutate_steps: emit_artifact_teardown(art: art, spec: spec),
-        )
-    }
-    _ =>
-      host_script_member_proceed(
-        member: "retract-step" as NonEmptyStr,
-        mutate_steps: emit_artifact_teardown(art: art, spec: spec),
-      )
-  }
 }
 
 fn retract_or_apply_effect_fragments(
@@ -4868,7 +4596,12 @@ fn retract_or_apply_effect_fragments(
         command: concat(live_deploy_replace_unreachable_poison, deployment_step_key(step: step) as String),
       )
     EffectRemove { from: step } => match step {
-      ArtifactStep { step: art } => artifact_retract_fragments(art: art, spec: spec)
+      ArtifactStep { step: art } =>
+        host_script_member_refused(
+          member: "retract-step" as NonEmptyStr,
+          cause: "retract is realized by gunbc.live_deploy.retract_legs, not by script fragments",
+          command: concat(live_deploy_replace_unreachable_poison, art.path as String),
+        )
       Dependency { step: dep } =>
         host_script_member_refused(
           member: "dependency" as NonEmptyStr,
@@ -4876,64 +4609,6 @@ fn retract_or_apply_effect_fragments(
           command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String),
         )
     }
-  }
-}
-
-fn retract_intent_fragments(
-  spec: DeploymentSpec,
-  effects: List<MemberEffect<DeploymentStep>>,
-  access: DeployAccess,
-) -> List<HostScriptFragment> {
-  concat(
-    [
-      Decide {
-        member: "frame" as NonEmptyStr,
-        standing: HostScriptProceed,
-        steps: concat(
-          [deploy_raw(command: deploy_shell_strict_options_command)],
-          deploy_retract_frame_comments(spec: spec),
-        ),
-      },
-      Mutate {
-        member: "frame" as NonEmptyStr,
-        steps: [
-          deploy_stage_directory_let_step(),
-          deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var])),
-        ],
-      },
-      Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
-    ],
-    concat(
-      flat_map(effects, e => retract_or_apply_effect_fragments(
-        effect: e,
-        spec: spec,
-        revision: RevisionNotInstalled,
-        oidc_now: Absent,
-        principal: access.principal,
-      )),
-      [Mutate { member: "receipt" as NonEmptyStr, steps: [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "retract"))] }],
-    ),
-  )
-}
-
-fn retract_intent_from_effects(
-  spec: DeploymentSpec,
-  effects: List<MemberEffect<DeploymentStep>>,
-  access: DeployAccess
-) -> Pipeline {
-  compose_host_script(fragments: retract_intent_fragments(spec: spec, effects: effects, access: access))
-}
-
-fn retract_intent_fragments_for(spec: DeploymentSpec, access: DeployAccess) -> List<HostScriptFragment> {
-  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-    EffectsReady { effects: es } =>
-      retract_intent_fragments(spec: spec, effects: es, access: access)
-    ApplyRefused { refusals: _ } =>
-      host_script_member_refused(
-        member: "retract" as NonEmptyStr,
-        cause: "wholesale retract refuse",
-        command: live_deploy_wholesale_refused_poison_prefix,
-      )
   }
 }
 
@@ -5041,33 +4716,6 @@ fn live_deploy_apply_script_when_client_observed(
   }
 }
 
-fn live_deploy_retract_script_for(spec: DeploymentSpec, access: DeployAccess) -> String {
-  match spec.target.lab_plan {
-    LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "retract")
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
-      match spec.target.tailscale_client {
-        ScopedRemovalUnsupported { observed: v } =>
-          retract_unsupported_client_poison(observed: semver_version_label(v: v))
-        ScopedRemovalUnobserved { reason: r } =>
-          retract_unobserved_client_poison(reason: r)
-        ScopedRemovalSupported { observed: _ } =>
-          live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
-      }
-  }
-}
-
-fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec, access: DeployAccess) -> String {
-  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-    EffectsReady { effects: es } =>
-      emit_pipeline_or_poison(
-        p: retract_intent_from_effects(spec: spec, effects: es, access: access),
-        refused: live_deploy_retract_emit_refused_poison
-      )
-    ApplyRefused { refusals: rs } =>
-      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
-  }
-}
-
 fn live_deploy_apply_script_for_wet(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
@@ -5145,15 +4793,6 @@ data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data live_deploy_retract_emit_shell_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_retract_script_for",
-    field: WholeDeclaration
-  }
-}
-
 data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -5163,11 +4802,11 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
   }
 }
 
-// The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two
+// The apply script is ONE orchestration-intent Pipeline (the retract fold is typed legs, gunbc.live_deploy.retract_legs), built from the two
 // degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile
 // desired=all-members/observed=none => all Upsert; retract = reconcile
-// desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects /
-// retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind
+// desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects
+// folds the resulting MemberEffects into the Pipeline via the per-kind
 // emit_deploy_member_effect handler (share the diff, dispatch the apply), framing
 // (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses
 // the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the
@@ -5207,3 +4846,49 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     field: WholeDeclaration,
   }
 }
+
+// Leftover timer retirement (FleetConvergeTimerUnit teardown shape): disable if loaded, remove the
+// unit file, daemon-reload, read back LoadState=not-found. Absence is converged — the disable is
+// gated on not-found, and rm -f is a no-op on a missing file.
+data leftover_systemd_timer_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete leftover_systemd_timer_retire_steps, retract_legs retract_leftover_timer_legs and the retired belt/publication timer name functions once every deployed instance's apply readback has reported LoadState=not-found for both leftover units" as NonEmptyStr)
+
+fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -> List<PipelineStep> {
+  [
+    deploy_raw(command: bash_intent_command_or_poison(
+      intent: systemctl_load_state_assignment_intent(unit: unit)
+    )),
+    deploy_raw(command: bash_intent_command_or_poison(
+      intent: systemctl_disable_now_when_loaded_intent(unit: unit, privileged: privileged)
+    )),
+  ]
+}
+
+fn leftover_timer_not_found_readback_intent() -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: "_gunbc_load_state"),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: systemd_unit_load_state_not_found_wire as String),
+    ]),
+    then_stmts: [
+      bash_build_command_from_lits(lits: [
+        "echo",
+        "leftover timer still loaded after retire — LoadState is not not-found (fail-closed)",
+      ]),
+      bash_build_command_from_lits(lits: ["exit", "1"]),
+    ]
+  )
+}
+
+fn leftover_systemd_timer_retire_steps(unit: NonEmptyStr, path: NonEmptyStr) -> List<PipelineStep> {
+  concat(
+    systemctl_disable_now_if_present_steps(unit: unit, privileged: true),
+    [
+      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [path as String])),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_raw(command: bash_intent_command_or_poison(intent: systemctl_load_state_assignment_intent(unit: unit))),
+      deploy_raw(command: bash_intent_command_or_poison(intent: leftover_timer_not_found_readback_intent())),
+    ]
+  )
+}
+
