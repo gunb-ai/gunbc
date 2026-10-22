@@ -167,6 +167,7 @@ fn swift_te_edge_is_projection(e: Edge) -> Bool {
 // refuses typed -- no projection decodes, so no type-position emission is guessed.
 fn swift_te_target_without_edge() -> TargetModel {
   TargetModel {
+    primitive_realizations: swift_target_model().primitive_realizations,
     produced_decl_support: swift_target_model().produced_decl_support,
     bundle: Node {
       kind: swift_target_model().bundle.kind,

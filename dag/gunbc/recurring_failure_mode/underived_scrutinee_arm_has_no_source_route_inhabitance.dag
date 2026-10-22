@@ -2,10 +2,14 @@ module gunbc.recurring_failure_mode.underived_scrutinee_arm_has_no_source_route_
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding }
 
 data underived_scrutinee_arm_has_no_source_route_inhabitance: RecurringFailureMode = RecurringFailureMode {
   identity: "underived_scrutinee_arm_has_no_source_route_inhabitance" as NonEmptyStr,
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "an authored-source program whose match scrutinee infer cannot derive (found by enumerating what infer leaves GroundingNotDerived at a scrutinee position, e.g. a lexical binding that declares no type), run through mbp_reading and asserted to report infer_match_scrutinee_type_underived, SUFFICIENT FOR the arm to have its source-route inhabitance claim again." } },
+
   receipts: [
     "INVALID STATE: v2.compiler.infer infer_match_coproduct's underived-scrutinee arm (accept at the frontier, report infer_match_scrutinee_type_underived) is executed only at the supplied boundary, v2.test.claim.match_binder.match_binder_typing mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds. DESIGN section 3 owes that boundary one inhabitance claim that a real producer reaches the arm, and none exists: the native seven's call scrutinee (the former inhabitant) now derives. Probed by execution 2026-10-16 over the claim file's mbt_decls: a generic identity call `ident(x: h)` and a constructor-built scrutinee both INFER with no underived advisory, so neither reaches the arm. HARM: if the arm's reachability is lost or its advisory dropped, only a supplied entry that asserts what the file chose would notice; the arm could silently become dead or silently convict. RUNG FOUND AT: mechanically preventable at the supplied boundary only.",
     "CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: an authored-source program whose match scrutinee infer cannot derive (found by enumerating what infer leaves GroundingNotDerived at a scrutinee position, e.g. a lexical binding that declares no type), run through mbp_reading and asserted to report infer_match_scrutinee_type_underived, SUFFICIENT FOR the arm to have its source-route inhabitance claim again. CAN CLIMB NOW BUT UNBUILT: the search for such a program was time-boxed out of the retirement of match_arm_binder_typing_lost_to_lexical_carrier.",

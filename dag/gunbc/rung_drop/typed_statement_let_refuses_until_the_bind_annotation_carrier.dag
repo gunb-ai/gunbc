@@ -1,7 +1,8 @@
 module gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_carrier
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for the typed statement-form let on the v2 route (DESIGN 4b(3)), landed by
@@ -30,10 +31,7 @@ data typed_statement_let_refuses_until_the_bind_annotation_carrier: RungDrop = R
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "a v2.std.node Bind carrier for the let annotation -- at most one Named edge under the unauthorable v2.std.type_binder `<type-annotation>` label beside Bind's three positional edges (shape ruled by neat-boar-16) -- resolved by v2.compiler.resolve in a type-position frame and checked by v2.compiler.infer (lane adhoc-5cc9c032-d3f, item 2a)" },
-    population: [
-      "v2.test.claim.body_lowering.statement_let_bind typed_statement_let_refuses_at_its_annotation_holds (was typed_statement_let_lowers_holds)",
-      "every type-annotated statement-form let on the v2 route, each refused body_lowering_reason_type_annotation_not_carried at its annotation; counted by that reason in the gen-two census",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "v2.test.claim.body_lowering.statement_let_bind typed_statement_let_refuses_at_its_annotation_holds (was typed_statement_let_lowers_holds)", tail: ["every type-annotated statement-form let on the v2 route, each refused body_lowering_reason_type_annotation_not_carried at its annotation; counted by that reason in the gen-two census"] } },
     restoration_trigger: "an annotated statement let lowers to a Bind CARRYING its annotation (not explaining it as dropped), the annotation's type names resolve in a type-position frame -- a body annotation's `T` binds to the enclosing fn's <T>, and a type parameter in value position still refuses -- and infer checks the bound value against it. Observed at retirement: typed_statement_let_refuses_at_its_annotation_holds flips back to asserting the typed let lowers with its annotation carried, and passes on a required run; this row retires in that change. Lowering the let while dropping or explaining away its annotation does not discharge this row."
   }
 }

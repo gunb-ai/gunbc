@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_record_accepted_where_a_declared_scalar_slot_is_declared
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_record_accepted_where_a_declared_scalar_slot_is_declared: RecurringFailureMode = RecurringFailureMode {
   identity: "a_record_accepted_where_a_declared_scalar_slot_is_declared" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a constructed record is accepted at a position whose declared type is a kernel scalar, with zero diagnostics at acceptance** (the declared-type judgment on the interpreted path runs when the VALUE side is a kernel literal or a collection; a constructor-produced record is not judged against the slot's declared type, so the mismatch enters the program silently).",

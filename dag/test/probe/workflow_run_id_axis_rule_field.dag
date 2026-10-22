@@ -1,0 +1,20 @@
+module test.probe.workflow_run_id_axis_rule_field
+
+// A WORKFLOW RUN ID, BY REFERENCE, WRITTEN INTO THE RULE-ID FIELD. The run id is the neighbour the
+// brief names: the same { value: Int } shape, imported so the refusal cannot be an unknown-name
+// artifact. If GitHubWorkflowRunId and GitHubDeploymentProtectionRuleId were one shared carrier, this
+// line would compile. Read by a_run_id_carrier_where_a_rule_id_belongs_is_refused_at_the_field in
+// test.claim.workflow_run_id_axis_witness.
+import extdeps.github.app { GitHubAppId }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import extdeps.github.deployment_protection_rule { EnabledDeploymentProtectionRule, RuleOwningApp }
+
+data a_run: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067113 }
+data an_app: GitHubAppId = GitHubAppId { value: 7 }
+
+data forged_run_in_rule_field: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule {
+  id: a_run,
+  node_id: "DPPR_run_axis",
+  enabled: true,
+  app: RuleOwningApp { id: an_app, slug: "owning-app" },
+}

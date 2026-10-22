@@ -1,6 +1,7 @@
 module gunbc.ci.ci_spec
 
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+import gunbc.claim_executor_cli { claim_executor_relative_path }
 
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
@@ -64,7 +65,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_subshell_from_stmts, bash_build_stmt_list_from_nodes, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix }
+import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line }
 import extdeps.github.actions_environment { github_output_variable_name }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
@@ -72,6 +73,7 @@ import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
+import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 
@@ -126,7 +128,6 @@ import v2.workflow.gunbc_invoke_step_emit {
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
-  project_falsifier_gates,
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
@@ -170,6 +171,7 @@ import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
+import extdeps.rust.cargo { cargo_default_release_dir }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -311,19 +313,6 @@ type CiSpec {
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-// The THIRD executing gate surface, projected beside the floor and regen lists so the
-// coproduct-totality witness can see it. v2.test.claim.ci_spec_witness
-// witness_gate_roster_matches_coproduct_arms asserts BAG-EQUALITY between the enrolled gates and
-// every arm of the Gate coproduct — the construction-shaped form of 'no gate is unenrolled',
-// strictly stronger than the per-row detection wall in gunbc.commit_workflow because it reds when a
-// gate is enrolled NOWHERE even if no roster row was edited (a newly added Gate arm, for instance).
-// When the cadence lane gained gates on 2026-07-26 that witness went red for exactly the right
-// reason: its universe of executing surfaces was two and there were now three. Adding this
-// projection to the bag EXTENDS the totality check to the new surface; the tempting alternative —
-// dropping the two flipped arms or slackening bag-equality to subset — would have silenced the wall
-// in the same motion that made it informative, the absorbing-fallback shape DESIGN §5 forbids.
-data gunbc_ci_falsifier_gates: List<Gate> = project_falsifier_gates(roster: commit_gate_roster)
-
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
 data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
@@ -418,7 +407,7 @@ data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived 
 // on host roulette, and a breach meaning 'you landed on srv2-02' trains the on-call to rerun:
 // crying wolf in budget clothes. POLICY: clamps are sized to cover MEASURED fleet spread, so a
 // breach means content grew, never which host answered. The growth-detector job moves to per-row
-// trend receipts on the falsifier cadence (row grew >2x against its dated basis = a counted drift
+// trend receipts on the falsifier cadence, DECLARED BUT UNREALIZED since its executor was deleted at 611fd02770/#8283 (row grew >2x against its dated basis = a counted drift
 // receipt), which is what makes a larger clamp margin safe — sensitivity is preserved at row grain
 // while merge-refusal stops firing on variance. BASIS OF 540: post-re-home projection 377s (the
 // worse of two observed walls, 613864ms on srv2-02, minus ~237s of eval the six re-homed rows
@@ -590,10 +579,13 @@ fn ci_release_build_line() -> String {
 fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
   let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
   let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
+  // The release dir comes from cargo's default-layout home, as in ci_release_artifact_word; with the
+  // shell var as build_root the emitted text is byte-identical, so the fleet pack key does not move.
+  let release_dir = cargo_default_release_dir(build_root: "$ROOT")
   join([
-    "rm -rf ", dir, " && \"$ROOT/target/release/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
+    "rm -rf ", dir, " && \"", release_dir, "/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
     " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
-    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"$ROOT/target/release/", bin.name, "\"",
+    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"", release_dir, "/", bin.name, "\"",
   ], "")
 }
 
@@ -664,7 +656,12 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
 fn ci_release_artifact_word(name: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [
     bash_build_word_var(name: "ROOT"),
-    bash_build_word_lit(text: concat("/target/release/", name)),
+    // The literal is derived from cargo's default-layout home (extdeps.rust.cargo), not
+    // re-spelled: this word is where the CI release-artifact check reads its binaries from, so a
+    // hand-written join here is the one leaf that could compile green while pointing the floor's
+    // verify at a directory cargo no longer uses. The bash-word medium keeps ROOT as a var node;
+    // only the constant segment comes from the fn (empty build_root -> "/target").
+    bash_build_word_lit(text: concat(cargo_default_release_dir(build_root: ""), concat("/", name))),
   ])
 }
 
@@ -984,6 +981,11 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_file_converge.dag",
+  function: "runner_host_cap_release_ci_wet",
+}
+
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
 // and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
@@ -1162,6 +1164,11 @@ data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = Gunbc
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
   function: "mtcollins1_census_image_publish_wet",
+}
+
+data gunbc_ci_mtcollins1_runner_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_medium_publish.dag",
+  function: "mtcollins1_runner_image_publish_wet",
 }
 
 data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1430,6 +1437,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
+    gunbc_ci_runner_host_cap_release_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -1449,6 +1457,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
+    gunbc_ci_mtcollins1_runner_image_publish_target,
     gunbc_ci_mtcollins1_census_member_readback_target,
     gunbc_ci_mtcollins1_census_qemu_host_observe_target,
     gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target,
@@ -1666,7 +1675,7 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 //
 // WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
 // prelude that interpolates a credential into a command string — these bodies are hand-authored
-// shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them.
+// shell text, not declared operation argv, so std.operation_argv's binding wall cannot see them.
 // The class stays mitigatable here; the trigger is the one extdeps.bmc.http names: credentials
 // modeled as declared inputs whose type the binder can refuse.
 //
@@ -2130,7 +2139,7 @@ fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarg
 }
 
 // THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
-// taken tag exactly (a prefix or any-line search would admit a refused receipt whose verbatim controller
+// taken tag or the host-off unestablished tag exactly (the latter boots only because the post-power-on chassis-fan read gates it) (a prefix or any-line search would admit a refused receipt whose verbatim controller
 // answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
 // output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
 // under always(), so the refused receipt is still kept.
@@ -2141,7 +2150,7 @@ fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
   bif_else(
     cond: bash_build_and_then(
       left: btest(words: [bl(text: "-f"), receipt]),
-      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix)]),
+      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix), bl(text: "-o"), bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_unestablished_host_off_line)]),
     ),
     then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [
@@ -3052,7 +3061,7 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     entry: gunbc_ci_runner_host_file_observe_target.entry,
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
 
@@ -3076,13 +3085,28 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
   )
 }
 
+// EACH FINALIZER WRITES ITS OWN RECEIPT: the always() release runs right after the converge step, so a shared
+// path would replace the converge receipt, the record of a failed or withheld bracket.
+data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
+data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
+
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
     claim_run: false,
-    receipt_rel: "target/runner-host-file-converge-receipt.txt"
+    receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
+  )
+}
+
+fn gunbc_ci_runner_host_cap_release_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_cap_release_target.entry,
+    function: gunbc_ci_runner_host_cap_release_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
   )
 }
 
@@ -3196,6 +3220,17 @@ fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
     function: gunbc_ci_mtcollins1_census_image_publish_target.function,
     claim_run: false,
     receipt_rel: mtcollins1_census_image_receipt_path
+  )
+}
+
+// The runner image publish is the census publish's sibling: fleet SSH to srv2, no controller, no prelude.
+fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_runner_image_publish_target.entry,
+    function: gunbc_ci_mtcollins1_runner_image_publish_target.function,
+    claim_run: false,
+    receipt_rel: mtcollins1_runner_image_receipt_path
   )
 }
 
@@ -4047,7 +4082,7 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
 // run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  "target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2"
+  concat(claim_executor_relative_path(), " --regen-round-cost --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {

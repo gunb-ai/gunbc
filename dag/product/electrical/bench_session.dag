@@ -2,10 +2,10 @@ module product.electrical.bench_session
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_min, nat_max }
 import std.measure { Millivolt, Volt, millivolt_count, volt_count }
 import product.placement_supply { PhysicalAssetIdentity }
-import product.electrical.connectivity { ElectricalTerminalRef }
+import product.electrical.connectivity { ElectricalTerminalRef, ComponentInstanceIdentity, terminal_ref_equal }
 import product.electrical.continuity {
   BenchConditions,
   EvidenceRef,
@@ -32,6 +32,12 @@ import product.electrical.continuity {
 // is kept in ohms only with its range; a display at the shorted-probe baseline, above it with its value
 // unrecorded, or over range, is its own reading, never a number. In-circuit resistance runs through
 // every parallel path, so a value is what the meter saw between two points, not a component's value.
+//
+// A ZERO IS READ AGAINST THE PROBES' OWN ZERO. The leads have resistance of their own, and a display's
+// last digit is one count of its range, so "0.00" on one range is a bound another range shows as a
+// value. A display joins two points only against the display the same meter gave with its probes
+// shorted, on the reading's own range, recorded with the session's readings; a zero the operator
+// reports with no such baseline recorded is kept as reported and joins nothing.
 //
 // A STATED BOUND IS NOT A VALUE. "Well below 2.5 V" bounds the reading from above and says nothing
 // finer; a derivation may use the bound, never a number inside it. Whether the operator stated a
@@ -86,9 +92,19 @@ type MeterRange
   = RangeFullScale { ohms: Nat }
   | RangeUnrecorded
 
+// full_scale_ohms is the range the baseline was read on; shown is what the display gave with the probes
+// shorted.
+type ShortedProbeBaseline {
+  full_scale_ohms: Nat
+  shown: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+// reported is the operator's words for the display ("0.00", "0 ohm", "ground").
 type ResistanceDisplay
   = DisplayValue { ohms: Nat, approximate: Bool }
-  | DisplayAtProbeBaseline
+  | DisplayAtProbeBaseline { shown: NonEmptyStr, baseline: ShortedProbeBaseline }
+  | DisplayZeroWithoutBaseline { reported: NonEmptyStr }
   | DisplayAboveBaseline
   | DisplayOverRange
 
@@ -122,10 +138,26 @@ type ResistanceObservation {
   evidence: List<EvidenceRef>
 }
 
-// Whether a resistance reading joins its two points at the shorted-probe baseline.
+// Whether a resistance reading is a zero the operator reported with no shorted-probe baseline recorded.
+fn is_reported_zero(o: ResistanceObservation) -> Bool {
+  match o.display {
+    DisplayZeroWithoutBaseline { reported: _ } => true
+    DisplayAtProbeBaseline { shown: _, baseline: _ } => false
+    DisplayValue { ohms: _, approximate: _ } => false
+    DisplayAboveBaseline => false
+    DisplayOverRange => false
+  }
+}
+
+// Whether a resistance reading joins its two points at the shorted-probe baseline: only against a
+// baseline read on the reading's own recorded range.
 fn is_at_baseline(o: ResistanceObservation) -> Bool {
   match o.display {
-    DisplayAtProbeBaseline => true
+    DisplayAtProbeBaseline { shown: _, baseline } => match o.range {
+      RangeFullScale { ohms } => ohms == baseline.full_scale_ohms
+      RangeUnrecorded => false
+    }
+    DisplayZeroWithoutBaseline { reported: _ } => false
     DisplayValue { ohms: _, approximate: _ } => false
     DisplayAboveBaseline => false
     DisplayOverRange => false
@@ -137,22 +169,52 @@ fn is_at_baseline(o: ResistanceObservation) -> Bool {
 // readings taken at the wire are recorded at the wire's point, and intended names the terminal the wire
 // was meant for. Whether it stands for that terminal is derived from readings joining the two, in the
 // layer that reads the board, and never stored here; disputes are the operator's own later statements
-// doubting where it sat.
+// doubting where it sat. A ruling is the operator's statement settling that the wire sits on the
+// terminal: it closes the question in the record, and it is still not a reading.
 type ProbeAttachment {
   point: ElectricalTerminalRef
   intended: ElectricalTerminalRef
   statement: EvidenceRef
   disputes: List<EvidenceRef>
+  ruling: List<EvidenceRef>
+}
+
+// A CHANGE THE OPERATOR MADE TO THE ASSET THAT IS NEITHER A PROBE NOR A READING: a part's heatsink
+// lifted to read its marking, its thermal interface removed and another applied. Readings before and
+// after are of different physical states, so the alteration is keyed and dated; what was applied is
+// Absent until the refit is reported, and a report says so rather than assuming it.
+type ThermalInterface
+  = ThermalPad
+  | ThermalPaste
+  | InterfaceUnstated
+
+type AssetAlteration {
+  key: NonEmptyStr
+  asset: PhysicalAssetIdentity
+  part: ComponentInstanceIdentity
+  performed_on: NonEmptyStr
+  removed: ThermalInterface
+  applied: ThermalInterface?
+  evidence: EvidenceRef
+}
+
+fn thermal_interface_text(t: ThermalInterface) -> String {
+  match t {
+    ThermalPad => "a thermal pad"
+    ThermalPaste => "thermal paste"
+    InterfaceUnstated => "an interface the operator did not state"
+  }
 }
 
 type BenchRecord {
   incidents: List<BenchIncident>
   attachments: List<ProbeAttachment>
+  alterations: List<AssetAlteration>
   voltages: List<NodeVoltageObservation>
   resistances: List<ResistanceObservation>
 }
 
-data no_bench_record: BenchRecord = BenchRecord { incidents: [], attachments: [], voltages: [], resistances: [] }
+data no_bench_record: BenchRecord = BenchRecord { incidents: [], attachments: [], alterations: [], voltages: [], resistances: [] }
 
 // Whether a reading may stand for the board's state before every incident it is ordered against.
 fn is_before_incidents(o: ReadingOrder) -> Bool {
@@ -237,7 +299,8 @@ fn stability_text(s: ReadingStability) -> String {
 fn resistance_display_text(d: ResistanceDisplay) -> String {
   match d {
     DisplayValue { ohms, approximate } => join([if approximate { "about " } else { "" }, to_string(ohms), " ohm"], "")
-    DisplayAtProbeBaseline => "at the shorted-probe baseline"
+    DisplayAtProbeBaseline { shown, baseline } => join(["'", shown as String, "', at the shorted-probe baseline ('", baseline.shown as String, "' with the probes shorted on the ", to_string(baseline.full_scale_ohms), " ohm range)"], "")
+    DisplayZeroWithoutBaseline { reported } => join(["reported as '", reported as String, "' with no shorted-probe baseline recorded"], "")
     DisplayAboveBaseline => "above the shorted-probe baseline (value unrecorded)"
     DisplayOverRange => "over range"
   }
@@ -263,6 +326,129 @@ fn resistance_text(o: ResistanceObservation) -> String {
     terminal_text(t: o.first), " to ", terminal_text(t: o.second), " read ", resistance_display_text(d: o.display), range_text(r: o.range), polarity_text(o: o), stability_text(s: o.stability),
     certainty_text(c: o.certainty), order_text(o: o.order),
   ], "")
+}
+
+// ONE PAIR READ ON MORE THAN ONE RANGE. Each range drives its own test current, so a plain conductor
+// shows the same value on every range within the display's counts, and a path holding a junction does
+// not: its apparent resistance moves with the current. The agreement factor is the display's: a
+// 1999-count reading above ten counts cannot double from rounding alone, so a pair whose valued
+// readings on recorded ranges differ by more than a factor of two reads as moving with the range. A
+// pair valued on one recorded range only, or never valued on a recorded range, is not read either way.
+data range_agreement_factor: Nat = 2
+
+type PairRangeStanding
+  = ReadingMovesWithRange { readings: List<ResistanceObservation>, lowest_ohms: Nat, highest_ohms: Nat }
+  | ReadingHoldsAcrossRanges { readings: List<ResistanceObservation>, lowest_ohms: Nat, highest_ohms: Nat }
+  | PairValuedOnOneRange { readings: List<ResistanceObservation> }
+  | PairRangeUnread
+
+fn observation_reads_pair(o: ResistanceObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  (terminal_ref_equal(a: o.first, b: a) && terminal_ref_equal(a: o.second, b: b)) || (terminal_ref_equal(a: o.first, b: b) && terminal_ref_equal(a: o.second, b: a))
+}
+
+fn valued_ohms(o: ResistanceObservation) -> Nat? {
+  match o.display {
+    DisplayValue { ohms, approximate: _ } => match o.range {
+      RangeFullScale { ohms: _ } => Present { value: ohms }
+      RangeUnrecorded => Absent
+    }
+    DisplayAtProbeBaseline { shown: _, baseline: _ } => Absent
+    DisplayZeroWithoutBaseline { reported: _ } => Absent
+    DisplayAboveBaseline => Absent
+    DisplayOverRange => Absent
+  }
+}
+
+fn recorded_full_scale(o: ResistanceObservation) -> Nat {
+  match o.range {
+    RangeFullScale { ohms } => ohms
+    RangeUnrecorded => 0
+  }
+}
+
+fn distinct_full_scales(os: List<ResistanceObservation>) -> List<Nat> {
+  match os.first() {
+    Absent => []
+    Present { value: f } => fold(os, init: [recorded_full_scale(o: f)], f: (acc, o) => if any(acc, n => n == recorded_full_scale(o: o)) { acc } else { concat(acc, [recorded_full_scale(o: o)]) })
+  }
+}
+
+fn pair_range_standing(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> PairRangeStanding {
+  let valued = filter(os, o => observation_reads_pair(o: o, a: a, b: b) && match valued_ohms(o: o) { Present { value: _ } => true, Absent => false })
+  let ohms = flat_map(valued, o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
+  match ohms.first() {
+    Absent => PairRangeUnread
+    Present { value: f } => {
+      let lo = fold(ohms, init: f, f: (acc, n) => nat_min(a: acc, b: n))
+      let hi = fold(ohms, init: f, f: (acc, n) => nat_max(a: acc, b: n))
+      if count(distinct_full_scales(os: valued)) < 2 { PairValuedOnOneRange { readings: valued } }
+      else if hi > lo * range_agreement_factor { ReadingMovesWithRange { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
+      else { ReadingHoldsAcrossRanges { readings: valued, lowest_ohms: lo, highest_ohms: hi } }
+    }
+  }
+}
+
+fn pair_range_text(s: PairRangeStanding) -> String {
+  match s {
+    ReadingMovesWithRange { readings, lowest_ohms, highest_ohms } => join(["reads MOVING WITH THE RANGE, ", to_string(lowest_ohms), " to ", to_string(highest_ohms), " ohm across ", to_string(count(distinct_full_scales(os: readings))), " recorded ranges in ", to_string(count(readings)), " readings: a path holding a junction, not a conductor, and no join"], "")
+    ReadingHoldsAcrossRanges { readings, lowest_ohms, highest_ohms } => join(["reads the same across ", to_string(count(distinct_full_scales(os: readings))), " recorded ranges, ", to_string(lowest_ohms), " to ", to_string(highest_ohms), " ohm in ", to_string(count(readings)), " readings"], "")
+    PairValuedOnOneRange { readings } => join(["is valued on one recorded range only (", to_string(count(readings)), " readings), so whether it moves with the range is unread"], "")
+    PairRangeUnread => "has no valued reading on a recorded range"
+  }
+}
+
+// ONE PAIR READ WITH THE PROBES EACH WAY. The meter's resistance source has a polarity, so a path holding
+// a junction reads differently with the probes swapped and a resistor does not. The tolerance is
+// declared, not measured: the two values agree when they differ by at most a tenth of the larger,
+// pending a modeled accuracy figure for the meter. Which probe touched which point is read from each
+// observation's own polarity against the pair's order, so the standing does not depend on how the
+// pair was written down.
+data polarity_agreement_tenths: Nat = 1
+
+type PairPolarityStanding
+  = ReadsAlikeBothWays { red_on_first_ohms: Nat, red_on_second_ohms: Nat }
+  | ReadsDirectionally { red_on_first_ohms: Nat, red_on_second_ohms: Nat }
+  | ReadOneWayOnly { readings: List<ResistanceObservation> }
+  | PairPolarityUnread
+
+fn red_was_on(o: ResistanceObservation, a: ElectricalTerminalRef) -> Bool {
+  match o.polarity {
+    RedOnFirst => terminal_ref_equal(a: o.first, b: a)
+    RedOnSecond => terminal_ref_equal(a: o.second, b: a)
+    PolarityUnrecorded => false
+  }
+}
+
+fn valued_with_red_on(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef, red: ElectricalTerminalRef) -> List<Nat> {
+  flat_map(filter(os, o => observation_reads_pair(o: o, a: a, b: b) && red_was_on(o: o, a: red)), o => match valued_ohms(o: o) { Present { value: n } => [n], Absent => [] })
+}
+
+fn pair_polarity_standing(os: List<ResistanceObservation>, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> PairPolarityStanding {
+  let on_a = valued_with_red_on(os: os, a: a, b: b, red: a)
+  let on_b = valued_with_red_on(os: os, a: a, b: b, red: b)
+  match on_a.first() {
+    Absent => match on_b.first() {
+      Absent => PairPolarityUnread
+      Present { value: _ } => ReadOneWayOnly { readings: filter(os, o => observation_reads_pair(o: o, a: a, b: b)) }
+    }
+    Present { value: x } => match on_b.first() {
+      Absent => ReadOneWayOnly { readings: filter(os, o => observation_reads_pair(o: o, a: a, b: b)) }
+      Present { value: y } => {
+        let larger = nat_max(a: x, b: y)
+        let diff = larger - nat_min(a: x, b: y)
+        if diff * 10 <= larger * polarity_agreement_tenths { ReadsAlikeBothWays { red_on_first_ohms: x, red_on_second_ohms: y } } else { ReadsDirectionally { red_on_first_ohms: x, red_on_second_ohms: y } }
+      }
+    }
+  }
+}
+
+fn pair_polarity_text(s: PairPolarityStanding, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> String {
+  match s {
+    ReadsAlikeBothWays { red_on_first_ohms, red_on_second_ohms } => join(["reads alike both ways (", to_string(red_on_first_ohms), " ohm with red on ", terminal_text(t: a), ", ", to_string(red_on_second_ohms), " ohm with red on ", terminal_text(t: b), ")"], "")
+    ReadsDirectionally { red_on_first_ohms, red_on_second_ohms } => join(["reads DIRECTIONALLY (", to_string(red_on_first_ohms), " ohm with red on ", terminal_text(t: a), ", ", to_string(red_on_second_ohms), " ohm with red on ", terminal_text(t: b), "): a path holding a junction, not a resistor"], "")
+    ReadOneWayOnly { readings } => join(["is read with the probes one way only (", to_string(count(readings)), " readings), so whether it holds a junction is unread"], "")
+    PairPolarityUnread => "has no valued reading with a recorded probe polarity"
+  }
 }
 
 fn inspection_text(d: DamageInspection) -> String {

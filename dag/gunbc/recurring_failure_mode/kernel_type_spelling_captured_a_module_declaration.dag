@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.kernel_type_spelling_captured_a_module_decla
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data kernel_type_spelling_captured_a_module_declaration: RecurringFailureMode = RecurringFailureMode {
   identity: "kernel_type_spelling_captured_a_module_declaration" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "a kernel type spelling captured a module's own declaration: v2 body lowering rewrote every type atom spelled `Int` or `Bool` to the kernel binding (dag_binding_type_int, bool_node_symbol) before any scope existed. A module that declared its own `type Int = | Mine` and wrote `let y: Int = 1` therefore had its annotation replaced by the kernel Int, and infer judged the let MATCHED. Nothing refused. The value did not inhabit the type the author named, and the verdict said it did (DESIGN section 5, silent wrongness).",

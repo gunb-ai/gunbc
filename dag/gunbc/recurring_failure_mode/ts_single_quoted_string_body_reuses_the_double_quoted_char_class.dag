@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.ts_single_quoted_string_body_reuses_the_double_quoted_char_class
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingStatedWithoutTrigger, RecurringFailureMode, RungUnread }
 
 data ts_single_quoted_string_body_reuses_the_double_quoted_char_class: RecurringFailureMode = RecurringFailureMode {
   identity: "ts_single_quoted_string_body_reuses_the_double_quoted_char_class" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingStatedWithoutTrigger },
 
   receipts: [
     "INVALID STATE: v2.extdeps.languages.typescript ts_string_lit_lex_rule delimited a single-quoted string with a body of RepeatPattern over StringTextChar, the DOUBLE-quoted body class (v2.compiler.tokenize: excludes the double quote and newline, not the single quote). The greedy body consumed the closing quote, the close never matched, and every single-quoted TypeScript string refused in tokenize.",

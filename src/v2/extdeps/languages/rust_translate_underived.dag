@@ -2,7 +2,7 @@ module v2.extdeps.languages.rust_translate_underived
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { empty_map }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty,
@@ -22,6 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // takes no TargetModel). Therefore every TargetModel field is dead weight
 // on the refusal path and can be minimal/void.
 data rust_minimal_underived_refusal_target: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
   produced_decl_support: ProducedDeclUnwired,
   bundle: Node {
     kind: TypeNode { connective: Conj },
