@@ -1,0 +1,369 @@
+// Witness for the TYPED LIVE_DEPLOY RETRACT RUN (gunbc.host.host_effect_realize
+// realize_live_deploy_retract_on_host and the pure folds it composes), which replaced the retract bash
+// body that retained_srvn shipped.
+//
+// The folds are pinned over SUPPLIED RunArgvTransportOutcome / SystemdPropertyCapture values (DESIGN
+// section 3: a witness discriminates at one interface; deriving them by running the legs would
+// re-run production these claims are not about). The pairing obligation is the last two claims: the
+// REAL entry point is called, over a transport that refuses before any command, and the srv1 plan it
+// would run is shown to be typed legs and not a script, so deleting the realize leaves a claim red.
+module test.claim.live_deploy.live_deploy_retract_run_witness
+
+import std.types { Bool, String, Int }
+import std.algebra { Cons, Empty, non_empty_singleton }
+import std.types { NonEmptyStr, List }
+import std.realization_reconcile { Reconciliation }
+import std.optional { Optional, Present, Absent }
+import std.realization_reconcile { Converged, NotConverged }
+import gunbc.host.host_effect { HostEffectEvidence, HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+  ShellExecObserved,
+  DeployRetractRun,
+  RetractRunOk,
+  RetractRunFailed,
+  RetractUnitNotFound,
+  RetractUnitLoaded,
+  RetractLoadStateUnreadable,
+  live_deploy_retract_verdict,
+  deploy_retract_load_state_of,
+  deploy_retract_command_failure,
+  deploy_retract_disable_failure,
+  deploy_retract_gone_failure,
+  live_deploy_receipt_line,
+  realize_live_deploy_retract_on_host,
+  DeployRetractPorts,
+  HostRemoveTarget,
+  HostRemoveEvidence,
+  RemovedNoOp,
+  live_deploy_retract_run_legs,
+  live_deploy_retract_orchestrate,
+  RetractOrchestration,
+  RetractPortCall,
+  deploy_retract_ports_on_host,
+  LiveDeployPreambleVerdict,
+  PreambleConverged,
+  PreambleRefused,
+  ScratchAcquire,
+}
+import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import gunbc.membership_reconcile { ApplyRefused, EffectsReady, MemberRefusal, MemberNotOwned }
+import gunbc.live_deploy.retract_legs { RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, DeployRetractLeg, deploy_retract_plan_legs, deploy_retract_membership_plan, RetractPlanReady, RetractPlanRefused }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { DeploymentStep }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+
+fn observed(code: Int, err: String) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { exit_code: code, success: code == 0, stdout: "", stderr: err } }
+}
+
+fn the_intent() -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: srv1_host },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "srv-x" },
+    privilege_denial: none,
+  }
+}
+
+test fn a_clean_run_converges_with_the_receipt_line() -> Bool {
+  match live_deploy_retract_verdict(run: RetractRunOk { legs_run: 7, calls: [] }, host: "srv1" as NonEmptyStr, intent: the_intent()) {
+    Converged { evidence: _, applied: _ } => true
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+test fn the_receipt_line_names_host_fold_and_verdict() -> Bool {
+  live_deploy_receipt_line(host: "srv1" as NonEmptyStr, fold: "retract") == "live-deploy-receipt host=srv1 fold=retract verdict=converged\n"
+}
+
+// THE RED: a failed run is NotConverged naming the step and the legs already completed.
+test fn a_failed_run_is_not_converged_and_names_its_step() -> Bool {
+  match live_deploy_retract_verdict(run: RetractRunFailed { step: "remove-files", reason: "exit 1", legs_run: 3, calls: [] }, host: "srv1" as NonEmptyStr, intent: the_intent()) {
+    Converged { evidence: _, applied: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "refused at step remove-files after 3 completed legs")
+  }
+}
+
+test fn load_state_not_found_is_absent_and_other_values_are_loaded() -> Bool {
+  match deploy_retract_load_state_of(capture: SystemdPropertyCaptured { value: systemd_unit_load_state_not_found_wire as String }) {
+    RetractUnitNotFound =>
+      match deploy_retract_load_state_of(capture: SystemdPropertyCaptured { value: "loaded" }) {
+        RetractUnitLoaded => true
+        RetractUnitNotFound => false
+        RetractLoadStateUnreadable { reason: _ } => false
+      }
+    RetractUnitLoaded => false
+    RetractLoadStateUnreadable { reason: _ } => false
+  }
+}
+
+// An unreadable manager is never folded into absent.
+test fn a_blank_or_refused_load_state_is_unreadable_not_absent() -> Bool {
+  match deploy_retract_load_state_of(capture: SystemdPropertyBlank) {
+    RetractLoadStateUnreadable { reason: _ } =>
+      match deploy_retract_load_state_of(capture: SystemdPropertyCaptureRefused { reason: "no manager" }) {
+        RetractLoadStateUnreadable { reason: r } => r == "no manager"
+        RetractUnitNotFound => false
+        RetractUnitLoaded => false
+      }
+    RetractUnitNotFound => false
+    RetractUnitLoaded => false
+  }
+}
+
+test fn a_refused_transport_is_a_failure_and_a_nonzero_exit_names_its_stderr() -> Bool {
+  match deploy_retract_command_failure(outcome: RunArgvTransportRefused { reason: "no exec" }) {
+    Present { value: r } =>
+      r == "no exec" && match deploy_retract_command_failure(outcome: observed(code: 2, err: "boom")) {
+        Present { value: w } => w == "exit 2: boom"
+        Absent => false
+      } && match deploy_retract_command_failure(outcome: observed(code: 0, err: "")) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Absent => false
+  }
+}
+
+test fn disable_is_skipped_when_absent_refused_when_unreadable_and_checked_when_loaded() -> Bool {
+  match deploy_retract_disable_failure(load: RetractUnitNotFound, disable: observed(code: 1, err: "x")) {
+    Present { value: _ } => false
+    Absent =>
+      match deploy_retract_disable_failure(load: RetractLoadStateUnreadable { reason: "r" }, disable: observed(code: 0, err: "")) {
+        Present { value: _ } =>
+          match deploy_retract_disable_failure(load: RetractUnitLoaded, disable: observed(code: 1, err: "x")) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+// THE RED for the leftover-timer readback: still loaded after retire refuses; only not-found converges.
+test fn the_gone_readback_refuses_a_still_loaded_or_unreadable_unit() -> Bool {
+  match deploy_retract_gone_failure(load: RetractUnitNotFound) {
+    Present { value: _ } => false
+    Absent =>
+      match deploy_retract_gone_failure(load: RetractUnitLoaded) {
+        Present { value: _ } =>
+          match deploy_retract_gone_failure(load: RetractLoadStateUnreadable { reason: "r" }) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+// INHABITANCE, ROUTE 1: the real realize is reached and refuses a non-local locus before any leg.
+test fn the_real_retract_route_refuses_a_remote_locus_typed() -> Bool {
+  match realize_live_deploy_retract_on_host(spec: deployment_spec_srv1(), transport: SshShell { ssh_host: "srv-x" }, intent: the_intent(), access: ci_deploy_srv1_access) {
+    Converged { evidence: _, applied: _ } => false
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "live_deploy retract refused over ssh host=srv-x")
+  }
+}
+
+// INHABITANCE, ROUTE 2: the srv1 retract is a Ready list of typed legs, never a script body.
+test fn the_srv1_retract_plan_is_ready_typed_legs() -> Bool {
+  match deploy_retract_plan_legs(spec: deployment_spec_srv1()) {
+    RetractPlanReady { legs: ls } => count(ls) > 0
+    RetractPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// THE RED for the wholesale arm: one member teardown-refusal refuses the WHOLE retract and names the
+// count; a refusal-free membership proceeds to its (here empty) legs.
+test fn a_member_teardown_refusal_refuses_the_retract_wholesale() -> Bool {
+  let spec = deployment_spec_srv1()
+  match spec.steps {
+    Cons { head: member, tail: _ } =>
+      match deploy_retract_membership_plan(membership: ApplyRefused { refusals: [MemberRefusal { member: member, cause: MemberNotOwned }] }, spec: spec) {
+        RetractPlanRefused { step: s, reason: r } =>
+          s == "wholesale" && string_contains(s: r, pattern: "refused-member-count=1")
+        RetractPlanReady { legs: _ } => false
+      }
+    Empty => false
+  }
+}
+
+test fn a_refusal_free_membership_is_ready() -> Bool {
+  match deploy_retract_membership_plan(membership: EffectsReady { effects: [] }, spec: deployment_spec_srv1()) {
+    RetractPlanReady { legs: ls } => count(ls) == 0
+    RetractPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// -- EXECUTION CONTROLS THROUGH THE PRODUCTION ORCHESTRATION AND DISPATCH. The transport has no mock arm
+// (ruling 2026-08-23), so the effectful ports (argv dispatch, the C2 removal, the LoadState read) are
+// SUPPLIED as function values to the same live_deploy_retract_orchestrate / live_deploy_retract_run_legs
+// the real route calls, and the real srv1 plan is the leg list. A runner that returns success without
+// dispatching a leg, or an arm that does not call the C2 removal, changes these results.
+fn ports_ok() -> DeployRetractPorts {
+  DeployRetractPorts {
+    command: fn(c) { observed(code: 0, err: "") },
+    remove: fn(t) { Converged { evidence: RemovedNoOp { path: "/x" as NonEmptyStr }, applied: t } },
+    load: fn(u) { SystemdPropertyCaptured { value: systemd_unit_load_state_not_found_wire as String } },
+  }
+}
+
+fn ports_command_fails() -> DeployRetractPorts {
+  DeployRetractPorts {
+    command: fn(c) { observed(code: 5, err: "boom") },
+    remove: fn(t) { Converged { evidence: RemovedNoOp { path: "/x" as NonEmptyStr }, applied: t } },
+    load: fn(u) { SystemdPropertyCaptured { value: systemd_unit_load_state_not_found_wire as String } },
+  }
+}
+
+fn ports_remove_refuses() -> DeployRetractPorts {
+  DeployRetractPorts {
+    command: fn(c) { observed(code: 0, err: "") },
+    remove: fn(t) { NotConverged { reason: "host_remove: refused", applied: t } },
+    load: fn(u) { SystemdPropertyCaptured { value: systemd_unit_load_state_not_found_wire as String } },
+  }
+}
+
+fn srv1_legs() -> List<DeployRetractLeg> {
+  match deploy_retract_plan_legs(spec: deployment_spec_srv1()) {
+    RetractPlanReady { legs: ls } => ls
+    RetractPlanRefused { step: _, reason: _ } => []
+  }
+}
+
+test fn the_success_route_runs_every_leg() -> Bool {
+  match live_deploy_retract_run_legs(legs: srv1_legs(), ports: ports_ok()) {
+    RetractRunOk { legs_run: n, calls: _ } => n == count(srv1_legs()) && n > 0
+    RetractRunFailed { step: _, reason: _, legs_run: _, calls: _ } => false
+  }
+}
+
+test fn a_command_leg_failure_stops_the_run_before_any_later_leg() -> Bool {
+  match live_deploy_retract_run_legs(legs: srv1_legs(), ports: ports_command_fails()) {
+    RetractRunFailed { step: _, reason: r, legs_run: n, calls: _ } => n < count(srv1_legs()) - 1 && string_contains(s: r, pattern: "exit 5: boom")
+    RetractRunOk { legs_run: _, calls: _ } => false
+  }
+}
+
+test fn a_c2_removal_refusal_stops_the_run_and_is_what_the_run_reports() -> Bool {
+  match live_deploy_retract_run_legs(legs: srv1_legs(), ports: ports_remove_refuses()) {
+    RetractRunFailed { step: _, reason: r, legs_run: n, calls: _ } => n < count(srv1_legs()) - 1 && string_contains(s: r, pattern: "host_remove: refused")
+    RetractRunOk { legs_run: _, calls: _ } => false
+  }
+}
+
+fn preamble_converged(p: NonEmptyStr) -> LiveDeployPreambleVerdict {
+  PreambleConverged { principal: "p", dropin: "/d" as NonEmptyStr, legs_consumed: 1 }
+}
+
+fn preamble_refused(p: NonEmptyStr) -> LiveDeployPreambleVerdict {
+  PreambleRefused { step: ScratchAcquire, reason: "no scratch", legs_consumed: 0 }
+}
+
+fn orchestrate(preamble: fn(NonEmptyStr) -> LiveDeployPreambleVerdict, ports: DeployRetractPorts) -> RetractOrchestration {
+  live_deploy_retract_orchestrate(
+    locus_refusal: none,
+    plan: deploy_retract_plan_legs(spec: deployment_spec_srv1()),
+    principal: "gunbc-publication" as NonEmptyStr,
+    preamble: preamble,
+    ports: ports,
+    host: "srv1" as NonEmptyStr,
+    intent: the_intent(),
+  )
+}
+
+test fn the_orchestration_converges_over_all_ports_ok() -> Bool {
+  match orchestrate(preamble: preamble_converged, ports: ports_ok()).verdict {
+    Converged { evidence: _, applied: _ } => true
+    NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// NO LEG DISPATCHED IS READ FROM THE TRACE. The orchestration returns the port calls the dispatch made,
+// recorded at the single site that invokes each port, so a preamble refusal that also ran a leg shows
+// calls here even when its verdict is still the refusal. The verdict claim alone could not tell.
+test fn a_preamble_refusal_dispatches_no_leg() -> Bool {
+  let o = orchestrate(preamble: preamble_refused, ports: ports_ok())
+  match o.verdict {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "refused at preamble step") && string_contains(s: r, pattern: "no scratch") && count(o.calls) == 0
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// The positive control for the trace: a converged run records the calls it made, so an empty trace on
+// the refusal is a reading and not an always-empty field.
+test fn a_converged_orchestration_records_its_port_calls() -> Bool {
+  count(orchestrate(preamble: preamble_converged, ports: ports_ok()).calls) >= count(srv1_legs())
+}
+
+// A mid-run refusal is a refusal AFTER the legs before it, and its trace ends at the refusing removal:
+// no leg after the refusing one is dispatched.
+test fn a_mid_run_refusal_through_the_orchestration_is_not_converged() -> Bool {
+  let o = orchestrate(preamble: preamble_converged, ports: ports_remove_refuses())
+  match o.verdict {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "refused at step") && last_call_is_remove(calls: o.calls)
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+fn last_call_is_remove(calls: List<RetractPortCall>) -> Bool {
+  match calls {
+    Empty => false
+    Cons { head: h, tail: t } =>
+      match t {
+        Empty => h.port == "remove"
+        Cons { head: _, tail: _ } => last_call_is_remove(calls: t)
+      }
+  }
+}
+
+// R8 THROUGH THE PRODUCTION ADAPTER. ports_remove_refuses never calls host_remove_on_host, so the per-kind
+// controls below stop at the dispatch. Here the removal port is the production deploy_retract_ports_on_host
+// over EmitArtifactThenThinRun, a real transport arm that refuses typed argv before any command: the C2
+// leaf's pre-removal probe is refused by that boundary, C2 refuses with no removal dispatched, and the run
+// reports it. An adapter that no longer calls host_remove_on_host cannot produce this reason.
+test fn the_production_adapter_reaches_c2_and_the_typed_transport_refusal() -> Bool {
+  let ports = deploy_retract_ports_on_host(transport: EmitArtifactThenThinRun {
+    bootstrap: BootstrapFragment { script: "true" },
+    invocation: ThinInvocation { argv: ["true"] },
+  })
+  match live_deploy_retract_run_legs(legs: [RetractRemoveRecursive { path: "/var/lib/gunbc-b" as NonEmptyStr }], ports: ports) {
+    RetractRunFailed { step: _, reason: r, legs_run: n, calls: cs } =>
+      n == 0
+        && count(cs) == 1
+        && string_contains(s: r, pattern: "the pre-removal state of a path could not be read, so no removal was dispatched")
+        && string_contains(s: r, pattern: "typed argv cannot use EmitArtifactThenThinRun")
+        && string_contains(s: r, pattern: "/var/lib/gunbc-b")
+    RetractRunOk { legs_run: _, calls: _ } => false
+  }
+}
+
+// EACH REMOVE LEG KIND REACHES THE C2 REMOVAL PORT. A leg run alone against a removal that refuses must
+// stop the run at that leg with the removal's own reason; a dispatch arm that skips the removal (or
+// answers for it) reports RetractRunOk and fails these.
+fn a_refused_removal_stops_a_run_of(leg: DeployRetractLeg) -> Bool {
+  match live_deploy_retract_run_legs(legs: [leg], ports: ports_remove_refuses()) {
+    RetractRunFailed { step: _, reason: r, legs_run: n, calls: _ } => n == 0 && string_contains(s: r, pattern: "host_remove: refused")
+    RetractRunOk { legs_run: _, calls: _ } => false
+  }
+}
+
+test fn remove_force_reaches_the_c2_removal() -> Bool {
+  a_refused_removal_stops_a_run_of(leg: RetractRemoveForce { paths: non_empty_singleton(item: "/etc/gunbc-a" as NonEmptyStr) })
+}
+
+test fn remove_empty_directory_reaches_the_c2_removal() -> Bool {
+  a_refused_removal_stops_a_run_of(leg: RetractRemoveEmptyDirectory { path: "/var/lib/gunbc-a" as NonEmptyStr })
+}
+
+test fn remove_recursive_reaches_the_c2_removal() -> Bool {
+  a_refused_removal_stops_a_run_of(leg: RetractRemoveRecursive { path: "/var/lib/gunbc-b" as NonEmptyStr })
+}
