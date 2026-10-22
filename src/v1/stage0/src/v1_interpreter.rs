@@ -19602,6 +19602,23 @@ fn dispatch_file(
 
     let path = file_transport_path(transport, param_env, ctx)?;
 
+    // MEASUREMENT-ONLY (quiet-carp-503 substrate-cluster hunt, scratch branch scratch/qc503-read-caller,
+    // NEVER lands): name the .dag caller frame at every .dag read so the ~5m40s substrate re-read
+    // clusters can be attributed to their requesting fold. Gated by QC503_READ_PROBE=1; the frame
+    // stack itself needs GUNBC_FLATTEN_SITE_DUMP_SECS (existing forensics gate for CURRENT_DAG_FN).
+    if qc503_read_probe_enabled() && path.ends_with(".dag") {
+        let stack = CURRENT_DAG_FN.with(|s| {
+            s.borrow()
+                .iter()
+                .rev()
+                .take(4)
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join(" <- ")
+        });
+        eprintln!("[qc503-read-probe] READ {path} VIA {stack}");
+    }
+
     // Optional explicit verb on the transport row (`transport file { path: ..., verb: "delete" }`).
     // Delete/List are structurally indistinguishable from Read (path-only inputs), so the
     // transport declares its own action; absent verb keeps the content-param convention
@@ -25826,6 +25843,12 @@ fn residual_hunt_forensics_enabled() -> bool {
     }
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok())
+}
+
+// MEASUREMENT-ONLY gate for the qc503 read probe on scratch/qc503-read-caller. Never lands.
+fn qc503_read_probe_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("QC503_READ_PROBE").is_ok())
 }
 
 fn record_flatten(items: usize) {
