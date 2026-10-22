@@ -872,6 +872,9 @@ fn known_red_row_holds(r: KnownRedDerivationRow, holds: Bool) -> Bool {
     BudgetRefused { safety: _ } => false
     HostToolUnresolved { name: _, probed: _ } => false
     RouteGap { operation: _, ground: _ } => false
+    // A subject that never resolved never produced a verdict, so it cannot hold -- same before-verdict family
+    // as the route gap (the ledger calls it `SubjectUnresolvedBeforeVerdict`).
+    SubjectUnresolved { entry: _, cause: _ } => false
   }
 }
 

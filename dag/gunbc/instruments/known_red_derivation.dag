@@ -76,6 +76,7 @@ import v2.workflow.floor_terminal_ledger {
   RouteGap,
   RuntimeErrored,
   SafetyInterrupted,
+  SubjectUnresolvedCause,
   TerminalLedger,
   UnpublishedWorkingTree,
   claim_disposition,
@@ -2377,6 +2378,26 @@ fn known_red_terminals_equal(a: ClaimAttemptTerminal, b: ClaimAttemptTerminal) -
         RouteGap { operation: p, ground: h } => o == p && known_red_ground_equal(a: g, b: h)
         _ => false
       }
+    SubjectUnresolved { entry: e, cause: c } =>
+      match b {
+        SubjectUnresolved { entry: f, cause: d } => e == f && known_red_subject_cause_equal(a: c, b: d)
+        _ => false
+      }
+  }
+}
+
+// A SUBJECT THAT NEVER RESOLVED. Compared by arm: two `EntryMissing` rows agree (the entry was simply not a
+// file), two `ResolveInfrastructure` rows agree only on their `detail`, and the two never agree with each
+// other -- 'the file is absent' is a different fact from 'the resolver itself broke'. Mirrors the display in
+// `floor_terminal_ledger_wire`.
+fn known_red_subject_cause_equal(a: SubjectUnresolvedCause, b: SubjectUnresolvedCause) -> Bool {
+  match a {
+    EntryMissing {} => match b { EntryMissing {} => true _ => false }
+    ResolveInfrastructure { detail: d } =>
+      match b {
+        ResolveInfrastructure { detail: e } => d == e
+        _ => false
+      }
   }
 }
 
@@ -2701,6 +2722,9 @@ fn known_red_row_was_observed(row: KnownRedDerivationRow) -> Bool {
     BudgetRefused { safety: _ } => false
     HostToolUnresolved { name: _, probed: _ } => false
     RouteGap { operation: _, ground: _ } => false
+    // A subject that never resolved is the ledger's own 'the run happened but the claim never reached its
+    // subject', same family as the route gap: the harness spoke, there is still no answer. Not observed.
+    SubjectUnresolved { entry: _, cause: _ } => false
   }
 }
 
