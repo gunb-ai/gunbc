@@ -188,7 +188,7 @@ data flash_next_quant_matrix: List<QuantMatrixRow> = [
   QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: Present { value: 7434 }, kv_centi_gib: Present { value: 8125 }, kv_tokens: Present { value: 5051998 }, gpu_memory_utilization_basis_points: 9000, throughput: b200_nvfp4_kvfp8_sweep } },
   QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellMeasured { weights_centi_gib: none, kv_centi_gib: none, kv_tokens: Present { value: 2814151 }, gpu_memory_utilization_basis_points: 9000, throughput: b200_nvfp4_kvbf16_sweep } },
   QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: Present { value: 12721 }, kv_centi_gib: Present { value: 2919 }, kv_tokens: Present { value: 1814647 }, gpu_memory_utilization_basis_points: 9000, throughput: b200_fp8w_kvfp8_sweep } },
-  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellMeasured { weights_centi_gib: none, kv_centi_gib: none, kv_tokens: none, gpu_memory_utilization_basis_points: 9000, throughput: b200_fp8w_kvbf16_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellMeasured { weights_centi_gib: none, kv_centi_gib: none, kv_tokens: Present { value: 1010317 }, gpu_memory_utilization_basis_points: 9000, throughput: b200_fp8w_kvbf16_sweep } },
   QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization_bp: 9000) },
   QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization_bp: 9000) },
   QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_centi_gib: Present { value: 7186 }, kv_centi_gib: Present { value: 1424 }, kv_tokens: Present { value: 773026 }, gpu_memory_utilization_basis_points: 9600, throughput: [] } },
@@ -245,8 +245,38 @@ type UpstreamDefectObservation {
 
 data upstream_defect_observations: List<UpstreamDefectObservation> = [
   UpstreamDefectObservation { variant: B200UpstreamV032, finding: "FP8 KV is slower than BF16 KV at c1 (357 vs 416 tok/s per request): upstream logs that FA4 Blackwell head_size=256 does not support fp8 KV and falls back to FA2; a kernel gap, not hardware" as NonEmptyStr },
-  UpstreamDefectObservation { variant: H200UpstreamV032, finding: "max-model-len 1000000 (YaRN x4): server READY with 3068862 KV tokens (3.07x of 1M), then CUDA illegal memory access at about 900k context with zero bench rows; the B200 1M result is pending" as NonEmptyStr },
+  UpstreamDefectObservation { variant: H200UpstreamV032, finding: "max-model-len 1000000 (YaRN x4): server READY with 3068862 KV tokens (3.07x of 1M), then CUDA illegal memory access at about 900k context with zero bench rows; reproduced on the B200" as NonEmptyStr },
+  UpstreamDefectObservation { variant: B200UpstreamV032, finding: "max-model-len 1000000, both KV dtypes: EngineCore RuntimeError Triton Error [CUDA] illegal memory access within about 8 s of the first ~916k-token request; reported frame qwen4_exp/nvidia/ops/hc.py _hc_gate_mix, asynchronous so not necessarily the faulting kernel; not Hopper-specific; the PLE table is the BF16 re-expression so a PLE-path fault is not excluded; cause not established" as NonEmptyStr },
 ]
+
+// THE POOL IS KEYED BY max-model-len TOO: the same cell reports a larger vLLM pool at 1,000,000 (recipe long_context: YaRN x4,
+// VLLM_ALLOW_LONG_MAX_MODEL_LEN=1) than at 262,144 (5.05M / 2.81M / 2.63M above); the difference is unexplained, so the
+// length is part of the capacity identity and these rows never replace the 262,144 rows.
+type ReportedPoolAtLength {
+  variant: ServingVariant
+  cell: QuantCell
+  max_model_len_tokens: Nat
+  kv_tokens: Nat
+}
+
+data long_context_reported_pools: List<ReportedPoolAtLength> = [
+  ReportedPoolAtLength { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), max_model_len_tokens: 1000000, kv_tokens: 5925149 },
+  ReportedPoolAtLength { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), max_model_len_tokens: 1000000, kv_tokens: 3063467 },
+  ReportedPoolAtLength { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), max_model_len_tokens: 1000000, kv_tokens: 3068862 },
+]
+
+// A HYPOTHESIS, pre-registered by the operator before the B200 bisect (single requests 400k..900k, CUDA_LAUNCH_BLOCKING=1);
+// not a cause. int32 index overflow at tokens x hidden 2560 >= 2^31 predicts a threshold near 838,861 tokens.
+type CrashThresholdHypothesis {
+  hidden_size: Nat
+  index_limit: Nat
+}
+
+data crash_int32_overflow_hypothesis: CrashThresholdHypothesis = CrashThresholdHypothesis { hidden_size: 2560, index_limit: 2147483648 }
+
+fn hypothesized_threshold_tokens(h: CrashThresholdHypothesis) -> Nat {
+  h.index_limit / h.hidden_size
+}
 
 data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(
   description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver is committed, the FP8 cells report their GPU-resident weights, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr

@@ -21,7 +21,7 @@ import gunbc.serving.flash_next_experiment_identity {
 }
 import gunbc.serving.flash_next_quant_matrix {
   QuantCell, QuantMatrixRow, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
-  CellRefusedWeightsExceedUsableMemory, CellRefusedOther, CellUnobserved, ConcurrencyReading, upstream_defect_observations, flash_next_quant_matrix, quant_matrix_outcome,
+  CellRefusedWeightsExceedUsableMemory, CellRefusedOther, CellUnobserved, ConcurrencyReading, upstream_defect_observations, long_context_reported_pools, crash_int32_overflow_hypothesis, hypothesized_threshold_tokens, flash_next_quant_matrix, quant_matrix_outcome,
   flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_centi_gib,
   WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
@@ -431,5 +431,7 @@ fn matrix_level_count(rows: List<QuantMatrixRow>, boundary_only: Bool, scoreable
 test fn w_sweep_levels_are_unadmitted_and_boundary_levels_are_flagged() -> Bool {
   matrix_level_count(rows: flash_next_quant_matrix, boundary_only: false, scoreable_only: true) == 0
     && matrix_level_count(rows: flash_next_quant_matrix, boundary_only: true, scoreable_only: false) == 4
-    && count(upstream_defect_observations) == 2
+    && count(upstream_defect_observations) == 3
+    && count(long_context_reported_pools) == 3
+    && hypothesized_threshold_tokens(h: crash_int32_overflow_hypothesis) == 838860
 }
