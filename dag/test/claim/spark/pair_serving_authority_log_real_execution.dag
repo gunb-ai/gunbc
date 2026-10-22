@@ -230,7 +230,7 @@ fn alr_local_leg(argv: List<String>) -> ArgvRun {
 }
 
 // The live unit roster is empty (every procured unit is sold), so a host's standing over the real
-// store is read with the host SUPPLIED as a unit; alr_live_roster_has_no_unit_standing pairs this
+// store is read with the host SUPPLIED as a unit; the_live_rosters_hold_no_spark_unit_and_admission_refuses_by_real_execution pairs this
 // with the route over the live rosters.
 fn alr_occupied(store: FabricStorageBinding, host: HostIdentity, at: Int) -> Bool {
   match spark_host_standings_over_roster(store: store, at: at, units: [host], arm_claims: [] as List<ServingArmHostClaim>) {
