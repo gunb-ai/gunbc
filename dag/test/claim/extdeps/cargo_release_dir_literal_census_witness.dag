@@ -2,6 +2,8 @@ module test.claim.extdeps.cargo_release_dir_literal_census_witness
 
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, List, String }
+import std.algebra { trim }
+import extdeps.git
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -33,6 +35,7 @@ data release_dir_literal_exemptions: List<ReleaseDirLiteralExemption> = [
   ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/ci/ci_layer_roots.dag", is_single_file: true, reason: "prose inside rationale strings" },
   ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/contributor_onboarding_path.dag", is_single_file: true, reason: "prose inside onboarding instructions" },
   ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/plans/deploy_convergence_observed_side.dag", is_single_file: true, reason: "prose inside a plan paragraph" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/repo_workspace.dag", is_single_file: true, reason: "prose inside a workspace-artifact meaning string" },
 ]
 
 // A `git grep -n` line is `<path>:<line>:<text>`; tracked .dag paths carry no ':'.
@@ -51,7 +54,7 @@ fn is_annotation_line(text: String) -> Bool {
 }
 
 fn exempt_path(path: String, exemptions: List<ReleaseDirLiteralExemption>) -> Bool {
-  any(exemptions, e => path.starts_with(prefix: e.path_prefix))
+  filter(exemptions, e => path.starts_with(prefix: e.path_prefix)) != []
 }
 
 // The pure reading: grep lines in, offending lines out. Supplied lines are the hypothesis; the live
@@ -61,7 +64,7 @@ fn release_dir_literal_offenders(lines: List<String>, exemptions: List<ReleaseDi
 }
 
 fn stale_exemptions(lines: List<String>, exemptions: List<ReleaseDirLiteralExemption>) -> List<String> {
-  filter(exemptions, e => e.is_single_file && !any(lines, l => grep_line_path(line: l) == e.path_prefix))
+  filter(exemptions, e => e.is_single_file && filter(lines, l => grep_line_path(line: l) == e.path_prefix) == [])
     |> map(e => e.path_prefix)
 }
 
@@ -88,7 +91,7 @@ test fn an_exemption_whose_file_no_longer_spells_it_is_stale() -> Bool {
     == ["dag/gunbc/v1/v1_consumer_census.dag", "dag/gunbc/scm/scm_wet_execution_receipt.dag",
         "dag/gunbc/namespace_cut/namespace_step0_canary_v1_history.dag", "src/v2/extdeps/languages/bash.dag",
         "dag/gunbc/ci/ci_layer_roots.dag", "dag/gunbc/contributor_onboarding_path.dag",
-        "dag/gunbc/plans/deploy_convergence_observed_side.dag"]
+        "dag/gunbc/plans/deploy_convergence_observed_side.dag", "dag/gunbc/repo_workspace.dag"]
 }
 
 // The inhabitance reading: the real producer ran (exit 0, so at least the home matched; exit 1
@@ -97,7 +100,7 @@ test fn an_exemption_whose_file_no_longer_spells_it_is_stale() -> Bool {
 test fn no_tracked_consumer_respells_the_release_dir() -> Bool {
   let read = git.Core.GrepFixedLinesInRepo(repository_path: ".", pattern: cargo_default_release_dir_rel, pathspec: "*.dag")
   read.exit_code == 0
-    && any(read.lines, l => grep_line_path(line: l) == "dag/extdeps/rust/cargo.dag")
+    && filter(read.lines, l => grep_line_path(line: l) == "dag/extdeps/rust/cargo.dag") != []
     && release_dir_literal_offenders(lines: read.lines, exemptions: release_dir_literal_exemptions) == []
     && stale_exemptions(lines: read.lines, exemptions: release_dir_literal_exemptions) == []
 }
