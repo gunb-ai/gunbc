@@ -1,0 +1,251 @@
+module test.claim.flash_next_serving_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { byte_size_count, token_count_value }
+import std.dissolution { dissolution_is_bound }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, CitedFigureStanding }
+import extdeps.gpu.types { TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
+import extdeps.gpu.nvidia { nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog, nvidia_rtx_pro_6000_max_q_catalog }
+import extdeps.qwen.qwen3_8_flash_next {
+  qwen3_8_flash_next_architecture, flash_next_qsa_kv_bytes_per_token, flash_next_routed_expert_parameters,
+  flash_next_params_per_routed_expert, qwen3_8_flash_next_consumer_frontier,
+}
+import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
+import gunbc.serving.flash_next_image_capability_observation {
+  Sm90, Sm100, Sm120, Fp8MainKvCache, FlashInferNativeFp4Moe, Nvfp4PleTable, JitIfCompiles, NotBuilt, BuiltIn,
+  flash_next_image_observations, image_main_kv_element_bytes, image_capability_availability,
+  flash_next_image_observation_frontier,
+}
+import gunbc.serving.flash_next_roofline {
+  RooflineCard, CeilingRatio, maxq_kv_bytes_per_token, mean_prompt_tokens, unique_experts_per_layer,
+  p3_ceiling_ratio, p4_ceiling_ratio, p5_composed_permille, flash_next_roofline_consumer_frontier,
+}
+import gunbc.serving.flash_next_predictions {
+  PredictionId, PredictionCard,
+  PredictionRow, MeasuredReading, flash_next_registered_predictions, flash_next_measured_readings,
+  flash_next_measured_readings_frontier, flash_next_maxq_card, flash_next_h200_card, flash_next_b200_fp4_card,
+  flash_next_b200_marlin_card, p1_registered_basis_tokens, p1_image_path_tokens, p2_image_path_sessions,
+  interval_position, BelowInterval, InsideInterval, AboveInterval, ceiling_verdict, IntervalAboveCeiling,
+  IntervalReachableUnderCeiling, CeilingNotScored, prediction_verdict, PredictionNotMeasured,
+  PredictionScored, PredictionAmbiguousReadings, P1KvCapacity, P4PrefillSpeedup, P3DecodeSpeedup,
+  H200Nvl, B200, prediction_id_eq, prediction_card_eq,
+}
+
+import gunbc.serving.flash_next_hgx_and_power {
+  operator_site_circuit, site_continuous_watts, rtx_pro_6000_max_q_power_range, b200_power_range,
+  hgx_b200_system_overhead, cap_within_range, cards_within_budget, hgx_max_cap_watts,
+  hgx_b200_8x_predictions, hgx_b200_8x_frontier, flash_next_power_consumer_frontier,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn row_for(id: PredictionId, card: PredictionCard) -> PredictionRow? {
+  let hits = flash_next_registered_predictions |> filter(r => prediction_id_eq(a: r.id, b: id) && prediction_card_eq(a: r.card, b: card))
+  if count(hits) == 1 { fold(hits, init: none, f: (_acc, r) => Present { value: r }) } else { none }
+}
+
+fn between(v: Nat?, lo: Nat, hi: Nat) -> Bool {
+  match v { Present { value: x } => x >= lo && x <= hi, none => false }
+}
+
+fn below(v: Nat?, lo: Nat) -> Bool {
+  match v { Present { value: x } => x < lo, none => false }
+}
+
+// THE CATALOG AXIS: the H200 NVL has no FP4 tensor path (absence is the fact, not zero), the B200 and
+// Max-Q carry one, and every throughput figure is typed TranscribedUncited until a datasheet is read.
+test fn w_h200_has_no_fp4_row_and_b200_and_maxq_do() -> Bool {
+  (match gpu_dense_tensor_throughput(row: nvidia_h200_nvl_catalog, datatype: TensorFp4) { Present { value: _ } => false, none => true })
+    && (match gpu_dense_tensor_throughput(row: nvidia_h200_nvl_catalog, datatype: TensorBf16) { Present { value: _ } => true, none => false })
+    && (match gpu_dense_tensor_throughput(row: nvidia_b200_sxm_catalog, datatype: TensorFp4) { Present { value: _ } => true, none => false })
+    && (match gpu_dense_tensor_throughput(row: nvidia_rtx_pro_6000_max_q_catalog, datatype: TensorFp4) { Present { value: _ } => true, none => false })
+}
+
+test fn w_throughput_figures_are_uncited_not_cited() -> Bool {
+  (match gpu_dense_tensor_throughput(row: nvidia_h200_nvl_catalog, datatype: TensorBf16) {
+    Present { value: t } => match t.standing { TranscribedUncited { read_obligation: _ } => true, CitedToAuthority { authority: _ } => false, ObservedByReceipt { observed: _ } => false }
+    none => false
+  })
+}
+
+test fn w_b200_catalog_carries_no_bandwidth_so_the_card_needs_an_operator_figure() -> Bool {
+  (match gpu_catalog_bandwidth_count(row: nvidia_b200_sxm_catalog) { Present { value: _ } => false, none => true })
+    && (match gpu_catalog_bandwidth_count(row: nvidia_h200_nvl_catalog) { Present { value: b } => b == 4800000000000, none => false })
+}
+
+// THE MODEL: derived figures follow from the config fields.
+test fn w_model_derivations_follow_the_config() -> Bool {
+  let a = qwen3_8_flash_next_architecture
+  a.gdn_layers + a.qsa_layers == a.layer_count
+    && flash_next_qsa_kv_bytes_per_token(arch: a, element_bytes: 1) == 12288
+    && flash_next_qsa_kv_bytes_per_token(arch: a, element_bytes: 2) == 24576
+    && flash_next_params_per_routed_expert(arch: a) == 4915200
+    && flash_next_routed_expert_parameters(arch: a) > 120000000000
+    && flash_next_routed_expert_parameters(arch: a) < a.total_parameters
+}
+
+// THE RECEIPT: calibration derived from it, not typed beside it.
+test fn w_maxq_receipt_reproduces_the_registered_workload() -> Bool {
+  let r = flash_next_maxq_run_2026_10_21
+  between(maxq_kv_bytes_per_token(receipt: r), 19500, 20100)
+    && between(mean_prompt_tokens(receipt: r), 106000, 106800)
+    && token_count_value(t: r.kv_cache_tokens) == 773026
+    && r.preemptions == 465
+    && (token_count_value(t: r.prompt_local_compute_tokens) + token_count_value(t: r.prompt_gpu_prefix_hit_tokens) + token_count_value(t: r.prompt_lmcache_external_tokens)) > token_count_value(t: r.prompt_tokens)
+}
+
+// THE IMAGE: FP8 main KV is b12x-only, so the other two arches get BF16 width; B200's native FP4 is
+// conditional on a JIT compile; an arch with no row is absent, never NotBuilt.
+test fn w_image_observations_set_kv_width_per_arch() -> Bool {
+  between(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm120), 1, 1)
+    && between(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm90), 2, 2)
+    && between(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm100), 2, 2)
+    && (match image_capability_availability(rows: flash_next_image_observations, arch: Sm100, capability: FlashInferNativeFp4Moe) {
+      Present { value: v } => match v { JitIfCompiles { fallback: _ } => true, BuiltIn => false, NotBuilt { evidence: _ } => false }
+      none => false
+    })
+    && (match image_capability_availability(rows: [], arch: Sm90, capability: Nvfp4PleTable) { Present { value: _ } => false, none => true })
+}
+
+// P1 ON THE REGISTERED ARITHMETIC lands inside the registered intervals; on the path the image can run
+// (BF16 main KV) it lands BELOW them. The second half is the finding the operator asked to see reported,
+// and it is asserted so that a change that silently re-calibrates the width goes red.
+test fn w_p1_registered_basis_inside_and_image_path_below() -> Bool {
+  match flash_next_h200_card {
+    Present { value: h } => match flash_next_b200_fp4_card {
+      Present { value: b } => match row_for(id: P1KvCapacity, card: H200Nvl) {
+        Present { value: ph } => match row_for(id: P1KvCapacity, card: B200) {
+          Present { value: pb } =>
+            between(p1_registered_basis_tokens(card: h), ph.low, ph.high)
+              && between(p1_registered_basis_tokens(card: b), pb.low, pb.high)
+              && below(p1_image_path_tokens(card: h), ph.low)
+              && below(p1_image_path_tokens(card: b), pb.low)
+              && below(p2_image_path_sessions(card: h), 25)
+          none => false
+        }
+        none => false
+      }
+      none => false
+    }
+    none => false
+  }
+}
+
+// P4 CEILING: with the transcribed specs the H200's BF16 compute roof is below the Max-Q's FP4 roof at a
+// 6k chunk, so the registered 1.3-2.5x needs the Max-Q far below its own roof -- a finding, asserted red
+// on a ceiling that rises. The B200 on FP4 is reachable; the B200 on the Marlin fallback is not.
+test fn w_p4_ceiling_discriminates_h200_and_b200_paths() -> Bool {
+  match flash_next_maxq_card {
+    Present { value: m } => match flash_next_h200_card {
+      Present { value: h } => match flash_next_b200_fp4_card {
+        Present { value: bf } => match flash_next_b200_marlin_card {
+          Present { value: bm } => match row_for(id: P4PrefillSpeedup, card: H200Nvl) {
+            Present { value: ph } => match row_for(id: P4PrefillSpeedup, card: B200) {
+              Present { value: pb } =>
+                (match ceiling_verdict(row: ph, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: h, chunk_tokens: 6144)) { IntervalAboveCeiling { ceiling_permille: _, spec_standing: _ } => true, IntervalReachableUnderCeiling { ceiling_permille: _, spec_standing: _ } => false, CeilingNotScored => false })
+                  && (match ceiling_verdict(row: pb, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: bf, chunk_tokens: 6144)) { IntervalReachableUnderCeiling { ceiling_permille: _, spec_standing: _ } => true, IntervalAboveCeiling { ceiling_permille: _, spec_standing: _ } => false, CeilingNotScored => false })
+                  && (match ceiling_verdict(row: pb, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: bm, chunk_tokens: 6144)) { IntervalAboveCeiling { ceiling_permille: _, spec_standing: _ } => true, IntervalReachableUnderCeiling { ceiling_permille: _, spec_standing: _ } => false, CeilingNotScored => false })
+              none => false
+            }
+            none => false
+          }
+          none => false
+        }
+        none => false
+      }
+      none => false
+    }
+    none => false
+  }
+}
+
+// P3 CEILING: decode is bandwidth-bound, so the ceiling tracks the bandwidth ratio (2.68x H200).
+test fn w_p3_ceiling_tracks_bandwidth() -> Bool {
+  match flash_next_maxq_card {
+    Present { value: m } => match flash_next_h200_card {
+      Present { value: h } => match p3_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: h, concurrent: 4, draft_depth: 3, context_tokens: 110000) {
+        Present { value: c } => c.permille > 2000 && c.permille < 3000
+        none => false
+      }
+      none => false
+    }
+    none => false
+  }
+}
+
+test fn w_unique_experts_saturate_with_rows() -> Bool {
+  let a = qwen3_8_flash_next_architecture
+  unique_experts_per_layer(arch: a, rows: 1) >= 9
+    && unique_experts_per_layer(arch: a, rows: 1) <= 10
+    && unique_experts_per_layer(arch: a, rows: 16) > unique_experts_per_layer(arch: a, rows: 4)
+    && unique_experts_per_layer(arch: a, rows: 6144) == 512
+}
+
+test fn w_p5_composition_is_parity_at_parity_and_monotone() -> Bool {
+  let r = flash_next_maxq_run_2026_10_21
+  between(p5_composed_permille(receipt: r, r3_permille: 1000, r4_permille: 1000), 995, 1005)
+    && between(p5_composed_permille(receipt: r, r3_permille: 2680, r4_permille: 490), 1500, 1900)
+    && (match p5_composed_permille(receipt: r, r3_permille: 0, r4_permille: 1000) { Present { value: _ } => false, none => true })
+}
+
+// THE JOIN: empty readings are NotMeasured (never a pass); one reading is placed against the registered
+// interval; two for one (id, card) refuse.
+test fn w_prediction_join_scores_one_reading_and_refuses_none_and_two() -> Bool {
+  match row_for(id: P3DecodeSpeedup, card: H200Nvl) {
+    Present { value: row } =>
+      (match prediction_verdict(row: row, readings: flash_next_measured_readings) { PredictionNotMeasured => true, PredictionScored { position: _, value: _ } => false, PredictionAmbiguousReadings { count: _ } => false })
+        && (match prediction_verdict(row: row, readings: [MeasuredReading { id: P3DecodeSpeedup, card: H200Nvl, value: 1200, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }]) { PredictionScored { position: p, value: _ } => (match p { BelowInterval => true, InsideInterval => false, AboveInterval => false }), PredictionNotMeasured => false, PredictionAmbiguousReadings { count: _ } => false })
+        && (match prediction_verdict(row: row, readings: [MeasuredReading { id: P3DecodeSpeedup, card: H200Nvl, value: 2000, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }]) { PredictionScored { position: p, value: _ } => (match p { InsideInterval => true, BelowInterval => false, AboveInterval => false }), PredictionNotMeasured => false, PredictionAmbiguousReadings { count: _ } => false })
+        && (match prediction_verdict(row: row, readings: [MeasuredReading { id: P3DecodeSpeedup, card: H200Nvl, value: 2000, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }, MeasuredReading { id: P3DecodeSpeedup, card: H200Nvl, value: 2100, standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } }]) { PredictionAmbiguousReadings { count: n } => n == 2, PredictionScored { position: _, value: _ } => false, PredictionNotMeasured => false })
+    none => false
+  }
+}
+
+test fn w_every_registered_row_is_unique_by_id_and_card() -> Bool {
+  count(flash_next_registered_predictions) == 12
+    && (match row_for(id: P1KvCapacity, card: H200Nvl) { Present { value: _ } => true, none => false })
+    && (match row_for(id: P3DecodeSpeedup, card: B200) { Present { value: r } => r.low == 2200 && r.high == 4000, none => false })
+}
+
+test fn w_declared_frontiers_are_open() -> Bool {
+  !dissolution_is_bound(condition: qwen3_8_flash_next_consumer_frontier)
+    && !dissolution_is_bound(condition: flash_next_maxq_run_consumer_frontier)
+    && !dissolution_is_bound(condition: flash_next_image_observation_frontier)
+    && !dissolution_is_bound(condition: flash_next_roofline_consumer_frontier)
+    && !dissolution_is_bound(condition: flash_next_measured_readings_frontier)
+}
+
+test fn w_site_budget_is_derived_not_typed() -> Bool {
+  site_continuous_watts(c: operator_site_circuit) == 11520
+}
+
+// A cap outside the card's range refuses (absent) rather than clamping; inside it is returned as given.
+test fn w_power_cap_refuses_outside_the_range() -> Bool {
+  between(cap_within_range(range: rtx_pro_6000_max_q_power_range, cap_watts: 275), 275, 275)
+    && (match cap_within_range(range: rtx_pro_6000_max_q_power_range, cap_watts: 240) { Present { value: _ } => false, none => true })
+    && (match cap_within_range(range: b200_power_range, cap_watts: 1200) { Present { value: _ } => false, none => true })
+}
+
+// 8 B200 at the default 1000 W fit the site only if non-GPU power is under 3,520 W: the low estimate fits,
+// the high estimate forces a cap below the default.
+test fn w_hgx_power_fits_at_low_overhead_and_caps_at_high() -> Bool {
+  between(hgx_max_cap_watts(budget_watts: 11520, range: b200_power_range, gpus: 8, system_overhead_watts: hgx_b200_system_overhead.low_watts), 1000, 1000)
+    && between(hgx_max_cap_watts(budget_watts: 11520, range: b200_power_range, gpus: 8, system_overhead_watts: hgx_b200_system_overhead.high_watts), 940, 940)
+    && (match hgx_max_cap_watts(budget_watts: 11520, range: b200_power_range, gpus: 8, system_overhead_watts: 11000) { Present { value: _ } => false, none => true })
+}
+
+test fn w_cards_within_budget_counts_and_refuses() -> Bool {
+  between(cards_within_budget(budget_watts: 11520, range: rtx_pro_6000_max_q_power_range, cap_watts: 275, per_card_overhead_watts: 100, system_overhead_watts: 0), 30, 30)
+    && (match cards_within_budget(budget_watts: 11520, range: rtx_pro_6000_max_q_power_range, cap_watts: 500, per_card_overhead_watts: 0, system_overhead_watts: 0) { Present { value: _ } => false, none => true })
+}
+
+// 8x B200 rows are the registered single-B200 additive rows times 8; speedup and share rows are not carried.
+test fn w_hgx_8x_rows_scale_additive_b200_rows_only() -> Bool {
+  let rows = hgx_b200_8x_predictions()
+  count(rows) == 3
+    && (fold(rows, init: true, f: (acc, r) => acc && r.high == r.base.high * 8 && r.low == r.base.low * 8))
+    && !dissolution_is_bound(condition: hgx_b200_8x_frontier)
+    && !dissolution_is_bound(condition: flash_next_power_consumer_frontier)
+}

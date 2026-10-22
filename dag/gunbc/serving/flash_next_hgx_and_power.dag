@@ -1,0 +1,123 @@
+module gunbc.serving.flash_next_hgx_and_power
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import gunbc.serving.flash_next_predictions { PredictionRow, PredictionCard, PredictionUnit, PredictionId, B200, Tokens, SessionCount, RequestsPerHour, P1KvCapacity, P2Sessions, P5SaturatedRequestRate, flash_next_registered_predictions, prediction_card_eq }
+
+// POWER IS A VARIABLE PER CARD, NOT A FIXED TDP: the operator caps the card himself. The range a card
+// accepts (min, default, max watts) is a reading of that card; the cap a deployment picks lies inside
+// it. Ranges are the operator's measured power-limit ranges, not read here. The Max-Q range is for the
+// Max-Q edition; the Workstation edition the operator intends to buy has no range row and so none is
+// assumed for it.
+type PowerLimitRange {
+  min_watts: Nat
+  default_watts: Nat
+  max_watts: Nat
+  idle_watts: Nat?
+  standing: CitedFigureStanding
+}
+
+data power_range_read_obligation: NonEmptyStr = "Re-read nvidia-smi -q -d POWER (Min/Default/Max Power Limit, and idle draw) on the card, and for the Workstation edition read its own range; these figures are the operator's measurements relayed by a peer session, not read by this repository." as NonEmptyStr
+
+data rtx_pro_6000_max_q_power_range: PowerLimitRange = PowerLimitRange { min_watts: 250, default_watts: 300, max_watts: 325, idle_watts: none, standing: TranscribedUncited { read_obligation: power_range_read_obligation } }
+
+data b200_power_range: PowerLimitRange = PowerLimitRange { min_watts: 200, default_watts: 1000, max_watts: 1000, idle_watts: Present { value: 147 }, standing: TranscribedUncited { read_obligation: power_range_read_obligation } }
+
+// A cap is admissible only inside the card's range; outside it is a refusal (absent), never clamped.
+fn cap_within_range(range: PowerLimitRange, cap_watts: Nat) -> Nat? {
+  if cap_watts >= range.min_watts && cap_watts <= range.max_watts { Present { value: cap_watts } } else { none }
+}
+
+// THE SITE BUDGET, DERIVED: circuits x amps x volts x continuous-load fraction (the 80 percent rule), in
+// watts. 2 x 30 A x 240 V x 800/1000 = 11,520 W.
+type SiteCircuit {
+  circuits: Nat
+  amps: Nat
+  volts: Nat
+  continuous_permille: Nat
+}
+
+data operator_site_circuit: SiteCircuit = SiteCircuit { circuits: 2, amps: 30, volts: 240, continuous_permille: 800 }
+
+fn site_continuous_watts(c: SiteCircuit) -> Nat {
+  c.circuits * c.amps * c.volts * c.continuous_permille / 1000
+}
+
+// HOW MANY CARDS A BUDGET HOLDS at a per-card cap with `per_card_overhead_watts` of host and fan power
+// attributed to each card, after a fixed `system_overhead_watts`. Absent when the cap is outside the range,
+// the fixed overhead alone exceeds the budget, or the per-card draw is zero.
+fn cards_within_budget(budget_watts: Nat, range: PowerLimitRange, cap_watts: Nat, per_card_overhead_watts: Nat, system_overhead_watts: Nat) -> Nat? {
+  match cap_within_range(range: range, cap_watts: cap_watts) {
+    Present { value: cap } => if system_overhead_watts >= budget_watts || cap + per_card_overhead_watts == 0 { none } else { Present { value: (budget_watts - system_overhead_watts) / (cap + per_card_overhead_watts) } }
+    none => none
+  }
+}
+
+// THE LARGEST PER-GPU CAP an HGX chassis of `gpus` accepts under a budget given non-GPU system power,
+// clamped to the card's max. Absent when even the minimum cap does not fit.
+fn hgx_max_cap_watts(budget_watts: Nat, range: PowerLimitRange, gpus: Nat, system_overhead_watts: Nat) -> Nat? {
+  if gpus == 0 || system_overhead_watts >= budget_watts {
+    none
+  } else {
+    let fit = (budget_watts - system_overhead_watts) / gpus
+    if fit < range.min_watts { none } else if fit > range.max_watts { Present { value: range.max_watts } } else { Present { value: fit } }
+  }
+}
+
+// HGX NON-GPU SYSTEM POWER: an UNCITED estimate, 2.5 to 4 kW, carried as an interval with its standing.
+type PowerEstimateInterval {
+  low_watts: Nat
+  high_watts: Nat
+  standing: CitedFigureStanding
+}
+
+data hgx_b200_system_overhead_read_obligation: NonEmptyStr = "Read the chosen HGX B200 chassis's CPU, NIC, NVSwitch, fan and PSU power from the vendor's configuration sheet or measure at the PDU; 2.5-4 kW is the operator's uncited estimate." as NonEmptyStr
+
+data hgx_b200_system_overhead: PowerEstimateInterval = PowerEstimateInterval { low_watts: 2500, high_watts: 4000, standing: TranscribedUncited { read_obligation: hgx_b200_system_overhead_read_obligation } }
+
+// THE HYPOTHETICAL 8x B200 (HGX), PREDICTED. Deployment: 8 independent TP1 replicas -- the model's ~76 GiB
+// of weights fit one 180 GiB GPU -- so capacity is 8 x the single-B200 reading, with no cross-replica
+// pooling: sessions and KV do not pool across replicas, so the per-session fit is the single-card one.
+// Rows are derived from the registered single-B200 rows by scaling, so a measured single-B200 row
+// re-scores the 8x row through the same join with no new prediction.
+type ReplicaTopology = IndependentTp1Replicas { replicas: Nat } | ExpertParallelAcrossGpus { gpus: Nat }
+
+type HgxPredictionRow {
+  topology: ReplicaTopology
+  base: PredictionRow
+  low: Nat
+  high: Nat
+}
+
+fn scale_for_replicas(base: PredictionRow, replicas: Nat) -> HgxPredictionRow {
+  HgxPredictionRow { topology: IndependentTp1Replicas { replicas: replicas }, base: base, low: base.low * replicas, high: base.high * replicas }
+}
+
+// Only the additive quantities scale across independent replicas: resident KV tokens and sessions, and
+// saturated request rate. Speedup and share rows are per-replica ratios and are not rows of the 8x.
+fn is_additive_across_replicas(id: PredictionId) -> Bool {
+  match id {
+    P1KvCapacity => true
+    P2Sessions => true
+    P5SaturatedRequestRate => true
+    _ => false
+  }
+}
+
+fn b200_row(r: PredictionRow) -> Bool {
+  prediction_card_eq(a: r.card, b: B200) && is_additive_across_replicas(id: r.id)
+}
+
+fn hgx_b200_8x_predictions() -> List<HgxPredictionRow> {
+  flash_next_registered_predictions |> filter(r => b200_row(r: r)) |> map(r => scale_for_replicas(base: r, replicas: 8))
+}
+
+data hgx_b200_8x_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c declared frontier. (1) ExpertParallelAcrossGpus is a declared ALTERNATIVE topology, not a row: its claimed benefit (more rows per expert, so better MoE GEMM efficiency at high load, and lower per-stream latency) is unmeasured and has no prediction. Trigger: a measured EP8 or TP8 launch of this image on an HGX B200. (2) hgx_b200_8x_predictions is consumed by the operator's buying comparison; trigger: the first measured single-B200 MeasuredReading in gunbc.serving.flash_next_predictions re-scores these rows. (3) Hosting larger models on 8x B200 (GLM 5.3 Flash, Kimi K3) is out of scope; a model that does not fit one GPU is a reason to shard and would need its own rows. (4) Prices are operator inputs plugged in at the buying step; this module models none, and extdeps.pricing is the home of any price that is a fact." as NonEmptyStr
+)
+
+data flash_next_power_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: power ranges, site budget, cards_within_budget and hgx_max_cap_watts are consumed by test.claim.flash_next_serving_witness and, as a declared frontier, by the operator's per-card cap choice for Workstation-edition cards (no Workstation range row exists yet: read it with nvidia-smi on the card)." as NonEmptyStr
+)
