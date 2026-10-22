@@ -27,6 +27,7 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   TerminalWatch, actuation_watch_of, actuation_after_watch, actuation_with_outcome, actuation_not_powered_on, mtcollins1_boot_attempt_of, BmcAccessNotReached,
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_medium_refusal,
 }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
   RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
@@ -49,7 +50,7 @@ fn runner_subject() -> AdmittedBootSubject? {
 }
 
 fn subject_with(medium: BootMedium) -> AdmittedBootSubject? {
-  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+  match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
     BootSubjectAdmitted { subject: s } => Present { value: s }
     BootSubjectRefused { host: _, cause: _ } => none
   }
