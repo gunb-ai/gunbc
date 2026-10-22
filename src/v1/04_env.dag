@@ -2165,24 +2165,21 @@ fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, Newl
 // The right-hand side of a transparent alias item (`type A = B`, `type A = B<C>`): a bare, required, unannotated item whose
 // `inferred` is its authored RHS. Every other item answers none. The one predicate both the env binding writer and the index
 // reader use.
-fn node_is_type_declaration_item(n: Node) -> Bool {
-  match n.module_item_kind {
-    ModuleItemTypeDeclaration => true
-    _ => false
-  }
-}
-
 fn transparent_alias_rhs(pre: Node) -> Node? {
-  if pre.connective != NoConnective || !node_is_type_declaration_item(n: pre) || pre.type_annotation != none
-    || (pre.children |> count) > 0 || pre.return_cardinality != Required {
-    none
-  } else {
-    match pre.inferred {
-      Present { value: Resolved { node: rhs } } =>
-        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
-        else { Present { value: rhs } }
-      _ => none
-    }
+  match pre.module_item_kind {
+    ModuleItemTypeDeclaration =>
+      if pre.connective != NoConnective || pre.type_annotation != none
+        || (pre.children |> count) > 0 || pre.return_cardinality != Required {
+        none
+      } else {
+        match pre.inferred {
+          Present { value: Resolved { node: rhs } } =>
+            if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
+            else { Present { value: rhs } }
+          _ => none
+        }
+      }
+    _ => none
   }
 }
 

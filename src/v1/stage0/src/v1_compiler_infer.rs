@@ -61,9 +61,7 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length, ContentHash, Fnv1a64Structural,
 };
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
-pub use crate::std_decl_ref::{
-    decl_field_ref, decl_ref, declaration_ref_eq, DeclField, DeclarationRef,
-};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{
     dissolution_description, unbound_dissolution, DissolutionCondition,
@@ -14286,7 +14284,7 @@ Rc::new(InferResult {
                                 }
                             }
                         };
-                        let arg_infer_results = payload_arm_tag_reference_waiver_results(
+                        let arg_infer_results = variant_tag_reference_argument_results(
                             func_name.clone(),
                             crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
                                 call_target.clone(),
@@ -17869,49 +17867,16 @@ pub fn sole_constructor_construction_diags(
     }
 }
 
-pub fn payload_arm_tag_reference_waiver_pairs() -> Rc<Vec<Rc<DeclarationRef>>> {
+pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<DeclarationRef>>> = {
-            Rc::new(vec![crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "AlgebraPrimitive".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "AlgebraInverseCompose".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "OrderingComparison".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "EqualityComparison".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "CanonicalOperation".to_string(), "CoercionCrossing".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "InfixToken".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "PrefixToken".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "CallIdent".to_string()), crate::std_decl_ref::decl_field_ref("v2.std.compilers.target_model".to_string(), "TargetOperatorShape".to_string(), "MethodIdent".to_string())])
+        static CACHED: String = {
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier.".to_string()
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<DeclarationRef>>>| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn payload_arm_tag_reference_row_names_arm(row: Rc<DeclarationRef>, arm_name: String) -> bool {
-    match (*row.field.clone()).clone() {
-        DeclField::NamedField { field_name: f, .. } => (f.clone() == arm_name.clone()),
-        _ => false,
-    }
-}
-
-pub fn payload_arm_tag_reference_is_waived(arm_name: String, scope: Rc<InferScope>) -> bool {
-    match variant_owner_node(scope.clone(), arm_name.clone()) {
-        Some(owner) => match crate::v1_compiler_infer_env::declaration_ref_of_type_node(
-            owner.clone(),
-            scope.type_env.source_indices.clone(),
-            scope.type_env.clone(),
-        ) {
-            Some(owner_decl) => {
-                let mut __found = false;
-                for w in payload_arm_tag_reference_waiver_pairs().iter().cloned() {
-                    if (((w.module_path.clone() == owner_decl.module_path.clone())
-                        && (w.decl_name.clone() == owner_decl.decl_name.clone()))
-                        && payload_arm_tag_reference_row_names_arm(w.clone(), arm_name.clone()))
-                    {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }
-            std::option::Option::None => false,
-        },
-        std::option::Option::None => false,
-    }
-}
-
-pub fn payload_arm_tag_reference_waiver_results(
+pub fn variant_tag_reference_argument_results(
     func_name: String,
     callee_is_body_binding: bool,
     results: Rc<Vec<Rc<ArgInferResult>>>,
@@ -17937,10 +17902,9 @@ pub fn payload_arm_tag_reference_waiver_results(
                                     scope.type_env.source_indices.clone(),
                                 ) {
                                     Some(tn) => {
-                                        if payload_arm_tag_reference_is_waived(
-                                            tn.clone(),
-                                            scope.clone(),
-                                        ) {
+                                        if (variant_owner_node(scope.clone(), tn.clone())
+                                            != std::option::Option::None)
+                                        {
                                             Rc::new(ArgInferResult {
                                                 typed_arg: air.typed_arg.clone(),
                                                 emissions: infer_emissions_filter_diagnostics(

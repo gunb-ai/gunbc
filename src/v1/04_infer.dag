@@ -14833,11 +14833,23 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: unify_child_actual(n: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
         Absent => acc
       }
     Absent => acc
+  }
+}
+
+// An actual type-argument child is a wrapper at the argument's source position (named for the
+// container's parameter, carrying the argument's declaration but not its arguments); the type it
+// denotes is its Resolved inferred. Binding the wrapper hands a bare parameter node to every
+// consumer of the binding (C1.2d: substituted nodes keep their DeclarationRef and use-args). An
+// Arrow child denotes itself (child_type_node), and a child that is not Resolved binds as it is.
+fn unify_child_actual(n: Node) -> Node {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => if n.connective == Arrow { n } else { rt }
+    _ => n
   }
 }
 
