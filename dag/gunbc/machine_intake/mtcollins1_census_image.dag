@@ -357,7 +357,7 @@ fn boot_image_export_text(export: BootImageExport) -> String {
 // gunbc.machine_intake.mtcollins1_census_medium_readback re-measures the served path on srv2 before
 // the boot subject is admitted, every run. Switching it to stock_installer_boot_medium makes every
 // census verdict refuse at the gate, before any controller write.
-data mtcollins1_boot_medium: BootMedium = census_boot_medium(
+data mtcollins1_census_boot_medium: BootMedium = census_boot_medium(
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
   output_digest: "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513",

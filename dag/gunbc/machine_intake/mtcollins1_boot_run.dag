@@ -17,13 +17,11 @@ import std.algebra { trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import gunbc.machine_intake.mtcollins1_census_medium_readback {
-  census_medium_readback, census_readback_refusal_before_filing, census_readback_refusal_before_attach,
-}
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
-import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, mtcollins1_census_image_stem, mtcollins1_census_machine }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_readback_attempt_raw }
+import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
+import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
   boot_subject_admission_for, boot_subject_refusal_cause_text, boot_subject_machine,
@@ -826,10 +824,16 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
 // never observe it: that is decidable from the medium row alone, and a run that discovered it by
 // taking the unit hold, taking the SOL lease, powering the unit and timing out would report a
 // hardware-shaped refusal for a modeling-shaped cause (DESIGN §5, the line stops at the deficit).
+// THE MEDIUM THIS BOOT RUN SELECTS: the runner host image the image leg published (run 39775218607,
+// create-only into bmc_boot_image_export, export readback of the content digest). Its terminal is the
+// runner_host_up_readback, accepted only under grant_from_store; a deny, an expiry or an unfiled request
+// writes nothing to the controller. The census image row stays the census-member modes' medium.
+data mtcollins1_boot_medium: BootMedium = runner_host_boot_medium(output_digest: "31aef9394d9e58c3e13b07a6176ed3d9e6fe0ee8cb292a33fe92661bfe966e7c")
+
 fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
   match medium.terminal {
     BootMediumNoTerminal { reason: r } =>
-      Present { value: concat("mtcollins1 boot: the boot medium ", medium.image_name as String, " prints no terminal (", r as String, "), so no census terminal can be observed; switch mtcollins1_boot_medium to the published census image (census stage 0D) -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: the boot medium ", medium.image_name as String, " prints no terminal (", r as String, "), so no terminal can be observed; select a boot medium that prints one (the runner medium's runner_host_up_readback, or the census image's console label) -- controller untouched") }
     BootMediumVolumeLabel { label: _ } => none
     BootMediumRunnerHostUp { label: _ } => none
   }
@@ -2407,6 +2411,8 @@ fn handoff_withheld_at_recheck(before: MegaRacAttachResult, live_at: String) -> 
 // THE PHASE CLOCK (gunbc.host.managed_host_boot_phase_timing): each reading is a local read
 // of /proc/uptime taken between two BMC calls; it changes no order and writes nothing.
 fn mtcollins1_boot_actuate(
+  medium: BootMedium,
+  image_stem: NonEmptyStr,
   proof: UnitHoldProof,
   subject: AdmittedBootSubject,
   password_file: String,
@@ -2454,14 +2460,14 @@ fn mtcollins1_boot_actuate(
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
-          match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
+          match boot_medium_served_refusal_before_attach(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, attempt: boot_medium_served_attempt_raw)) {
             Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
               megarac_attach_boot_image(
                 proof: proof,
                 subject: subject,
                 share: mtcollins1_media_share,
-                replaceable_seeded_stem: mtcollins1_census_image_stem,
+                replaceable_seeded_stem: image_stem,
                 bound: mtcollins1_boot_ipmi_read_bound,
                 password_file: password_file,
                 attempt: attempt,
@@ -2614,6 +2620,8 @@ fn baseline_not_taken(reason: NonEmptyStr) -> MtCollins1BootBaseline {
 }
 
 fn mtcollins1_boot_under_live_unit_hold(
+  medium: BootMedium,
+  image_stem: NonEmptyStr,
   run_id: NonEmptyStr,
   subject: AdmittedBootSubject,
   password_file: String,
@@ -2646,7 +2654,7 @@ fn mtcollins1_boot_under_live_unit_hold(
         BootAttemptCleared { clearance: clearance } => {
           let configuration = mtcollins1_boot_pre_power(configuration: attempt_configuration_receipt(clearance: clearance, attempt: run_id), clearance: clearance, run_attempt: run_id, password_file: password_file)
           let taken = baseline()
-          let actuation = mtcollins1_boot_actuate_held(proof: p, subject: subject, password_file: password_file, run_id: run_id, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
+          let actuation = mtcollins1_boot_actuate_held(medium: medium, image_stem: image_stem, proof: p, subject: subject, password_file: password_file, run_id: run_id, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
           MtCollins1HeldBoot { actuation: actuation, configuration: configuration, baseline: taken }
         }
       }
@@ -2673,6 +2681,8 @@ fn mtcollins1_boot_baseline(username: NonEmptyStr, password_file: NonEmptyStr) -
 }
 
 fn mtcollins1_boot_actuate_held(
+  medium: BootMedium,
+  image_stem: NonEmptyStr,
   proof: UnitHoldProof,
   subject: AdmittedBootSubject,
   password_file: String,
@@ -2686,6 +2696,8 @@ fn mtcollins1_boot_actuate_held(
   ]
 {
   let act = mtcollins1_boot_actuate(
+    medium: medium,
+    image_stem: image_stem,
     proof: proof,
     subject: subject,
     password_file: password_file,
@@ -2945,11 +2957,19 @@ fn mtcollins1_boot_wet() -> ProcessExit
 // resolution arm without running the readback, which keeps its own witnesses.
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
-  mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() { runner_browser_toolchain_here_wet() })
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_boot_medium, resolve_toolchain: fn() { runner_browser_toolchain_here_wet() })
 }
 
-fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt
+fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolchain: fn() -> RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "boot_with_toolchain"),
+  ]
 {
+  let image_stem = match ubuntu_seeded_install_media_image_stem(image_name: medium.image_name, output_digest: medium.digest) {
+    Present { value: st } => st
+    Absent => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: the boot medium ", medium.image_name as String, " is not named for its own digest, so no image stem derives from it; controller untouched")))
+  }
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched"))))
@@ -2974,11 +2994,11 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
   if sha == "" {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the boot subject binds the execution revision"))
   }
-  match mtcollins1_boot_medium_refusal(medium: mtcollins1_boot_medium) {
+  match mtcollins1_boot_medium_refusal(medium: medium) {
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
+  match boot_medium_served_refusal_before_filing(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, attempt: boot_medium_served_attempt_raw)) {
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
@@ -2986,19 +3006,19 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
   if !pw_read.success {
     return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable: ", pw_read.error)))
   }
-  let subject = match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: mtcollins1_boot_medium, execution_revision: sha as NonEmptyStr) {
+  let subject = match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: sha as NonEmptyStr) {
     BootSubjectAdmitted { subject: s } => s
     BootSubjectRefused { host: _, cause: c } =>
       return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: the boot subject was not admitted: ", boot_subject_refusal_cause_text(cause: c), "; controller untouched")))
   }
   match mtcollins1_bmc_username {
     Absent => {
-      let held = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { baseline_not_taken(reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with") })
+      let held = mtcollins1_boot_under_live_unit_hold(medium: medium, image_stem: image_stem, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { baseline_not_taken(reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with") })
       let act = held.actuation
       mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }, configuration: held.configuration)
     }
     Present { value: user } => {
-      let held = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { mtcollins1_boot_baseline(username: user, password_file: cred as NonEmptyStr) })
+      let held = mtcollins1_boot_under_live_unit_hold(medium: medium, image_stem: image_stem, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain, baseline: fn() { mtcollins1_boot_baseline(username: user, password_file: cred as NonEmptyStr) })
       let act = held.actuation
       mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: held.baseline.sdr, sel_before: held.baseline.sel_before }, configuration: held.configuration)
     }
