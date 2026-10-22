@@ -42,9 +42,10 @@ data target_class: String = "TypeMismatch"
 // MEASURED, not derived: the refused expression is the variant VALUE `CgroupSubtreeEmpty`, and the
 // compiler's histogram subject is the coproduct that value inhabits -- CgroupSubtreeReadback --
 // not the field's declared type CgroupNotQuiet. An earlier revision of this comment reasoned the
-// opposite way and the claim sat red on main with a subject no compile produces; the census is
-// 571 rows for the RED source against 570 for the GREEN, the extra row being exactly
-// TypeMismatch / Coproduct(CgroupSubtreeReadback) / blocking.
+// opposite way and the claim sat red on main with a subject no compile produces; the RED source's
+// census carries exactly one blocking row the GREEN one lacks, TypeMismatch /
+// Coproduct(CgroupSubtreeReadback). The row counts of that reading are in the failure-mode receipt
+// (an_expected_census_key_authored_from_a_reading_and_never_executed), not transcribed here.
 data target_subject: String = "Coproduct(CgroupSubtreeReadback)"
 
 fn censuses_differ_by_exactly_the_target_row(
