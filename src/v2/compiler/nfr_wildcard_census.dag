@@ -47,10 +47,7 @@ fn param_heads(arrow: Node) -> List<ParamHead> {
       match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
         Absent => []
         Present { value: domain } =>
-          fold_list(
-            xs: names,
-            empty: [],
-            cons: fn(acc, nm) {
+          fold(names, init: [], f: fn(acc, nm) {
               list_snoc_item(xs: acc, item: ParamHead {
                 name: symbol_lexeme(sym: nm),
                 head: match find_binder_type(root: domain, name: nm) {
@@ -58,8 +55,7 @@ fn param_heads(arrow: Node) -> List<ParamHead> {
                   Rejected { diagnostics: _ } => optional_absent()
                 }
               })
-            }
-          )
+            })
       }
   }
 }
@@ -72,11 +68,7 @@ fn arm_is_wildcard(arm: Node) -> Bool {
 }
 
 fn match_has_wildcard_arm(m: Node) -> Bool {
-  fold_list(
-    xs: positional_child_target_nodes(node: m),
-    empty: false,
-    cons: fn(acc, c) { acc || arm_is_wildcard(arm: c) }
-  )
+  fold(positional_child_target_nodes(node: m), init: false, f: fn(acc, c) { acc || arm_is_wildcard(arm: c) })
 }
 
 fn scrutinee_name_optional(m: Node) -> Optional<String> {
@@ -104,10 +96,7 @@ fn fn_sites(fn_name: String, arrow: Node) -> List<WildcardSite> {
   match find_arrow_body_child(root: arrow) {
     Rejected { diagnostics: _ } => []
     Accepted { value: body, diagnostics: _ } =>
-      fold_list(
-        xs: node_subtree_nodes(root: body),
-        empty: [],
-        cons: fn(acc, n) {
+      fold(node_subtree_nodes(root: body), init: [], f: fn(acc, n) {
           if match_node_is(n: n) && match_has_wildcard_arm(m: n) {
             match scrutinee_name_optional(m: n) {
               Absent => acc
@@ -126,8 +115,7 @@ fn fn_sites(fn_name: String, arrow: Node) -> List<WildcardSite> {
           } else {
             acc
           }
-        }
-      )
+        })
   }
 }
 
@@ -143,7 +131,7 @@ fn root_member_sites(root: Node) -> List<WildcardSite> {
       match e.label {
         Authored { name: sym } =>
           if node_is_arrow(n: e.target) {
-            fold_list(xs: fn_sites(fn_name: symbol_lexeme(sym: sym), arrow: e.target), empty: acc, cons: fn(a2, s) { list_snoc_item(xs: a2, item: s) })
+            fold(fn_sites(fn_name: symbol_lexeme(sym: sym), arrow: e.target), init: acc, f: fn(a2, s) { list_snoc_item(xs: a2, item: s) })
           } else {
             acc
           }
@@ -155,10 +143,7 @@ fn root_member_sites(root: Node) -> List<WildcardSite> {
 
 // A type member is a closed coproduct when its declaration subtree holds a Disj.
 fn member_is_coproduct(target: Node) -> Bool {
-  fold_list(
-    xs: node_subtree_nodes(root: target),
-    empty: false,
-    cons: fn(acc, n) {
+  fold(node_subtree_nodes(root: target), init: false, f: fn(acc, n) {
       acc || (match n.kind {
         TypeNode { connective: Disj } => true
         _ => false
