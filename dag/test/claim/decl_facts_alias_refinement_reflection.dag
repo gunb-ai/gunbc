@@ -2,7 +2,7 @@ module test.claim.decl_facts_alias_refinement_reflection
 
 import std.types { String, List, Bool, Int }
 import std.optional { Optional, Present, Absent }
-import v2.std.decl_index { decl_facts_at, DeclFact, TypeItem, PredicateStanding, NotARefinement, RefinementPredicatesSourceSpelled }
+import v2.std.decl_index { decl_facts_at, DeclFact, TypeItem, DeclFactProducer, HostReflection }
 import v2.std.node { Node, TypeNode, Atom, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.type_binder { type_decl_view, TypeAlias, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl, refinement_declaration_of_node }
@@ -44,19 +44,18 @@ fn refinement_carrier(n: Node) -> String {
   }
 }
 
+// THE DERIVED STANDING: a refinement whose producer is HostReflection has source-spelled predicates.
+// Nothing stamps refinement-ness; the node shape and the producer are the two facts it is read from.
 fn is_source_spelled(f: DeclFact) -> Bool {
-  match f.predicate_standing {
-    RefinementPredicatesSourceSpelled => true
-    NotARefinement => false
+  match f.producer {
+    HostReflection => match refinement_declaration_of_node(decl: f.node) {
+      Present { value: _ } => true
+      Absent => false
+    }
   }
 }
 
-fn refinement_unelaborated(f: DeclFact) -> Bool {
-  is_source_spelled(f: f) && match refinement_declaration_of_node(decl: f.node) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
+fn refinement_unelaborated(f: DeclFact) -> Bool { is_source_spelled(f: f) }
 
 test fn a_plain_alias_reflects_as_a_type_item_aliasing_its_carrier() -> Bool {
   let hits = fact_of(qn: "std.types.Timestamp")
@@ -74,7 +73,7 @@ test fn a_branded_refinement_reflects_the_refinement_it_brands() -> Bool {
 }
 
 // RED: the standing is read off the FACT, so the reflected refinements read source-spelled and the
-// reflected alias reads NotARefinement. The mark is not in the clause tree (resolve and infer fold the
+// reflected alias derives not-a-refinement. The mark is not in the clause tree (resolve and infer fold the
 // captured set's children as predicate calls), so this is the only place a reader finds it.
 test fn the_reflected_refinement_fact_is_source_spelled() -> Bool {
   let hits = fact_of(qn: "std.types.NonEmptyStr")

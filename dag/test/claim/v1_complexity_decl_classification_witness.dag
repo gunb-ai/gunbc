@@ -1,7 +1,7 @@
 module test.claim.v1_complexity_decl_classification_witness
 
 import std.types { String, Bool, List }
-import v2.std.decl_index { DeclFact, NotARefinement, DataItem }
+import v2.std.decl_index { DeclFact, HostReflection, DataItem }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import gunbc.v1.v1_complexity_decl_classification {
   roster_names_distinct,
@@ -56,7 +56,7 @@ data planted_duplicate_population: List<DeclFact> = [
     kind: DataItem,
     node: enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_planted_duplicate_a.dag",
-    predicate_standing: NotARefinement
+    producer: HostReflection
   },
   DeclFact {
     qualified_name: "v1.compiler.complexity.planted_duplicate_control_RED",
@@ -64,7 +64,7 @@ data planted_duplicate_population: List<DeclFact> = [
     kind: DataItem,
     node: enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_planted_duplicate_b.dag",
-    predicate_standing: NotARefinement
+    producer: HostReflection
   },
 ]
 
@@ -75,7 +75,7 @@ data distinct_control_population: List<DeclFact> = [
     kind: DataItem,
     node: enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_distinct_a.dag",
-    predicate_standing: NotARefinement
+    producer: HostReflection
   },
   DeclFact {
     qualified_name: "v1.compiler.complexity.distinct_control_second",
@@ -83,7 +83,7 @@ data distinct_control_population: List<DeclFact> = [
     kind: DataItem,
     node: enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_distinct_b.dag",
-    predicate_standing: NotARefinement
+    producer: HostReflection
   },
 ]
 

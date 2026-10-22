@@ -16,13 +16,14 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // wrapper; predicate_spelling and production_edge_value build the refinement's captured predicates and
 // the production edge label type_binder reads.
 //
-// WHY THE FACT CARRIES A STANDING. The host cannot elaborate a where-predicate, so the captured
-// predicates are reflected as source spellings and the DeclFact that carries them says so
-// (v2.std.decl_index PredicateStanding, field predicate_standing; reflected_predicate_standing builds
-// it). It is a field of the fact, not an edge in the clause tree, because resolve and infer fold every
-// child of the captured predicate set as a predicate call. The obligation on the first change that
-// reads predicates from reflected facts (Charter 5, the decl door emit_semantic_type_decl): it must
-// refuse RefinementPredicatesSourceSpelled, and its own RED lands with it.
+// WHY THE FACT CARRIES A PRODUCER. The host cannot elaborate a where-predicate, so the captured
+// predicates are reflected as source spellings. The fact stores WHO produced it (v2.std.decl_index
+// DeclFactProducer HostReflection; host_reflection_producer stamps it) and the reader derives the standing
+// from producer plus refinement_declaration_of_node, so no producer stamps refinement-ness. It is a field of
+// the fact, not an edge in the clause tree, because resolve and infer fold every child of the captured
+// predicate set as a predicate call. The obligation on the first change that reads predicates from
+// reflected facts (Charter 5, the decl door emit_semantic_type_decl): it must refuse a refinement whose
+// producer is HostReflection, and its own RED lands with it.
 //
 // WHY IT SERVES v2. The reflected carrier chain is what the Swift wire derivation reads, without a
 // per-atom row (gunbc.v1.v1_maintenance_standing v1_seed_standing PURPOSE test).
@@ -36,10 +37,10 @@ data decl_facts_alias_refinement_seed_growth_justification: SeedGrowthJustificat
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "production_edge_value", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "refinement_rhs", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "reflected_item_kind", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "reflected_predicate_standing", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "host_reflection_producer", field: WholeDeclaration }
   ],
-  reason: "The host reflection is a host walk over the seed's own parsed nodes; an alias, a bodyless type and a refinement's captured predicates can only be turned into the wrapper shapes v2.std.type_binder reads where those parsed nodes are readable. The host cannot elaborate where-predicates, so it stamps their source-spelled standing instead of fabricating an elaboration.",
+  reason: "The host reflection is a host walk over the seed's own parsed nodes; an alias, a bodyless type and a refinement's captured predicates can only be turned into the wrapper shapes v2.std.type_binder reads where those parsed nodes are readable. The host cannot elaborate where-predicates, so it stamps its producer so the reader derives the source-spelled standing instead of fabricating an elaboration.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete all seven when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk; reflected_predicate_standing and PredicateStanding are deleted earlier, when the v2 reflection route elaborates where-predicates through body_lowering_fold.",
+  trigger: "Delete all seven when the declaration census is a MODELED operation over a modeled prepared inventory rather than a host walk; host_reflection_producer is replaced earlier, when the v2 reflection route adds its own DeclFactProducer arm whose predicates are elaborated through body_lowering_fold.",
   current_boundary: "Confined to the type-declaration arm of decl_facts_corpus_walk and concept_decl_node: reflected_item_kind is used only there, and v1 item_kind and the parse-only declaration path are unchanged."
 }

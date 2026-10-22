@@ -15,22 +15,22 @@ type ItemKind
   | ServiceItem
   | OtherItem
 
-// THE STANDING OF A REFINEMENT'S PREDICATES, ON THE FACT THAT CARRIES THEM. It is a fact about the
-// PRODUCER of the fact (the host reflection route cannot elaborate a where-predicate, so it reflects
-// the captured predicates as source spellings), never an edge in the clause tree: resolve and infer
-// fold every child of the captured predicate set as a predicate call, so a mark inside it would be
-// read as one. ItemKind carries no payload (v1 item_kind is frozen and `kind == TypeItem` is compared
-// throughout), so the standing sits on DeclFact itself, with a real arm for every fact that is not a
-// refinement. Every producer must name an arm; there is no default.
+// WHO PRODUCED THE FACT: the one thing the node shape does not carry. The host reflection route cannot
+// elaborate a where-predicate, so for a refinement it reflects the captured predicates as source
+// spellings. The standing of a refinement's predicates is DERIVED by the reader (refinement_declaration_of_node
+// present AND producer HostReflection => the predicates are source spellings), never stored: nothing
+// stamps refinement-ness, so a refinement stamped not-a-refinement, or a non-type fact stamped as one, has
+// no representation. Never an edge in the clause tree: resolve and infer fold every child of the captured
+// predicate set as a predicate call, so a mark inside it would be read as one. Every producer names an arm;
+// there is no default.
 // CONSUMER (declared frontier, Charter 5): the decl door emit_semantic_type_decl printing a refinement
-// type from a reflected fact. It must refuse RefinementPredicatesSourceSpelled, and its own RED lands
-// with it. Until then nothing reads predicates from a reflected fact; the claim
-// test.claim.decl_facts_alias_refinement_reflection pins the standing of the real reflected facts.
-// Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
-// RefinementPredicatesSourceSpelled and the host stamp (coproduct_reflection reflected_predicate_standing).
-type PredicateStanding
-  = NotARefinement
-  | RefinementPredicatesSourceSpelled
+// type from a reflected fact. It must refuse a refinement whose producer is HostReflection, and its own RED
+// lands with it. Until then nothing reads predicates from a reflected fact; the claim
+// test.claim.decl_facts_alias_refinement_reflection pins the derived standing of the real reflected facts.
+// Dissolves when the v2 reflection route adds its own producer arm whose predicates are elaborated through
+// body_lowering_fold.
+type DeclFactProducer
+  = | HostReflection
 
 type DeclFact {
   qualified_name: String
@@ -38,7 +38,7 @@ type DeclFact {
   kind: ItemKind
   node: Node
   rel_path: String
-  predicate_standing: PredicateStanding
+  producer: DeclFactProducer
 }
 
 fn decl_facts(pool_roots: List<String>) -> List<DeclFact> {
@@ -101,7 +101,7 @@ fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<Dec
               kind: fact.kind,
               node: node,
               rel_path: fact.rel_path,
-              predicate_standing: fact.predicate_standing
+              producer: fact.producer
             }))
           })
         _ => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))

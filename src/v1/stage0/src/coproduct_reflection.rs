@@ -751,8 +751,7 @@ fn concept_decl_node(
 // THE ONE DECISION THAT A NO-CONNECTIVE TYPE DECLARATION IS A REFINEMENT, with every gate it needs:
 // the item has no connective, its right-hand side is not the bodyless self-reference, and that
 // right-hand side is a one-child Conj carrying the predicate annotation. Returns the right-hand side and
-// the predicate. marshal_non_connective_type_item reflects the refinement from it and
-// reflected_predicate_standing derives the DeclFact standing from it, so the two cannot disagree.
+// the predicate. marshal_non_connective_type_item reflects the refinement from it.
 fn refinement_rhs(item: &Rc<Node>) -> Option<(Rc<Node>, Rc<Node>)> {
     if item.connective != Connective::NoConnective {
         return None;
@@ -779,7 +778,7 @@ fn refinement_rhs(item: &Rc<Node>) -> Option<(Rc<Node>, Rc<Node>)> {
 // authored type name, the same flattening a field type gets (marshal_type_expr_ref). The host cannot
 // elaborate a where-predicate (v2 body_lower_kept_where_clause resolves calls), so the captured
 // predicates are source spellings and the fact that carries them says so on DeclFact
-// (reflected_predicate_standing, v2.std.decl_index PredicateStanding), never as an edge in the clause
+// (v2.std.decl_index DeclFactProducer HostReflection, derived by the reader), never as an edge in the clause
 // tree where resolve and infer would fold it as a predicate. Dissolves when the v2 reflection route
 // elaborates where-predicates through body_lowering_fold.
 fn marshal_non_connective_type_item(
@@ -2108,19 +2107,12 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
     decl_facts_corpus_walk(pool_roots).facts
 }
 
-// THE STANDING OF A REFINEMENT'S PREDICATES, FOR THE FACT THAT CARRIES THEM (v2.std.decl_index
-// PredicateStanding): a TypeItem that refinement_rhs accepts is the refinement
-// marshal_non_connective_type_item reflects with source-spelled predicates; every other fact is
-// NotARefinement. Both read the one decision in refinement_rhs, so the two cannot disagree.
-fn reflected_predicate_standing(ctx: &InterpContext, kind: ItemKind, item: &Rc<Node>) -> Value {
-    let is_refinement = kind == ItemKind::TypeItem && refinement_rhs(item).is_some();
+// WHO PRODUCED THE FACT (v2.std.decl_index DeclFactProducer): this host walk, the only producer today. It
+// stamps every fact; whether a fact's predicates are source spellings is derived by the reader.
+fn host_reflection_producer(ctx: &InterpContext) -> Value {
     Value::Variant {
-        type_name: ctx.sym("PredicateStanding"),
-        variant_name: ctx.sym(if is_refinement {
-            "RefinementPredicatesSourceSpelled"
-        } else {
-            "NotARefinement"
-        }),
+        type_name: ctx.sym("DeclFactProducer"),
+        variant_name: ctx.sym("HostReflection"),
         fields: Rc::new(vec![]),
     }
 }
@@ -2259,10 +2251,7 @@ pub fn eval_export_signature_facts(
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), str_value(fact.rel_path)),
-                (
-                    ctx.sym("predicate_standing"),
-                    reflected_predicate_standing(ctx, fact.kind, &fact.node),
-                ),
+                (ctx.sym("producer"), host_reflection_producer(ctx)),
             ])),
         });
     }
@@ -2403,10 +2392,7 @@ fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpRes
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), str_value(fact.rel_path.clone())),
-                (
-                    ctx.sym("predicate_standing"),
-                    reflected_predicate_standing(ctx, fact.kind, &fact.node),
-                ),
+                (ctx.sym("producer"), host_reflection_producer(ctx)),
             ])),
         });
     }
@@ -3093,7 +3079,7 @@ mod refinement_rhs_tests {
     }
 
     // RED: the same Conj-shaped rhs on an item that has a connective is NOT a refinement, so the
-    // DeclFact standing (derived from this helper) reads NotARefinement for it.
+    // refinement predicate arm is not reached for it.
     #[test]
     fn a_connective_item_with_a_conj_shaped_rhs_is_not_a_refinement() {
         assert!(refinement_rhs(&item_with(Connective::Disj)).is_none());
