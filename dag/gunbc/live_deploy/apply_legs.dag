@@ -79,7 +79,6 @@ import extdeps.systemd.systemctl { systemctl_enable_argv }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
 import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
-import gunbc.ci.ci_release_bins { approval_device_crypto_serve_release_bin_name }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.member_identity { plan_writes_oidc_config }
 import gunbc.live_deploy.emit { install_file_owner_only_mode }
@@ -534,32 +533,34 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
   }
 }
 
-// THE BROKER'S RELEASE: its tree, the device-crypto sidecar binary installed into the same locus and the
-// env file naming the digest of that binary AS INSTALLED (read back off the host, never off the build
-// or a constant), the sidecar unit, the broker's slice and unit, then the sidecar's enable and restart.
-fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String) -> List<DeployApplyLeg> {
+// THE BROKER'S RELEASE, AND THE SIDECAR STANDING BEFORE THE BROKER UNIT IS SWAPPED (#14685). The tree
+// install puts every member of approval_broker_release_locus_executables into the locus, the sidecar
+// binary among them, and reads each back. Then: the env file naming the digest of the sidecar AS
+// INSTALLED (read back off the host, never off the build or a constant), the sidecar unit, a reload, the
+// sidecar's enable and restart, and only then the broker's slice and unit. The broker unit loads that
+// env file and orders itself after the sidecar unit, so a broker swap ahead of them leaves systemd
+// unable to start it (run 39545280023). The broker's own enable and restart are lifecycle legs.
+fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DeployApplyLeg> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
     let owner = spec.approval_broker.service_user
-    let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
-    concat([
+    concat(concat([
       ApplyLegBrokerTree { revision: revision },
-      apply_root_leg(step: "device-crypto-sidecar-install", argv: coreutils_install_file_owned_argv(
-        mode: install_executable_shared_mode, owner: owner, group: owner,
-        source: join([source_root, "/target/release/", approval_device_crypto_serve_release_bin_name], ""), dest: installed)),
       ApplyLegDigestEnvFile {
         step: "device-crypto-digest-env",
-        binary: installed,
+        binary: device_crypto_sidecar_binary_path(spec: spec, revision: revision),
         env_name: approval_device_crypto_deployed_digest_env_name as String,
         dest: device_crypto_deployed_digest_env_file_path(root: spec.approval_broker.repo_root as String, revision: revision),
         owner: owner,
       },
       apply_staged_leg(step: "device-crypto-sidecar-unit", dest: gunbc_device_crypto_sidecar_unit_path() as String, payload: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision))),
+      apply_root_leg(step: "device-crypto-sidecar-reload", argv: systemctl_daemon_reload_argv()),
+    ], apply_enable_restart_legs(step: "device-crypto-sidecar", unit: gunbc_device_crypto_sidecar_unit_name)), [
       apply_staged_leg(step: "approval-broker-slice-unit", dest: gunbc_approval_broker_slice_unit_path() as String, payload: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
       apply_staged_leg(
         step: "approval-broker-unit",
         dest: gunbc_approval_broker_unit_path() as String,
         payload: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
-    ], apply_enable_restart_legs(step: "device-crypto-sidecar", unit: gunbc_device_crypto_sidecar_unit_name))
+    ])
   } else {
     []
   }
@@ -581,7 +582,7 @@ fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) ->
   )
 }
 
-fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?, source_root: String) -> DeployApplyPlan {
+fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
     LiveDeployServeUnitOidcReadbackRefused { cause: c } =>
@@ -592,7 +593,7 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
           deploy_apply_chain(
             first: deploy_apply_worker_sandbox_plan(spec: spec, revision: revision),
             rest: ApplyPlanReady { legs: list_append(
-              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision, source_root: source_root),
+              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
               right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
             ) },
           )
@@ -845,7 +846,7 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
         ComposeOwned { kind: ck } =>
           match ck {
             OidcConfigArtifact => deploy_apply_oidc_plan(spec: spec, plan: plan, oidc_now: oidc_now)
-            SystemdUnit => deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now, source_root: source_root)
+            SystemdUnit => deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now)
             FabricStorageServeUnit => deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
             FabricStorageServeMapping =>
               if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {

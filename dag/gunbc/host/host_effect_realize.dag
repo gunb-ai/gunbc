@@ -128,6 +128,11 @@ import extdeps.tools.findutils { find_regular_files_sha256_command }
 import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
+import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
+import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
+import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_gate, approval_device_crypto_realization }
+import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
 import std.algebra { list_sort_by_key, TotalOrder, Ordering, Less, Greater, Equal }
 import extdeps.dns.domain_name { DnsLabel }
@@ -5792,6 +5797,7 @@ fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: Release
     base_root: spec.approval_broker.repo_root as String,
     source_root: source_root,
     revision: revision,
+    executables: approval_broker_release_locus_executables,
     transport: transport,
   ) {
     TreeInstallConverged { installed_digest: _, files_installed: _ } => Absent
@@ -6132,6 +6138,7 @@ fn approval_broker_tree_install(
   base_root: String,
   source_root: String,
   revision: ReleaseRevisionBinding,
+  executables: List<String>,
   transport: HostEffectTransport,
 ) -> ApprovalBrokerTreeInstallVerdict {
   approval_broker_tree_install_at(
@@ -6140,6 +6147,7 @@ fn approval_broker_tree_install(
     locus: release_locus_dir(root: base_root, revision: revision),
     source_root: source_root,
     revision: revision,
+    executables: executables,
     transport: transport,
   )
 }
@@ -6152,6 +6160,7 @@ fn approval_broker_tree_install_at(
   locus: String,
   source_root: String,
   revision: ReleaseRevisionBinding,
+  executables: List<String>,
   transport: HostEffectTransport,
 ) -> ApprovalBrokerTreeInstallVerdict {
   match revision {
@@ -6166,7 +6175,7 @@ fn approval_broker_tree_install_at(
           } else {
             approval_broker_tree_install_observed(
               owner: owner, spine: spine, source_root: source_root, locus: locus,
-              revision: revision, source: sort_tree_file_hashes(entries: source), transport: transport,
+              revision: revision, source: sort_tree_file_hashes(entries: source), executables: executables, transport: transport,
             )
           }
       }
@@ -6258,6 +6267,22 @@ fn sha256_disagreement_text(agreement: Sha256Agreement) -> String? {
   }
 }
 
+// The first executable whose installed bytes disagree with the source, named; none when every member agrees.
+fn tree_executables_disagreement(executables: List<String>, source_root: String, locus: String, transport: HostEffectTransport) -> String? {
+  fold(executables, init: none, f: (acc, name) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match sha256_disagreement_text(agreement: tree_binary_agreement(
+          source_path: join([source_root, "/target/release/", name], ""),
+          installed_path: join([locus, "/", name], ""),
+          transport: transport)) {
+          Present { value: why } => Present { value: join([name, ": ", why], "") }
+          Absent => none
+        }
+    })
+}
+
 fn approval_broker_tree_install_observed(
   owner: NonEmptyStr,
   spine: List<String>,
@@ -6265,6 +6290,7 @@ fn approval_broker_tree_install_observed(
   locus: String,
   revision: ReleaseRevisionBinding,
   source: List<TreeFileHash>,
+  executables: List<String>,
   transport: HostEffectTransport,
 ) -> ApprovalBrokerTreeInstallVerdict {
   let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, owner: owner, path: d, transport: transport))
@@ -6275,20 +6301,21 @@ fn approval_broker_tree_install_observed(
       command: coreutils_install_file_owned_argv(
         mode: install_file_shared_mode, owner: owner, group: owner,
         source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], "")))))
-  let after_binary = tree_run_step(state: after_files, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
-    command: coreutils_install_file_owned_argv(
-      mode: install_executable_shared_mode, owner: owner, group: owner,
-      source: join([source_root, "/target/release/", gunbc_release_bin_name], ""),
-      dest: join([locus, "/", gunbc_release_bin_name], ""))))
+  let after_binary = fold(executables, init: after_files, f: (st, name) =>
+    tree_run_step(state: st, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
+      command: coreutils_install_file_owned_argv(
+        mode: install_executable_shared_mode, owner: owner, group: owner,
+        source: join([source_root, "/target/release/", name], ""),
+        dest: join([locus, "/", name], "")))))
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
       match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
         TreeObserved { entries: installed } =>
-          match sha256_disagreement_text(agreement: tree_binary_agreement(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport)) {
+          match tree_executables_disagreement(executables: executables, source_root: source_root, locus: locus, transport: transport) {
             Present { value: why } =>
-              TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (", why, "); no receipt was written"], "") }
+              TreeInstallRefused { step: TreeStepReadback, reason: join(["an installed binary under ", locus, " does not hash equal to its source binary (", why, "); no receipt was written"], "") }
             Absent =>
               if !tree_entries_agree(source: source, installed: installed) {
                 TreeInstallRefused { step: TreeStepReadback, reason: join([
@@ -6380,6 +6407,13 @@ type DarkInstallStep
   | DarkStepScratchCleanup
   | DarkStepRetire
   | DarkStepBrokerTree
+  | DarkStepSidecarDigest
+  | DarkStepSidecarEnv
+  | DarkStepSidecarUnit
+  | DarkStepSidecarDaemonReload
+  | DarkStepSidecarEnable
+  | DarkStepSidecarRestart
+  | DarkStepSidecarReadback
   | DarkStepSliceUnit
   | DarkStepBrokerUnit
   | DarkStepDaemonReload
@@ -6698,6 +6732,7 @@ fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBindi
         locus: dir,
         source_root: source_root,
         revision: revision,
+        executables: [gunbc_release_bin_name],
         transport: transport,
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
@@ -6750,21 +6785,91 @@ fn dark_helper_retire_at(site: HelperGrantSite, revision: ReleaseRevisionBinding
   })
 }
 
+// THE SIDECAR IS STANDING BEFORE THE BROKER UNIT IS SWAPPED. The broker unit loads the sidecar's digest env file and is
+// ordered after the sidecar unit, so a swap that precedes them leaves systemd unable to start it (run 39545280023: the
+// locus held only the gunbc binary and the restart failed with "Failed to load environment files"). The order is
+// therefore: locus members installed (approval_broker_release_locus_executables) -> digest read off the INSTALLED
+// sidecar binary -> env file -> sidecar unit -> reload -> sidecar enable + restart -> readback against the digest ->
+// only then the broker's own unit legs. Any refusal before the broker legs leaves the broker running its previous
+// release; the sidecar is the only unit touched by then.
+fn dark_sidecar_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, digest: String) -> List<DarkLeg> {
+  let owner = spec.approval_broker.service_user
+  let unit = gunbc_device_crypto_sidecar_unit_name
+  [
+    DarkLegStdin {
+      step: DarkStepSidecarEnv,
+      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+        mode: install_file_shared_mode, owner: owner, group: owner, source: "/dev/stdin",
+        dest: device_crypto_deployed_digest_env_file_path(root: spec.approval_broker.repo_root as String, revision: revision))),
+      payload: join([approval_device_crypto_deployed_digest_env_name as String, "=", digest, "\n"], ""),
+    },
+    dark_unit_install_leg(
+      step: DarkStepSidecarUnit, dest: gunbc_device_crypto_sidecar_unit_path() as String,
+      text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision))),
+    DarkLegArgv { step: DarkStepSidecarDaemonReload, command: extdeps.systemd.systemctl.systemctl_daemon_reload_command() },
+    DarkLegArgv { step: DarkStepSidecarEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: unit)) },
+    DarkLegArgv { step: DarkStepSidecarRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: unit)) },
+  ]
+}
+
 fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
   match approval_broker_tree_install(
     owner: i.spec.service.service_user,
     base_root: i.spec.approval_broker.repo_root as String,
     source_root: i.source_root,
     revision: i.revision,
+    executables: approval_broker_release_locus_executables,
     transport: i.transport,
   ) {
     TreeInstallRefused { step: ts, reason: r } =>
       DarkInstallRefused { step: DarkStepBrokerTree, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
-    TreeInstallConverged { installed_digest: d, files_installed: _ } =>
-      match dark_run_legs(legs: dark_unit_legs(spec: i.spec, revision: i.revision), transport: i.transport) {
-        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-        DarkOk => dark_stage_slice_control(i: i, digest: d)
+    TreeInstallConverged { installed_digest: d, files_installed: _ } => dark_stage_sidecar_digest(i: i, tree_digest: d)
+  }
+}
+
+// THE LOCUS MUST HOLD THE SIDECAR: an installed locus whose sidecar binary cannot be digested refuses here, before any sidecar or broker leg runs.
+fn dark_stage_sidecar_digest(i: DarkInstallInputs, tree_digest: String) -> DarkInstallVerdict {
+  match observe_sha256_over_transport(path: device_crypto_sidecar_binary_path(spec: i.spec, revision: i.revision), transport: i.transport) {
+    Sha256Unobserved { cause: c } =>
+      DarkInstallRefused { step: DarkStepSidecarDigest, reason: join(["the installed sidecar binary could not be digested: ", sha256_unobserved_cause_text(cause: c)], "") }
+    Sha256Observed { digest: sd } => dark_stage_sidecar(i: i, tree_digest: tree_digest, deployed: sd.hex as String)
+  }
+}
+
+fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: String) -> DarkInstallVerdict {
+  match dark_run_legs(legs: dark_sidecar_legs(spec: i.spec, revision: i.revision, digest: deployed), transport: i.transport) {
+    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+    DarkOk =>
+      match i.transport {
+        LocalShell => dark_stage_sidecar_readback(i: i, tree_digest: tree_digest, deployed: deployed)
+        SshShell { ssh_host: _ } => dark_sidecar_readback_not_local()
+        FleetSsh { target: _, context: _ } => dark_sidecar_readback_not_local()
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => dark_sidecar_readback_not_local()
       }
+  }
+}
+
+// THE READBACK PROBES THE EVALUATOR'S LOOPBACK (approval_device_crypto_sidecar_endpoint): over any transport that is not the host itself it would read a different sidecar, so it refuses.
+fn dark_sidecar_readback_not_local() -> DarkInstallVerdict {
+  DarkInstallRefused { step: DarkStepSidecarReadback, reason: "the sidecar readback reaches the evaluator's loopback, not the install target; it runs only over LocalShell, so the broker is not swapped" }
+}
+
+fn dark_stage_sidecar_readback(i: DarkInstallInputs, tree_digest: String, deployed: String) -> DarkInstallVerdict {
+      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: deployed as NonEmptyStr) {
+        Absent => DarkInstallRefused { step: DarkStepSidecarReadback, reason: "the broker's own device-crypto realization is not bound, so it would answer 503 on every device route" }
+        Present { value: expectation } =>
+          match device_crypto_sidecar_readback(expectation: expectation) {
+            SidecarReplied { answer: _, admission: _ } => dark_stage_broker_unit(i: i, tree_digest: tree_digest)
+            SidecarReplyFailed { cause: c } =>
+              DarkInstallRefused { step: DarkStepSidecarReadback, reason: join(["the running sidecar does not join the installed binary: ", c as String], "") }
+          }
+      }
+}
+
+fn dark_stage_broker_unit(i: DarkInstallInputs, tree_digest: String) -> DarkInstallVerdict {
+  match dark_run_legs(legs: dark_unit_legs(spec: i.spec, revision: i.revision), transport: i.transport) {
+    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+    DarkOk => dark_stage_slice_control(i: i, digest: tree_digest)
   }
 }
 
@@ -6800,6 +6905,13 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
     DarkStepScratchCleanup => "scratch-cleanup"
     DarkStepRetire => "helper-snapshot-retire"
     DarkStepBrokerTree => "broker-tree"
+    DarkStepSidecarDigest => "sidecar-digest"
+    DarkStepSidecarEnv => "sidecar-digest-env"
+    DarkStepSidecarUnit => "sidecar-unit"
+    DarkStepSidecarDaemonReload => "sidecar-daemon-reload"
+    DarkStepSidecarEnable => "sidecar-enable"
+    DarkStepSidecarRestart => "sidecar-restart"
+    DarkStepSidecarReadback => "sidecar-readback"
     DarkStepSliceUnit => "broker-slice-unit"
     DarkStepBrokerUnit => "broker-unit"
     DarkStepDaemonReload => "daemon-reload"
@@ -10256,6 +10368,7 @@ fn realize_microvm_controller_install_on_host(
                       base_root: microvm_controller_root,
                       source_root: source_root,
                       revision: revision,
+                      executables: [gunbc_release_bin_name],
                       transport: transport,
                     ) {
                       TreeInstallConverged { installed_digest: digest, files_installed: files } =>
