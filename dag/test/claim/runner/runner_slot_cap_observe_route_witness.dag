@@ -52,7 +52,7 @@ import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.operation_argv { InputTextList }
+import std.operation_argv { InputTextList }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall,
   ShellObserved, DispatchRecord, virtual_clock_origin,

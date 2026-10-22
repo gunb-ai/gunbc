@@ -1401,6 +1401,22 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repository_path}", "diff", "--name-only", "-z", "{treeish}", "--"] }
   }
 
+  // git grep's fixed-string search over the tracked tree (git-grep(1): -n prefixes each match with
+  // its path and 1-based line number, -F takes the pattern literally, -I skips binary files). Like
+  // LsRemoteHeads it declares no exit block: git grep exits 1 when nothing matches, which is a
+  // reading rather than a failure, so the caller reads exit_code and stderr itself.
+  operation GrepFixedLinesInRepo {
+    requires opaque
+    input { repository_path: String, pattern: String, pathspec: String }
+    output {
+      lines: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "grep", "-n", "-I", "-F", "-e", "{pattern}", "--", "{pathspec}"] }
+  }
+
   operation LsFiles {
     requires opaque
     input {}
