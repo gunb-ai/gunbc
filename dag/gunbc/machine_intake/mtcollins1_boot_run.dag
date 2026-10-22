@@ -832,7 +832,7 @@ data mtcollins1_boot_medium: BootMedium = runner_host_boot_medium(output_digest:
 fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
   match medium.terminal {
     BootMediumNoTerminal { reason: r } =>
-      Present { value: concat("mtcollins1 boot: the boot medium ", medium.image_name as String, " prints no terminal (", r as String, "), so no census terminal can be observed; switch mtcollins1_boot_medium to the published census image (census stage 0D) -- controller untouched") }
+      Present { value: concat("mtcollins1 boot: the boot medium ", medium.image_name as String, " prints no terminal (", r as String, "), so no terminal can be observed; select a boot medium that prints one (the runner medium's runner_host_up_readback, or the census image's console label) -- controller untouched") }
     BootMediumVolumeLabel { label: _ } => none
     BootMediumRunnerHostUp { label: _ } => none
   }
