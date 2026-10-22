@@ -1,0 +1,65 @@
+module v2.test.claim.nfr_wildcard_census
+
+import std.algebra { list_at_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import std.types { List }
+import v2.compiler.nfr_wildcard_census { WildcardSite, declares_coproduct_named, root_member_sites }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.nfr_wildcard_census over a module's normalized tree. BOUNDARY: source text in,
+// normalized tree out (the tokenize, prepared-grammar parse and normalize the native route runs), so the
+// input is supplied text and the lexer, parser and normalize still execute. The inhabitance claim for the
+// real corpus is the native `nfr-wildcard-census` run recorded on the PR.
+
+fn nfr_normalized(text: String) -> Outcome<NormalizedTree> {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: "test/nfr.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: stream, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: artifact, diagnostics: _ } => normalize(parse_tree: artifact.tree)
+          }
+      }
+  }
+}
+
+data nfr_src: String = "module m.t\n\ntype C = A | B\n\ntype R { x: Int }\n\nfn pick(c: C, n: Int) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n\nfn closed(c: C) -> Int {\n  match c {\n    A => 1\n    B => 0\n  }\n}\n\nfn local(n: Int) -> Int {\n  match n {\n    1 => 1\n    _ => 0\n  }\n}\n"
+
+fn nfr_sites() -> List<WildcardSite> {
+  match nfr_normalized(text: nfr_src) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: nt, diagnostics: _ } => root_member_sites(root: nt.root)
+  }
+}
+
+test fn nfr_census_finds_the_wildcard_site_on_a_parameter() -> Bool {
+  count(nfr_sites()) == 2
+}
+
+test fn nfr_census_site_is_the_param_fn_and_head() -> Bool {
+  match list_at_optional(xs: nfr_sites(), index: 0) {
+    Present { value: s } => s.fn_name == "pick" && s.type_head == "C"
+    Absent => false
+  }
+}
+
+test fn nfr_census_coproduct_declared_in_module() -> Bool {
+  match nfr_normalized(text: nfr_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      declares_coproduct_named(root: nt.root, name: "C") && (declares_coproduct_named(root: nt.root, name: "R") == false)
+  }
+}
