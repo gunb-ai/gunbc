@@ -11,6 +11,7 @@ import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, Arr
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.qualified_name { qualified_name_snoc, qualified_name_to_dotted_string, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.grammar { node_atom_identity_optional }
+import v2.compiler.arm_resolution { arm_test_realization_refusal }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.verdict { Verdict, verdict_fail, verdict_fold }
 import v2.std.runtime { EnvironmentBindingKey, Continue, EvaluationEnvironment, EvaluationFrame, BindInterpreter, BranchInterpreter, InterpretationAlgebra, InterpretationStructureWitness, LoopInterpreter, MatchInterpreter, Raise, TransformInterpreter, ValueInterpreter, Return, RuntimeAggregate, RuntimeAggregateValue, RuntimeFieldFound, RuntimeFieldValue, RuntimeFieldMissing, runtime_aggregate_field_selection, RuntimeClosure, RuntimeClosureValue, RuntimePrimitive, RuntimeReference, RuntimeUnit, RuntimeValueNodeProjected, RuntimeValueNodeUnrepresentable, RuntimeBehaviorInterpreter, ValueRuntimeInterpreter, TransformRuntimeInterpreter, BranchRuntimeInterpreter, LoopRuntimeInterpreter, BindRuntimeInterpreter, MatchRuntimeInterpreter, Suspend, ControlTransfer, RuntimeValue, EffectHandler, EffectHandlerBinding, EffectReceipt, EffectReceiptLog, OperationCall, OperationCallKind, ReadResource, WriteResource, effect_handler_for_kind, environment_binding_key_for_symbol, interpretation_behavior_dispatch, runtime_value_node_projection, runtime_value_resolved_type }
@@ -3216,6 +3217,9 @@ fn eval_with_context(
   match eval_ill_formed_input(tree: tree, inputs: inputs) {
     Present { value: bad } => eval_ill_formed_refusal(at: bad)
     Absent =>
+     match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, decided: tree.arm_resolutions.decided) {
+      Present { value: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+      Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -3224,6 +3228,7 @@ fn eval_with_context(
         runtime: eval_runtime(),
         effect_io: eval_context_effect_io(context: context)
       )
+     }
   }
 }
 
@@ -3231,6 +3236,9 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
   match eval_ill_formed_input(tree: tree, inputs: inputs) {
     Present { value: bad } => eval_ill_formed_refusal(at: bad)
     Absent =>
+     match arm_test_realization_refusal(tests: tree.arm_resolutions.tests, decided: tree.arm_resolutions.decided) {
+      Present { value: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+      Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -3239,6 +3247,7 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
         runtime: eval_runtime(),
         effect_io: EffectIoEvalAbsent
       )
+     }
   }
 }
 
