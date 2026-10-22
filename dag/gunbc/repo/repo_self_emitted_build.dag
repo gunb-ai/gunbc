@@ -1,19 +1,24 @@
 module gunbc.repo.repo_self_emitted_build
 
-import std.types { String }
+import std.types { List, String }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 
 // THE BUILD OF AN EMITTED CRATE IS ONE FACT, SPELLED ONCE: the argv after cargo, and the warning denial
 // it runs under. The seed's probe build (src/v1/stage0/src/emitted_closure_compile_host.rs
-// probe_cargo_build_flags, with WARNING_DENIAL_RUSTFLAGS) and the release job that packs an emitted
+// probe_cargo_build_flags, which reads gunbc.emitted_build_seed_constants_emit's rendering of the row below, with WARNING_DENIAL_RUSTFLAGS) and the release job that packs an emitted
 // entry (gunbc.ci.ci_spec ci_emitted_release_build_line) must build one binary under one flag set;
 // two sets would make the binary the probe's controls ran a different artifact from the one packed.
-// The row is a String because the seed declares its mirror by value and a Rust test compares that
-// mirror with this row's text; the denial is gunbc.repo.repo_self_warning_policy
+// The row is the argv itself, one element per argument; the seed does not mirror it, it reads the
+// constant gunbc.emitted_build_seed_constants_emit renders from this row, so the probe's build and the
+// release job's build are one fact with one author. The denial is gunbc.repo.repo_self_warning_policy
 // repo_self_warning_denial_rustflags, never re-spelled here. The compiler is the toolchain the job
 // installs, resolved from RUSTC or PATH exactly as the probe does; it is not a literal.
-data repo_self_emitted_cargo_build_flags: String = "build --release --offline --message-format json --color never"
+// --offline: the fetch is its own spawn (the probe's probe_cargo_fetch_command); the build may not touch
+// the network, so no transport outcome can reach the build's verdict. --message-format json: the
+// structured stream is what the probe's read_cargo_json joins on, so warnings are counted per package
+// from compiler-message records, never by scanning text.
+data repo_self_emitted_cargo_build_flags: List<String> = ["build", "--release", "--offline", "--message-format", "json", "--color", "never"]
 
 fn repo_self_emitted_crate_build_command(cargo: String) -> String {
-  join(["RUSTFLAGS=\"", repo_self_warning_denial_rustflags(), "\" ", cargo, " ", repo_self_emitted_cargo_build_flags], "")
+  join(["RUSTFLAGS=\"", repo_self_warning_denial_rustflags(), "\" ", cargo, " ", join(repo_self_emitted_cargo_build_flags, " ")], "")
 }
