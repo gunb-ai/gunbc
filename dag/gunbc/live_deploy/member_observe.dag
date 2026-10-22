@@ -1,5 +1,6 @@
 module gunbc.live_deploy.member_observe
 
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
 import std.measure { Second }
 import std.optional { Optional, Present, Absent }
@@ -711,7 +712,7 @@ fn observed_member_on_host(
   arm: ObservationArm,
 ) -> ObservedMember {
   match member {
-    Executable => observe_executable(arm: arm, path: spec.service.serve_binary as String)
+    Executable => observe_executable(arm: arm, path: fixed_serve_binary_path(binary: spec.service.serve_binary))
     TreePublication => observe_tree(arm: arm, spec: spec, candidate: candidate)
     UnitFile => observe_unit_file(arm: arm, spec: spec)
     UnitManager => observe_unit_manager(arm: arm, unit: spec.service.unit_name)

@@ -279,7 +279,7 @@ fn ddl_hand_grounding(tree: Node, n: Node) -> Int {
         Absent => 2
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => 1
+            GroundingNotDerived { node: _, site: _ } => 1
             DerivedGrounding { grounding: _ } => 0
           }
       }
@@ -325,7 +325,7 @@ fn ddl_resolved_type(tree: Node, n: Node) -> Optional<Node> {
         Absent => optional_absent()
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => optional_absent()
+            GroundingNotDerived { node: _, site: _ } => optional_absent()
             DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
           }
       }

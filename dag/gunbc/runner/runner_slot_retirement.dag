@@ -506,8 +506,8 @@ fn host_maskable_units(host: HostIdentity) -> List<NonEmptyStr> {
   }
 }
 
-fn host_unit_may_be_masked(host: HostIdentity, unit: String) -> Bool {
-  any(host_maskable_units(host: host), u => (u as String) == unit)
+fn unit_in_maskable_scope(scope: List<NonEmptyStr>, unit: String) -> Bool {
+  any(scope, u => (u as String) == unit)
 }
 
 // THE OBLIGATION LIVES IN ITS OWN AUTHORITY, AND THIS MODULE ONLY CHECKS PERMISSION OVER IT.

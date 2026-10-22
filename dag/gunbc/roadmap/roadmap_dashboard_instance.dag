@@ -1686,7 +1686,7 @@ fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<F
 // The worktree root keeps the shared 0755 it was installed at: dispatched workers run as the service
 // principal, and no reader of it has been established that would justify tightening a live directory.
 // The two dispatch roots' member names, named once: a live_deploy retract reads them to keep the
-// empty-directory refusal that guards the source tree (gunbc.live_deploy.emit emit_artifact_teardown).
+// empty-directory refusal that guards the source tree (gunbc.live_deploy.retract_legs retract_dispatch_root_paths).
 data dashboard_dispatch_worktree_member: NonEmptyStr = "dispatch-worktree-root" as NonEmptyStr
 
 // THE WORKER'S IDENTITY IS A DECLARED TWO-ARM SUM, NOT A COMPARISON OF USER NAMES. WorkerIsServiceUser is the

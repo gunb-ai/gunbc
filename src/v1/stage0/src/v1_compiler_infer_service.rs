@@ -486,25 +486,43 @@ pub fn expand_transitive_services_once(
                                         }
                                         __result
                                     });
-                                    let merged = extra.iter().cloned().fold(
-                                        info.service_names.clone(),
-                                        |svc_list: Rc<Vec<String>>, svc: String| {
-                                            if {
-                                                let mut __found = false;
-                                                for s in svc_list.iter().cloned() {
-                                                    if (s.clone() == svc.clone()) {
-                                                        __found = true;
-                                                        break;
-                                                    }
+                                    let seeded = Rc::new(UniqueAccum {
+                                        seen: info.service_names.clone().iter().cloned().fold(
+                                            v1_rt::rc_empty_map::<String, bool>(),
+                                            |seen: Rc<HashMap<String, bool>>, svc: String| {
+                                                v1_rt::rc_map_insert(seen, svc.clone(), true)
+                                            },
+                                        ),
+                                        result: info.service_names.clone(),
+                                    });
+                                    let merged = extra
+                                        .iter()
+                                        .cloned()
+                                        .fold(
+                                            seeded.clone(),
+                                            |acc: Rc<UniqueAccum>, svc: String| {
+                                                if crate::v1_compiler_infer_types::emit_map_has(
+                                                    acc.seen.clone(),
+                                                    svc.clone(),
+                                                ) {
+                                                    acc.clone()
+                                                } else {
+                                                    Rc::new(UniqueAccum {
+                                                        seen: v1_rt::rc_map_insert(
+                                                            acc.seen.clone(),
+                                                            svc.clone(),
+                                                            true,
+                                                        ),
+                                                        result: v1_rt::rc_list_push(
+                                                            acc.result.clone(),
+                                                            svc.clone(),
+                                                        ),
+                                                    })
                                                 }
-                                                __found
-                                            } {
-                                                svc_list.clone()
-                                            } else {
-                                                v1_rt::rc_list_push(svc_list.clone(), svc.clone())
-                                            }
-                                        },
-                                    );
+                                            },
+                                        )
+                                        .result
+                                        .clone();
                                     let same_count = ((merged.clone().len() as i64)
                                         == (info.service_names.clone().len() as i64));
                                     if same_count.clone() {
@@ -691,6 +709,7 @@ pub fn expand_transitive_services_loop(
     mut __tco_loop_module_callees: Rc<Vec<Rc<ModuleCallees>>>,
     mut __tco_loop_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut __tco_loop_remaining_passes: i64,
+    mut __tco_loop_before: i64,
 ) -> Rc<ServiceEffectAnalysis> {
     loop {
         #[allow(unused_mut)]
@@ -699,7 +718,8 @@ pub fn expand_transitive_services_loop(
         let mut registry = __tco_loop_registry;
         #[allow(unused_mut)]
         let mut remaining_passes = __tco_loop_remaining_passes;
-        let before = total_service_count(registry.clone());
+        #[allow(unused_mut)]
+        let mut before = __tco_loop_before;
         let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
         let after = total_service_count(next.clone());
         if (before.clone() == after.clone()) {
@@ -721,9 +741,11 @@ pub fn expand_transitive_services_loop(
                     let __tco_0 = module_callees;
                     let __tco_1 = next.clone();
                     let __tco_2 = v1_rt::int_sub(remaining_passes, 1);
+                    let __tco_3 = after.clone();
                     __tco_loop_module_callees = __tco_0;
                     __tco_loop_registry = __tco_1;
                     __tco_loop_remaining_passes = __tco_2;
+                    __tco_loop_before = __tco_3;
                     continue;
                 }
             }
@@ -773,6 +795,7 @@ pub fn expand_transitive_services(
             module_callees.clone(),
             registry.clone(),
             expansion_pass_bound(registry.clone()),
+            total_service_count(registry.clone()),
         );
         match (*closed.clone()).clone() {
             ServiceEffectAnalysis::EffectsComplete {

@@ -9,7 +9,8 @@ import std.source_annotation {
 import std.unicode.types { unicode_scalar }
 
 import v1.std.core {
-  make_file_span,
+  make_file_span, render_span_location_of, render_span_location, file_has_no_lexemes,
+  NewlineIndex,
   Token, TokenShape,
   ShKeyword,
   ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
@@ -149,12 +150,83 @@ fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
   }
 }
 
+// Which tokens may END a refusal's span. A newline token is emitted for every physical line break
+// (:250) and a comment emits none at all, so both are TRIVIA: a span ending at either points into
+// whitespace or into a comment. `ShEof` is excluded because it is the token this rule is about --
+// it must end at a lexeme, never at itself.
+fn is_trivia_shape(shape: TokenShape) -> Bool {
+  match shape { ShNewline => true  ShEof => true  _ => false }
+}
+
+// The END OFFSET of the last non-trivia token -- one past the last character a reader could have
+// typed. `Absent` means the file produced no lexeme at all, which is a different fact from "its
+// last lexeme ended at 0" and must not be collapsed into one.
+fn last_code_token_end(tokens: List<Token>) -> Int? {
+  fold(tokens |> filter(t => !is_trivia_shape(t.shape)), init: none, f: (acc, t) =>
+    Present { value: t.span.end })
+}
+
+// WHETHER A STREAM CONTAINS A LEXEME. `is_trivia_shape` above already says which tokens a reader
+// could not have typed; a stream made of nothing but those is a file of pure trivia -- comments,
+// whitespace, or empty. The fact lives HERE, next to the predicate it is built from, and it is read
+// from the STREAM: no value inside a `SourceSpan` can say 'there is no offset', and a sentinel
+// number in a span is an in-band encoding every future reader of `span.start` would have to know
+// about (DESIGN 5). The EOF span of a no-lexeme file therefore carries an honest 0 (the
+// zero-width boundary at the start of input) and says nothing about location.
+fn token_stream_has_no_lexemes(tokens: List<Token>) -> Bool {
+  count(tokens |> filter(t => !is_trivia_shape(t.shape))) == 0
+}
+
+// THE RENDERING ENTRY FOR A CALLER THAT HOLDS THE TOKEN STREAM -- which is every caller that read a
+// file through this tokeniser, i.e. everyone who can be asked. It makes ONE decision, from the
+// stream (`token_stream_has_no_lexemes`), and hands the answer to the authority's single renderer
+// (`render_span_location_of` in v1.std.core): this function formats nothing itself, so a second
+// place that puts a location into words cannot grow here. The no-lexeme arm produces the TYPED
+// cause through `file_has_no_lexemes`, keeping the file name -- never a `NoSourceIndex` faked by
+// passing an empty index, and never an offset.
+fn render_span_location_in_stream(
+  span: SourceSpan,
+  tokens: List<Token>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if token_stream_has_no_lexemes(tokens) {
+    render_span_location_of(location: file_has_no_lexemes(file: span.file))
+  } else {
+    render_span_location(span: span, source_indices: source_indices)
+  }
+}
+
 fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1LexArtifact {
   let c = chars(source)
   let src = SourceRef { file: file, text: source, source_chars: c }
   let initial = TokPos { pos: 0, interp_depth: [] }
   let final_state = tokenize_loop(source: src, tokens: [], annotations: [], pos: initial, fuel: source_len(source: src) + 1, env: env)
-  let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
+  // THE EOF SPAN ENDS AT THE LAST LEXEME, NOT AT THE SCANNER'S CONSUMED POSITION.
+  // `final_state.pos` is where the scanner STOPPED, which includes everything it read without
+  // emitting a lexeme: the `//` arm in `scan_next_token` advances past a whole comment line and
+  // emits NO token, and the newline arm's token spans the newline itself. So stamping EOF at the
+  // consumed position sends an author into trivia. Measured at the head, a file whose last content
+  // is `  // trailing note` was refused at `m.dag:90-90` -- line 7 column 19, one column past that
+  // comment's last character -- while the last lexeme is the `}` on line 6; and a file ending in a
+  // newline was refused one line past its last line. A span either ends at a lexeme or it is not a
+  // span: see `render_span_location` in v1.std.core, which is also what says SO when there is no lexeme.
+  // Deliberately NOT a 'does this land in a comment' test -- there is no comment shape to test,
+  // comments emit nothing, and a guard would be the second copy of a rule this block removes.
+  let eof_end = last_code_token_end(tokens: final_state.tokens)
+  let eof_span = match eof_end {
+    // Zero-width, as EOF always was: it marks a boundary, not a range. Only its OFFSET changed.
+    Present { value: end } => make_file_span(file: src.file, start: end, end: end)
+    // A file of pure trivia -- comments, whitespace, or nothing -- has no lexeme to end at. The EOF
+    // marker then sits at the start of input, which is the honest offset for a zero-width boundary
+    // when nothing was lexed: an offset is not a LOCATION, and nothing here claims one. The fact
+    // 'this file has no lexemes' is a fact about the STREAM, decided once by
+    // `token_stream_has_no_lexemes` in THIS module (v1.compiler.tokenize, beside `is_trivia_shape`
+    // whose shapes it reads) from the token shapes, and said by
+    // `render_span_location_in_stream` as `<file>: (no position: file has no lexemes)`. A sentinel
+    // number in the span would put that fact in band, where every future reader of `span.start`
+    // has to know it (DESIGN 5), so there is none.
+    Absent => make_file_span(file: src.file, start: 0, end: 0)
+  }
   V1LexArtifact {
     tokens: list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof)),
     annotations: final_state.annotations

@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding }
 
 // FILED AS A STALL AND NOT AS PROSE IN THE PLAN THAT FOUND IT (gunbc.plans.joint_incompatibility_claim_join
 // section 6), on the manager's 2026-09-11 ruling: an instrument that is blind to almost every module in

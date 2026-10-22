@@ -34,7 +34,7 @@ import v2.std.node {
   ArrowBodyEdge,
   core_edge,
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
@@ -172,6 +172,7 @@ fn fold_call_operator_catalog() -> Node {
 
 fn fold_call_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: node_synthetic(
       kind: TypeNode { connective: Conj },

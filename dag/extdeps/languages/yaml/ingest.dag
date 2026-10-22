@@ -11,6 +11,7 @@ import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
 }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -73,7 +74,7 @@ data yaml_refused_text: String = "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\
 // (gunbc.recurring_failure_mode char_brand_admits_any_int).
 type YamlRefusedCharacter { cp: Int, spelled: String }
 
-data yaml_refused_rows: List<YamlRefusedCharacter> = map(enumerate(chars(s: yaml_refused_text)), pair => YamlRefusedCharacter { cp: pair.second, spelled: substring(s: yaml_refused_text, start: pair.first, end: pair.first + 1) })
+data yaml_refused_rows: List<YamlRefusedCharacter> = map(enumerate(chars(text: yaml_refused_text)), pair => YamlRefusedCharacter { cp: pair.second, spelled: substring(s: yaml_refused_text, start: pair.first, end: pair.first + 1) })
 
 fn yaml_first_refused(text: String) -> YamlRefusedCharacter? {
   fold(yaml_refused_rows, init: none, f: (acc, r) => match acc {

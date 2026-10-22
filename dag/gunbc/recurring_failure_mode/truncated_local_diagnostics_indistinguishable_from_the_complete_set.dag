@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.truncated_local_diagnostics_indistinguishable_from_the_complete_set
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data truncated_local_diagnostics_indistinguishable_from_the_complete_set: RecurringFailureMode = RecurringFailureMode {
   identity: "truncated_local_diagnostics_indistinguishable_from_the_complete_set" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a stack-capped local oracle dies mid-measure and its printed diagnostics read as the complete set** (a run of the required floor's own command on a workstation aborts partway through the measuring phases -- main-thread stack exhaustion -- after printing a real but PARTIAL set of diagnostics. Everything printed before the abort is true, so a reader who takes the printed set as the verdict holds a prefix of the tree's defects with nothing on the surface saying so; and the abort line itself has the shape of a defect in the tree rather than a ceiling of the machine.)",

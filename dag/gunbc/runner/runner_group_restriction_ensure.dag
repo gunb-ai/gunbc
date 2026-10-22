@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.github.org_actions { RunnerGroupVisibility, SelectedRepositories, runner_group_visibility_wire }
 import gunbc.repository { gunbc_repository_numeric_identity }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name, deploy_slot_selected_workflow }
 import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
 import gunbc.runner.runner_group_restriction_observation {
   RestrictedRunnerGroup, MicrovmRunnerGroupStanding,
@@ -83,11 +84,21 @@ fn private_heal_publisher_runner_group_subject() -> RunnerGroupCreateSubject {
   )
 }
 
+// THE DEPLOY SLOT'S GROUP: restricted to fleet-converge at the default branch, the admission wall of
+// gunbc.ci.deploy_slot_tenancy. Ensuring it narrows nothing and registers no runner.
+fn deploy_slot_runner_group_subject() -> RunnerGroupCreateSubject {
+  restricted_runner_group_subject(
+    name: deploy_slot_runner_group_name,
+    repository_id: gunbc_repository_numeric_identity.repository_id,
+    selected_workflow: deploy_slot_selected_workflow(),
+  )
+}
+
 // THE ROSTER THE ENSURE RUN WALKS, like gcp_iam_converge_targets: each group is read, left alone when
 // already restricted, created under its own approval when absent, and refused when it holds the
 // name with any other restriction.
 fn restricted_runner_groups() -> List<RunnerGroupCreateSubject> {
-  [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject()]
+  [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject(), deploy_slot_runner_group_subject()]
 }
 
 // The subject as one line, the text the operator reads and the intent a request digests.

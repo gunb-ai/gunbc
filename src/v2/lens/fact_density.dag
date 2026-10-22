@@ -47,7 +47,6 @@ fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
     Conj => false
     Disj => false
     Arrow => false
-    Occupancy => false
     Instantiation => false
   }
 }

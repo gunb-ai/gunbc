@@ -154,8 +154,8 @@ pub fn emitted_workspace_lookup(m: Rc<HashMap<String, String>>, key: String) -> 
 }
 
 pub fn emitted_workspace_without_runtime(graph: Rc<EmittedModuleGraph>) -> Rc<EmittedModuleGraph> {
-    Rc::new(EmittedModuleGraph {
-        modules: Rc::new({
+    {
+        let __rb_0_0 = Rc::new({
             let mut __result = Vec::new();
             for m in graph.modules.clone().iter().cloned() {
                 if (m.clone() != rust_runtime_prelude_module()) {
@@ -163,8 +163,8 @@ pub fn emitted_workspace_without_runtime(graph: Rc<EmittedModuleGraph>) -> Rc<Em
                 }
             }
             __result
-        }),
-        edges: Rc::new({
+        });
+        let __rb_1_0 = Rc::new({
             let mut __result = Vec::new();
             for e in graph.edges.clone().iter().cloned() {
                 if ((e.from.clone() != rust_runtime_prelude_module())
@@ -174,8 +174,22 @@ pub fn emitted_workspace_without_runtime(graph: Rc<EmittedModuleGraph>) -> Rc<Em
                 }
             }
             __result
-        }),
-    })
+        });
+        let mut __rb_h = graph;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.modules = __rb_0_0;
+                __rb_r.edges = __rb_1_0;
+            }
+            None => {
+                __rb_h = Rc::new(EmittedModuleGraph {
+                    modules: __rb_0_0,
+                    edges: __rb_1_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn emitted_workspace_unit_rows(

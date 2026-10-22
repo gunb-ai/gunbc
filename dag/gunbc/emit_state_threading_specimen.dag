@@ -7,12 +7,14 @@ import std.optional { Optional, Present, Absent }
 // emission-building-block-realization, first slice). Shape taken from the parse-population profile:
 // a cursor over one retained source advanced by a scalar index, and a wide record accumulator
 // rebuilt each step with two fields changed and the rest carried unchanged.
-// STANDING: UNQUALIFIED. The seed emitter's realization exceeds the stated minimum: allocation ops and
-// bytes per step are orders of magnitude above the same algorithm with the accumulator moved (re-derived
-// on every run of `gunbc test //gunbc/instruments:native-allocation-observation`, which prints the counts beside the declared reference). The boundary is three layers and each blocks the next: the ownership fact
-// (field-granular last use of a dying owned record; src/v1/ownership.dag), then the representation
-// (an owned record that dies need not be an Rc; v1 wrap_decision/translate), then the emit. The trigger
-// that retires this standing is the emitted form meeting the minimum, not the ownership fact alone.
+// STANDING: the emitted step meets the declared reference operation count (re-derived on every run of
+// `gunbc test //gunbc/instruments:native-allocation-observation`, which prints the counts beside the
+// reference). The ownership fact is field-granular last use of a dying owned record
+// (src/v1/ownership.dag): a fn parameter read only through projections and consumed by a terminal
+// literal of its own type (analyze_dying_base_sites), and a fold accumulator moved at the end of each
+// branch (fold_body_branch_ends_move_acc). The emit tries Rc::get_mut on the dying box and takes the
+// allocating arm when it is shared, so the representation stays Rc and no container slot widens
+// (recurring_failure_mode by_value_record_widens_container_slots).
 type SpecCursor {
   source: List<Int>
   index: Int

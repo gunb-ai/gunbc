@@ -237,6 +237,9 @@ fn grant_ok(g: GrantStanding) -> Bool {
 
 // THE VERDICT IS FOLDED FROM THE TYPED STANDINGS, and the report is one rendering of them; the
 // exit code never re-reads the report (review 67090).
+// THE CELLS THIS CEREMONY BINDS, read by the trust-root binder join.
+data approval_mac_key_ceremony_rows: List<FleetAccessorGrantRow> = [approval_capability_mac_key_accessor_row, approval_submission_mac_key_accessor_row, approval_store_receipt_mac_key_accessor_row]
+
 fn provision_approval_mac_keys() -> CliWireResponse
 {
   match read_supplied_access_token() {
@@ -247,7 +250,7 @@ fn provision_approval_mac_keys() -> CliWireResponse
       let store_receipt = provision_one(ref: approval_store_receipt_mac_key_secret_ref, token: token)
       let keys_ok = standing_ok(s: capability) && standing_ok(s: submission) && standing_ok(s: store_receipt)
       let grants: List<GrantStanding> = if keys_ok {
-        [ensure_grant(row: approval_capability_mac_key_accessor_row, token: token), ensure_grant(row: approval_submission_mac_key_accessor_row, token: token), ensure_grant(row: approval_store_receipt_mac_key_accessor_row, token: token)]
+        map(approval_mac_key_ceremony_rows, r => ensure_grant(row: r, token: token))
       } else {
         []
       }

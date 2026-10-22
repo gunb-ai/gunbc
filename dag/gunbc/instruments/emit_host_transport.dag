@@ -56,6 +56,7 @@ import extdeps.tools.node { node_run_file_command, node_program }
 import extdeps.numeric.base16
 import std.content_hash { content_hash_atom }
 import std.algebra { list_at_optional }
+import std.host_text { chars }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 

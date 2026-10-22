@@ -140,8 +140,8 @@ type NativeClaimReport {
 // NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
 // served program's main shares nothing with the compile CLI's. A driver MAY also declare
 // `native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup` (gunbc.native_serve): the
-// main runs it once, before the bind, with its own executable's octets, and a refusal exits
-// without binding; a driver that declares none is emitted unchanged. Instrument:
+// main runs it once per worker generation (the first before the bind, within its own startup_deadline), with its own executable's octets, and a refusal exits
+// without binding, and a driver that declares one has its handler take the note the startup passed with as a trailing argument of the typed value the startup passed with (NativeServeStartup's payload), so a handler can name the receipt it was admitted under; a driver that declares none is emitted unchanged. Instrument:
 // `gunbc test //gunbc/instruments:native-serve`.
 type CompilerEntryDriver
   = RetainedHostCliKernel
