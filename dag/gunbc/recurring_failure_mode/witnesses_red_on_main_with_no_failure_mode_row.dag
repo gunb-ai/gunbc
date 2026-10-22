@@ -8,11 +8,6 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 data witnesses_red_on_main_with_no_failure_mode_row: RecurringFailureMode = RecurringFailureMode {
   identity: "witnesses_red_on_main_with_no_failure_mode_row" as NonEmptyStr,
 
-  // The typed form of this row's own receipt: 'RUNG FOUND AT 1, mitigatable ... CEILING 3,
-  // structurally guaranteed for the enrolled population'. The blocker is ClimbableButUnbuilt:
-  // the named instrument (a label whose run executes the witness population and reports, per
-  // identity, green-at-main and required-path membership) is buildable now and unbuilt, which is
-  // exactly what the row's NEXT-RUNG TRIGGER receipt names as the capability.
   rung: RungRead {
     found_at: FoundOnRung { rung: Mitigatable },
     standing: BelowCeiling {
