@@ -51,7 +51,8 @@ run3() { # tag mode(wet|hermetic) [dir]
   local r3=$?
   echo "  [$tag $mode] boot rc=$r1 $(grep -aoE '^(PASS|FAIL|UNOBSERVED)' /tmp/f17_${tag}.out | head -1) | printer rc=$r2 $(grep -aoE '^(PASS|FAIL|UNOBSERVED)' /tmp/f17_${tag}_p.out | head -1) | namecheap rc=$r3 $(grep -aoE '^(PASS|FAIL|UNOBSERVED)' /tmp/f17_${tag}_n.out | head -1)"
   for l in "" _p _n; do
-    grep -aE '^(FAIL|UNOBSERVED) ' /tmp/f17_${tag}$l.out | head -2 | sed "s/^/    V| /" | cut -c1-230
+    echo "    ----- raw /tmp/f17_${tag}$l.out ($(wc -c < /tmp/f17_${tag}$l.out)B):"
+    head -12 /tmp/f17_${tag}$l.out | sed "s/^/    O| /" | cut -c1-220
   done
 }
 restore() { cp -f /tmp/fc_head_orig $FC; [ "$(sha $FC)" = "$(sha /tmp/fc_head_orig)" ] && echo "  RESTORE_BYTE_EXACT=YES" || echo "  RESTORE_BYTE_EXACT=NO -- STOP"; }
