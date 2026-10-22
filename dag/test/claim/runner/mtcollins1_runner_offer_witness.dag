@@ -10,7 +10,12 @@ import gunbc.ci.ci_fleet {
 }
 import extdeps.external_authority { ObservedByReceipt, observed_receipt_ref }
 import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv3 }
+import gunbc.host.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound, fleet_converge_policy_from }
+import gunbc.ci.ci_runner_placement {
+  runner_deployment_plan, runner_image_baked_deployment_plan, runner_host_deployment_for,
+  HostRunnerDeploymentRefused, RefusedHostDeployment, HostNotEnrolledInFleet,
+}
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId,
 }
@@ -432,4 +437,26 @@ test fn mtcollins1_eight_rdimm_attestation_contradicts_the_firmware_reading() ->
       == mtcollins1_eight_rdimm_one_rank_module_count + mtcollins1_eight_rdimm_two_rank_module_count
     && mtcollins1_eight_rdimm_firmware_read_module_count == 8
     && mtcollins1_eight_rdimm_trained_megatransfers == 2133
+}
+
+// RED: THE PLAN AND THE POLICY PARTITION BY HOW THE HOST IS REALIZED. A RamImageBoot host in
+// fleet_intent_offers emits no converge target and emits an image-baked entry; mutating the partition so
+// the converge-applied arm takes it reds the first two conjuncts. Control: a converge-delivered host is a
+// converge target and not image-baked.
+test fn ram_image_boot_host_is_image_baked_and_never_a_converge_target() -> Bool {
+  match fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan()) {
+    ConvergePolicyDerived { hosts: applied, image_baked: baked } =>
+      !any(applied, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && any(baked, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && !any(baked, h => (h.identity as String) == (operator_host_srv3 as String))
+        && any(applied, h => (h.identity as String) == (operator_host_srv3 as String))
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
+test fn the_converge_applied_plan_does_not_name_a_ram_image_host() -> Bool {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostNotEnrolledInFleet } } => true
+    _ => false
+  }
 }
