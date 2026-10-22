@@ -3443,6 +3443,22 @@ fn declaration_shared_at_key(type_summaries: TypeSummaryIndex, key: String, name
   }
 }
 
+// A FIELD IS COPY WHEN ITS EMITTED REALIZATION IS: a value type, or a declared type whose own leaf reads
+// unshared. A declared type that reads shared is Rc-wrapped, and a host container or alias is not Copy.
+// This is the field-inhabitance judgement of E0204, predicted at emit time; it is the refusal condition,
+// not a second derive decision (the roster is still chosen by the shared set).
+fn declaration_has_non_copy_field(type_summaries: TypeSummaryIndex, key: String, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Bool {
+  match type_summary_decided(index: type_summaries, key: key) {
+    Present { value: summary } =>
+      map_values(summary.field_type_map) |> any(tn =>
+        if is_dag_value_type_name(name: tn) { false }
+        else if (type_summary_keys_of_leaf(index: type_summaries, leaf: tn) |> count) == 0 { true }
+        else { shared_by_every_declarer(type_summaries: type_summaries, name: tn, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing) }
+      )
+    Absent => false
+  }
+}
+
 // A SHARED DECLARATION READ THROUGH AN UNSHARED LEAF IS A REFUSAL, NEVER A PICK. The shared set is keyed
 // by leaf (shared_by_every_declarer), so when declarers of one leaf disagree the leaf reads unshared and
 // the declaration that IS shared (heap-realized) takes the Copy roster over Rc-realized fields (E0204,
@@ -3456,7 +3472,8 @@ fn leaf_sharing_disagreement_declarers(type_summaries: TypeSummaryIndex, name: S
   let keys = type_summary_keys_of_leaf(index: type_summaries, leaf: name)
   let verdicts = keys |> map(key => declaration_shared_at_key(type_summaries: type_summaries, key: key, name: name, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing))
   let this_shared = keys |> any(key => key == identity && declaration_shared_at_key(type_summaries: type_summaries, key: key, name: name, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing))
-  if this_shared && (verdicts |> any(v => !v)) { keys } else { [] }
+  let copy_over_non_copy = keys |> any(key => key == identity && declaration_has_non_copy_field(type_summaries: type_summaries, key: key, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing))
+  if this_shared && copy_over_non_copy && (verdicts |> any(v => !v)) { keys } else { [] }
 }
 
 fn leaf_sharing_disagreement_refusal(name: String, identity: String, emit_info: EmitGraphInfo) -> String {
