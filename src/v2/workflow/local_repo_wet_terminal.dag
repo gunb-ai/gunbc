@@ -361,6 +361,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.workspace_network_real_reader_witness", function: "real_reader_takes_the_route_the_reader_identity_dictates" },
       entry: "dag/test/claim/workspace_network_real_reader_witness.dag",
       function: "real_reader_takes_the_route_the_reader_identity_dictates",
