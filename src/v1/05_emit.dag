@@ -8,6 +8,8 @@ import std.compiler_entry {
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision, dag_declared_widening_admits }
+import std.literal_elaboration { declaration_is_grounded_natural }
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
@@ -3388,20 +3390,18 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
 
 // A DECLARED ROUTE WHOSE REPRESENTATIONS COINCIDE REALIZES AS THE IDENTITY. LEGALITY is std.coercion's
 // (dag_declared_widening_admits over declared_widening_rules, keyed on the source DECLARATION: a std.nat Nat IS an Int); emit decides nothing
-// about it. What emit adds is only the realization: the decision made at the source's own reference
-// (provenance-keyed, so v2.std.nat's Peano Nat answers Unrealized and never qualifies) names the host
-// spelling the source is grounded onto, and when that is the target's the target performs no operation.
-fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, target_spelling: String, target: RenderTarget, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+// about it. What emit adds is only the realization, and that is a corpus fact too: a declaration with a
+// KernelGrounding row (gunbc.structural_realization_bindings kernel_grounding_rows) IS the kernel integer on every
+// route, as is the Int the rule widens to, so the target performs no operation. Read from the row on the exact
+// declaration, never from how a route spells the type: std.nat Nat renders as the Rust alias `Nat` (= i64), which is
+// no host numeric ground, so a spelling comparison could not see the coincidence.
+fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   match expr.inferred {
     Present { value: Resolved { node: n } } =>
       match carried_declaration_ref(n: n, source_indices: source_indices, env: env) {
         Present { value: d } =>
-          if dag_declared_widening_admits(source: d, target_type: authored_name_at(source_indices: source_indices, node: cast_target_node)) {
-            match realization_host_numeric_spelling(decision: type_reference_realization(n: n, dag_name: authored_name_at(source_indices: source_indices, node: n), target: target)) {
-              Present { value: spelling } => spelling == target_spelling
-              Absent => false
-            }
-          } else { false }
+          dag_declared_widening_admits(source: d, target_type: authored_name_at(source_indices: source_indices, node: cast_target_node))
+            && declaration_is_grounded_natural(rows: kernel_grounding_rows, d: d)
         Absent => false
       }
     _ => false
@@ -3426,7 +3426,7 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
     expr_str
   } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
     expr_str
-  } else if cast_source_grounded_onto_target_carrier(expr: expr, cast_target_node: cast_target_node, target_spelling: ty_str, target: target, env: env, source_indices: source_indices) {
+  } else if cast_source_grounded_onto_target_carrier(expr: expr, cast_target_node: cast_target_node, env: env, source_indices: source_indices) {
     expr_str
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)

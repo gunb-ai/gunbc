@@ -63,3 +63,16 @@ fn w_nat_as_int_is_the_identity() -> Bool {
     ["unsupported cast", "panic!"]
   )
 }
+
+data cross_module_nat_int_source: String = "module probe_cross_module_nat_int\n\nimport std.types { Int }\nimport extdeps.units.iso8601 { iso8601_minutes_per_hour }\n\nfn widen() -> Int {\n  (iso8601_minutes_per_hour() as Int) * 2\n}\n"
+
+// CONTROL, the #14545 shape: the operand is a call whose Nat comes from ANOTHER module and this module
+// never imports Nat, so the source's declaration is read from the carried type, not from this module's names.
+fn w_cross_module_nat_as_int_is_the_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    cross_module_nat_int_source,
+    "src/probe_cross_module_nat_int.rs",
+    ["pub fn widen"],
+    ["unsupported cast", "panic!"]
+  )
+}
