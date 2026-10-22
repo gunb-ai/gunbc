@@ -1307,7 +1307,6 @@ fn admit_broker_answer(
 // triple (the one comparison above, subject_comparison).
 type ClearanceRefusal
   = ProtectionStillRequiresReviewers
-  | ProtectionIsAboutAnotherBoundary { because: SubjectDifference }
   | OwnershipIsAboutAnotherBoundary { because: SubjectDifference }
 
 type ReviewClearance sole_constructor {
@@ -1335,25 +1334,22 @@ fn clear_review(
     ),
   ]
 {
+  // No protection-subject comparison: the observation is built from THIS boundary's owner, repo and
+  // environment inside protection_phase, the only admitted caller, so it cannot differ by construction.
+  // The ownership is the one fact that arrives from outside the boundary, so it is the one compared.
   match subject_comparison(
-    observed: subject_of_the_protection_read(protection: protection),
+    observed: subject_of_the_ownership_read(observation: admission.ownership),
     other: subject_of_the_boundary(boundary: boundary)
   ) {
-    SubjectsDiffer { because: d } => ClearanceRefused { because: ProtectionIsAboutAnotherBoundary { because: d } }
-    SubjectsAgree => match subject_comparison(
-      observed: subject_of_the_ownership_read(observation: admission.ownership),
-      other: subject_of_the_boundary(boundary: boundary)
-    ) {
-      SubjectsDiffer { because: d } => ClearanceRefused { because: OwnershipIsAboutAnotherBoundary { because: d } }
-      SubjectsAgree =>
-        if environment_protection_requires_reviewers(settings: protection.protection) {
-          ClearanceRefused { because: ProtectionStillRequiresReviewers }
-        } else {
-          Cleared {
-            clearance: ReviewClearance { boundary: boundary, admission: admission, protection: protection },
-          }
+    SubjectsDiffer { because: d } => ClearanceRefused { because: OwnershipIsAboutAnotherBoundary { because: d } }
+    SubjectsAgree =>
+      if environment_protection_requires_reviewers(settings: protection.protection) {
+        ClearanceRefused { because: ProtectionStillRequiresReviewers }
+      } else {
+        Cleared {
+          clearance: ReviewClearance { boundary: boundary, admission: admission, protection: protection },
         }
-    }
+      }
   }
 }
 

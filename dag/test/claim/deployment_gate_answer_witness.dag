@@ -84,6 +84,7 @@ import gunbc.auth.deployment_gate_authorization {
   ProtectionResponseNamedAnotherEnvironment,
   WaitNamesAnotherEnvironment,
   ProtectionStillRequiresReviewers,
+  OwnershipIsAboutAnotherBoundary,
   BrokerAdmission,
 }
 import gunbc.fleet.deployment_gate_answer {
@@ -845,4 +846,54 @@ test fn each_read_path_is_its_template_with_the_placeholders_filled() -> Bool {
         BuiltRoutePathRefused { refusal: _, hostile_segment: _ } => false
         BuiltRoutePathOk { path: _ } => false
       })
+}
+
+// A FOREIGN OWNERSHIP RIDING THE ADMISSION. The ownership is built through the chain for ANOTHER boundary
+// (the sibling environment, honestly read), then handed to broker_phase and protection_phase for
+// srv1-production. Nothing before clear_review compares the ownership's subject with the boundary, so only
+// that one comparison (subject_comparison) refuses it: ReviewNotCleared{OwnershipIsAboutAnotherBoundary}
+// by name, and no ReviewRequest is produced.
+test fn an_ownership_observed_for_another_boundary_does_not_clear_the_review() -> Bool {
+  match installation_phase(
+    boundary: sibling_boundary,
+    response: honest_installation_read,
+    claim: installation_claim
+  ) {
+    InstallationStopped { outcome: _ } => false
+    InstallationEstablished { observed: observed, next: _ } =>
+      match ownership_phase(
+        boundary: sibling_boundary,
+        response: rule_read_at(
+          path: "/repos/gunb-ai/gunbc/environments/gcp-iam-bootstrap/deployment_protection_rules",
+          rule_row_id: 900000001,
+          row_app: app_id
+        ),
+        observed: observed
+      ) {
+        OwnershipStopped { outcome: _ } => false
+        OwnershipEstablished { ownership: foreign } =>
+          match broker_phase(
+            boundary: srv1_deployment_gate_boundary,
+            claim: claim_for(run_id: run_a, environment: gated_env),
+            wait: wait_for_environment(environment_name: gated_env),
+            run: in_flight_run(run_id: run_a),
+            capability: capability_for(decision: ProposeApprove),
+            ownership: foreign
+          ) {
+            BrokerStopped { outcome: _ } => false
+            BrokerAdmittedTo { admission: a, next: _ } =>
+              match protection_phase(
+                boundary: srv1_deployment_gate_boundary,
+                response: protection_with(reviewers: false),
+                admission: a
+              ) {
+                ProtectionStopped {
+                  outcome: Waiting { reason: ReviewNotCleared { because: OwnershipIsAboutAnotherBoundary { because: _ } } },
+                } => true
+                ProtectionStopped { outcome: _ } => false
+                ProtectionCleared { request: _ } => false
+              }
+          }
+      }
+  }
 }
