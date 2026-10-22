@@ -855,9 +855,9 @@ fn manual_srv1_root_effect(subject: NonEmptyStr, step: HumanIntervention) -> Pri
 // it goes RED the day a policy lands, at which point they become rows with a reason.
 fn open_policy_srv1_root_step_effects() -> List<PrivilegedEffect> {
   [
-    manual_srv1_root_effect(step: approval_ntfy_account_intervention, subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
-    manual_srv1_root_effect(step: approval_ntfy_server_install_intervention, subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
-    manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention, subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
+    manual_srv1_root_effect(step: approval_ntfy_account_intervention(), subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
+    manual_srv1_root_effect(step: approval_ntfy_server_install_intervention(), subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
+    manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention(), subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
   ]
 }
 
@@ -1618,31 +1618,31 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   // ── MANUAL-STEP ROWS (node adhoc-28759c44-922) ───────────────────────────────────────
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.secret_provision", decl_name: "gcp_fleet_secrets_wif_binding_intervention"),
-    effect: manual_operator_api_effect(step: gcp_fleet_secrets_wif_binding_intervention, subject: "establish the GitHub Actions workload-identity binding to the fleet automation service account on the fleet secrets project" as NonEmptyStr, cause: "setIamPolicy on the fleet secrets project is held by the grant administrator alone (gunbc.spark.bootstrap_provision no_principal_can_both_grant_and_read)" as NonEmptyStr, reach: MintsProjectWideCredential),
+    effect: manual_operator_api_effect(step: gcp_fleet_secrets_wif_binding_intervention(), subject: "establish the GitHub Actions workload-identity binding to the fleet automation service account on the fleet secrets project" as NonEmptyStr, cause: "setIamPolicy on the fleet secrets project is held by the grant administrator alone (gunbc.spark.bootstrap_provision no_principal_can_both_grant_and_read)" as NonEmptyStr, reach: MintsProjectWideCredential),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_origin", decl_name: "cloudflare_bootstrap_custody_intervention"),
-    effect: manual_operator_api_effect(step: cloudflare_bootstrap_custody_intervention, subject: "place the dashboard-acquired Cloudflare account bootstrap token into Secret Manager as a pinned version" as NonEmptyStr, cause: "the token exists only in the operator's hands until placed, and no fleet principal holds Secret Manager create/addVersion for this secret" as NonEmptyStr, reach: MintsAccountWideCredential),
+    effect: manual_operator_api_effect(step: cloudflare_bootstrap_custody_intervention(), subject: "place the dashboard-acquired Cloudflare account bootstrap token into Secret Manager as a pinned version" as NonEmptyStr, cause: "the token exists only in the operator's hands until placed, and no fleet principal holds Secret Manager create/addVersion for this secret" as NonEmptyStr, reach: MintsAccountWideCredential),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.review_sheet_operator", decl_name: "shared_drive_create_intervention"),
-    effect: manual_operator_api_effect(step: shared_drive_create_intervention, subject: "create the shared drive that holds the review sheets" as NonEmptyStr, cause: "the drive is owned by the operator's Workspace account; the writer service account is the principal being granted into it" as NonEmptyStr, reach: MintsNoCredential),
+    effect: manual_operator_api_effect(step: shared_drive_create_intervention(), subject: "create the shared drive that holds the review sheets" as NonEmptyStr, cause: "the drive is owned by the operator's Workspace account; the writer service account is the principal being granted into it" as NonEmptyStr, reach: MintsNoCredential),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.review_sheet_operator", decl_name: "spreadsheet_create_intervention"),
-    effect: manual_operator_api_effect(step: spreadsheet_create_intervention, subject: "create the buyer review Google Sheet under the operator's account" as NonEmptyStr, cause: "the sheet is owned by the operator's Workspace account; the writer service account is the principal being granted onto it" as NonEmptyStr, reach: MintsNoCredential),
+    effect: manual_operator_api_effect(step: spreadsheet_create_intervention(), subject: "create the buyer review Google Sheet under the operator's account" as NonEmptyStr, cause: "the sheet is owned by the operator's Workspace account; the writer service account is the principal being granted onto it" as NonEmptyStr, reach: MintsNoCredential),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_publisher_token_mint_intervention"),
-    effect: manual_operator_api_effect(step: approval_ntfy_publisher_token_mint_intervention, subject: "create the ntfy publisher user, issue its access token on srv1 and add it as a Secret Manager version of approval-ntfy-publisher-token" as NonEmptyStr, cause: "the token does not exist until a person creates it on the ntfy server, and no fleet principal holds Secret Manager addVersion for this secret" as NonEmptyStr, reach: MintsResourceScopedCredential),
+    effect: manual_operator_api_effect(step: approval_ntfy_publisher_token_mint_intervention(), subject: "create the ntfy publisher user, issue its access token on srv1 and add it as a Secret Manager version of approval-ntfy-publisher-token" as NonEmptyStr, cause: "the token does not exist until a person creates it on the ntfy server, and no fleet principal holds Secret Manager addVersion for this secret" as NonEmptyStr, reach: MintsResourceScopedCredential),
     realized: RealizedHumanStep,
     divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
   },
