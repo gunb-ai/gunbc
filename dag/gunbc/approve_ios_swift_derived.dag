@@ -51,6 +51,19 @@ fn approve_ios_carrier_edges(edges: List<Edge>) -> Outcome<List<Edge>> {
   })
 }
 
+// A coproduct's variants keep their labels; an arm's payload fields get the same carrier substitution a record's do.
+fn approve_ios_variant_edge(edge: Edge) -> Outcome<Edge> {
+  bind_outcome(o: approve_ios_carrier_edges(edges: edge.target.children), f: fn(fields) {
+    outcome_accepted(value: Edge { label: edge.label, target: Node { kind: edge.target.kind, children: fields, occurrence_id: edge.target.occurrence_id } })
+  })
+}
+
+fn approve_ios_variant_edges(edges: List<Edge>) -> Outcome<List<Edge>> {
+  fold(edges, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+    bind_outcome(o: acc, f: fn(done) { bind_outcome(o: approve_ios_variant_edge(edge: e), f: fn(next) { outcome_accepted(value: list_snoc_item(xs: done, item: next)) }) })
+  })
+}
+
 fn approve_ios_reflected_record(module_name: String, type_name: String) -> Outcome<Node> {
   let sym = symbol_intern_lexeme(lexeme: type_name)
   let rows = filter(
@@ -62,9 +75,16 @@ fn approve_ios_reflected_record(module_name: String, type_name: String) -> Outco
     Present { value: fact } =>
       match type_decl_view(target: fact.node) {
         PlainTypeDecl { member: m } =>
-          bind_outcome(o: approve_ios_carrier_edges(edges: m.children), f: fn(edges) {
-            outcome_accepted(value: Node { kind: m.kind, children: edges, occurrence_id: m.occurrence_id })
-          })
+          match m.kind {
+            TypeNode { connective: Disj } =>
+              bind_outcome(o: approve_ios_variant_edges(edges: m.children), f: fn(edges) {
+                outcome_accepted(value: Node { kind: m.kind, children: edges, occurrence_id: m.occurrence_id })
+              })
+            _ =>
+              bind_outcome(o: approve_ios_carrier_edges(edges: m.children), f: fn(edges) {
+                outcome_accepted(value: Node { kind: m.kind, children: edges, occurrence_id: m.occurrence_id })
+              })
+          }
         _ => outcome_rejected(d: scoped_type_reflection_diagnostic(type_name: sym, invariant: ^type_declaration_is_not_a_plain_record))
       }
   }

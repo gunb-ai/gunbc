@@ -1,0 +1,62 @@
+module test.claim.approve_ios_swift_protocol_decl_join_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, List }
+import std.optional { Present, Absent }
+import v2.extdeps.languages.swift.syntax { SwiftDecl, SwiftSourceFile, SwiftStructDecl, SwiftEnumDecl, SwiftFunctionDecl, SwiftCommentedDecl, SwiftRenderedDecl, SwiftImportDecl, sw_rendered }
+import gunbc.approve_ios_swift_protocol { approve_ios_protocol_swift_file }
+import gunbc.approve_ios_retained_decls { ApproveIosRetainedDecl, approve_ios_retained_bodied_decls, approve_ios_retained_raw_value_enums, approve_ios_retained_arm_structs, approve_ios_retained_decl_ref_decls }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DECLARATION-LEVEL COMPLETENESS JOIN FOR Protocol.swift. The tree is the SUPPLIED value (the same
+// approve_ios_protocol_swift_file the registered artifact prints, with the two door-derived records
+// stood in by rendered decls); every named top-level Swift declaration it authors must be exactly one
+// retained declaration (gunbc.approve_ios_retained_decls, registered as DeclSubject rows in
+// gunbc.approve_ios_app approve_ios_retained_swift_rows), and each retained name must be authored.
+
+fn authored_name(d: SwiftDecl) -> List<String> {
+  match d {
+    SwiftStructDecl { attributes: _, modifiers: _, name: n, inherits: _, members: _ } => [n]
+    SwiftEnumDecl { attributes: _, modifiers: _, name: n, inherits: _, members: _ } => [n]
+    SwiftFunctionDecl { attributes: _, modifiers: _, name: n, parameters: _, is_async: _, throws: _, result: _, body: _ } => [n]
+    SwiftCommentedDecl { comments: _, decl: inner } => authored_name(d: inner)
+    _ => []
+  }
+}
+
+fn standin_tree() -> List<SwiftDecl> {
+  approve_ios_protocol_swift_file(redemption_challenge: sw_rendered(t: "RedemptionChallenge"), approval_push_hint: sw_rendered(t: "ApprovalPushHint")).declarations
+}
+
+fn authored_names() -> List<String> {
+  flat_map(standin_tree(), d => authored_name(d: d))
+}
+
+fn retained_decls() -> List<ApproveIosRetainedDecl> {
+  concat(concat(approve_ios_retained_bodied_decls, approve_ios_retained_raw_value_enums), concat(approve_ios_retained_arm_structs, approve_ios_retained_decl_ref_decls))
+}
+
+fn retained_names() -> List<String> {
+  map(retained_decls(), d => d.swift_name)
+}
+
+fn unaccounted(authored: List<String>, retained: List<String>) -> List<String> {
+  filter(authored, n => !contains(retained, n))
+}
+
+test fn every_authored_declaration_is_retained() -> Bool {
+  length(unaccounted(authored: authored_names(), retained: retained_names())) == 0
+}
+
+test fn every_retained_declaration_is_authored() -> Bool {
+  length(unaccounted(authored: retained_names(), retained: authored_names())) == 0
+}
+
+test fn an_authored_declaration_with_no_row_refuses() -> Bool {
+  length(unaccounted(authored: concat(authored_names(), ["Stray"]), retained: retained_names())) == 1
+}
+
+test fn the_two_door_derived_records_are_not_authored() -> Bool {
+  !contains(authored_names(), "RedemptionChallenge") && !contains(authored_names(), "ApprovalPushHint")
+}

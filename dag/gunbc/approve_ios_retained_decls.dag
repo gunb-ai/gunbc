@@ -1,0 +1,55 @@
+module gunbc.approve_ios_retained_decls
+
+import std.types { String, List }
+
+// THE DECLARATIONS OF apps/approve-ios/Approve/Protocol.swift THAT ARE STILL AUTHORED, not printed by the decl
+// door, each paired with the .dag declaration it realizes. ONE LIST per missing capability, so the typed
+// retained rows (gunbc.approve_ios_app approve_ios_retained_swift_rows) and the completeness claim
+// (test.claim.approve_ios_swift_protocol_decl_join_witness) read the same names: a hand-written Swift
+// declaration that is in neither this list nor the door-derived set is refused by that claim.
+//
+// swift_name is the name the Swift tree declares; module_path/decl_name is the .dag declaration it
+// realizes, which a DeclarationRef must resolve (gunbc.recurring_failure_mode
+// declaration_reference_cites_a_declaration_nothing_resolved).
+
+type ApproveIosRetainedDecl {
+  swift_name: String
+  module_path: String
+  decl_name: String
+}
+
+// The decl door has no bodied member or function kind (gunbc.approve_ios_app approve_ios_bodied_member_frontier).
+// Base64Url has no .dag declaration of its own: it spells the b64url fields of SignatureBytes, so it cites that.
+data approve_ios_retained_bodied_decls: List<ApproveIosRetainedDecl> = [
+  ApproveIosRetainedDecl { swift_name: "Protocol", module_path: "gunbc.auth.approval_device_wire", decl_name: "framed" },
+  ApproveIosRetainedDecl { swift_name: "enrolmentTranscript", module_path: "gunbc.auth.approval_device_wire", decl_name: "enrolment_transcript" },
+  ApproveIosRetainedDecl { swift_name: "enrollmentIdForCode", module_path: "gunbc.auth.approval_device_wire", decl_name: "enrollment_id_for_code" },
+  ApproveIosRetainedDecl { swift_name: "deviceRedemptionSigningInput", module_path: "gunbc.auth.approval_device_wire", decl_name: "device_redemption_signing_input" },
+  ApproveIosRetainedDecl { swift_name: "deviceReadClientData", module_path: "gunbc.auth.approval_device_wire", decl_name: "device_read_client_data" },
+  ApproveIosRetainedDecl { swift_name: "devicePushUpdateClientData", module_path: "gunbc.auth.approval_device_wire", decl_name: "device_push_update_client_data" },
+  ApproveIosRetainedDecl { swift_name: "Base64Url", module_path: "extdeps.crypto.signature", decl_name: "SignatureBytes" },
+]
+
+// The door prints a unit coproduct with the .dag constructor names and no raw values; the app's enums are
+// String-raw-valued by the wire spelling (platform_wire, proposed_decision_name, enrolment_refusal_wire_label).
+data approve_ios_retained_raw_value_enums: List<ApproveIosRetainedDecl> = [
+  ApproveIosRetainedDecl { swift_name: "MobilePlatform", module_path: "gunbc.auth.approval_device_wire", decl_name: "MobilePlatform" },
+  ApproveIosRetainedDecl { swift_name: "ProposedDecision", module_path: "gunbc.auth.approval_capability", decl_name: "ProposedDecision" },
+  ApproveIosRetainedDecl { swift_name: "EnrolmentRefusalKind", module_path: "gunbc.auth.approval_device_wire", decl_name: "EnrolmentRefusalWire" },
+]
+
+// The door prints a payload arm as an enum case; the app spells the arm as its own struct.
+data approve_ios_retained_arm_structs: List<ApproveIosRetainedDecl> = [
+  ApproveIosRetainedDecl { swift_name: "IosAppAttestAssertion", module_path: "gunbc.auth.approval_device_wire", decl_name: "PlatformRedemptionProof" },
+]
+
+// The door refuses these on a field whose type is a declaration (carrier_chain_reaches_no_kernel_atom) or
+// would print it as Gunbc.<module path>.<Name>; the app spells the leaf name.
+data approve_ios_retained_decl_ref_decls: List<ApproveIosRetainedDecl> = [
+  ApproveIosRetainedDecl { swift_name: "VerifyingKey", module_path: "extdeps.crypto.signature", decl_name: "VerifyingKey" },
+  ApproveIosRetainedDecl { swift_name: "SignatureBytes", module_path: "extdeps.crypto.signature", decl_name: "SignatureBytes" },
+  ApproveIosRetainedDecl { swift_name: "DeviceRedemptionSigningInput", module_path: "gunbc.auth.approval_device_wire", decl_name: "DeviceRedemptionSigningInput" },
+  ApproveIosRetainedDecl { swift_name: "SignedRedemption", module_path: "gunbc.auth.approval_device_wire", decl_name: "SignedRedemption" },
+  ApproveIosRetainedDecl { swift_name: "IosAppAttestBoundDecisionKey", module_path: "gunbc.auth.approval_device_wire", decl_name: "PresentedEnrollmentEvidence" },
+  ApproveIosRetainedDecl { swift_name: "ApnsRegistration", module_path: "gunbc.auth.approval_device_wire", decl_name: "PushRegistration" },
+]
