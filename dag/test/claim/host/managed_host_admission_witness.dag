@@ -14,6 +14,7 @@ import gunbc.rung_drop {
   Retired,
   Dissolved,
   TypedDeclaration, population_from_list,
+  PopulationDeleted,
 }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
@@ -273,9 +274,10 @@ fn drop_with_standing(standing: RungDropStanding) -> RungDrop {
   }
 }
 
-// Dissolved (main's #14181 fourth standing): admissible ONLY over an EMPTY typed population; any
-// other shape is invalid and FAILS CLOSED -- still standing, counted live, never erased. The helper
-// lets the two companion REDs mint each shape from the record's own cited value.
+// Dissolved (main's #14181 fourth standing, sharpened by #14476): admissible ONLY over a TYPED
+// PopulationDeleted declaration; every other shape (including a list-derived NotYetCounted) is
+// invalid and FAILS CLOSED -- still standing, counted live, never erased. The helpers let the two
+// companion REDs mint each shape from the record's own cited value.
 fn drop_dissolved_with_population(population: List<String>) -> RungDrop {
   let base = mtcollins1_bmc_secure_standing_predates_reflash
   match base.declaration {
@@ -498,9 +500,38 @@ test fn w_admission_permits_a_platform_that_does_not_carry_smpro() -> Bool {
   }
 }
 
-// A DISSOLUTION ADMITTED ONLY OVER AN EMPTY TYPED POPULATION erases the drop from live accounting
-// (dissolved_is_admissible), so it can no longer qualify a subject: the declared-drop arm is gone
-// and the stale-subject host drops out of the projection entirely.
+// #14476 SHARPENED THE LAW: an admissible dissolution is a TYPED PopulationDeleted declaration --
+// an EMPTY LIST IS NOT ONE (population_from_list([]) is a typed NotYetCounted, which stays
+// inadmissible and keeps covering). The helper mints the admissible shape from the record's own
+// cited value so the companion RED does not accidentally test the wrong arm.
+fn drop_dissolved_population_deleted() -> RungDrop {
+  let base = mtcollins1_bmc_secure_standing_predates_reflash
+  match base.declaration {
+    AuthoredProse { legacy: _, authored: _ } => base
+    TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } =>
+      RungDrop {
+        identity: base.identity,
+        subject: base.subject,
+        declared: base.declared,
+        standing: Dissolved {
+          ruling: "test: a ruling declaring the rung's population deleted" as NonEmptyStr,
+          decision_record: "test.claim.host.managed_host_admission_witness" as NonEmptyStr,
+          population_gone: "test: the typed population is deleted" as NonEmptyStr,
+        },
+        declaration: TypedDeclaration {
+          previous: p,
+          temporary: t,
+          reason: r,
+          population: PopulationDeleted,
+          restoration_trigger: rt,
+        },
+      }
+  }
+}
+
+// A DISSOLUTION ADMITTED ONLY OVER A TYPED PopulationDeleted (#14476) erases the drop from live
+// accounting (dissolved_is_admissible), so it can no longer qualify a subject: the declared-drop
+// arm is gone and the stale-subject host drops out of the projection entirely.
 test fn w_an_admissibly_dissolved_covering_drop_is_absent() -> Bool {
   match mtcollins1_managed_host_admission() {
     Absent => false
@@ -515,7 +546,7 @@ test fn w_an_admissibly_dissolved_covering_drop_is_absent() -> Bool {
         receipt: r.receipt,
         current_subject: r.current_subject,
         covering_drop: Present {
-          value: drop_dissolved_with_population(population: []),
+          value: drop_dissolved_population_deleted(),
         },
       ) {
         dissolved =>
