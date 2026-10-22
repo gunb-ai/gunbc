@@ -52,7 +52,7 @@ cp -f $EMIT /tmp/emitn_head_orig
 echo "=== A. baseline (expect 4 PASS):"
 run4 base
 echo "=== B. MUTATION: kill the AmbiguousAnonymousRecordLiteral diagnostic node:"
-BEFORE=$(grep -acF 'Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {' $EMIT))
+BEFORE=$(grep -acF 'Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {' $EMIT)
 echo "  anchor before=$BEFORE (1 expected)"
 [ "$BEFORE" = "1" ] || { echo "MUT_ANCHOR_FAIL -- NOT a mutation run"; }
 perl -0777 -pi -e 's/Rc::new\(vec!\[crate::v1_std_core::make_error_node\(Rc::new\(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral \{.*?module_name\.clone\(\)\)\)\])/Rc::new(vec![])/s' $EMIT
