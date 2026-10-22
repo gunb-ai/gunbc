@@ -778,8 +778,8 @@ fn observe_repository_shared_posture(arm: ObservationArm, instance: HostDashboar
     EntryPresent => {
       let key_reads = map(dashboard_git_worker_posture_readback_keys(), key =>
         posture_config_leg(arm: arm, repo: repo, key: key))
-      let service_leg = posture_unit_leg(arm: arm, path: dashboard_git_maintenance_service_unit_path(instance: instance) as String)
-      let timer_leg = posture_unit_leg(arm: arm, path: dashboard_git_maintenance_timer_unit_path(instance: instance) as String)
+      let service_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_service_unit_path(instance: instance) as String, absent: AbsentIsTheStanding)
+      let timer_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_timer_unit_path(instance: instance) as String, absent: AbsentIsTheStanding)
       match posture_document_from_legs(key_legs: key_reads, service_leg: service_leg, timer_leg: timer_leg) {
       PostureReadUnobservable { cause } => MemberUnobservable { member: member, cause: cause }
       PostureReadOut { document } =>
@@ -841,37 +841,6 @@ fn posture_config_leg(arm: ObservationArm, repo: FilePath, key: NonEmptyStr) -> 
           else if r.exit_code == 1 { PostureConfigPair { key: key, value: posture_missing_sentinel } }
           else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(r.exit_code)], "") } }
       }
-  }
-}
-
-// THE MAINTENANCE-UNIT DOCUMENTS READ WITH ABSENCE AS A STANDING, NOT A REFUSAL. These two units are
-// installed BY THIS VERY MEMBER, so on any host that has never run this member they are absent -- and
-// absent units are the same re-writable standing as an unset config key: they move the digest and the
-// member re-asserts. The shared unit_document_leg cannot say this: its other caller (observe_unit_file)
-// has ALREADY established presence via entry_presence, and for it a document that vanished between
-// listing and read IS a refusal. So the posture reads its units through this leg, where the listing's
-// established absence becomes the sentinel and every refusal names the read and the path that failed
-// at production -- the fold no longer prefixes a guessed subject.
-fn posture_unit_leg(arm: ObservationArm, path: String) -> Leg {
-  match arm {
-    OnTheHostItself => {
-      let parent = path_parent(path: path)
-      let listing = Filesystem.List(path: parent)
-      let read = Filesystem.Read(path: path)
-      match filesystem_file_observation(
-        listing: filesystem_listing_observation(directory: parent, success: listing.success, entries: listing.entries, error: listing.error),
-        name: path_basename(path: path),
-        path: path,
-        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-      ) {
-        FilesystemFileRead { path: _, content } => LegOut { stdout: content }
-        FilesystemFileAbsent(_) => LegOut { stdout: posture_missing_sentinel }
-        FilesystemFileIndeterminate { cause } => LegRefused { cause: join(["reading maintenance unit document ", path, ": ", cause], "") }
-        FilesystemFileObservationsDisagree { path: _, cause } => LegRefused { cause: join(["reading maintenance unit document ", path, ": ", cause], "") }
-        FilesystemFileSubjectRefused { directory: _, name: _, cause } => LegRefused { cause: join(["reading maintenance unit document ", path, ": ", cause], "") }
-      }
-    }
-    OverTransport { transport } => remote_leg(transport: transport, argv: ["cat", "--", path], leg: join(["reading maintenance unit document ", path], ""))
   }
 }
 
