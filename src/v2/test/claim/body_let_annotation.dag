@@ -3,7 +3,7 @@ module v2.test.claim.body_let_annotation
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, fold_list, length, list_snoc_item, skip, list_at_optional }
-import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_assemble_ingest, tpb_src_ingest, tpb_std_optional_witness, tpb_refuses_with }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -297,15 +297,15 @@ test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
 // - One step only: `x: Pos2` (`type Pos2 = Pos where ..`) inhabits Pos and not Int, at each.
 // - A sibling refinement (`x: Neg` at Pos, both refinements of Int) refuses at each.
 fn bla_let_optional() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  let y: Int = x\n  0\n}\n"))
+  bla_infers(o: tpb_assemble_ingest(ingest: Cons { head: tpb_std_optional_witness(), tail: tpb_src_ingest(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  let y: Int = x\n  0\n}\n") }))
 }
 
 fn bla_ret_optional() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  x\n}\n"))
+  bla_infers(o: tpb_assemble_ingest(ingest: Cons { head: tpb_std_optional_witness(), tail: tpb_src_ingest(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  x\n}\n") }))
 }
 
 fn bla_fld_optional() -> Outcome<Bool> {
-  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Int?) -> R {\n  R { v: x }\n}\n"))
+  bla_infers(o: tpb_assemble_ingest(ingest: Cons { head: tpb_std_optional_witness(), tail: tpb_src_ingest(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Int?) -> R {\n  R { v: x }\n}\n") }))
 }
 
 fn bla_let_pos_int() -> Outcome<Bool> {
@@ -693,7 +693,7 @@ fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => false
+        GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: g } => g.witness.structural.evidence == ty
       }
   }

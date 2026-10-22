@@ -392,6 +392,9 @@ fn write_output_files(
 }
 
 fn main() {
+    // THE OUTER BOUNDARY STARTS HERE (§5a amendment A), before argv decode: the CLI prints the
+    // invocation rows on its return path (see `cli_run::pre_entry_phase`).
+    v1_compiler::cli_run::pre_entry_phase::record_invocation_start();
     let cli = v1_compiler::gunbc_cli_dispatch_generated::Cli::parse();
     let host = RetainedCliHost {
         dry_run: cli.dry_run,
@@ -584,6 +587,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         // never ran, so `resolved 0 sources` would report a resolve that did not
                         // happen as one that found nothing.
                         eprintln!("gunbc compile: {earlier_phase}: {cause}");
+                        cli_run::pre_entry_phase::print_invocation_receipt();
                         std::process::exit(1);
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
@@ -598,6 +602,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         for emission in &run.emissions {
                             render_diagnostics(&emission.result);
                         }
+                        cli_run::pre_entry_phase::print_invocation_receipt();
                         std::process::exit(1);
                     }
                     cli_run::CompileDisposition::Completed { emitted_count } => {
@@ -641,6 +646,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                             "compiled: {} files emitted, {} diagnostics",
                             emitted_count, total_diagnostics
                         );
+                        cli_run::pre_entry_phase::print_invocation_receipt();
                         std::process::exit(0);
                     }
                 }
@@ -1121,6 +1127,10 @@ impl Verdict {
         if let Some(message) = self.message {
             eprintln!("{message}");
         }
+        // THE INVOCATION ROWS PRINT BEFORE THE `_exit` BELOW: an `atexit` hook would not run
+        // here, and the compile route reaches this function when writing the emitted tree is
+        // refused -- exactly the failure an operator needs the receipt for.
+        v1_compiler::cli_run::pre_entry_phase::print_invocation_receipt();
         // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
         // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
         // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice

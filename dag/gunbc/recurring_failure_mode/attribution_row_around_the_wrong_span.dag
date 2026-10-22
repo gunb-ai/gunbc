@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.attribution_row_around_the_wrong_span
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data attribution_row_around_the_wrong_span: RecurringFailureMode = RecurringFailureMode {
   identity: "attribution_row_around_the_wrong_span" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an attribution row placed around the wrong span leaves the residual intact while the class reads as repaired.** A cost partition refuses because some work inside the parent span is covered by no exclusive row. An author hypothesises which work it is, measures THAT span honestly, lands it as a row -- and the residual does not move, because the hypothesis was wrong. The row is real, measured and non-overlapping; it simply accounts for something else. What makes this a failure mode rather than an ordinary wrong guess is the SECOND step: the repair gets written up as the repair, and the next reader inherits a closed question.",
