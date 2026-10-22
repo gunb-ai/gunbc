@@ -1,8 +1,9 @@
 module test.claim.base64_tool_real_execution_witness
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String }
 import v2.std.integer { Int }
-import std.algebra { contains, length }
+import std.algebra { length }
+import v2.std.text { string_all_chars_in }
 import extdeps.tools.base64 { Base64FileEncoded, Base64FileUnreadable, base64_encode_file_via_shell }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -19,14 +20,16 @@ data committed_image_path: NonEmptyStr = "artifacts/ipxe/snponly-arm64.efi" as N
 // POSITIVE CONTROL: the real encoding of the committed image is one unwrapped line of exactly
 // 4*ceil(337920/3) characters (337,920 B is the size in the S1 SitePxeEdgeChainloaderBuildReceipt
 // record; GNU base64 emits 4 characters per 3 input bytes). The argv's `-w 0` is what keeps it one
-// line: `-w 76` inserts newlines and reds the first conjunct. Content equality is the sha256 witness
+// line: `-w 76` inserts newlines outside the alphabet and reds the first conjunct. Content equality is the sha256 witness
 // of the image itself (test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness); a decode
 // of this text would have to go through raw shell, a second path beside the modelled one.
+data base64_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+
 data committed_image_encoded_length: Int = 450560
 
 test fn the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length() -> Bool {
   match base64_encode_file_via_shell(path: committed_image_path) {
-    Base64FileEncoded { text: t } => contains(t, "\n") == false && length(t) == committed_image_encoded_length
+    Base64FileEncoded { text: t } => string_all_chars_in(s: t, alphabet: base64_alphabet) && length(t) == committed_image_encoded_length
     Base64FileUnreadable { stderr: _ } => false
     _ => false
   }
