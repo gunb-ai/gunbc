@@ -1577,8 +1577,8 @@ test fn the_honest_pair_is_admitted_and_carries_the_receipts_it_was_built_from()
           boundary: srv1_deployment_gate_boundary,
         ) {
           RemovalAdmitted { evidence: e } =>
-            e.approved.run_id == 35447067113
-              && e.rejected.run_id == 35447067114
+            e.approved.run_id.value == 35447067113
+              && e.rejected.run_id.value == 35447067114
               && e.boundary.environment_name == gated_env
               // THE SEALED PAIR CARRIES THE WHOLE SUBJECT, not just the environment half of it: this is
               // the field the act is later compared against, so it has to be checkable here.

@@ -502,7 +502,7 @@ fn run(id: Int, attempt_n: Int, event: String, path: String, sha: CommitSha, com
 
 fn run_on(id: Int, attempt_n: Int, event: String, path: String, sha: CommitSha, completed: Bool, concluded: Bool, on_branch: String) -> WorkflowRun {
   WorkflowRun {
-    id: id,
+    id: GitHubWorkflowRunId { value: id },
     name: none,
     path: Present { value: path },
     head_sha: sha,

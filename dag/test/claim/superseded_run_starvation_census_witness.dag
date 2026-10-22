@@ -180,14 +180,14 @@ data run_sha_def: WorkflowRun = WorkflowRun { display_title: none,
 
 test fn first_run_with_different_head_finds_differing_sha() -> Bool {
   match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_def]) {
-    Present { value: r } => r.id == 4
+    Present { value: r } => r.id.value == 4
     Absent => false
   }
 }
 
 test fn first_run_with_different_head_skips_matching_and_finds_differing() -> Bool {
   match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_def]) {
-    Present { value: r } => r.id == 4
+    Present { value: r } => r.id.value == 4
     Absent => false
   }
 }

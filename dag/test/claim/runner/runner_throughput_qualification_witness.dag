@@ -642,7 +642,7 @@ test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool
     && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: failed)), want: "cohort seat 35447067201 failed: floor phase refused")
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: not-an-assessed-run")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: 35447099999")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
     && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))))
 }

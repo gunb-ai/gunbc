@@ -1188,7 +1188,7 @@ test fn historical_evidence_does_not_outlive_the_rule() -> Bool {
     ) {
            ReviewerRemovalReady { admitted: a } =>
              a.boundary.environment_name == gate_env
-               && a.evidence.approved.run_id == 35447067113
+               && a.evidence.approved.run_id.value == 35447067113
            ReviewerRemovalBlocked { missing: _ } => false
          })
 }
@@ -2140,8 +2140,8 @@ standing: standing_never_read(),
              let i = a.intervention
              let e = a.evidence
              (i.identity as String).contains(gate_env as String)
-               && e.approved.run_id == 35447067113
-               && e.rejected.run_id == 35447067114
+               && e.approved.run_id.value == 35447067113
+               && e.rejected.run_id.value == 35447067114
                && e.boundary.environment_name == gate_env
            ReviewerRemovalBlocked { missing: _ } => false
          })

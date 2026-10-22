@@ -170,7 +170,7 @@ data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn cancelled_run(event: String) -> WorkflowRunRecord {
   WorkflowRunRecord {
-    run_id: 33037610090,
+    run_id: GitHubWorkflowRunId { value: 33037610090 },
     event: event,
     head_branch: "main",
     status: "completed",
@@ -383,7 +383,7 @@ test fn w_RED_an_ungrounded_settlement_refuses_the_loss_judgement() -> Bool {
 // creation, which is exactly the shape cancellation_execution_standing refuses to call started.
 fn pending_shaped_run(event: String) -> WorkflowRunRecord {
   WorkflowRunRecord {
-    run_id: 7, event: event, head_branch: "b",
+    run_id: GitHubWorkflowRunId { value: 7 }, event: event, head_branch: "b",
     status: "completed", conclusion: "cancelled",
     created_at_epoch_s: 1000, run_started_at_epoch_s: 1000, updated_at_epoch_s: 1200
   }
