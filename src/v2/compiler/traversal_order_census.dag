@@ -156,7 +156,7 @@ fn trav_note(acc: TravAcc, callee: QualifiedName, kind: TraversalSiteKind, ipath
       callee: qualified_name_to_dotted_string(qn: callee),
       kind: kind,
       path: ipath,
-      shape: if retain { content_hash(n: shape_node).digest } else { "" },
+      shape: if retain { content_hash(n: shape_node).digest as String } else { "" },
       fed: fed
     })
   }
