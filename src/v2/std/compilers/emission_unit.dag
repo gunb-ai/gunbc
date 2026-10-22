@@ -1,0 +1,143 @@
+module v2.std.compilers.emission_unit
+
+import std.types { List, Bool }
+import std.algebra { fold_list, list_find_first, list_snoc_item }
+import std.optional { Absent, Optional, Present }
+import v2.std.artifact { Artifact }
+import v2.std.compilers.target_model { DeclarationReferenceForm }
+import v2.std.diagnostic {
+  Accepted,
+  CorrectionNotModeled,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  declaration_locus,
+  outcome_accepted
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_last_segment, qualified_name_to_dotted_string }
+
+// THE FILE-SCOPED EMISSION UNIT: WHAT ONE EMITTED TARGET FILE OWES ITS REFERENCES. A declaration
+// reference is spelled by a DeclarationReferenceForm (v2.std.compilers.target_model), which today is
+// a property of the TARGET and is injective by construction: ModuleScopedPath prints the whole
+// declaring path, so two distinct declarations cannot print alike. A file whose references print the
+// LEAF only (a flat Swift file whose app API uses bare names) gives that structure up, and what
+// replaces it is a per-FILE property: no two distinct declarations referenced in the file share a
+// leaf. That property has no home on a target, because it is a fact of the file's reference set, and
+// no home on a reference step, because that step sees one reference at a time. This type is that home.
+//
+// DFS RECORD (each candidate, and why it is not this fact):
+//   std.realization Materialization = Recompute | Memoize | Share -- a cache-realization choice of
+//     a computed value; it names no file and no spelling.
+//   std.artifact_store ArtifactKey / ArtifactRow -- the identity of a CONTENT-ADDRESSED cache row
+//     (closure digest, emitter, language, toolchain); it says which bytes were stored, not which
+//     file's references must be distinct.
+//   std.artifact Artifact { kind, id, file_path } -- the output identity of a file. REUSED here as
+//     the unit's identity; it is not extended, because a spelling policy over declaration
+//     references is a target-model fact and would widen every Artifact in the corpus.
+//   extdeps.languages SwiftSourceFile -- Swift syntax (a declaration list), no identity and not
+//     shared; c.dag CTranslationUnitSpelling / c_translation_unit_basename -- C realization of a
+//     CompilationUnitId, whose no-file-identity ruling (std.compilers.compilation_unit) stands.
+//
+// THE FIELDS. `artifact` is the file's identity and the diagnostic's subject. `spelling` is how
+// references print in this file. `referenced` is the file's reference set, as declaration paths.
+// `PathSpelled` carries the existing DeclarationReferenceForm unchanged and owes nothing; `LeafSpelled`
+// is declared HERE and not as a variant of DeclarationReferenceForm because adding that variant forces
+// an arm into target_type_expr_declaration_reference_emitted, a stage edit this change does not make.
+// NOTHING SELECTS `LeafSpelled` YET. Folding it into DeclarationReferenceForm, if the threading change
+// finds that the right shape, deletes `FileReferenceSpelling`.
+//
+// RUNG, STATED: this constructor is validation (a located typed refusal), not construction; the
+// invalid unit is writable as a record literal. Climbing to a refinement over `referenced` needs a
+// collection-level `where` predicate; trigger: the threading change, which fixes where units are built.
+//
+// CONSUMER (DESIGN section 3c): consumed by a named later change -- threading this unit through
+// v2.compiler.translate (translate_algebra), emit_produced, emit_semantic_decl and target_serialize.
+// It needs its own approved plan; its trigger is that plan's approval. Until then the only
+// executing consumer is v2.test.claim.emission_unit_leaf_uniqueness.
+type FileReferenceSpelling
+  = PathSpelled { form: DeclarationReferenceForm }
+  | LeafSpelled
+
+type EmissionUnit {
+  artifact: Artifact
+  spelling: FileReferenceSpelling
+  referenced: List<QualifiedName>
+}
+
+type LeafScan
+  = LeafScanClean { seen: List<QualifiedName> }
+  | LeafScanCollided { first: QualifiedName, second: QualifiedName }
+
+fn emission_unit_leaf_equal(a: QualifiedName, b: QualifiedName) -> Bool {
+  match qualified_name_last_segment(qn: a) {
+    Absent => false
+    Present { value: leaf_a } =>
+      match qualified_name_last_segment(qn: b) {
+        Absent => false
+        Present { value: leaf_b } => leaf_a == leaf_b
+      }
+  }
+}
+
+// DISTINCT DECLARATIONS, SAME LEAF. The same declaration referenced twice is one reference, not a
+// collision, so identity is the full dotted path.
+fn emission_unit_leaf_sharer(seen: List<QualifiedName>, path: QualifiedName) -> Optional<QualifiedName> {
+  list_find_first(
+    xs: seen,
+    predicate: fn(other) {
+      emission_unit_leaf_equal(a: other, b: path)
+        && qualified_name_to_dotted_string(qn: other) != qualified_name_to_dotted_string(qn: path)
+    }
+  )
+}
+
+fn emission_unit_leaf_scan_step(scan: LeafScan, path: QualifiedName) -> LeafScan {
+  match scan {
+    LeafScanCollided { first: f, second: s } => LeafScanCollided { first: f, second: s }
+    LeafScanClean { seen: seen } =>
+      match emission_unit_leaf_sharer(seen: seen, path: path) {
+        Present { value: earlier } => LeafScanCollided { first: earlier, second: path }
+        Absent => LeafScanClean { seen: list_snoc_item(xs: seen, item: path) }
+      }
+  }
+}
+
+fn emission_unit_leaf_collision_diagnostic(declaration: QualifiedName) -> Diagnostic {
+  Diagnostic {
+    reason: ^emission_unit_leaf_collision,
+    at: declaration_locus(declaration: declaration),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+// THE CONSTRUCTOR. A LeafSpelled unit refuses, located at BOTH declarations (head: the earlier,
+// tail: the later), when two distinct declarations in `referenced` share a leaf; a PathSpelled unit
+// is accepted whatever it references, because its form is injective by construction.
+fn emission_unit(
+  artifact: Artifact,
+  spelling: FileReferenceSpelling,
+  referenced: List<QualifiedName>
+) -> Outcome<EmissionUnit> {
+  match spelling {
+    PathSpelled { form: _ } =>
+      outcome_accepted(EmissionUnit { artifact: artifact, spelling: spelling, referenced: referenced })
+    LeafSpelled =>
+      match fold_list(
+        xs: referenced,
+        empty: LeafScanClean { seen: [] },
+        cons: fn(acc, path) { emission_unit_leaf_scan_step(scan: acc, path: path) }
+      ) {
+        LeafScanClean { seen: _ } =>
+          outcome_accepted(EmissionUnit { artifact: artifact, spelling: spelling, referenced: referenced })
+        LeafScanCollided { first: f, second: s } =>
+          Rejected {
+            diagnostics: NonEmptyDiagnostics {
+              head: emission_unit_leaf_collision_diagnostic(declaration: f),
+              tail: [emission_unit_leaf_collision_diagnostic(declaration: s)]
+            }
+          }
+      }
+  }
+}
