@@ -175,23 +175,23 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_busy" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_drained" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_idle_listener" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_unproven" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/product/electrical/carrier_phase.dag::is_phase_classified" },
@@ -245,8 +245,8 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_listener_admitted" },
-      reason: nfr_reason_wildcard_landed_after_join_measurement,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::listener_restart_refusal" },
