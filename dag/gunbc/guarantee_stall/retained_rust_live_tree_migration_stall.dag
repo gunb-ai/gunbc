@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.retained_rust_live_tree_migration_stall
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data retained_rust_live_tree_migration_stall: GuaranteeStall = GuaranteeStall {
   subject: "live Rust-test discovery disagrees with the retained-kernel migration authority",

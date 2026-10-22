@@ -34,7 +34,8 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    ArityMismatch, InternalError, TypeArgumentKindMismatch, UnlistedImportUse, UnresolvedType,
+    ArityMismatch, InternalError, TypeAliasCycle, TypeArgumentKindMismatch, UnlistedImportUse,
+    UnresolvedType,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -2642,32 +2643,6 @@ pub fn resolve_resource_use(
     }
 }
 
-pub fn resolve_named_arg(
-    arg: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<NamedArgResolveResult> {
-    {
-        let value_result = resolve_expr_types(
-            crate::v1_std_core::arg_value(arg.clone()),
-            env.clone(),
-            module_name.clone(),
-        );
-        let value_expr = value_result.expr.clone();
-        let value_diags = value_result.diagnostics.clone();
-        Rc::new(NamedArgResolveResult {
-            arg: crate::v1_std_core::make_arg_node(
-                arg.occurrence_identity.clone(),
-                crate::v1_std_core::arg_name_at(arg.clone(), env.source_indices.clone()),
-                value_expr.clone(),
-                arg.span.clone(),
-                crate::v1_std_core::node_name_span(arg.clone()),
-            ),
-            diagnostics: value_diags.clone(),
-        })
-    }
-}
-
 pub fn resolve_field_init(
     field_init: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -2694,74 +2669,6 @@ pub fn resolve_field_init(
             ),
             diagnostics: value_diags.clone(),
         })
-    }
-}
-
-pub fn resolve_match_arm(
-    arm: Rc<Node>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<MatchArmResolveResult> {
-    {
-        let arm_g = crate::v1_std_core::arm_guard(arm.clone());
-        let guard_result = match arm_g.clone() {
-            Some(guard) => Some(resolve_expr_types(
-                guard.clone(),
-                env.clone(),
-                module_name.clone(),
-            )),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let guard_diags = match guard_result.clone() {
-            Some(result) => result.diagnostics.clone(),
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        let body_result = resolve_expr_types(
-            crate::v1_std_core::arm_body(arm.clone()),
-            env.clone(),
-            module_name.clone(),
-        );
-        let body_expr = body_result.expr.clone();
-        let body_diags = body_result.diagnostics.clone();
-        Rc::new(MatchArmResolveResult {
-            arm: crate::v1_std_core::make_arm_node(
-                arm.occurrence_identity.clone(),
-                crate::v1_std_core::arm_pattern(arm.clone()),
-                match guard_result.clone() {
-                    Some(result) => Some(result.expr.clone()),
-                    std::option::Option::None => std::option::Option::None,
-                },
-                body_expr.clone(),
-                arm.span.clone(),
-            ),
-            diagnostics: v1_rt::concat(guard_diags.clone(), body_diags.clone()),
-        })
-    }
-}
-
-pub fn resolve_string_part(
-    part: Rc<StringPart>,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<StringPartResolveResult> {
-    match (*part.clone()).clone() {
-        StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
-            part: Rc::new(StringPart::Text {
-                value: value.clone(),
-            }),
-            diagnostics: Rc::new(vec![]),
-        }),
-        StringPart::Interpolation { expr: expr, .. } => {
-            let expr_result = resolve_expr_types(expr.clone(), env.clone(), module_name.clone());
-            let resolved_expr = expr_result.expr.clone();
-            let expr_diags = expr_result.diagnostics.clone();
-            Rc::new(StringPartResolveResult {
-                part: Rc::new(StringPart::Interpolation {
-                    expr: resolved_expr.clone(),
-                }),
-                diagnostics: expr_diags.clone(),
-            })
-        }
     }
 }
 
@@ -4414,6 +4321,22 @@ pub fn resolve_item_types(
 }), module_name.clone())]),
     std::option::Option::None => Rc::new(vec![]),
 };
+        let alias_cycle_diags = match v1_rt::map_get(
+            &env.symbol_index.alias_cycles.clone(),
+            v1_rt::concat(
+                v1_rt::concat(module_name.clone(), ".".to_string()),
+                crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+            ),
+        ) {
+            Some(members) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TypeAliasCycle {
+                    members: members.clone(),
+                    span: item.span.clone(),
+                }),
+                module_name.clone(),
+            )]),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let env = crate::v1_compiler_infer_env::env_with_type_variable_bindings(
             env.clone(),
             tp_names.clone(),
@@ -4875,7 +4798,13 @@ pub fn resolve_item_types(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(collision_diags.clone(), param_diags.clone()),
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                collision_diags.clone(),
+                                                alias_cycle_diags.clone(),
+                                            ),
+                                            param_diags.clone(),
+                                        ),
                                         ret_diags.clone(),
                                     ),
                                     use_diags.clone(),

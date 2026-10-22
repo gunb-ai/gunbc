@@ -1,5 +1,7 @@
 module v2.test.claim.emit.rust_call_emit
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Optional, Present, Absent }
 import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }
@@ -11,7 +13,7 @@ import v2.extdeps.languages.rust_fixtures {
   rust_call_lex,
   rust_call_target_model_bundle_core
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty
@@ -212,6 +214,7 @@ data rust_call_helper_eval_subgraph: Node = Node {
 
 fn rust_call_target_model(authority_source_text: String) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_call_target_model_bundle_core(),
     lex: rust_call_lex(),
@@ -229,7 +232,8 @@ fn rust_call_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_call_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: rust_call_facts_miss }
+    facts: PartialFunction { lookup: rust_call_facts_miss },
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

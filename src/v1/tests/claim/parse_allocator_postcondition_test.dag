@@ -1,0 +1,304 @@
+module v1.tests.claim.parse_allocator_postcondition_test
+
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.algebra { FreeMonoid, Empty, Cons }
+import std.content_hash { content_hash_atom, content_hash_combine_structural }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndexEntry,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+}
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core { build_newline_index, empty_intern_table }
+
+// v1-interface-cull-audit P1.3 (lane N): the parser allocator postcondition.
+// Every parse result carries an allocator advanced past every identity it constructed.
+// Before this lane, parse_expr_loop(_no_brace) and the statements/arguments/parameters folds
+// re-scanned their growing tree on every iteration to rescue a context whose producer had not
+// published -- quadratic in a left-associated chain. The walks are deleted on the strength of
+// the postcondition; these controls are what keeps it true. A producer that stops publishing
+// its minted identities re-introduces id COLLISIONS (a later mint reuses an unpublishing
+// child's id), and collision is exactly what a strictly-increasing sorted id list rules out.
+//
+// WHY IT LIVES IN THE v1 TEST TREE AND EXECUTES ON NO REQUIRED RUN, stated rather than left
+// to be discovered (same reading v1.tests.claim.bare_variant_reference_occurrence_control_test
+// records for its own control): these import v1.compiler.parse, so no witness under
+// dag/test/claim can call them, and the required job interprets neither src/v1 nor a
+// ProcessExit host entry from here. They are `test fn`s rather than ProcessExit entry points
+// for the measured reason that precedent records: a ProcessExit entry point (via std.process)
+// entered the regen closure and the fixed point refused -- std_process plus two
+// extdeps.process.* mirrors were missing, and hosting the entry would have grown the frozen
+// v1 seed by emitted files. A test module emits none. Direct execution is evidence they
+// HOLD; it is not evidence CI runs them.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/parse_allocator_postcondition_test.dag \
+//     --function <test fn>
+
+data postcondition_fixture_file: String = "zqxalloc_fixture.dag"
+
+fn parse_chain_source(source: String) -> ParseWithTableResult {
+  parse_with_table(
+    tokens: tokenize(source: source, file: postcondition_fixture_file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), postcondition_fixture_file, build_newline_index(file: postcondition_fixture_file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+}
+
+fn parsed_ok(parsed: ParseWithTableResult) -> Bool {
+  match parsed.result.error {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The published occurrence ids, in transport order. Published == present in the transport
+// index the result carries: the same rows downstream binding consumes, so the control reads
+// the parser's own answer, never a hand-built one.
+fn published_ids(parsed: ParseWithTableResult) -> List<Int> {
+  parsed.occurrence_transport.index.entries |> map(e => e.projection.occurrence.value)
+}
+
+fn sorted_ascending(xs: List<Int>) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: h, tail: t } => match t {
+      Empty => true
+      Cons { head: h2, tail: _ } => h < h2 && sorted_ascending(xs: t)
+    }
+  }
+}
+
+// THE POSTCONDITION, stated once: every published id sits below the result's allocator cursor.
+// A context that was never advanced past a constructed identity hands that identity's id to the
+// next mint, so ids stop being distinct; strict increase after sorting is the collision oracle,
+// and the cursor bound is the postcondition itself.
+fn postcondition_holds(parsed: ParseWithTableResult) -> Bool {
+  let ids = published_ids(parsed: parsed) |> sort_by(x => x)
+  parsed_ok(parsed: parsed)
+    && (ids |> all(id => id >= 0 && id < parsed.occurrence_allocator.next_id))
+    && sorted_ascending(xs: ids)
+}
+
+// 1 + 2 + 3 + ... + terms parses to a left-associated spine of `terms - 1` binary nodes, each
+// built by ONE iteration of parse_expr_loop: the shape whose re-scan the P1.3 walks made
+// quadratic. Terms count is an argument so the postcondition runs on every chain shape.
+fn chain_terms(upto: Int) -> List<Int> {
+  chain_terms_loop(acc: [], next: 1, upto: upto)
+}
+
+fn chain_terms_loop(acc: List<Int>, next: Int, upto: Int) -> List<Int> {
+  if next > upto { acc } else { chain_terms_loop(acc: concat(acc, [next]), next: next + 1, upto: upto) }
+}
+
+fn chain_source(terms: Int) -> String {
+  concat(
+    "module zqxalloc.user\n\ndata zqx_chain: Int = ",
+    chain_terms(upto: terms) |> fold(init: "", f: (s, k) => if s == "" { to_string(k) } else { concat(s, " + ", to_string(k)) }),
+    "\n"
+  )
+}
+
+test fn long_left_associated_chain_postcondition() -> Bool {
+  postcondition_holds(parsed: parse_chain_source(source: chain_source(terms: 200)))
+}
+
+// The same postcondition over the three sibling folds whose rescue walks were deleted:
+// parameters (parse_param_list_acc), arguments (parse_arg_list_acc) and statements
+// (parse_stmts_acc via the block below). One module, all three families, mints interleaved
+// with fold iterations -- an unpublishing producer here collides inside the fold, not at the
+// module edge.
+data fold_fixture_source: String = "module zqxalloc.user\n\nfn zqx_fold(a: Int, b: Int, c: Int) -> Int \{\n  let x = zqx_g(a, b, c) + zqx_g(c, b, a)\n  let y = x + x + x\n  y\n\}\n"
+
+test fn parameters_arguments_statements_postcondition() -> Bool {
+  postcondition_holds(parsed: parse_chain_source(source: fold_fixture_source))
+}
+
+// THE DELETION CONTROL (P1.3 done-criterion: occurrence ids and transport identical before
+// and after). These goldens are the parse of each specimen read out of the PRE-deletion tree
+// -- allocator cursor, transport entry count, and the published-id multiset (count, min, max,
+// sum, sum of squares) -- captured before the rescue walks were touched. The post-deletion
+// tree reproduces them exactly, and this test pins them here so any future change to what the
+// parser hands out -- re-adding a walk, dropping a mint, reordering a fold -- goes red on the
+// executing claim instead of quietly shipping. Together with strictly-ascending ids,
+// count/min/max pins each chain's id SET exactly; sum and sum-of-squares pin the FOLDS
+// multiset, whose 33 distinct ids omit exactly two values in 0..34.
+fn sum_of(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (n, k) => n + k) }
+fn sum_of_squares(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (n, k) => n + k * k) }
+fn count_of(xs: List<Int>) -> Int { xs |> fold(init: 0, f: (n, _) => n + 1) }
+fn min_of(xs: List<Int>) -> Int { xs |> fold(init: 4611686018427387904, f: (m, k) => if k < m { k } else { m }) }
+fn max_of(xs: List<Int>) -> Int { xs |> fold(init: -1, f: (m, k) => if k > m { k } else { m }) }
+
+fn transport_matches_golden(
+  parsed: ParseWithTableResult,
+  golden_next_id: Int,
+  golden_entries: Int,
+  golden_count: Int,
+  golden_min: Int,
+  golden_max: Int,
+  golden_sum: Int,
+  golden_sumsq: Int,
+) -> Bool {
+  let ids = published_ids(parsed: parsed)
+  parsed_ok(parsed: parsed)
+    && parsed.occurrence_allocator.next_id == golden_next_id
+    && (parsed.occurrence_transport.index.entries |> fold(init: 0, f: (n, _) => n + 1)) == golden_entries
+    && count_of(ids) == golden_count
+    && min_of(ids) == golden_min
+    && max_of(ids) == golden_max
+    && sum_of(ids) == golden_sum
+    && sum_of_squares(ids) == golden_sumsq
+}
+
+// CHAIN40 pre-deletion capture: next_id 82, 82 transport entries, ids = exactly 0..81.
+test fn chain40_transport_identity_matches_predeletion_golden() -> Bool {
+  transport_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 40)),
+    golden_next_id: 82, golden_entries: 82, golden_count: 82, golden_min: 0, golden_max: 81,
+    golden_sum: 3321, golden_sumsq: 180441,
+  )
+}
+
+// CHAIN200 pre-deletion capture: next_id 402, 402 transport entries, ids = exactly 0..401.
+test fn chain200_transport_identity_matches_predeletion_golden() -> Bool {
+  transport_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 200)),
+    golden_next_id: 402, golden_entries: 402, golden_count: 402, golden_min: 0, golden_max: 401,
+    golden_sum: 80601, golden_sumsq: 21574201,
+  )
+}
+
+// The parameter/argument/statement fold capture: next_id 35, 33 transport entries, 33
+// distinct published ids in 0..34 omitting {7, 15} (pinned by sum 573 and sumsq 13411).
+test fn folds_transport_identity_matches_predeletion_golden() -> Bool {
+  transport_matches_golden(
+    parsed: parse_chain_source(source: fold_fixture_source),
+    golden_next_id: 35, golden_entries: 33, golden_count: 33, golden_min: 0, golden_max: 34,
+    golden_sum: 573, golden_sumsq: 13411,
+  )
+}
+
+// ---- CONTENT-ASSOCIATION GOLDENS (mgr msg_da084a50 cycle) ----
+// The statistics goldens above are invariant under swapping two occurrence-to-ID
+// associations. These digests pin the CANONICAL ROW of every transport record -- id +
+// authored_name + span(file,start,end) + containment path -- folded in record order into
+// an FNV1a64 structural digest per (specimen, family), so any association swap that keeps
+// the id SET changes at least one digest. Captured from src/v1/02_parse.dag at
+// 2d79743e2498bda7a95e5b6253ca2e7fd73aa6a7 (merge base, pre-deletion, all recovery walks
+// present) via the same-binary .dag-flip harness (Tree A = base file, Tree B = merged head
+// file, one gunbc build); the two runs produced byte-identical digest lines. The deliberate
+// RED (swap authored_name "a"<->"b" at the single record site, 02_parse.dag
+// parse_context_record_occurrence) turns folds_transport_content_association_... FAIL while
+// every statistics golden stays PASS -- the id set survives the swap, the association does
+// not. Capture harness itself is throwaway (never committed); digests re-derivable with any
+// tree-flippable claim runner.
+
+fn category_string(c: OccurrenceCategory) -> String {
+  match c {
+    LexicalValueOccurrence => "lexical_value"
+    TypeOccurrence => "type"
+    CallableOccurrence => "callable"
+    ConstructorOccurrence => "constructor"
+    NamespaceSegmentOccurrence => "namespace_segment"
+    FieldOccurrence => "field"
+    MethodOccurrence => "method"
+  }
+}
+
+fn ancestors_string(xs: FreeMonoid<OccurrenceId>) -> String {
+  match xs {
+    Empty => ""
+    Cons { head: h, tail: t } => concat(concat(";", to_string(h.value)), ancestors_string(xs: t))
+  }
+}
+
+fn index_content_row(e: OccurrenceIndexEntry) -> String {
+  concat(
+    concat(
+      concat(to_string(e.projection.occurrence.value), ";", e.projection.authored_name),
+      ";",
+      concat(e.projection.diagnostic_span.file as String, ";", to_string(e.projection.diagnostic_span.start))
+    ),
+    ";",
+    concat(
+      to_string(e.projection.diagnostic_span.end),
+      ";",
+      concat(to_string(e.containment.terminal.value), ancestors_string(xs: e.containment.ancestors))
+    )
+  )
+}
+
+fn declaration_content_row(e: DeclarationOccurrence) -> String {
+  concat(
+    concat(
+      concat(to_string(e.occurrence.value), ";", category_string(c: e.category)),
+      ";",
+      concat(e.diagnostic_span.file as String, ";", to_string(e.diagnostic_span.start))
+    ),
+    ";",
+    concat(
+      to_string(e.diagnostic_span.end),
+      ";",
+      concat(to_string(e.containment.terminal.value), ancestors_string(xs: e.containment.ancestors))
+    )
+  )
+}
+
+fn reference_content_row(e: ReferenceOccurrence) -> String {
+  concat(
+    concat(
+      concat(to_string(e.occurrence.value), ";", category_string(c: e.category)),
+      ";",
+      concat(e.diagnostic_span.file as String, ";", to_string(e.diagnostic_span.start))
+    ),
+    ";",
+    concat(
+      to_string(e.diagnostic_span.end),
+      ";",
+      concat(to_string(e.containment.terminal.value), ancestors_string(xs: e.containment.ancestors))
+    )
+  )
+}
+
+fn digest_rows(seed: String, rows: List<String>) -> String {
+  let seed_hash = content_hash_atom(value: concat("P13|", seed, "|SEED") as NonEmptyStr)
+  let combined = rows |> fold(
+    init: seed_hash,
+    f: (acc, r) => content_hash_combine_structural(left: acc, right: content_hash_atom(value: concat(concat("P13|", seed, "|"), r) as NonEmptyStr)),
+  )
+  combined.digest as String
+}
+
+fn content_matches_golden(parsed: ParseWithTableResult, label: String, golden_idx: String, golden_decl: String, golden_ref: String) -> Bool {
+  digest_rows(seed: concat(label, "/idx"), rows: parsed.occurrence_transport.index.entries |> map(index_content_row)) == golden_idx
+    && digest_rows(seed: concat(label, "/decl"), rows: parsed.occurrence_transport.declarations |> map(declaration_content_row)) == golden_decl
+    && digest_rows(seed: concat(label, "/ref"), rows: parsed.occurrence_transport.references |> map(reference_content_row)) == golden_ref
+}
+
+test fn chain40_transport_content_association_matches_predeletion_golden() -> Bool {
+  content_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 40)),
+    label: "chain40",
+    golden_idx: "430ddfdce5732ce8", golden_decl: "b07e5c7d9ea4af71", golden_ref: "2751065ad16b58a4",
+  )
+}
+
+test fn chain200_transport_content_association_matches_predeletion_golden() -> Bool {
+  content_matches_golden(
+    parsed: parse_chain_source(source: chain_source(terms: 200)),
+    label: "chain200",
+    golden_idx: "ef0e2cae9d61e391", golden_decl: "bfcbfd4020e5d69a", golden_ref: "ddab5f9126a03657",
+  )
+}
+
+test fn folds_transport_content_association_matches_predeletion_golden() -> Bool {
+  content_matches_golden(
+    parsed: parse_chain_source(source: fold_fixture_source),
+    label: "folds",
+    golden_idx: "bc2da06da246af61", golden_decl: "25f2e4a06a1d9c1d", golden_ref: "3989a29bc2eb7e71",
+  )
+}

@@ -134,14 +134,6 @@ data repeat_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-data chars_contract: PrimitiveContract = {
-  name: "chars",
-  work: "n",
-  output_size: "n",
-  certainty: Proven,
-  carrier_cost: CarrierInsensitive
-}
-
 data machine_word_native_operate_contract: PrimitiveContract = {
   name: "machine_word_native_operate",
   work: "1",
@@ -794,7 +786,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     concat_contract,
     split_contract,
     repeat_contract,
-    chars_contract,
     machine_word_native_operate_contract,
     to_string_contract,
     parse_int_contract,
@@ -874,7 +865,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
 // NAMED ARMS. `tag_of(v: Unit0)` names a unit arm as a value at a user function's argument
 // position and works generically. A PAYLOAD arm cannot be named outside `discriminant`'s own
 // argument -- the tag-reference result is granted only when the callee IS `discriminant`
-// (v1.compiler.infer variant_tag_reference_argument_results), so `tag_of(v: WithPayload {})`
+// (v1.compiler.infer payload_arm_tag_reference_waiver_results, enumerated arm declarations only), so `tag_of(v: WithPayload {})`
 // refuses. Naming a payload arm as a value is the trigger for the frontier recorded on
 // dag/gunbc/recurring_failure_mode/one_type_variable_bound_to_two_distinct_coproducts.dag;
 // until then a payload arm's tag comes from a value of that arm.
@@ -895,7 +886,8 @@ type ConstructorTag<T> sole_constructor {
 // (v1.compiler.parse drop_leading_type_modifier), so `sole_constructor` is the only construction
 // control the language has.
 //
-// The identity is what `discriminant` yields, keyed on T's declaration and never a string, so a
+// The identity is what `discriminant` yields, keyed on T's declaration. `discriminant` still returns a String internally, but the carrier
+// stores only a predicate over T and exposes no string, so a
 // tag cannot be forged from text either. Elaboration for `x is V` calls THIS function on the arm
 // it resolved against T's declared roster; it needs no separate entry, because for a unit arm the
 // arm reference is exactly the value `tag_of` takes. For a payload arm there is no arm-reference

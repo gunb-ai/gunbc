@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_quoted_key_record_literal_refusal_left_bod
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data a_quoted_key_record_literal_refusal_left_body_lowering_unrostered: RecurringFailureMode = RecurringFailureMode {
   identity: "a_quoted_key_record_literal_refusal_left_body_lowering_unrostered" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "**A headless brace with a quoted key, under a non-map annotation, is no longer refused at body lowering** (`data ar_k: Bool = { \"n\": true }`). MEASURED 2026-10-09 (zesty-heron-486, claim_batch on BuildBuddy at d0f2067f8b): `normalize` ACCEPTS; `ar_a_quoted_key_takes_the_string_key_production_holds` PASSES; resolve REFUSES with `resolve_anonymous_map_expected_type_not_map`. The map-literal arm (gunbc#12758, `v2.compiler.resolve` `resolve_elided_construct_walk`) is the wall: a string-keyed brace whose expected head is not Map. The former claim that keyed `body_lowering_reason_field_init_unlowered` was a stale stage, not a fail-open. The claim now asserts the resolve reason and that lowering still accepts, so a reader that treats `\"n\"` as field `n` still reds (that path refuses as a record, not as a map).",
