@@ -14,13 +14,11 @@ data emit_copy_qualification_without_a_consumer: RungDrop = RungDrop {
 
   declared: "2026-09-04",
 
-  standing: Standing,
-
-    declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: OutsideTheLadder,
     temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: emit_copy_qualification_without_a_consumer_population },
     restoration_trigger: "THE CAPABILITY: a hermetically route-gapped wet transaction (IsExecutable, NoMockResponse) receives a terminal floor verdict, so v2.workflow.floor_changed_witness stops refusing these changed witness identities and the population executes as floor-enrolled *_test.dag witnesses on the real acceptance path. Re-adding the deleted job does not restore it and requires operator sign-off. No rung was held (the job never executed), so previous equals temporary"
-  }
+  } }
 }

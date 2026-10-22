@@ -372,6 +372,7 @@ import gunbc.live_deploy.effect_leaf {
   dpkg_status_effect,
   observed_sha256_env_write_effect,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -3046,7 +3047,7 @@ fn release_locus_binary_install_step(owner: NonEmptyStr, root: String, name: Str
     mode: install_executable_shared_mode,
     owner: owner,
     group: owner,
-    source: join(["target/release/", name], ""),
+    source: join([cargo_default_release_dir_rel, "/", name], ""),
     dest: join([root, "/", name], ""),
   ))
 }
@@ -3463,7 +3464,7 @@ fn root_owned_helper_snapshot_steps(locus: HelperLocus, revision: ReleaseRevisio
         deploy_raw(command: pwd_tree_copy_privileged_command(rel: sub, dest: join([dir, "/", sub], "")))),
       [
         deploy_raw(command: pwd_file_install_privileged_command(
-          rel: join(["target/release/", gunbc_release_bin_name], ""),
+          rel: join([cargo_default_release_dir_rel, "/", gunbc_release_bin_name], ""),
           mode: install_executable_shared_mode,
           owner: locus.owner,
           group: locus.owner,
@@ -3689,7 +3690,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
 // The deploying checkout's build, the one source the install copies from; the same path the planner
 // digests (gunbc.live_deploy.member_observe release_executable_source_path) so the verification
 // line above and the planned identity name one file.
-data release_executable_install_source: String = "target/release/gunbc"
+data release_executable_install_source: String = concat(cargo_default_release_dir_rel, "/gunbc")
 
 fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   match kind {
@@ -3727,7 +3728,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         mode: install_executable_shared_mode,
         owner: spec.service.service_user,
         group: spec.service.service_user,
-        source: "target/release/gunbc",
+        source: concat(cargo_default_release_dir_rel, "/gunbc"),
         dest: path as String,
       )),
       deploy_raw(command: install_d_owned_command(
