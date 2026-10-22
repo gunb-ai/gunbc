@@ -105,6 +105,9 @@ test fn rb_b1_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b1()) }
 fn rb_b2() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Absent }\n\nfn t() -> Int? {\n  let x = if true { mk() } else { Absent }\n  x\n}\n") }
 test fn rb_b2_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b2()) }
 
+fn rb_if_alias() -> Outcome<ResolvedTree> { ers_assemble(body: "type MyInt = Int\n\nfn t(a: MyInt, b: Int) -> Int {\n  if true { a } else { b }\n}\n") }
+test fn rb_if_alias_arm_equals_underlying_arm_accepts() -> Bool { ers_infer_accepted(o: rb_if_alias()) }
+
 fn rb_b6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Present { value: 1 } }\n\nfn t() -> Int? {\n  if true { mk() } else { Present { value: 2 } }\n}\n") }
 test fn rb_b6_application_arm_equals_constructor_arm_accepts() -> Bool { ers_infer_accepted(o: rb_b6()) }
 

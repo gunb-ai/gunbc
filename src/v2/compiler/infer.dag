@@ -2613,6 +2613,7 @@ fn infer_unify_branch_arm_types(
   then_facts: InferredFacts,
   else_node: Node,
   else_facts: InferredFacts,
+  resolved: ResolvedTree,
 ) -> Outcome<Node> {
   match infer_branch_operand_resolved_type(node: then_node, facts: then_facts) {
     Violates { diagnostic: d } => outcome_rejected(d)
@@ -2620,10 +2621,11 @@ fn infer_unify_branch_arm_types(
       match infer_branch_operand_resolved_type(node: else_node, facts: else_facts) {
         Violates { diagnostic: d } => outcome_rejected(d)
         Holds { value: else_type } =>
-          if infer_branch_type_atoms_equal(a: then_type, b: else_type) {
-            Accepted { value: then_type, diagnostics: None }
-          } else {
-            outcome_rejected(infer_arms_declare_conflicting_types_diagnostic(node: then_node))
+          match infer_join_arm_types(first: then_type, second: else_type, expected: Absent, resolved: resolved) {
+            ArmTypesJoined { joined: joined } => Accepted { value: joined, diagnostics: None }
+            ArmTypesNoneDeclare => outcome_rejected(infer_no_arm_declares_a_type_diagnostic(node: then_node))
+            ArmTypesDeferred => outcome_rejected(infer_arm_join_deferred_to_declared_type_diagnostic(node: then_node))
+            ArmTypesConflict => outcome_rejected(infer_arms_declare_conflicting_types_diagnostic(node: then_node))
           }
       }
   }
@@ -2634,6 +2636,7 @@ fn infer_branch_bool_if_else(
   node: Node,
   partials: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
+  resolved: ResolvedTree,
 ) -> Outcome<InferredFacts> {
   match infer_branch_condition_refusal(node: node, entries: entries) {
     Present { value: d } => outcome_rejected(d)
@@ -2673,7 +2676,8 @@ fn infer_branch_bool_if_else_admitted(
                                     then_node: then_target,
                                     then_facts: then_facts,
                                     else_node: else_target,
-                                    else_facts: else_facts
+                                    else_facts: else_facts,
+                                    resolved: resolved
                                   ) {
                                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                                     Accepted { value: unified_type, diagnostics: ud } =>
@@ -6047,8 +6051,9 @@ fn infer_gather_branch_row_on_entries(
   entries: Map<Node, List<InferredFacts>>,
   pending: Diagnostics,
   partials: List<Node>,
+  resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_branch_bool_if_else(node: node, partials: partials, entries: entries) {
+  match infer_branch_bool_if_else(node: node, partials: partials, entries: entries, resolved: resolved) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -7890,7 +7895,7 @@ fn infer_gather_branch_join(
         children_remaining: 0
       )
     Absent =>
-      infer_gather_branch_row_on_entries(node: acc.node, entries: r.entries, pending: r.pending, partials: partials)
+      infer_gather_branch_row_on_entries(node: acc.node, entries: r.entries, pending: r.pending, partials: partials, resolved: resolved)
   }
   }
 }
