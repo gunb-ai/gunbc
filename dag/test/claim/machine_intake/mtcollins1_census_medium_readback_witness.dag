@@ -17,17 +17,17 @@ import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium,
   census_medium_qualification, CensusMediumQualified, CensusMediumNotCensus,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_image_name }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of, boot_medium_served_path, boot_medium_served_argv }
 import gunbc.machine_intake.mtcollins1_census_medium_readback {
   CensusMediumReadback, CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus, CensusMediumReadbackExporterUnsupported,
   census_medium_readback,
   CensusMediumReadbackRecordUnreadable, CensusMediumReadbackRecordMalformed, CensusMediumReadbackRecordDisagrees,
   CensusMediumReadbackImageUnreadable, CensusMediumReadbackMeasureMalformed,
-  census_medium_readback_from_answers, census_readback_refusal,
+  RemoteAnswer, census_medium_readback_from_answers, census_readback_refusal,
   census_readback_refusal_before_filing, census_readback_refusal_before_attach,
   CensusRecordAdmitted, CensusRecordRefused, census_record_standing,
-  census_record_argv,
-  census_record_path, census_build_key,
+  census_record_argv, census_readback_argv,
+  census_medium_served_path, census_record_path, census_build_key,
+  remote_answer_of,
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -93,7 +93,7 @@ test fn the_served_path_and_the_record_path_derive_from_the_census_input() -> Bo
   match mtcollins1_census_image {
     CensusImageRefused { reason: _ } => false
     CensusImageDerived { input: input } =>
-      (boot_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
+      (census_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
         && (census_record_path(input: input) as String) == concat("/srv/bmc/.gunbc-mtcollins1-census-ubuntu-24.04.3-arm64.", census_build_key(input: input) as String, ".built")
         && (census_build_key(input: input) as String) == "c001ac127d718e72"
   }
@@ -153,7 +153,7 @@ test fn sixty_four_non_hex_characters_are_malformed_in_the_record_and_from_sha25
 // The legs are the coreutils and crypto authorities' own commands, `--` included.
 test fn the_two_legs_are_the_upstream_commands_not_local_spellings() -> Bool {
   census_record_argv(record_path: "/srv/bmc/r" as NonEmptyStr) == ["cat", "/srv/bmc/r"]
-    && boot_medium_served_argv(path: "/srv/bmc/x.iso" as NonEmptyStr) == ["sha256sum", "--", "/srv/bmc/x.iso"]
+    && census_readback_argv(path: "/srv/bmc/x.iso" as NonEmptyStr) == ["sha256sum", "--", "/srv/bmc/x.iso"]
 }
 
 test fn a_malformed_record_is_malformed_not_diverged() -> Bool {
