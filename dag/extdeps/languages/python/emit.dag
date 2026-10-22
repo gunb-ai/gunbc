@@ -82,6 +82,7 @@ fn python_method_templates_flat() -> Map<String, String> {
 
 data python_lambda_template: String = "lambda {0}: {1}"
 data python_error_expr_template: String = "raise RuntimeError({0})"
+data python_refusal_expr_template: String = "raise RuntimeError({0})"
 data python_list_literal_empty: String = "[]"
 data python_list_literal_template: String = "[{0}]"
 data python_null_coalesce_template: String = "({0} if {0} is not None else {1})"

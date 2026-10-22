@@ -239,6 +239,13 @@ data rust_callable_value_wrap_template: String = "Rc::new(move {0})"
 
 data rust_error_expr_template: String = "panic!({0})"
 
+// A REFUSAL OF AN AUTHORED INPUT IS NOT AN ERROR VALUE. error_expr_template is a diverging value that
+// type-checks anywhere and aborts at run time; it stays for the arms that are unreachable invariants.
+// An input the emitter cannot realize (an unsupported cast) must stop the BUILD, so rustc is what
+// refuses the file and the message is located in it. Build-time and located in the emitted file, not a
+// diagnostic at the .dag source: gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target.
+data rust_refusal_expr_template: String = "compile_error!({0})"
+
 data rust_list_literal_empty: String = "Rc::new(vec![])"
 data rust_list_literal_template: String = "Rc::new(vec![{0}])"
 
