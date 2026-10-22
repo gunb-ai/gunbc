@@ -379,11 +379,16 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
   // NEGATIVE CONTROLS FIRST. A census read that came back empty would satisfy every
   // resolution check vacuously for the negative ones and fail the positives, so the
   // population and the roster size are asserted in the same breath as the citations.
-  // The unmerged module is the load-bearing one: it must stay UNRESOLVED, which is what
-  // makes this claim able to tell "present" from "asserted by the document".
+  // The consumer MODEL landed with #14463, so its citation is a POSITIVE: the census
+  // must resolve HomeServingPowerAdmission. Its NEGATIVE is a near-miss declaration in
+  // the SAME module, absent from the whole corpus — same census lookup, one differing
+  // token — so a census that could never answer "unresolved" reddens this too. A
+  // permanently absent name is honest as a negative ONLY because the positives beside it
+  // exercise the same function; alone it is the unfalsifiable tautology DESIGN §5 bans.
   p4_citation_count_is_conserved(t: t)
     && roster.length() > 20
-    && !p4_citation_resolves(cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission")
+    && p4_citation_resolves(cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission")
+    && !p4_citation_resolves(cite: "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmissionShadow")
     && all(roster, cite => p4_citation_resolves(cite: cite))
 }
 
