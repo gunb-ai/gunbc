@@ -1,19 +1,11 @@
 module gunbc.recurring_failure_mode.witnesses_red_on_main_with_no_failure_mode_row
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data witnesses_red_on_main_with_no_failure_mode_row: RecurringFailureMode = RecurringFailureMode {
   identity: "witnesses_red_on_main_with_no_failure_mode_row" as NonEmptyStr,
 
-
-  // #14383 made the rung reading a required field; this row landed the same day, below that door. Encoded
-  // from this row's own receipts: "RUNG FOUND AT 1, mitigatable: the red is visible to whoever runs the
-  // witness and to no gate" and "CEILING 3, structurally guaranteed for the enrolled population";
-  // trigger_capability quotes the row's NEXT-RUNG TRIGGER verbatim.
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "an instrument label whose run executes the witness population and states, per identity, whether it is green at the default branch head and whether the required path runs it." } },
   receipts: [
     "**a witness red at origin/main has no row, so every PR that touches its module rediscovers and re-attributes it** (INVALID STATE: a committed witness fails under `gunbc run --claim-run` at the default branch head and nothing records that, which test, or whether the required path runs it).",
 
