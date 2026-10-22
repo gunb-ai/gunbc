@@ -220,20 +220,16 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
                     // double-borrow hazard is the one the comment above already accepts: a re-entrant
                     // demand panics and lands in NotRunnable, and the digest-equality control is what
                     // keeps the borrow honest.
-                    let compiled_inner = crate::cli_run::entry_resolve::with_module_path_index(
-                        &roots,
-                        |module_index| {
-                            let sources = resolve_virtual_source_with_imports(
-                                FIXTURE_SOURCE_PATH,
-                                source,
-                                module_index,
-                            )
-                            .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
-                            record_fixture_closure(&sources);
-                            compile_fixture_rendering_only_what_is_read(sources, None, module_index)
-                        },
-                    )?;
-                    compiled_inner
+                    crate::cli_run::entry_resolve::with_module_path_index(&roots, |module_index| {
+                        let sources = resolve_virtual_source_with_imports(
+                            FIXTURE_SOURCE_PATH,
+                            source,
+                            module_index,
+                        )
+                        .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+                        record_fixture_closure(&sources);
+                        compile_fixture_rendering_only_what_is_read(sources, None, module_index)
+                    })
                 },
             )
         },
