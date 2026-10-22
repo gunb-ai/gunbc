@@ -1,6 +1,7 @@
 module test.claim.test_reference_wall_witness
 
-import gunbc.compile_census_probe { blocking_subject_count_for, any_class_count_for }
+import gunbc.compile_census_probe { any_class_census, blocking_subject_census, census_verdict, census_exit}
+import std.process { ProcessExit }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -22,24 +23,24 @@ data function_value_source: String = "module wall.fixture.value\nimport std.type
 data clean_source: String = "module wall.fixture.clean\nimport std.types { Bool }\nfn helper() -> Bool { true }\ntest fn uses_helper() -> Bool { helper() }\n"
 
 // DISCRIMINATING RED: a test that calls a test refuses, at the calling test.
-test fn a_test_calling_a_test_is_refused() -> Bool {
-  blocking_subject_count_for(source: rollup_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.rollup.rollup") == 1
+test fn a_test_calling_a_test_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: rollup_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.rollup.rollup"), holds: fn(n) { n == 1 }))
 }
 
 // DISCRIMINATING RED: serving code calling a test refuses too.
-test fn serving_code_calling_a_test_is_refused() -> Bool {
-  blocking_subject_count_for(source: rollup_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.rollup.helper") == 1
+test fn serving_code_calling_a_test_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: rollup_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.rollup.helper"), holds: fn(n) { n == 1 }))
 }
 
 // DISCRIMINATING RED: a test taken as a function value is a reference.
-test fn a_test_used_as_a_value_is_refused() -> Bool {
-  blocking_subject_count_for(source: function_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.value.pick") == 1
+test fn a_test_used_as_a_value_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: function_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.value.pick"), holds: fn(n) { n == 1 }))
 }
 
 // ACCEPTED POSITIVE CONTROL: a test calling an ordinary fn draws no test-reference diagnostic at
 // any severity, so the reds above mean "a test was referenced" and not "a test was compiled".
-test fn a_test_calling_an_ordinary_fn_is_admitted() -> Bool {
-  any_class_count_for(source: clean_source, wanted_class: "TestCodeReferenced") == 0
+test fn a_test_calling_an_ordinary_fn_is_admitted() -> ProcessExit {
+  census_exit(census_verdict(census: any_class_census(source: clean_source, wanted_class: "TestCodeReferenced"), holds: fn(n) { n == 0 }))
 }
 
 // A test taken as a PARAMETER DEFAULT is a reference. The body walk alone never visits a default, so
@@ -47,8 +48,8 @@ test fn a_test_calling_an_ordinary_fn_is_admitted() -> Bool {
 data default_value_source: String = "module wall.fixture.default\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(cb: fn() -> Bool = leaf) -> Bool { cb() }\n"
 
 // DISCRIMINATING RED: a parameter default that names a test refuses, at the declaration holding it.
-test fn a_test_as_a_parameter_default_is_refused() -> Bool {
-  blocking_subject_count_for(source: default_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default.helper") == 1
+test fn a_test_as_a_parameter_default_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: default_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default.helper"), holds: fn(n) { n == 1 }))
 }
 
 // A test taken as a QUALIFIED value is a reference. Inference turns `module.leaf` into an ExprVar
@@ -59,13 +60,13 @@ data qualified_value_source: String = "module wall.fixture.qualified\nimport std
 data qualified_default_source: String = "module wall.fixture.qualified_default\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(cb: fn() -> Bool = wall.fixture.qualified_default.leaf) -> Bool { cb() }\n"
 
 // DISCRIMINATING RED: a qualified test value refuses, at the declaration that takes it.
-test fn a_qualified_test_value_is_refused() -> Bool {
-  blocking_subject_count_for(source: qualified_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified.pick") == 1
+test fn a_qualified_test_value_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: qualified_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified.pick"), holds: fn(n) { n == 1 }))
 }
 
 // DISCRIMINATING RED: a qualified test named as a parameter default refuses.
-test fn a_qualified_test_as_a_default_is_refused() -> Bool {
-  blocking_subject_count_for(source: qualified_default_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default.helper") == 1
+test fn a_qualified_test_as_a_default_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: qualified_default_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default.helper"), holds: fn(n) { n == 1 }))
 }
 
 // A test CALLED in a default is a reference. A default is not inferred, so its call carries no
@@ -76,12 +77,12 @@ data default_call_source: String = "module wall.fixture.default_call\nimport std
 data qualified_default_call_source: String = "module wall.fixture.qualified_default_call\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(x: Bool = wall.fixture.qualified_default_call.leaf()) -> Bool { x }\n"
 
 // DISCRIMINATING RED: a test called in a parameter default refuses.
-test fn a_test_called_in_a_default_is_refused() -> Bool {
-  blocking_subject_count_for(source: default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default_call.helper") == 1
+test fn a_test_called_in_a_default_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default_call.helper"), holds: fn(n) { n == 1 }))
 }
 
 // DISCRIMINATING RED: a qualified test called in a parameter default refuses.
-test fn a_qualified_test_called_in_a_default_is_refused() -> Bool {
-  blocking_subject_count_for(source: qualified_default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default_call.helper") == 1
+test fn a_qualified_test_called_in_a_default_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: qualified_default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default_call.helper"), holds: fn(n) { n == 1 }))
 }
 

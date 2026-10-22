@@ -6,7 +6,7 @@ import extdeps.languages.css.values {
   CssFontStack, NamedFamily, GenericFamily, GenericUiMonospace, GenericSystemUi, GenericSansSerif, GenericMonospace,
 }
 import std.optional { Optional, Absent, Present }
-import std.error_primitives { pure_dag_seam_unreachable_string, pure_dag_seam_unreachable }
+import std.error_primitives { pure_dag_seam_unreachable_string, pure_dag_seam_unreachable_int }
 import gunbc.design.scale { ScaleToken, ScaleValue, LengthValue, FontStackValue, named_length_token, measure_prose }
 
 // THE LIVE MEASURES AND TYPE FAMILIES, AS THE SERVED SHEET STATES THEM. Single authority for the
@@ -115,7 +115,7 @@ fn live_scale_token(name: String, m: LiveMeasure) -> ScaleToken {
     Present { value: t } => t
     Absent => match live_measure_scale_length(m: m) {
       Present { value: l } => ScaleToken { name: name, value: LengthValue { length: l } }
-      Absent => ScaleToken { name: pure_dag_seam_unreachable_string(), value: LengthValue { length: css_px(n: pure_dag_seam_unreachable()) } }
+      Absent => ScaleToken { name: pure_dag_seam_unreachable_string(), value: LengthValue { length: css_px(n: pure_dag_seam_unreachable_int()) } }
     }
   }
 }

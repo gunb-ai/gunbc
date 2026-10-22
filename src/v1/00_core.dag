@@ -397,6 +397,7 @@ type CompilerDiagnostic
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
   | DuplicateModule    { name: String, span: SourceSpan }
+  | TypeAliasCycle     { members: List<String>, span: SourceSpan }
   | DuplicateDeclaration { module_name: String, name: String, span: SourceSpan }
   | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
   | ParseError         { message: String, span: SourceSpan }
@@ -645,6 +646,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
     DuplicateModule    { name: _, span: s }                    => s
+    TypeAliasCycle     { members: _, span: s }                 => s
     DuplicateDeclaration { module_name: _, name: _, span: s }  => s
     MissingAnnotation  { fn_name: _, what: _, span: s }        => s
     ParseError         { message: _, span: s }                 => s
@@ -733,6 +735,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
     DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
+    TypeAliasCycle     { members: ms, span: _ }                   => concat("type alias cycle: ", join(ms, separator: " -> "))
     DuplicateDeclaration { module_name: m, name: n, span: _ }     => concat("duplicate declaration '", n, "' in module '", m, "' -- a second declaration of one name silently replaced the first")
     MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
     ParseError         { message: m, span: _ }                    => m
@@ -898,6 +901,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateModule { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeAliasCycle { members: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateDeclaration { module_name: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingAnnotation { fn_name: _, what: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ParseError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

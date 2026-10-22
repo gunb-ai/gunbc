@@ -1,5 +1,7 @@
 module v2.test.claim.body_let_annotation
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, fold_list, length, list_snoc_item, skip, list_at_optional }
@@ -1041,7 +1043,8 @@ fn bla_emit_rust(body: Node) -> Outcome<String> {
   match emit(
     tree: InferredTree {
       root: dag_arrow_with_body_node(domain: dag_arrow_domain_conj_node(), return_type_binding: ^dag_binding_type_int, body: body),
-      facts: PartialFunction { lookup: bla_no_facts }
+      facts: PartialFunction { lookup: bla_no_facts },
+      arm_resolutions: constructed_root_arm_resolutions()
     },
     target: rust_binop_target_model_staging()
   ) {
