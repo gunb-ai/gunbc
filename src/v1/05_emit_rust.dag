@@ -3436,6 +3436,33 @@ fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recu
   )
 }
 
+// WHEN DECLARERS OF ONE LEAF DISAGREE ON SHARING, THE ANSWER IS A REFUSAL, NEVER A PICK. The shared set
+// is keyed by leaf (shared_by_every_declarer), so a leaf one module declares as a constant record and
+// another as a heap record has no single answer: reading it as unshared gave the heap declaration the
+// Copy roster over Rc-realized fields (E0204, std.bit Word64 beside std.machine_word Word64). This
+// returns the declaring identities when the declarers disagree and [] when they agree or one declares
+// the leaf, so every agreeing emission is unchanged. Dissolves when sharing is keyed on the declaration
+// identity (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer).
+fn leaf_sharing_disagreement_declarers(type_summaries: TypeSummaryIndex, name: String, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> List<String> {
+  let keys = type_summary_keys_of_leaf(index: type_summaries, leaf: name)
+  let verdicts = keys |> map(key =>
+    match type_summary_decided(index: type_summaries, key: key) {
+      Present { value: summary } => set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing), name)
+      Absent => true
+    }
+  )
+  if (verdicts |> any(v => v)) && (verdicts |> any(v => !v)) { keys } else { [] }
+}
+
+fn leaf_sharing_disagreement_refusal(name: String, emit_info: EmitGraphInfo) -> String {
+  let declarers = leaf_sharing_disagreement_declarers(type_summaries: emit_info.type_summaries, name: name, recursive_type_set: emit_info.recursive_type_set, target_needs_sharing: sharing_for_target(target: Rust).needs_sharing)
+  if (declarers |> count) == 0 {
+    ""
+  } else {
+    concat("compile_error!(\"leaf_sharing_disagreement: type '", name, "' is declared by ", declarers |> join(separator: ", "), " and those declarations disagree on heap sharing; the shared set is keyed by leaf, so no single derive/representation answer exists. Rename one declaration or key sharing by declaration identity.\");\n")
+  }
+}
+
 fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
 
   let sharing = sharing_for_target(target: target)
@@ -8183,7 +8210,8 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
     let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
-    if clone_bound_refusal == "" { struct_text } else { concat(clone_bound_refusal, "\n", struct_text) }
+    let guarded_struct = concat(leaf_sharing_disagreement_refusal(name: item_text, emit_info: emit_info), struct_text)
+    if clone_bound_refusal == "" { guarded_struct } else { concat(clone_bound_refusal, "\n", guarded_struct) }
   } else if declaration_owns_host_option(module_path: env.module_path, decl_name: item_text) {
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     let elem_csv = item.params |> map(p => to_pascal(name: generic_param_name_at(n: p, source_indices: env.source_indices))) |> join(separator: ", ")
@@ -8229,7 +8257,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
       source_indices: env.source_indices
     )
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info)
+    let enum_text = concat(leaf_sharing_disagreement_refusal(name: item_text, emit_info: emit_info), emit_enum_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
     let validations = if clone_bound_refusal == "" {
       validations
     } else if validations == "" {
