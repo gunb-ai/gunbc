@@ -213,7 +213,7 @@ data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmp
 // THE BOOT LEG HAS AN IMPLEMENTED AUTHORITY (gunbc.runner.runner_host_medium) AND NO PRODUCTION CALLER;
 // THE IMAGE LEG IS WIRED (below). The boot leg's authority is the runner-host-up acceptance predicate the boot
 // run's terminal watch delegates to for a BootMediumRunnerHostUp medium; the image leg's is the
-// derivation of the runner image's seeded-media build input. Neither is wired: the boot run's medium
+// derivation of the runner image's seeded-media build input. Only the boot leg is unwired: the boot run's medium
 // is still the one data row gunbc.machine_intake.mtcollins1_census_image mtcollins1_boot_medium, and
 // it stays the census medium until the one-socket census boot has its receipt (operator sequencing,
 // relayed 2026-10-04), so switching it is a separate one-line import change after that receipt.
