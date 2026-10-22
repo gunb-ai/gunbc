@@ -5,7 +5,7 @@ import std.effect_grant { NamespacePosition, ServiceOpTree }
 import std.live_tree { LiveTreeDisposition }
 import std.scoped_authorization { AuthorizationGranted, AuthorizationPending, AuthorizationRequest, AuthorizationScope, AuthorizedAction, OperatorGrant, ScopedAuthorization }
 import std.temporal_effect { EffectApplied, EffectAttemptIntent, EffectStallBudget, EffectStepReceipt, HeldLease, LeaseEpoch, PlanApply, PriorReceipt }
-import std.types { NonEmptyStr, Timestamp }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

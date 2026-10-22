@@ -1,5 +1,4 @@
 module test.claim.sccache_local_content_verified_on_read
-import std.cache_interface { CacheEvidence }
 import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

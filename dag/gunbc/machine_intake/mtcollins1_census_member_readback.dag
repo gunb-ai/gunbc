@@ -25,7 +25,6 @@ import gunbc.host.boot_medium { BootImageExport, BootMedium }
 import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, census_medium_qualification, boot_image_export_text, mtcollins1_boot_medium, census_image_stock_path, mtcollins1_census_nocloud_dir, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
 import gunbc.machine_intake.mtcollins1_census_medium_readback { census_medium_served_path, RemoteAnswer, remote_answer_of }
-import gunbc.scm.json_member { MemberRead }
 
 // THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
 // REMASTERED FROM. The census remaster (extdeps.provisioning.ubuntu_seeded_install_media_remaster)

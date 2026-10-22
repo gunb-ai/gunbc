@@ -5,7 +5,7 @@ import std.durable_compare_and_set { CasObservedReadable, CasReadablePresent, Ca
 import std.effect_grant { NamespacePosition, NamespaceTree, ServiceOpTree, Verb }
 import std.live_tree { LiveTreeDisposition }
 import std.scoped_authorization { AuthorizationClaimState, AuthorizationGranted, AuthorizationRequest, AuthorizationScope, AuthorizedAction, OperatorGrant, ScopedAuthorization }
-import std.types { NonEmptyStr, Timestamp }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

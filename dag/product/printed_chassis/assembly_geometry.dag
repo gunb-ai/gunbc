@@ -6,7 +6,6 @@ import std.affine_space { Point3, point3 }
 import std.coordinate_frame { coordinate_frame_identity }
 import std.euclidean_geometry { Axis3 }
 import product.printed_chassis.coupon { PlateDimensions, plate_dimensions }
-import std.render { Block }
 
 // Review geometry for the first assembled cassette. It is NOT AdmittedRealizationV0 and
 // cannot enter the coupon's fabrication admission through a cast. The generic CAD adapter

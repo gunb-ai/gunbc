@@ -17,7 +17,6 @@ import gunbc.runner.runner_microvm_slot_controller { slot_controller_receipt_pre
 import gunbc.runner.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
 import gunbc.executor_privileged_operation { SystemdStartUnit }
 import gunbc.executor_privileged_apply { executor_privileged_operation_command }
-import gunbc.live_deploy.unit_standing { UnitPropertyRead }
 
 // ONE START OF THE SHAKEDOWN SLOT'S CONTROLLER UNIT, AND WHAT IT LEFT BEHIND.
 //
