@@ -7,6 +7,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
+import extdeps.rust.cargo { cargo_default_dev_profile, cargo_default_profile_dir, cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import extdeps.python
 import extdeps.go
@@ -107,10 +108,15 @@ fn run_rust_smoke() -> Bool {
   let build = cargo.Build.BuildManifest(
     workdir: dir.path,
     manifest_path: concat(dir.path, "/Cargo.toml"),
-    target_dir: concat(dir.path, "/target"),
+    target_dir: cargo_default_target_dir(build_root: dir.path),
     extra_args: ["--quiet"]
   )
-  let run = gunbc.WitnessBin.Run(workdir: dir.path, bin_path: concat(dir.path, "/target/debug/fixture"))
+  // The fixture is a cargo DEV-profile artifact (no --release on the build above), so its
+  // location is the home's dev face rather than a hand-appended "/debug".
+  let run = gunbc.WitnessBin.Run(
+    workdir: dir.path,
+    bin_path: join([cargo_default_profile_dir(build_root: dir.path, profile: cargo_default_dev_profile), "/fixture"], "")
+  )
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && src_dir.success && manifest.success && main_rs.success
     && build.success && run.success && cleanup.success

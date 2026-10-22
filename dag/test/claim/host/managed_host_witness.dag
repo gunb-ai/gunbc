@@ -793,8 +793,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // hold, same receipt, same allocation set. The platform arm is the ONLY difference.
       let carried = project_managed_host_admission(
         record: r,
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       let carried_is_a_member = match carried {
@@ -813,14 +812,13 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // claim goes RED.
       let not_carried = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, subject: r.subject, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
           smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family },
           receipt: r.receipt,
-          current_subject: Present { value: r.subject },
+          current_subject: Present { value: r.binding.subject },
           covering_drop: r.covering_drop,
         ),
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       let not_carried_is_a_member = match not_carried {
@@ -837,28 +835,26 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // witness would have caught it. Now one does, in both directions.
       let site_refused = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, subject: r.subject, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
           smpro: SmproPlatformSiteRefused {
             family: ampere_altra_soc_family, cause: SiteHasNoTargets,
           },
           receipt: r.receipt,
-          current_subject: Present { value: r.subject },
+          current_subject: Present { value: r.binding.subject },
           covering_drop: r.covering_drop,
         ),
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       let unknown = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, subject: r.subject, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
           smpro: SmproPlatformUnestablished { cause: NoBoardRowBound { endpoint: fixture_bmc_endpoint } },
           receipt: r.receipt,
-          current_subject: Present { value: r.subject },
+          current_subject: Present { value: r.binding.subject },
           covering_drop: r.covering_drop,
         ),
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       // Two separate bindings, not one && of two matches: a match nested inside a boolean operand does
