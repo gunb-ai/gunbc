@@ -1,0 +1,56 @@
+module test.claim.applied_head_identity
+
+// APPLIED-VERSUS-APPLIED IDENTITY LANDS HERE (#14056, the leaf-identity repair for the fold-census
+// sites named in gunbc.recurring_failure_mode stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes).
+// node_type_equals answered a same-declaration application against itself by falling through every arm to
+// a bare refusal, because the applied head comparison keyed on the DeclarationRef stamp alone and an
+// unfolded application's variant children carry no stamp. The repair resolves an unstamped head through the
+// judging env to its alias-resolved head declaration and compares declarations; a side that resolves to no
+// declaration keeps the refusal - identity comes from the declaration, never from printed text
+// (gunbc.rung_drop.text_boundary_identity_wall; DESIGN section 5, no silent widen).
+// THE MEASURING RED is not this file: it is the census population on the fold-carrying head shrinking by
+// the two sites this repair owns (the PosixRedirection join in gunbc.remote_shell_command and the
+// StandardIntegerType join), reported on all three instruments named in the row's recipe - the seed-build
+// gate, the self-host gate closure, and the heal candidate. This file ENROLS the relation so it cannot
+// silently widen or re-narrow: accepted joins stay accepted, refused pairs keep refusing.
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// AN APPLICATION AGAINST ITSELF, BUILT TWICE FROM ONE DECLARATION, IS ONE TYPE (the self-refusal class:
+// before this repair the descent asked the pair's children and the unstamped head arm refused the node
+// against itself). Two independent applications of the same applied declaration must join.
+test fn same_applied_declaration_is_accepted() -> Bool {
+  blocking_count(source: "module locate.appliedsame\ntype Box<T>\ntype Pair<A, B>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Pair<Int, Box<String>>, y: Pair<Int, Box<String>>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
+}
+
+// A NESTED APPLICATION OF THE SAME DECLARATION AT ANY DEPTH JOINS (the census sites are nested: an applied
+// child inside an applied child refused itself; depth one would not catch that class).
+test fn nested_same_applied_declaration_is_accepted() -> Bool {
+  blocking_count(source: "module locate.appliednested\ntype Box<T>\ntype Pair<A, B>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Pair<Int, Pair<Box<Int>, String>>, y: Pair<Int, Pair<Box<Int>, String>>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
+}
+
+// TWO APPLICATIONS OF DIFFERENT DECLARATIONS WITH COMPATIBLE ARGUMENTS STILL REFUSE: the head comparison
+// resolves through the env, so a widened head match cannot leak across declarations.
+test fn different_applied_declaration_same_args_is_refused() -> Bool {
+  blocking_count(source: "module locate.applieddiff\ntype Box<T>\ntype Slot<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Slot<Int>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
+}
+
+// AN APPLICATION AND AN UNRESOLVED-HEAD SPELLING DO NOT JOIN BY NAME (msg_1f4c0ac6: no spelling fallback).
+// A side whose head resolves to no declaration keeps the refusal the pre-repair arm gave; widening by
+// printed name would have joined it. Box against a same-named local declaration spelled in an unrelated
+// shape still cannot unify its arguments across the two declarations.
+test fn different_applied_declaration_nested_args_is_refused() -> Bool {
+  blocking_count(source: "module locate.applieddiffnested\ntype Box<T>\ntype Slot<T>\ntype Pair<A, B>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Pair<Int, Box<String>>, y: Pair<Int, Slot<String>>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
+}
