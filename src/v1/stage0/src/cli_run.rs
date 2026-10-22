@@ -27245,31 +27245,45 @@ mod nfr_tests {
             .iter()
             .cloned()
             .collect();
-        let facts = super::fallback_arm_census_facts();
         let is_test = |p: &str| p.starts_with("dag/test/") || p.starts_with("src/v2/test/");
-        let closed: std::collections::BTreeSet<String> = facts
+        let any_fact: std::collections::BTreeSet<String> = super::fallback_arm_census_facts()
             .iter()
-            .filter(|f| f.closed_coproduct_scrutinee)
             .map(|f| format!("{}::{}", f.rel_path, f.fn_name))
             .collect();
-        let stale: Vec<&String> = roster.iter().filter(|r| !closed.contains(*r)).collect();
-        let prod: Vec<&String> = closed
+        let wild = super::cla_cached_wildcard_facts().expect("wildcard facts");
+        let closed_wild: std::collections::BTreeSet<String> = wild
+            .facts
+            .iter()
+            .filter(|f| f.closed_coproduct_wildcard)
+            .map(|f| f.site.clone())
+            .collect();
+        let stale_a: Vec<&String> = roster.iter().filter(|r| !any_fact.contains(*r)).collect();
+        let stale_b: Vec<&String> = roster
+            .iter()
+            .filter(|r| !closed_wild.contains(*r))
+            .collect();
+        let prod: Vec<&String> = closed_wild
             .iter()
             .filter(|c| !is_test(c) && !roster.contains(*c))
             .collect();
-        let testl = closed
+        let testl = closed_wild
             .iter()
             .filter(|c| is_test(c) && !roster.contains(*c))
             .count();
         eprintln!(
-            "MEASURE rows={} stale={} unrostered_prod={} unrostered_test={}",
+            "MEASURE rows={} closed_wildcard_sites={} stale_no_fact={} stale_not_closed_wildcard={} unrostered_prod={} unrostered_test={}",
             roster.len(),
-            stale.len(),
+            closed_wild.len(),
+            stale_a.len(),
+            stale_b.len(),
             prod.len(),
             testl
         );
-        for s in &stale {
-            eprintln!("MEASURE stale {s}");
+        for s in &stale_a {
+            eprintln!("MEASURE stale_no_fact {s}");
+        }
+        for s in &stale_b {
+            eprintln!("MEASURE stale_b {s}");
         }
         for s in &prod {
             eprintln!("MEASURE prod {s}");
