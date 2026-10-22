@@ -77,11 +77,26 @@ test fn a_coproduct_cast_to_string_with_no_declared_route_is_refused() -> Bool {
   ) == 1
 }
 
-test fn the_kernel_refinement_identity_and_declared_routes_still_compile() -> Bool {
+test fn control_int_as_string_is_accepted() -> Bool {
   blocking_total(source: int_as_string_source) == 0
-    && blocking_total(source: refinement_as_string_source) == 0
-    && blocking_total(source: identity_cast_source) == 0
-    && blocking_total(source: declared_conversion_source) == 0
-    && blocking_total(source: nat_as_int_source) == 0
-    && blocking_total(source: none_as_optional_source) == 0
+}
+
+test fn control_refinement_as_string_is_accepted() -> Bool {
+  blocking_total(source: refinement_as_string_source) == 0
+}
+
+test fn control_nominal_identity_is_accepted() -> Bool {
+  blocking_total(source: identity_cast_source) == 0
+}
+
+test fn control_declared_conversion_is_accepted() -> Bool {
+  blocking_total(source: declared_conversion_source) == 0
+}
+
+test fn control_nat_as_int_is_accepted() -> Bool {
+  blocking_total(source: nat_as_int_source) == 0
+}
+
+test fn control_none_as_optional_is_accepted() -> Bool {
+  blocking_total(source: none_as_optional_source) == 0
 }

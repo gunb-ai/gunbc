@@ -7372,6 +7372,16 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
+// The solver's Unit placeholder is the synthesized core `unit_type` node, which has no declaration by
+// construction (OccurrenceSynthetic, kernel span): it is recognized as that node, so a source-authored
+// type spelled Unit, which carries a real occurrence and span, is never mistaken for it.
+fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
+  match source_node.occurrence_identity {
+    OccurrenceSynthetic => source_node.ident_span == unit_type.ident_span
+    _ => false
+  }
+}
+
 // A cast source is a nominal value with no declared conversion unless its DECLARATION is grounded onto
 // a kernel type or is the std.types `Unit` placeholder. Both exemptions are keyed on the exact
 // DeclarationRef read by type_reference_declaration_ref, never a module-path substring and never a
@@ -7379,11 +7389,12 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
 // row whose carrier IS that declaration (a Nat is an Int, so `n as Int` is a declared identity), and a
 // foreign type spelled `Unit` is not std.types Unit. `Unit` is what the call-site generic solve answers
 // for a parameter it did not solve and what an absent literal infers as, so it is no established
-// nominal identity. When the declaration is NOT recovered (Absent) nothing is exempt: the cast refuses,
-// located, so the unrecovered source is counted by the diagnostic census rather than waved through.
+// nominal identity. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
+// itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
+// located, so it is counted by the diagnostic census rather than waved through.
 fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   match type_reference_declaration_ref(n: source_node, source_indices: source_indices, env: env) {
-    Absent => true
+    Absent => !cast_source_is_solver_unit_placeholder(source_node: source_node)
     Present { value: d } =>
       !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
         && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
