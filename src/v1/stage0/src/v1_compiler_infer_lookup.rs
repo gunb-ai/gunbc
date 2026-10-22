@@ -31,10 +31,11 @@ pub use crate::v1_compiler_infer_emit_info::{
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, census_declaration_type_env,
-    declaration_substitution_basis, global_bare_policy_candidate, is_recursive_type,
-    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
-    lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
-    symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
+    declaration_substitution_basis, fn_type_param_names, global_bare_policy_candidate,
+    is_recursive_type, listed_import_required_bare_call_blocked, lookup_binding_by_name,
+    lookup_binding_by_name_local, lookup_type, lookup_type_for, qualified_all_but_last,
+    qualify_borrowed_type_names, symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState,
+    TypeBinding, TypeEnv,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
@@ -46,7 +47,7 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
 pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, infer_builtin_call_type, NonDeclarationBinding,
 };
-pub use crate::v1_compiler_infer_resolve::{expand_nominal_alias_rhs, fn_type_param_names};
+pub use crate::v1_compiler_infer_resolve::expand_nominal_alias_rhs;
 pub use crate::v1_compiler_infer_service::{
     check_service_method_call_node, OpEntry, ServiceMethodResult,
 };
@@ -69,6 +70,7 @@ pub use crate::v1_compiler_infer_types::{
     instantiate_algebra_type, is_declared_container_alias_spelling, kernel_profile_lookup,
     method_receiver_element_node, node_is_keyed_collection, node_is_set_collection,
     nominal_type_ref, normalize_access_type_node, reground_alias_carrier_identity,
+    type_variable_node,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -736,7 +738,7 @@ pub fn census_declaration_bound_formals(
     node: Rc<Node>,
 ) -> Rc<Vec<Rc<ResolvedFormal>>> {
     {
-        let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
+        let tp_names = crate::v1_compiler_infer_env::fn_type_param_names(
             node.clone(),
             type_env.source_indices.clone(),
         );
@@ -1043,23 +1045,10 @@ pub fn lookup_field_type_node(
                                     ) && (field_name.clone() == "lookup".to_string()))
                                     {
                                         {
-                                            let value_child = match n
-                                                .children
-                                                .clone()
-                                                .get((1) as usize)
-                                                .cloned()
-                                            {
-                                                Some(child) => {
-                                                    crate::v1_compiler_infer_types::child_type_node(
-                                                        child.clone(),
-                                                    )
-                                                }
-                                                std::option::Option::None => {
-                                                    crate::v1_compiler_infer_types::nominal_type_ref(
-                                                        "V".to_string(),
-                                                    )
-                                                }
-                                            };
+                                            let value_child = match n.children.clone().get((1) as usize).cloned() {
+    Some(child) => crate::v1_compiler_infer_types::child_type_node(child.clone()),
+    std::option::Option::None => crate::v1_compiler_infer_types::type_variable_node("V".to_string()),
+};
                                             Some(crate::v1_std_core::with_optional_cardinality(
                                                 value_child.clone(),
                                             ))

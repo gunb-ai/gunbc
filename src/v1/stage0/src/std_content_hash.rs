@@ -197,7 +197,7 @@ pub fn content_hash_from_structural_digest(digest: String) -> Option<Rc<ContentH
 }
 
 pub fn content_hash_atom(value: String) -> Rc<Fnv1a64Structural> {
-    structural_content_hash(v1_rt::atom_identity_hash(value.clone()))
+    structural_content_hash((v1_rt::atom_identity_hash(value.clone())).to_string())
 }
 
 pub fn content_hash_combine_preimage(

@@ -4338,7 +4338,8 @@ fn body_lower_reify_transform_edge(
 fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Transform } =>
-      match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+      let no_edges_yet: List<Edge> = Empty
+      match fold(body.children, init: outcome_accepted(value: no_edges_yet), f: fn(acc, e) {
         match acc {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: done, diagnostics: d } =>

@@ -7,6 +7,7 @@ import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, Exa
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
   VariantParentIdentified, VariantParentDeclaration, VariantParentKernelType }
+import extdeps.rust.version { CargoVersionRequirement }
 import extdeps.languages.rust.representation { rust_exact_type_checkpoint }
 import std.repair_input_origin {
   repair_input_origin_candidates,
@@ -5459,7 +5460,8 @@ type ReferenceDerivedProviderBinding {
 // iteration and as the input to `dedupe_rust_import_lines`, so first-binder-wins and the
 // "prior" cover predicates see a determined line order rather than first-seen of an unordered walk.
 fn canonical_string_set(items: List<String>) -> List<String> {
-  let presence = items |> fold(init: empty_map(), f: (acc, item) =>
+  let no_items_yet: Map<String, Bool> = empty_map()
+  let presence = items |> fold(init: no_items_yet, f: (acc, item) =>
     if item == "" { acc } else { map_insert(acc, item, true) }
   )
   sorted_map_keys(presence)
@@ -19208,7 +19210,7 @@ fn emit_mock_prop_setup(mock_prop: Node, depth: Int, source_indices: Map<String,
   concat("let ", field_init_node_name_at(n: mock_prop, source_indices: source_indices), " = ", body_str, ";")
 }
 
-fn emit_cargo_dep(name: String, version: String, features: List<String>) -> String {
+fn emit_cargo_dep(name: String, version: CargoVersionRequirement, features: List<String>) -> String {
   if features |> count > 0 {
     let feat_strs = features |> map(f => concat("\"", f, "\""))
     concat(name, " = { version = \"", version, "\", features = [", feat_strs |> join(separator: ", "), "] }\n")
@@ -19217,7 +19219,7 @@ fn emit_cargo_dep(name: String, version: String, features: List<String>) -> Stri
   }
 }
 
-fn emit_cargo_dep_no_default_features(name: String, version: String, features: List<String>) -> String {
+fn emit_cargo_dep_no_default_features(name: String, version: CargoVersionRequirement, features: List<String>) -> String {
   let feat_strs = features |> map(f => concat("\"", f, "\""))
   concat(name, " = { version = \"", version, "\", default-features = false, features = [", feat_strs |> join(separator: ", "), "] }\n")
 }

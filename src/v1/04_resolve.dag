@@ -49,7 +49,7 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
+  declared_type_parameter_names, fn_type_param_names, TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -1253,12 +1253,6 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
   }
 }
 
-fn fn_type_param_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  item.params |> filter(p =>
-    param_node_name_at(n: p, source_indices: source_indices) == authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: p))
-  ) |> map(p => param_node_name_at(n: p, source_indices: source_indices))
-}
-
 fn first_duplicate_type_param_name(names: List<String>) -> String? {
   names |> enumerate |> filter(pair => names |> skip(pair.first + 1) |> any(other => other == pair.second)) |> map(pair => pair.second) |> first
 }
@@ -1464,11 +1458,7 @@ fn node_with_children_params_inferred(n: Node, children: List<Node>, params: Lis
 }
 
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResolveResult {
-  let tp_names = if item.connective != NoConnective && item.transport == none {
-    item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
-  } else {
-    fn_type_param_names(item: item, source_indices: env.source_indices)
-  }
+  let tp_names = declared_type_parameter_names(item: item, source_indices: env.source_indices)
   let collision_diags = match first_duplicate_type_param_name(names: tp_names) {
     Present { value: dup } =>
       [make_error_node(diagnostic: InternalError { message: concat(concat(concat("the name '", dup), concat("' is bound twice in the header of '", authored_name_at(source_indices: env.source_indices, node: item))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them."), span: item.span }, module_name: module_name)]

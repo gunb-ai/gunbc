@@ -21,8 +21,8 @@ import std.types { NonEmptyStr }
 //    using census_blocking_histograms_equal (key and multiplicity, both directions) or
 //    a keyed differential (gan_refused_arg, gan_refused_arg_with_mismatch: the added blocking keys, class AND
 //    subject, with their total), and requires CensusObserved on both sides; CensusNotRunnable never passes.
-//  - arity_n_else_*_open_accepted: two head shapes the compiler ACCEPTS today (Map formal against Optional,
-//    List formal against Map); pinned as open, they flip when a generic still free after binding is refused.
+//  - arity_n_else_*_refused: two built-in container head shapes (Map formal against Optional, List formal
+//    against Map), refused by the container head relation (collection_head_conflict) though the formal is generic.
 // POSITION: arity_n_pos_* pass ApPair<Int, String> to ap_second_of / ap_first_of; a position swap in
 // unify_generic_child_pairs makes the accepted-consumer claims (arity_n_pos_*_reaches_*) fail.
 // ap_slot / ap_brand_slot is the #14354 control: a generic bound to a brand must stay that brand.
@@ -242,15 +242,14 @@ test fn arity_n_else_pair_matched_head_accepted() -> Bool {
   gan_same_blocking(base: gan_census(source: gan_fx_else_pair_base), other: gan_census(source: gan_fx_else_pair_mapbox_green))
 }
 
-// OPEN, observed accepted: Map<K, V> formal against an Optional<Int> actual, and List<T> formal against a Map actual,
-// compile with no blocking diagnostic beyond the matched-head fixture. These pin the current silent acceptance, not a wall;
-// they flip when the PR-2 refusal of a generic still free after binding lands.
-test fn arity_n_else_map_formal_optional_actual_open_accepted() -> Bool {
-  gan_same_blocking(base: gan_census(source: gan_fx_else_map_opt_green), other: gan_census(source: gan_fx_else_map_opt_red))
+// Map<K, V> formal against an Optional<Int> actual, and List<T> formal against a Map actual: the container head is
+// settled whatever its arguments are (collection_head_conflict), so both are refused at the argument.
+test fn arity_n_else_map_formal_optional_actual_refused() -> Bool {
+  gan_refused_arg(green: gan_census(source: gan_fx_else_map_opt_green), red: gan_census(source: gan_fx_else_map_opt_red), param: "m")
 }
 
-test fn arity_n_else_list_formal_map_actual_open_accepted() -> Bool {
-  gan_same_blocking(base: gan_census(source: gan_fx_else_list_map_green), other: gan_census(source: gan_fx_else_list_map_red))
+test fn arity_n_else_list_formal_map_actual_refused() -> Bool {
+  gan_refused_arg(green: gan_census(source: gan_fx_else_list_map_green), red: gan_census(source: gan_fx_else_list_map_red), param: "xs")
 }
 
 test fn arity_n_else_map_formal_bare_actual() -> Bool {

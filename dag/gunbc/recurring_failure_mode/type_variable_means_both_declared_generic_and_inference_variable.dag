@@ -14,7 +14,7 @@ data type_variable_means_both_declared_generic_and_inference_variable: Recurring
 
     "RECEIPT, 2026-09-20, session gentle-seal-490. A new floor wall refusing a TYPE PARAMETER in value position keyed on `is_type_variable(binding.resolved.inferred)`. Because a lambda binder carries meaning (2) mid-inference, the wall refused 24 ORDINARY VALUE BINDERS across 11 corpus modules on CI: `e` in a fold lambda (gunbc.fabric.fabric_cell_effect x4), `item` in a value binder (gunbc.host.host_converge x2), plus evidence x3, s x2, p x2, and key, first, report, o, paths, path, line, seg, text, t. The wall intended to close a silent-wrongness class committed that class itself.",
 
-    "THE DISCRIMINATOR ALREADY EXISTED AND IS NOT A SPLIT OF THE FORK. v1.compiler.infer_resolve fn_type_param_names is the authority for a declaration's DECLARED type-parameter names -- it is what env_with_type_variable_bindings is handed in the first place. Asking whether a name is in the ENCLOSING DECLARATION's roster is identity-keyed against a declared list and cannot be satisfied by a binder's mid-inference provenance. The roster is carried to the check site on v1.compiler.infer InferScope, which already holds locals, body_locals, match_bound_names, lambda_param_provenance and in_flight_lambda_param_names -- the same family of scope-bound naming facts.",
+    "THE DISCRIMINATOR ALREADY EXISTED AND IS NOT A SPLIT OF THE FORK. v1.compiler.infer_env fn_type_param_names is the authority for a declaration's DECLARED type-parameter names -- it is what env_with_type_variable_bindings is handed in the first place. Asking whether a name is in the ENCLOSING DECLARATION's roster is identity-keyed against a declared list and cannot be satisfied by a binder's mid-inference provenance. The roster is carried to the check site on v1.compiler.infer InferScope, which already holds locals, body_locals, match_bound_names, lambda_param_provenance and in_flight_lambda_param_names -- the same family of scope-bound naming facts.",
 
     "THE FIX ROUTES AROUND THE FORK AND DOES NOT CLOSE IT, stated so this row is not read as retired. TypeVariable still carries both meanings after the repair; what changed is that one consumer stopped asking it the ambiguous question. Every other consumer that asks a TypeVariable what it means is still exposed, and this row stays open until the two facts are separately representable.",
 
@@ -25,6 +25,6 @@ data type_variable_means_both_declared_generic_and_inference_variable: Recurring
 
   evidence: [
     DeclarationRef { module_path: "v1.compiler.infer_env", decl_name: "env_with_type_variable_bindings", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "fn_type_param_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_env", decl_name: "fn_type_param_names", field: WholeDeclaration },
   ],
 }

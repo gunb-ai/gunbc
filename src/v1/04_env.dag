@@ -2,7 +2,7 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, generic_param_name_at, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
@@ -230,6 +230,7 @@ type SymbolIndex {
   transparent_alias_rep: Map<String, String>
   type_head_exposures: Map<String, TypeHeadExposure>
   file_modules: Map<String, String>
+  declarations_by_file: Map<String, List<Node>>
   module_named_imports: Map<String, Map<String, String>>
 }
 
@@ -238,7 +239,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), module_named_imports: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), declarations_by_file: empty_map(), module_named_imports: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -412,6 +413,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
+    declarations_by_file: index.declarations_by_file,
     module_named_imports: index.module_named_imports
   }
 }
@@ -424,6 +426,7 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
+    declarations_by_file: index.declarations_by_file,
     module_named_imports: index.module_named_imports
   }
 }
@@ -436,6 +439,7 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
     file_modules: index.file_modules,
+    declarations_by_file: index.declarations_by_file,
     module_named_imports: index.module_named_imports
   }
 }
@@ -1761,6 +1765,7 @@ type TypeReferenceDeclarationReading
   = TypeReferenceNamesDeclaration { declaration: DeclarationRef }
   | TypeReferenceIsKernelType { name: String }
   | TypeReferenceIsTypeVariable { id: String }
+  | TypeReferenceUninstantiatedTypeParameter { name: String }
   | TypeReferenceUnidentified { authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause? }
 
 fn type_reference_declaration_reading(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeReferenceDeclarationReading {
@@ -1773,19 +1778,70 @@ fn type_reference_declaration_reading(n: Node, source_indices: Map<String, Newli
           match declaration_reading_of_type_node(rt: r, source_indices: source_indices, env: env) {
             TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
             TypeNodeUnidentified { cause: resolved_cause } =>
-              kernel_or_unidentified(n: r, source_indices: source_indices, authored: authored_cause, resolved: Present { value: resolved_cause })
+              kernel_or_unidentified(n: r, source_indices: source_indices, env: env, authored: authored_cause, resolved: Present { value: resolved_cause })
           }
-        _ => kernel_or_unidentified(n: n, source_indices: source_indices, authored: authored_cause, resolved: none)
+        _ => kernel_or_unidentified(n: n, source_indices: source_indices, env: env, authored: authored_cause, resolved: none)
       }
   }
 }
 
-fn kernel_or_unidentified(n: Node, source_indices: Map<String, NewlineIndex>, authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause?) -> TypeReferenceDeclarationReading {
+// Names the removed spelling-keyed reading used to exempt. No longer consulted by the declared-type wall; kept for its other callers in
+// v1.compiler.infer.
+fn is_type_variable_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}
+
+// THE TYPE PARAMETER A GENERIC DECLARATION DECLARES, recognised by DECLARATION and never by spelling. A match binding
+// over a generic's result (list_head(xs: List<String>) -> Present { value: c }) carries the declaring type's
+// UNINSTANTIATED parameter as its type: it has no declaration of its own and is no kernel, but it is not an unknown
+// head either. A top-level item's node span is its keyword only (its extent lives in the parse side table, not on the
+// node), so the item that CONTAINS a node is the last item of the node's own file starting at or before it; the node
+// is that parameter when that item DECLARES a parameter of the name. A user type named T or V is identified by its own
+// declaration before this is asked, and a reference to a T no enclosing item declares refuses.
+// BELOW-CEILING RESIDUAL (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel): only this
+// reading is unjudged by the declared-type wall; every other Unidentified head refuses. Retired when pattern bindings
+// carry the instantiated type (C1.2c arity + C1.2d tail/split on top of pattern_binding_type).
+fn enclosing_declaration_of(declarations: List<Node>, n: Node) -> Node? {
+  let preceding = declarations |> filter(d => d.span.start <= n.span.start)
+  let nearest_start = preceding |> fold(init: 0, f: (acc, d) => if d.span.start > acc { d.span.start } else { acc })
+  preceding |> filter(d => d.span.start == nearest_start) |> first
+}
+
+// THE TYPE PARAMETERS A DECLARATION DECLARES. A type item (a connective, no transport) keeps them in `params`; a fn item's
+// `params` are its VALUE parameters, and its type parameters are the ones whose name is their own type expression.
+fn fn_type_param_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  item.params |> filter(p =>
+    param_node_name_at(n: p, source_indices: source_indices) == authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: p))
+  ) |> map(p => param_node_name_at(n: p, source_indices: source_indices))
+}
+
+fn declared_type_parameter_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  if item.connective != NoConnective && item.transport == none {
+    item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  } else {
+    fn_type_param_names(item: item, source_indices: source_indices)
+  }
+}
+
+fn is_declared_type_parameter_of_enclosing_declaration(n: Node, parameter: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match map_get(env.symbol_index.declarations_by_file, n.span.file) {
+    Present { value: declarations } =>
+      match enclosing_declaration_of(declarations: declarations, n: n) {
+        Present { value: d } => declared_type_parameter_names(item: d, source_indices: source_indices) |> any(tp => tp == parameter)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn kernel_or_unidentified(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause?) -> TypeReferenceDeclarationReading {
   let nm = authored_name_at(source_indices: source_indices, node: n)
   match n.inferred {
     Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
     _ =>
       if is_kernel_type(name: nm) { TypeReferenceIsKernelType { name: nm } }
+      else if is_declared_type_parameter_of_enclosing_declaration(n: n, parameter: nm, source_indices: source_indices, env: env) { TypeReferenceUninstantiatedTypeParameter { name: nm } }
+      else if node_is_kernel_mint(n: n) { TypeReferenceIsKernelType { name: nm } }
       else { TypeReferenceUnidentified { authored: authored, resolved: resolved } }
   }
 }
@@ -1908,6 +1964,7 @@ fn text_element_is_char(n: Node, env: TypeEnv) -> TextRepresentation {
         TypeReferenceNamesDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
         TypeReferenceIsKernelType { name: _ } => NotText
         TypeReferenceIsTypeVariable { id: _ } => NotText
+        TypeReferenceUninstantiatedTypeParameter { name: _ } => NotText
         TypeReferenceUnidentified { authored: _, resolved: _ } => TextRepresentationUnidentified
       }
   }
@@ -1950,6 +2007,7 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
       TypeReferenceUnidentified { authored: _, resolved: _ } => if kernel_other { NotText } else { TextRepresentationUnidentified }
       TypeReferenceIsKernelType { name: k } => if k == "String" { HostText } else { NotText }
       TypeReferenceIsTypeVariable { id: _ } => NotText
+      TypeReferenceUninstantiatedTypeParameter { name: _ } => NotText
       TypeReferenceNamesDeclaration { declaration: d } =>
         if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid()) {
           text_element_is_char(n: n, env: env)

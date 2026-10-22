@@ -10,7 +10,7 @@ import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_emit_info { TypeDeclIndex, resolve_type_decl_routed, type_decl_routed_resolution_label }
 import v1.compiler.infer_env {
   TypeEnv, lookup_type_for, type_reference_declaration_reading,
-  TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUninstantiatedTypeParameter, TypeReferenceUnidentified,
   TypeNodeUnidentifiedCause, TypeNodeAuthoredNameEmpty, TypeNodeNameDeclaredNowhere, TypeNodeSpanDeclaresNothing, TypeNodeCarriesNoSpan, TypeNodeQualifierMatchesNoDeclarer
 }
 import v1.compiler.infer { declared_return_type_node, build_emit_graph_info }
@@ -413,6 +413,7 @@ fn decl_identity_label(r: TypeReferenceDeclarationReading) -> String {
     TypeReferenceNamesDeclaration { declaration: d } => concat("Declaration:", declaration_ref_display_key(ref: d))
     TypeReferenceIsKernelType { name: k } => concat("Kernel:", k)
     TypeReferenceIsTypeVariable { id: v } => concat("TypeVariable:", v)
+    TypeReferenceUninstantiatedTypeParameter { name: n } => concat("UninstantiatedTypeParameter:", n)
     TypeReferenceUnidentified { authored: a, resolved: r2 } =>
       match r2 {
         Present { value: rc } => concat(concat(concat("Unidentified:", unidentified_cause_label(c: a)), "/resolved:"), unidentified_cause_label(c: rc))

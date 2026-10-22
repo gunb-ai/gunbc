@@ -331,6 +331,24 @@ fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement 
   }
 }
 
+// THE UPCAST OF A REFINEMENT (operator Ruling 3, 2026-07-15: a Nat IS an Int). A refinement row says
+// every to_type value IS a from_type value, so the same row grounds the total, exact, unique, pure
+// upcast to_declaration -> from_type; no second table states it. The operand is matched by its
+// resolved DECLARATION, never its spelling: v2.std.nat.Nat shares the spelling, is not a refinement
+// of Int, and matches no row, so it still refuses at an Int formal.
+fn dag_refinement_upcast(operand: DeclarationRef, target_type: String) -> Bool {
+  refinement_cast_rules |> any(r => r.from_type == target_type && declaration_ref_eq(a: r.to_declaration, b: operand))
+}
+
+// THE UPCAST OF A MACHINE WIDTH. std.integer declares every IntN/UIntN as Compose<Base, MachineWidth<N>>
+// (DESIGN section 2: one axis, not ten types), so a width value IS a Base value and the upcast to Base
+// is total, exact, unique and pure. This names only the Compose DECLARATION; the structure walk that
+// reads the Base out of each width declaration lives with the judgment (v1.compiler.infer
+// width_declaration_over_int), so no row per width exists and Int -> UIntN stays a refinement cast.
+fn dag_is_machine_width_compose(operand: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose"), b: operand)
+}
+
 fn dag_can_cast(source_type: String, target_type: String) -> Bool {
   (dag_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type))
     || (grounded_primitive_coproduct_identities |> any(r => r.from_type == source_type && r.to_type == target_type))

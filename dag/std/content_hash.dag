@@ -163,7 +163,7 @@ fn content_hash_from_structural_digest(digest: String) -> ContentHash? {
 }
 
 fn content_hash_atom(value: NonEmptyStr) -> Fnv1a64Structural {
-  structural_content_hash(digest: atom_identity_hash(value))
+  structural_content_hash(digest: to_string(value: atom_identity_hash(value)) as Fnv1a64StructuralDigestHex)
 }
 
 // The combine relation is the Fnv1a64Structural family applied to one canonical preimage:

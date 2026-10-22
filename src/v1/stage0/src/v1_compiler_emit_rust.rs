@@ -11,7 +11,7 @@ pub use crate::extdeps_languages_rust_capabilities::{phantom_opaque_carrier_deri
 pub use crate::extdeps_languages_rust_emit::{rust_trait_derive_attr_from_traits, rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates, rust_machine_word_lowering, rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case, HigherOrderMethodSpec, rust_higher_order_methods, rust_value_binding_candidate, fresh_rust_value_binding_name, rust_refusing_int_target_type, rust_refusing_int_operator_helper, rust_refusing_int_negation_helper};
 pub use crate::extdeps_languages_rust_representation::{rust_exact_type_checkpoint};
 pub use crate::extdeps_rust_cargo::{CargoFeature};
-pub use crate::extdeps_rust_version::{render_cargo_package_header_prefix};
+pub use crate::extdeps_rust_version::{CargoVersionRequirement, render_cargo_package_header_prefix};
 pub use crate::gunbc_cli_dispatch_surface::{admitted_bootstrap_operation_declaration, CliArmRealization, CliBootstrapDagOperationBinding, CliOperandRow, CliOptionRow, CliOptionValue, CliSubcommandRow, cli_subcommand_generated_dispatch_operands, cli_subcommand_generated_dispatch_options, dispatch_local_binding_names, gunbc_cli_dispatch_executor_binding_prefix, gunbc_cli_about, gunbc_cli_binary_name, gunbc_cli_generated_dispatch_subcommands, modeled_subcommand_bound_fields, CliBootstrapExecutionClass, CliOptionArity};
 pub use crate::gunbc_namespace_cut_reference_derived_candidate::{ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow};
 pub use crate::gunbc_rust_decl_type_overlay::{rust_decl_type_container_overlay_is_admitted};
@@ -10008,8 +10008,9 @@ pub struct ReferenceDerivedProviderBinding {
 
 pub fn canonical_string_set(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
+        let no_items_yet = v1_rt::rc_empty_map::<String, bool>();
         let presence = items.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
+            no_items_yet.clone(),
             |acc: Rc<HashMap<String, bool>>, item: String| {
                 if (item.clone() == "".to_string()) {
                     acc
@@ -44169,7 +44170,11 @@ pub fn emit_mock_prop_setup(
     }
 }
 
-pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) -> String {
+pub fn emit_cargo_dep(
+    name: String,
+    version: CargoVersionRequirement,
+    features: Rc<Vec<String>>,
+) -> String {
     if ((features.clone().len() as i64) > 0) {
         {
             let feat_strs = Rc::new({
@@ -44209,7 +44214,7 @@ pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) 
 
 pub fn emit_cargo_dep_no_default_features(
     name: String,
-    version: String,
+    version: CargoVersionRequirement,
     features: Rc<Vec<String>>,
 ) -> String {
     {

@@ -591,7 +591,8 @@ fn served_route_build_row<H>(spec: ServedRouteSpec<H>) -> ServedRouteBuildRow<H>
 // a fabricated value.
 fn serve_build_route_table<H>(specs: List<ServedRouteSpec<H>>) -> ServedRouteTableBuild<H> {
   let rows = map(specs, spec => served_route_build_row(spec: spec))
-  let first_refusal = fold(rows, init: none, f: (acc, r) =>
+  let no_refusal_yet: ServedRouteTableBuild<H>? = none
+  let first_refusal = fold(rows, init: no_refusal_yet, f: (acc, r) =>
     match acc {
       Present { value: v } => acc
       Absent =>

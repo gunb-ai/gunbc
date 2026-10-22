@@ -396,7 +396,8 @@ fn bounding_box3(points: List<Point3>) -> OrthogonalConstruction<BoundingBox3> {
   match points |> first {
     Absent => OrthogonalRefused { cause: BoundingBoxHasNoPoints }
     Present { value: head } =>
-      let frame_mismatch = fold(points, init: none, f: (acc, p) =>
+      let no_mismatch_yet: CoordinateFrameIdentity? = none
+      let frame_mismatch = fold(points, init: no_mismatch_yet, f: (acc, p) =>
         match acc {
           Present { value: _ } => acc
           Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
@@ -610,7 +611,8 @@ fn orthogonal_loop2(vertices: List<Point2>) -> OrthogonalConstruction<Orthogonal
     match vertices |> first {
       Absent => OrthogonalRefused { cause: LoopTooFewVertices { supplied: n } }
       Present { value: head } =>
-        let frame_mismatch = fold(vertices, init: none, f: (acc, p) =>
+        let no_mismatch_yet: CoordinateFrameIdentity? = none
+        let frame_mismatch = fold(vertices, init: no_mismatch_yet, f: (acc, p) =>
           match acc {
             Present { value: _ } => acc
             Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }

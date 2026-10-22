@@ -2296,7 +2296,7 @@ fn canonical_hash_of_connective(c: Connective) -> Fnv1a64Structural {
     Atom { identity: sym } =>
       content_hash_combine_structural(
         left: content_hash_atom(value: ^canonical_tag_atom),
-        right: content_hash_atom(value: sym)
+        right: content_hash_atom(value: symbol_lexeme(sym: sym))
       )
     Conj => content_hash_atom(value: ^canonical_tag_conj)
     Disj => content_hash_atom(value: ^canonical_tag_disj)
@@ -2339,17 +2339,17 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Fnv1a64Structural {
     Authored { name: sym } =>
       content_hash_combine_structural(
         left: content_hash_atom(value: ^canonical_tag_named_edge),
-        right: content_hash_atom(value: sym)
+        right: content_hash_atom(value: symbol_lexeme(sym: sym))
       )
     StructuralLabel { label: CoreMarker { marker: m } } =>
       content_hash_combine_structural(
         left: content_hash_atom(value: ^canonical_tag_core_marker_edge),
-        right: content_hash_atom(value: core_edge_label_canonical_symbol(marker: m))
+        right: content_hash_atom(value: symbol_lexeme(sym: core_edge_label_canonical_symbol(marker: m)))
       )
     StructuralLabel { label: ProductionEdge { language: l, edge: p } } =>
       content_hash_combine_structural(
         left: content_hash_atom(value: ^canonical_tag_production_edge),
-        right: content_hash_combine_structural(left: content_hash_atom(value: l), right: content_hash_atom(value: p))
+        right: content_hash_combine_structural(left: content_hash_atom(value: symbol_lexeme(sym: l)), right: content_hash_atom(value: symbol_lexeme(sym: p)))
       )
     Positional => content_hash_atom(value: ^canonical_tag_positional_edge)
   }
@@ -2366,7 +2366,7 @@ fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
 }
 
 fn symbol_identity_digest(sym: Symbol) -> Hash {
-  content_hash_atom(value: sym)
+  content_hash_atom(value: symbol_lexeme(sym: sym))
 }
 
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
@@ -2601,7 +2601,7 @@ fn byte_offset_cache_digest_ineligible_hash(
     a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_digest_ineligible),
     b: combine_hash(
       a: within_ceiling_digest,
-      b: content_hash_atom(value: boundary_tag)
+      b: content_hash_atom(value: symbol_lexeme(sym: boundary_tag))
     )
   )
 }
@@ -3104,7 +3104,7 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
       combine_hash(
         a: content_hash_atom(value: ^canonical_tag_byte_offset_cache_key_ineligible),
         b: combine_hash(
-          a: content_hash_atom(value: boundary_tag),
+          a: content_hash_atom(value: symbol_lexeme(sym: boundary_tag)),
           b: witness
         )
       )

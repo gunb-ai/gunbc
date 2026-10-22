@@ -20,11 +20,11 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
 };
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
-    env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
-    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, symbol_index_lookup, type_ref_measure_binding_authority,
-    width_resolution_declaration, TypeBinding, TypeEnv, UnitVariantContribution,
-    UnitVariantPhantomLookup,
+    declared_type_parameter_names, env_with_type_variable_bindings, fn_type_param_names,
+    is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, lookup_type,
+    lookup_type_by_name, lookup_type_for, lookup_unit_variant_phantom_type, symbol_index_lookup,
+    type_ref_measure_binding_authority, width_resolution_declaration, TypeBinding, TypeEnv,
+    UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -3732,38 +3732,6 @@ pub fn resolve_expr_types(
     })
 }
 
-pub fn fn_type_param_names(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for p in Rc::new({
-            let mut __result = Vec::new();
-            for p in item.params.clone().iter().cloned() {
-                if (crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
-                    == crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        crate::v1_std_core::param_node_type_expr(p.clone()),
-                    ))
-                {
-                    __result.push(p);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        {
-            __result.push(crate::v1_std_core::param_node_name_at(
-                p.clone(),
-                source_indices.clone(),
-            ));
-        }
-        __result
-    })
-}
-
 pub fn first_duplicate_type_param_name(names: Rc<Vec<String>>) -> Option<String> {
     Rc::new({
         let mut __result = Vec::new();
@@ -4297,22 +4265,10 @@ pub fn resolve_item_types(
     module_name: String,
 ) -> Rc<ItemResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tp_names = if ((item.connective.clone() != Connective::NoConnective)
-            && (item.transport.clone() == std::option::Option::None))
-        {
-            Rc::new({
-                let mut __result = Vec::new();
-                for p in item.params.clone().iter().cloned() {
-                    __result.push(crate::v1_std_core::generic_param_name_at(
-                        p.clone(),
-                        env.source_indices.clone(),
-                    ));
-                }
-                __result
-            })
-        } else {
-            fn_type_param_names(item.clone(), env.source_indices.clone())
-        };
+        let tp_names = crate::v1_compiler_infer_env::declared_type_parameter_names(
+            item.clone(),
+            env.source_indices.clone(),
+        );
         let collision_diags = match first_duplicate_type_param_name(tp_names.clone()) {
     Some(dup) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat(v1_rt::concat("the name '".to_string(), dup.clone()), v1_rt::concat("' is bound twice in the header of '".to_string(), crate::v1_std_core::authored_name_at(env.source_indices.clone(), item.clone()))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them.".to_string()),

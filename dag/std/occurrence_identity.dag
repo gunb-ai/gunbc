@@ -912,9 +912,10 @@ fn occurrence_transport_validate(
       match role_index_build.refusal {
         Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
         Absent =>
+          let no_declaration_refusal_yet: OccurrenceTransportRefusal? = none
           let declaration_refusal = fold(
             transport.declarations,
-            init: none,
+            init: no_declaration_refusal_yet,
             f: (refusal, declaration) =>
               match refusal {
                 Present { value: _ } => refusal
@@ -928,9 +929,10 @@ fn occurrence_transport_validate(
           match declaration_refusal {
             Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
             Absent =>
+              let no_reference_refusal_yet: OccurrenceTransportRefusal? = none
               let reference_refusal = fold(
                 transport.references,
-                init: none,
+                init: no_reference_refusal_yet,
                 f: (refusal, reference) =>
                   match refusal {
                     Present { value: _ } => refusal

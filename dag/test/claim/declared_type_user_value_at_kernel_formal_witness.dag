@@ -1,0 +1,248 @@
+module test.claim.declared_type_user_value_at_kernel_formal_witness
+
+// A user-declared coproduct (Nat, Opt<T>, any Disj) or a Unit VALUE AT A KERNEL FORMAL IS REFUSED.
+// The actual-side exit `is_kernel_type(actual) == false || actual == Unit` of
+// `v1.compiler.infer` `kernel_value_declared_type_mismatch_bounded` admitted all of them; the
+// judgment now reads the FORMAL's declaration (a kernel scalar inhabited only by name, declared
+// cast, grounded identity row or refinement). Each RED is paired with an accepted positive
+// control at the same position (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel).
+
+fn ut_nat_source() -> String {
+  "module ut.probe\n\ntype Nat\n  = Zero\n  | Succ { predecessor: Nat }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Nat) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_opt_source() -> String {
+  "module ut.probe\n\ntype Opt<T>\n  = Some { value: T }\n  | Nada\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Opt<Int>) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_coproduct_source() -> String {
+  "module ut.probe\n\ntype Pair\n  = P\n  | Q\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Pair) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_unit_source() -> String {
+  "module ut.probe\n\ntype Pad = Pd\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Unit) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_control_source() -> String {
+  "module ut.probe\n\ntype Nat\n  = Zero\n  | Succ { predecessor: Nat }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Int) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_nat_to_nat_source() -> String {
+  "module ut.probe\n\ntype Nat\n  = Zero\n  | Succ { predecessor: Nat }\n\nfn takes_nat(x: Nat) -> Nat {\n  x\n}\n\nfn probe(q: Nat) -> Nat {\n  takes_nat(x: q)\n}\n"
+}
+
+test fn ut_nat_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_nat_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_opt_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_opt_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_coproduct_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_coproduct_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_unit_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_unit_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_int_at_int_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_control_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_user_value_at_its_own_declared_type_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_nat_to_nat_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_newtype_source() -> String {
+  "module ut.probe\n\ntype Meters {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Meters) -> Int {\n  takes(x: q)\n}\n"
+}
+
+fn ut_alias_source() -> String {
+  "module ut.probe\n\ntype Count = Int\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Count) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_single_field_newtype_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_newtype_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_transparent_alias_at_int_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_alias_source(), "src/ut_probe.rs", [], [])
+}
+
+// std.nat Nat IS an Int (operator Ruling 3, 2026-07-15): the upcast is read from std.coercion
+// refinement_cast_rules by the actual's resolved DECLARATION. The same-spelling declaration in
+// ut_nat_at_int_formal_must_refuse (a module-local Peano `Nat`) matches no row and still refuses;
+// v2 has no separate Nat any more (one Nat in the corpus), so the local declaration is the
+// same-spelling specimen.
+fn ut_std_nat_source() -> String {
+  "module ut.probe\n\nimport std.nat { Nat }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: Nat) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_std_nat_at_int_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_std_nat_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_newtype_to_newtype_source() -> String {
+  "module ut.probe\n\ntype Meters {\n  value: Int\n}\n\nfn takes_meters(x: Meters) -> Meters {\n  x\n}\n\nfn probe(q: Meters) -> Meters {\n  takes_meters(x: q)\n}\n"
+}
+
+test fn ut_newtype_at_its_own_declared_type_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_newtype_to_newtype_source(), "src/ut_probe.rs", [], [])
+}
+
+// A MACHINE WIDTH AT Int IS ADMITTED BY ITS Compose<Int|UInt, MachineWidth<N>> DECLARATION (std.integer),
+// read from the resolved declaration; Int -> UIntN stays a refusal and a user type merely NAMED UInt8
+// has no Compose declaration, so it refuses at an Int formal.
+fn ut_uint8_source() -> String {
+  "module ut.probe\n\nimport std.integer { UInt8 }\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: UInt8) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_std_uint8_at_int_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_uint8_source(), "src/ut_probe.rs", [], [])
+}
+
+// Int AT A UInt8 FORMAL IS NOT A RED HERE: a UInt8 formal is not a kernel formal, so this wall does not
+// judge it (the non-kernel formal is the failure-mode row's next trigger); the control below only pins that
+// the same declaration still compiles at itself.
+fn ut_int_at_uint8_control_source() -> String {
+  "module ut.probe\n\nimport std.integer { UInt8 }\n\nfn takes(x: UInt8) -> Int {\n  1\n}\n\nfn probe(q: UInt8) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_uint8_at_uint8_formal_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_int_at_uint8_control_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_uint8_source() -> String {
+  "module ut.probe\n\ntype UInt8 {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: UInt8) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_uint8_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_named_uint8_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_uint8_control_source() -> String {
+  "module ut.probe\n\ntype UInt8 {\n  value: Int\n}\n\nfn takes(x: UInt8) -> UInt8 {\n  x\n}\n\nfn probe(q: UInt8) -> UInt8 {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_uint8_at_itself_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_named_uint8_control_source(), "src/ut_probe.rs", [], [])
+}
+
+// EXPECT-RED PROBE of the below-ceiling residual on gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel:
+// a match binding over a generic builtin's result carries the callee's UNINSTANTIATED parameter, so a
+// user Opt<Int> reaching a String formal through it is NOT judged. The assertion RUNS and returns false
+// (the source is accepted); it greens when pattern bindings carry the instantiated type (C1.2b, C1.2c, C1.2d).
+fn ut_list_head_opt_binding_source() -> String {
+  "module ut.probe\n\nimport std.algebra { list_head }\n\ntype Opt<T>\n  = Some { value: T }\n  | Nada\n\nfn takes(x: String) -> String {\n  x\n}\n\nfn probe(xs: List<Opt<Int>>) -> String {\n  match list_head(xs: xs) {\n    Absent => \"\"\n    Present { value: c } => takes(x: c)\n  }\n}\n"
+}
+
+test fn ut_list_head_opt_binding_at_string_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_list_head_opt_binding_source(), "src/ut_probe.rs", [], [])
+}
+
+// A USER TYPE NAMED LIKE A TYPE PARAMETER is identified by its own declaration and judged: the carve-out is keyed by
+// an enclosing declaration declaring the parameter, never by the spelling T or V.
+fn ut_named_t_source() -> String {
+  "module ut.probe\n\ntype T {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: T) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_t_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_named_t_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_v_source() -> String {
+  "module ut.probe\n\ntype V {\n  value: Int\n}\n\nfn takes(x: Int) -> Int {\n  x\n}\n\nfn probe(q: V) -> Int {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_v_at_int_formal_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_named_v_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_named_t_control_source() -> String {
+  "module ut.probe\n\ntype T {\n  value: Int\n}\n\nfn takes(x: T) -> T {\n  x\n}\n\nfn probe(q: T) -> T {\n  takes(x: q)\n}\n"
+}
+
+test fn ut_user_type_named_t_at_itself_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_named_t_control_source(), "src/ut_probe.rs", [], [])
+}
+
+// THE ADMITTED RESIDUAL, AS THE CORPUS WRITES IT: a match binding over a generic builtin's result (list_find_first,
+// map_get_checked) carries the callee's uninstantiated parameter and is unjudged until pattern bindings carry the
+// instantiated type (C1.2c + C1.2d). These two are the positive controls for the keyed exclusion at the corpus shape.
+fn ut_find_first_binding_source() -> String {
+  "module ut.probe\n\nimport std.algebra { list_find_first, trim }\nimport std.optional { Absent, Optional, Present, optional_absent, optional_present }\n\nfn probe(content: String) -> Optional<String> {\n  match list_find_first(xs: split(s: content, delimiter: \"\\n\"), predicate: fn(line) { starts_with(s: trim(line), prefix: \"module \") }) {\n    Absent => optional_absent()\n    Present { value: line } => optional_present(value: trim(line))\n  }\n}\n"
+}
+
+test fn ut_find_first_binding_at_string_formal_is_the_admitted_residual() -> Bool {
+  compile_dag_rust_emit_check(ut_find_first_binding_source(), "src/ut_probe.rs", [], [])
+}
+
+fn ut_map_get_checked_binding_source() -> String {
+  "module ut.probe\n\nimport v2.std.witness { map_get_checked }\nimport std.algebra { trim }\nimport std.types { Map }\nimport std.optional { Present }\nimport v2.std.diagnostic { Accepted }\n\nfn probe(m: Map<String, String>, k: String) -> String {\n  match map_get_checked(m, k) {\n    Accepted { value: Present { value: v }, diagnostics: _ } => trim(v)\n    _ => k\n  }\n}\n"
+}
+
+test fn ut_map_get_checked_binding_at_string_formal_is_the_admitted_residual() -> Bool {
+  compile_dag_rust_emit_check(ut_map_get_checked_binding_source(), "src/ut_probe.rs", [], [])
+}
+
+// THE BUILT-IN CONTAINER AT A NON-MATCHING DECLARED HEAD (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, specimen seven). A produced List/Map/Optional
+// head left every position's judgment because the nominal-product relation excludes the container
+// carriers and the kernel relation read the value as a kernel. Each RED is a fixture compiled whole,
+// paired with an accepted control at the same position.
+//  (a) a Map<K, V> formal given an Optional actual     (call argument)
+//  (b) a List<T> formal given a Map actual             (call argument)
+//  (c) a raw List<String> in a record field declared as the nonempty carrier that RungDropPopulation's
+//      Enumerated variant holds (FreeSemigroup<String>; row falsifier_rehomed_rows_unexecuted), control: a
+//      FreeSemigroup value (record field). The RungDropPopulation spelling itself is not authorable until the
+//      gunbc.rung_drop import closure compiles in the probe harness (C1.2d).
+fn ut_map_formal_optional_actual_source() -> String {
+  "module ut.probe\n\nimport std.optional { Optional }\n\nfn takes_map<K, V>(m: Map<K, V>) -> Int {\n  0\n}\n\nfn probe(o: Optional<Int>) -> Int {\n  takes_map(m: o)\n}\n"
+}
+
+fn ut_map_formal_map_actual_source() -> String {
+  "module ut.probe\n\nfn takes_map<K, V>(m: Map<K, V>) -> Int {\n  0\n}\n\nfn probe(o: Map<Int, Int>) -> Int {\n  takes_map(m: o)\n}\n"
+}
+
+fn ut_list_formal_map_actual_source() -> String {
+  "module ut.probe\n\nfn takes_list<T>(xs: List<T>) -> Int {\n  0\n}\n\nfn probe(m: Map<String, String>) -> Int {\n  takes_list(xs: m)\n}\n"
+}
+
+fn ut_list_formal_list_actual_source() -> String {
+  "module ut.probe\n\nfn takes_list<T>(xs: List<T>) -> Int {\n  0\n}\n\nfn probe(m: List<String>) -> Int {\n  takes_list(xs: m)\n}\n"
+}
+
+fn ut_population_field_raw_list_source() -> String {
+  "module ut.probe\n\nimport std.algebra { FreeSemigroup }\n\ntype Pop\n  = Enumerated { members: FreeSemigroup<String> }\n  | NotYetCounted { n: Int }\n\ntype PopulationHolder { population: Pop }\n\nfn probe(xs: List<String>) -> PopulationHolder {\n  PopulationHolder { population: xs }\n}\n"
+}
+
+fn ut_population_field_nonempty_source() -> String {
+  "module ut.probe\n\nimport std.algebra { FreeSemigroup }\n\ntype Pop\n  = Enumerated { members: FreeSemigroup<String> }\n  | NotYetCounted { n: Int }\n\ntype PopulationHolder { population: Pop }\n\nfn probe(h: String, t: List<String>) -> PopulationHolder {\n  PopulationHolder { population: Enumerated { members: FreeSemigroup { head: h, tail: t } } }\n}\n"
+}
+
+test fn ut_map_formal_optional_actual_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_map_formal_optional_actual_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_map_formal_map_actual_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_map_formal_map_actual_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_list_formal_map_actual_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_list_formal_map_actual_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_list_formal_list_actual_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_list_formal_list_actual_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_raw_list_in_population_field_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(ut_population_field_raw_list_source(), "src/ut_probe.rs", [], [])
+}
+
+test fn ut_nonempty_in_population_field_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(ut_population_field_nonempty_source(), "src/ut_probe.rs", [], [])
+}
