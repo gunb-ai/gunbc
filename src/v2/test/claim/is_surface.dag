@@ -12,10 +12,11 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
+import v2.std.node_query { find_core_child }
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, ComputationNode, Match, Node, Symbol, Transform, TypeNode, node_subtree_nodes }
+import v2.std.node { MatchArmPatternEdge, Atom, ComputationNode, Match, Node, Symbol, Transform, TypeNode, node_subtree_nodes }
 import std.optional { Absent, Optional, Present }
 import std.types { List }
 import extdeps.filesystem.filesystem_io
@@ -180,4 +181,33 @@ test fn is_non_member_arm_has_no_inferred_tree() -> Bool {
         Rejected { diagnostics: _ } => true
       }
   }
+}
+
+// The refusal for a V of another type is located at the ARM that used it, never at the foreign
+// declaration the resolved pattern edge points to (that locus named the other type, not the use site).
+fn is_infer_locus_is_arm(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          match diagnostics_fatal(d: d).at {
+            NodeLocus { anchor: a } =>
+              match find_core_child(root: a.at, marker: MatchArmPatternEdge) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            _ => false
+          }
+      }
+  }
+}
+
+test fn is_foreign_arm_refusal_is_located_at_the_arm() -> Bool {
+  is_infer_locus_is_arm(o: is_src(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", body: "c is Blue"))
+}
+
+test fn is_foreign_arm_refusal_locus_as_the_explicit_match_does() -> Bool {
+  is_infer_locus_is_arm(o: is_explicit(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", arm: "Blue"))
 }

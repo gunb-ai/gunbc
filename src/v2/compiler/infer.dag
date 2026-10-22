@@ -3078,10 +3078,13 @@ fn infer_field_pattern_is_wildcard(target: Node) -> Bool {
   }
 }
 
-fn infer_match_pattern_variant_not_declared_diagnostic(pattern: Node) -> Diagnostic {
+// LOCATED AT THE ARM, NOT AT THE PATTERN'S TARGET: after resolve the pattern edge's target is the
+// variant's DECLARATION, so for a V of another type the pattern node is that foreign declaration, not
+// the use site that named it. The arm is the node that carries the use.
+fn infer_match_pattern_variant_not_declared_diagnostic(arm: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_match_pattern_variant_not_declared,
-    at: node_locus(node: pattern),
+    at: node_locus(node: arm),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -3190,7 +3193,7 @@ fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome
               outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body })
             ArmPatternVariant { tag: tag, fields: fields } =>
               match infer_match_variant_payload(variants: coproduct.variants, tag: tag) {
-                Absent => outcome_rejected(infer_match_pattern_variant_not_declared_diagnostic(pattern: pat))
+                Absent => outcome_rejected(infer_match_pattern_variant_not_declared_diagnostic(arm: arm))
                 Present { value: payload } =>
                   bind_outcome(
                     o: infer_coproduct_arm_fields_check(pat: pat, payload: payload, fields: fields),
