@@ -339,7 +339,7 @@ import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
 import gunbc.ci.ci_deploy_access { DeployAccess }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_command }
-import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
+import v2.workflow.effect_plan_bash_materialize { BashPlanEffect }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command, systemctl_restart_effect,
 }

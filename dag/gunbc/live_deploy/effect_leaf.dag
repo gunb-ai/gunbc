@@ -4,8 +4,10 @@ import std.types { String, NonEmptyStr }
 import v2.std.effect_plan { EffectPlan, Do }
 import v2.std.orchestration { FailFast }
 import std.operation_argv { OperationRef, operation_argv_bind_text }
+import v2.std.effect_plan_observed_sha256 { ObservedSha256EnvWrite }
 import v2.workflow.effect_plan_bash_materialize {
-  BashBoundOperationInvocation,
+  BashPlanEffect,
+  ObservedSha256EnvWriteEffect,
   EffectPlanBashMaterialized,
   EffectPlanBashMaterializationRefused,
   bash_bind_operation_invocation,
@@ -17,7 +19,7 @@ import v2.workflow.effect_plan_bash_materialize {
 data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ live-deploy operation leaf could not be materialized from its extdeps declaration: "
 
 // THE MUTATION LEAVES NAME AN OPERATION, THEY DO NOT CARRY A COMMAND. A leaf here is a
-// BashBoundOperationInvocation -- an extdeps operation row plus that row's OWN declared inputs bound
+// BashPlanEffect -- an extdeps operation row plus that row's OWN declared inputs bound
 // by name -- and its argv is derived from the declaration by shell_materialize_operation_argv. The
 // carrier is the one that landed in Wave A/B (v2.std.effect_plan Do{effect} over
 // std.operation_argv BoundOperationInvocation, materialized by
@@ -40,7 +42,7 @@ data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT
 // a marker that is not valid shell, exactly as bash_intent_command_or_poison does for the grammar
 // path -- the step fails loudly and names which operation and which cause, rather than a
 // hand-spelled fallback standing in for the refused command (DESIGN section 5: refuse, never widen).
-fn deploy_effect_command(inv: BashBoundOperationInvocation) -> String {
+fn deploy_effect_command(inv: BashPlanEffect) -> String {
   match effect_plan_bash_materialize(plan: EffectPlan {
     steps: [Do { effect: inv }],
     on_failure: FailFast,
@@ -64,7 +66,7 @@ data live_deploy_systemctl_unit_input: String = "unit"
 // (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner), and a systemctl mutation it could issue
 // unelevated does not exist.
 // The package READ (dpkg -s) is the one leaf that does not, which is why it alone binds unelevated.
-fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashBoundOperationInvocation {
+fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashPlanEffect {
   bash_bind_operation_invocation_elevated(
     at: OperationRef {
       path: live_deploy_systemctl_operation_path,
@@ -78,6 +80,26 @@ fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashBoundOpera
   )
 }
 
-fn systemctl_restart_effect(unit: NonEmptyStr) -> BashBoundOperationInvocation {
+fn systemctl_restart_effect(unit: NonEmptyStr) -> BashPlanEffect {
   systemctl_unit_effect(operation: "Restart", unit: unit)
+}
+
+// THE OBSERVED-SHA-256 ENV FILE IS A LEAF, NOT A COMMAND: the constructor names the file observed at
+// run time, the env variable and the destination, mode and owner it is installed with. Its lowering,
+// including the fail-closed shape check and the two typed failure causes, is the one arm of
+// effect_plan_bash_materialize (BashPlanEffect); there is no writer to call separately.
+fn observed_sha256_env_write_effect(
+  path: String,
+  dest: String,
+  env_name: String,
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+) -> BashPlanEffect {
+  ObservedSha256EnvWriteEffect { write: ObservedSha256EnvWrite {
+    path: path,
+    dest: dest,
+    env_name: env_name,
+    mode: mode,
+    owner: owner,
+  } }
 }
