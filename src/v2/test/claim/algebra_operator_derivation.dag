@@ -3,6 +3,7 @@ module v2.test.claim.algebra_operator_derivation
 import v2.compiler.infer { AlgebraFieldNotCarried, AlgebraFieldResultType, AlgebraFieldRowMalformed, InferAlgebraFieldResult, infer, infer_algebra_field_result_type }
 import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
 import v2.std.integer { integer_int_type_node }
+import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.types { List }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
@@ -113,7 +114,8 @@ test fn aod_outer_inhabitant_lends_no_join() -> Bool {
   aod_result_not_carried(r: infer_algebra_field_result_type(
     rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),
     operand_type: integer_int_type_node(),
-    field: ^lattice_field_join
+    field: ^lattice_field_join,
+    arity: 2
   ))
 }
 
@@ -122,7 +124,8 @@ test fn aod_outer_inhabitant_lends_no_add() -> Bool {
   aod_result_not_carried(r: infer_algebra_field_result_type(
     rows: aod_mismatched_row(outer: bool_node(), algebra: ordered_ring_node(inhabitant: integer_int_type_node())),
     operand_type: bool_node(),
-    field: ^ring_field_add
+    field: ^ring_field_add,
+    arity: 2
   ))
 }
 
@@ -133,8 +136,39 @@ test fn aod_embedded_carrier_selects_the_row() -> Bool {
     r: infer_algebra_field_result_type(
       rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),
       operand_type: bool_node(),
-      field: ^lattice_field_join
+      field: ^lattice_field_join,
+      arity: 2
     ),
     expected: bool_node()
   )
+}
+
+// THE APPLICATION'S ARITY MUST MATCH THE FIELD'S (review 84428 of #14731): Bool's boolean algebra carries meet,
+// declared over two operands, so asking for it at arity one is refused with its own cause, never a codomain.
+test fn aod_a_binary_field_at_arity_one_is_refused() -> Bool {
+  match infer_algebra_field_result_type(
+    rows: dag_algebra_inhabitance_decls(),
+    operand_type: bool_node(),
+    field: ^lattice_field_meet,
+    arity: 1
+  ) {
+    AlgebraFieldRowMalformed { cause: c } => c == ^infer_operator_arity_mismatch
+    AlgebraFieldResultType { result: _ } => false
+    AlgebraFieldNotCarried => false
+  }
+}
+
+// Its positive partner: complement, declared over one operand, answers Bool at arity one.
+test fn aod_complement_at_arity_one_answers_bool() -> Bool {
+  aod_result_is_type(
+    r: infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: bool_node(), field: ^boolean_algebra_field_complement, arity: 1),
+    expected: bool_node()
+  )
+}
+
+fn aod_arity_receipt() -> String {
+  concat(concat(
+    if aod_a_binary_field_at_arity_one_is_refused() { "binary_at_one_refused=yes" } else { "binary_at_one_refused=no" },
+    if aod_complement_at_arity_one_answers_bool() { "\ncomplement_at_one_bool=yes" } else { "\ncomplement_at_one_bool=no" }),
+    if aod_embedded_carrier_selects_the_row() { "\nbinary_join_at_two=yes" } else { "\nbinary_join_at_two=no" })
 }

@@ -3612,7 +3612,7 @@ type InferAlgebraFieldResult
   | AlgebraFieldNotCarried
   | AlgebraFieldRowMalformed { cause: Symbol }
 
-fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_type: Node, field: Symbol) -> InferAlgebraFieldResult {
+fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_type: Node, field: Symbol, arity: Int) -> InferAlgebraFieldResult {
   fold(rows, init: AlgebraFieldNotCarried, f: fn(acc, decl) {
     match acc {
       AlgebraFieldResultType { result: _ } => acc
@@ -3623,7 +3623,7 @@ fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_t
           InhabitanceFieldRead { carrier: carrier, declaration: declaration } =>
             if infer_branch_type_atoms_equal(a: carrier, b: operand_type) {
               match declaration {
-                FieldDeclared { field_type: t } => infer_algebra_field_codomain_result(field_type: t, carrier: carrier, operand_type: operand_type)
+                FieldDeclared { field_type: t } => infer_algebra_field_codomain_result(field_type: t, carrier: carrier, operand_type: operand_type, arity: arity)
                 FieldNotDeclared => AlgebraFieldNotCarried
                 InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
               }
@@ -3641,7 +3641,11 @@ fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_t
 // answers the operand's own type node (the use's, which already matched the carrier), so a closed operation
 // types exactly as before; any other codomain -- eq's Bool -- is the result as the structure declares it. A
 // field whose operation is not an Arrow is a malformed row, refused with its cause, never a guessed result.
-fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_type: Node) -> InferAlgebraFieldResult {
+// THE APPLICATION'S ARITY IS THE FIELD'S DECLARED ARITY. A binary Transform applies a field declared over two
+// operands and a unary one a field declared over one; a field whose declared operation takes a different number
+// of operands answers ^infer_operator_arity_mismatch, so a binary field (add) can never type a unary application
+// and the unary arm does not rest on the grammar admitting only `!` and `-` as prefix operators.
+fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_type: Node, arity: Int) -> InferAlgebraFieldResult {
   match algebra_field_operation_type(field_type: field_type) {
     InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
     FieldNotDeclared => AlgebraFieldRowMalformed { cause: ^algebra_field_structure_declares_no_operation }
@@ -3652,12 +3656,25 @@ fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_
           match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
             Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
             Present { value: codomain } =>
-              if infer_branch_type_atoms_equal(a: codomain, b: carrier) {
+              if infer_algebra_field_declared_arity(arrow: arrow) != arity {
+                AlgebraFieldRowMalformed { cause: ^infer_operator_arity_mismatch }
+              } else if infer_branch_type_atoms_equal(a: codomain, b: carrier) {
                 AlgebraFieldResultType { result: operand_type }
               } else {
                 AlgebraFieldResultType { result: codomain }
               }
           }
+      }
+  }
+}
+
+fn infer_algebra_field_declared_arity(arrow: Node) -> Int {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+    Absent => 0 - 1
+    Present { value: domain } =>
+      match infer_formals_from_domain(domain: domain) {
+        Absent => 0 - 1
+        Present { value: formals } => length(xs: formals)
       }
   }
 }
@@ -5529,7 +5546,7 @@ fn infer_transform_unary_prefix(
                       match infer_branch_operand_resolved_type_with_entries(node: operand_target, facts: operand_facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
                         Violates { diagnostic: d } => outcome_rejected(d)
                         Holds { value: operand_type } =>
-                          match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: operand_type, field: field) {
+                          match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: operand_type, field: field, arity: 1) {
                             AlgebraFieldNotCarried => outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: node))
                             AlgebraFieldRowMalformed { cause: cause } =>
                               outcome_rejected(Diagnostic {
@@ -5603,7 +5620,7 @@ fn infer_transform_binary_infix(
                                 OperandsNotJudged { diagnostic: d } =>
                                   if infer_field_is_comparison(field: field) { infer_comparison_not_derived(node: node, od: cd) } else { outcome_rejected(d) }
                                 OperandsOneType { operand_type: unified_type } =>
-                                  match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: unified_type, field: field) {
+                                  match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: unified_type, field: field, arity: 2) {
                                     // NO ROW IS NOT "NOT COMPARABLE". The operands are already judged one type; a
                                     // carrier with no Equivalence row has an equality the language model does not
                                     // state yet (Bool, host text, a declared record), so the comparison stays on the
