@@ -27239,6 +27239,44 @@ mod nfr_tests {
     }
 
     #[test]
+    fn nfr_scratch_join_measure() {
+        let roster: std::collections::BTreeSet<String> = super::non_fold_residue_roster_entries()
+            .expect("roster")
+            .iter()
+            .cloned()
+            .collect();
+        let facts = super::fallback_arm_census_facts();
+        let is_test = |p: &str| p.starts_with("dag/test/") || p.starts_with("src/v2/test/");
+        let closed: std::collections::BTreeSet<String> = facts
+            .iter()
+            .filter(|f| f.closed_coproduct_scrutinee)
+            .map(|f| format!("{}::{}", f.rel_path, f.fn_name))
+            .collect();
+        let stale: Vec<&String> = roster.iter().filter(|r| !closed.contains(*r)).collect();
+        let prod: Vec<&String> = closed
+            .iter()
+            .filter(|c| !is_test(c) && !roster.contains(*c))
+            .collect();
+        let testl = closed
+            .iter()
+            .filter(|c| is_test(c) && !roster.contains(*c))
+            .count();
+        eprintln!(
+            "MEASURE rows={} stale={} unrostered_prod={} unrostered_test={}",
+            roster.len(),
+            stale.len(),
+            prod.len(),
+            testl
+        );
+        for s in &stale {
+            eprintln!("MEASURE stale {s}");
+        }
+        for s in &prod {
+            eprintln!("MEASURE prod {s}");
+        }
+    }
+
+    #[test]
     fn nfr_live_union_is_populated_unique_and_tripled() {
         let entries = super::non_fold_residue_roster_entries().expect("live frontier union");
         assert!(
