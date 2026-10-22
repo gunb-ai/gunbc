@@ -52,6 +52,7 @@ import extdeps.github.deployment_protection_rule {
   InstallationWireFields,
   Approved,
   Rejected,
+  DeploymentProtectionRuleReview,
 }
 import gunbc.repository { gunbc_repository }
 import gunbc.auth.github_deployment_environment {
@@ -79,6 +80,7 @@ import gunbc.auth.deployment_gate_authorization {
   ApprovingArm,
   admit_reviewer_removal,
   ProtectionResponseNamedAnotherEnvironment,
+  WaitNamesAnotherEnvironment,
 }
 import gunbc.fleet.deployment_gate_answer {
   SentRequest,
@@ -98,6 +100,9 @@ import gunbc.fleet.deployment_gate_answer {
   RequiredReviewersStand,
   ReadWasNotTheRoute,
   InstallationRoute,
+  EnabledRuleRoute,
+  ReviewRoute,
+  review_body_for,
   InstallationNotObserved,
   RuleOwnershipNotObserved,
   ReviewNotAccepted,
@@ -213,11 +218,16 @@ data honest_installation_read: InstallationReadResponse = InstallationReadRespon
 }
 
 fn rule_read_with(rule_row_id: Int, row_app: GitHubAppId) -> RuleReadResponse {
+  rule_read_at(
+    path: "/repos/gunb-ai/gunbc/environments/srv1-production/deployment_protection_rules",
+    rule_row_id: rule_row_id,
+    row_app: row_app
+  )
+}
+
+fn rule_read_at(path: NonEmptyStr, rule_row_id: Int, row_app: GitHubAppId) -> RuleReadResponse {
   RuleReadResponse {
-    sent: SentRequest {
-      method: GET,
-      path: "/repos/gunb-ai/gunbc/environments/srv1-production/deployment_protection_rules",
-    },
+    sent: SentRequest { method: GET, path: path },
     status: 200,
     rules: [
       EnabledDeploymentProtectionRule {
@@ -460,9 +470,10 @@ test fn a_crossed_environment_is_refused_by_the_mint_and_by_the_admission() -> B
       })
 }
 
-// RED 4, BROKER DENIED: the typed reason is carried, no receipt, no review. Here the wait names another
-// environment than the claim, so the decision refuses and the route reports the refusal itself.
-test fn a_broker_denial_carries_its_typed_reason() -> Bool {
+// A BROKER THAT DECLINES OVER A CROSSED WAIT: an APPROVE tap whose pending wait names the sibling
+// environment while the claim names the gated one. Not an operator denial. The specific refusal arm is
+// matched by name, with both environments it carries.
+test fn a_wait_naming_another_environment_is_declined_by_the_broker_with_its_typed_arm() -> Bool {
   match route(
     boundary: srv1_deployment_gate_boundary,
     protection_read: protection_with(reviewers: false),
@@ -474,8 +485,71 @@ test fn a_broker_denial_carries_its_typed_reason() -> Bool {
     rule_read: honest_rule_read(),
     review_response: review_response_for(run_id: run_a, status: 204)
   ) {
-    BrokerDeclined { because: _ } => true
+    BrokerDeclined {
+      because: WaitNamesAnotherEnvironment { waiting_environment: w, filed_environment: f },
+    } => w == sibling_env && f == gated_env
+    BrokerDeclined { because: _ } => false
     Waiting { reason: _ } => false
+    Answered { receipt: _ } => false
+  }
+}
+
+// THE OPERATOR'S DENIAL, its own red: a ProposeDeny tap on otherwise honest facts is Answered, the receipt
+// the mint built carries state Rejected, and the review body the route builds for it is state rejected.
+// The comment is Absent: ApprovalCapabilityClaims carries no denial reason, so none is invented.
+test fn an_operator_denial_is_answered_with_a_rejected_receipt_and_a_rejected_review_body() -> Bool {
+  (match honest_route(run_id: run_a, decision: ProposeDeny) {
+     Answered { receipt: r } => r.state == Rejected && r.run_id.value == 35447067113 && r.environment_name == gated_env
+     Waiting { reason: _ } => false
+     BrokerDeclined { because: _ } => false
+   })
+  && (match review_body_for(boundary: srv1_deployment_gate_boundary, capability: capability_for(decision: ProposeDeny)) {
+        DeploymentProtectionRuleReview { environment_name: e, state: Rejected, comment: Absent } => e == gated_env
+        DeploymentProtectionRuleReview { environment_name: _, state: _, comment: _ } => false
+      })
+}
+
+// ROUTE BINDING, enabled-rule read: a rule read sent to another environment's path is not the route.
+test fn a_rule_read_sent_to_another_environment_is_not_the_route() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection_read: protection_with(reviewers: false),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: rule_read_at(
+      path: "/repos/gunb-ai/gunbc/environments/gcp-iam-bootstrap/deployment_protection_rules",
+      rule_row_id: 900000001,
+      row_app: app_id
+    ),
+    review_response: review_response_for(run_id: run_a, status: 204)
+  ) {
+    Waiting { reason: ReadWasNotTheRoute { route: EnabledRuleRoute, expected: _, sent: _ } } => true
+    Waiting { reason: _ } => false
+    BrokerDeclined { because: _ } => false
+    Answered { receipt: _ } => false
+  }
+}
+
+// ROUTE BINDING, review response: a 204 recorded against another run's review path is not the route and
+// yields no receipt.
+test fn a_review_response_recorded_against_another_runs_path_is_not_the_route() -> Bool {
+  match route(
+    boundary: srv1_deployment_gate_boundary,
+    protection_read: protection_with(reviewers: false),
+    claim: claim_for(run_id: run_a, environment: gated_env),
+    run: in_flight_run(run_id: run_a),
+    wait: wait_for_environment(environment_name: gated_env),
+    decision: ProposeApprove,
+    installation_read: honest_installation_read,
+    rule_read: honest_rule_read(),
+    review_response: review_response_for(run_id: run_b, status: 204)
+  ) {
+    Waiting { reason: ReadWasNotTheRoute { route: ReviewRoute, expected: _, sent: _ } } => true
+    Waiting { reason: _ } => false
+    BrokerDeclined { because: _ } => false
     Answered { receipt: _ } => false
   }
 }

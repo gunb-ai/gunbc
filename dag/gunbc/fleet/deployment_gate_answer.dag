@@ -167,6 +167,9 @@ fn boundary_repo(boundary: DeploymentGateBoundary) -> NonEmptyStr {
   boundary.repository.name as NonEmptyStr
 }
 
+// THE COMMENT IS ALWAYS ABSENT, ON PURPOSE. A rejected tap is sent as state rejected with no comment because
+// no typed denial reason exists upstream of the broker: ApprovalCapabilityClaims carries a ProposedDecision
+// (ProposeApprove | ProposeDeny) and no reason field, and nothing is invented here to fill the position.
 fn review_body_for(boundary: DeploymentGateBoundary, capability: ApprovalCapability) -> DeploymentProtectionRuleReview {
   DeploymentProtectionRuleReview {
     environment_name: boundary.environment_name,
