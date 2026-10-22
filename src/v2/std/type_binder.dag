@@ -313,22 +313,24 @@ fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration>
   }
 }
 
-// THE STANDING OF A REFINEMENT'S WHERE CLAUSE, AS A CLOSED SUM. The host reflection route
-// (coproduct_reflection marshal_non_connective_type_item) cannot elaborate a where-predicate, so it
-// reflects the captured predicates as their source spellings beside the edge
-// reflected_predicate_standing -> source_spelled_unelaborated; an elaborated set
-// (body_lowering_fold body_lower_kept_where_clause) has no such edge. A clause missing the production
-// or captured-projection structure either route builds is MalformedWhere, never read as elaborated.
-// CONSUMERS: none reads predicates from a reflected fact yet. The obligation on the first change that
-// does: it refuses on SourceSpelledWhere and MalformedWhere, and its own RED lands with it. The claim
+// THE STANDING OF A REFINEMENT'S WHERE CLAUSE, AS A CLOSED SUM. Each route that builds a clause stamps
+// the edge reflected_predicate_standing on the captured predicates: the elaborating route
+// (body_lowering_fold body_lower_kept_where_clause) stamps `elaborated`, the host reflection route
+// (coproduct_reflection marshal_non_connective_type_item), which cannot elaborate a where-predicate,
+// stamps `source_spelled_unelaborated` beside the predicates' source spellings. ElaboratedWhere
+// requires the positive `elaborated` mark; a clause with no mark, an unknown value, or missing
+// production or captured-projection structure is MalformedWhere, never read as elaborated.
+// CONSUMERS: declared frontier. No change reads predicates from a reflected fact yet; the first that
+// does (a reader interpreting reflected where-predicates, e.g. refinement checking over reflected
+// declarations) is triggered by the v2 reflection route elaborating predicates, and it refuses on
+// SourceSpelledWhere and MalformedWhere, its own RED landing with it. The claim
 // test.claim.decl_facts_alias_refinement_reflection pins that the real reflected NonEmptyStr is
-// SourceSpelledWhere. type_declaration_use_census where_clause_references reads r.where_clause
-// directly: its inputs are compile-derived symbol-index nodes, which carry no
-// reflected_predicate_standing edge, and it has no refusal channel; it is NOT routed through this sum.
-// ElaboratedWhere means ABSENCE of the host mark on a well-formed clause: the host marshal is the only
-// producer of source spellings, and it stamps the mark in one place (marshal_non_connective_type_item).
+// SourceSpelledWhere and that a clause lowered through the real body_lower_kept_where_clause is
+// ElaboratedWhere. type_declaration_use_census where_clause_references reads r.where_clause
+// directly: its inputs are compile-derived symbol-index nodes, which carry no mark, and it has no
+// refusal channel; it is NOT routed through this sum.
 // Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
-// SourceSpelledWhere, the reflected_predicate_standing edge in coproduct_reflection, and the refusal arm.
+// SourceSpelledWhere, the source_spelled_unelaborated value in coproduct_reflection, and the refusal arm.
 type WhereStanding
   = ElaboratedWhere { clause: Node }
   | SourceSpelledWhere { clause: Node }
@@ -342,10 +344,21 @@ fn where_clause_standing(clause: Node) -> WhereStanding {
         Rejected { diagnostics: _ } => MalformedWhere { missing: ^captured_predicate_projection }
         Accepted { value: captured, diagnostics: _ } =>
           match find_named_child(root: captured, name: ^reflected_predicate_standing) {
-            Rejected { diagnostics: _ } => ElaboratedWhere { clause: clause }
-            Accepted { value: _, diagnostics: _ } => SourceSpelledWhere { clause: clause }
+            Rejected { diagnostics: _ } => MalformedWhere { missing: ^reflected_predicate_standing }
+            Accepted { value: mark, diagnostics: _ } =>
+              match mark.kind {
+                TypeNode { connective: Atom { identity: id } } =>
+                  if id == ^elaborated {
+                    ElaboratedWhere { clause: clause }
+                  } else if id == ^source_spelled_unelaborated {
+                    SourceSpelledWhere { clause: clause }
+                  } else {
+                    MalformedWhere { missing: ^reflected_predicate_standing }
+                  }
+                TypeNode { connective: _ } => MalformedWhere { missing: ^reflected_predicate_standing }
+                ComputationNode { behavior: _ } => MalformedWhere { missing: ^reflected_predicate_standing }
+              }
           }
-      }
   }
 }
 

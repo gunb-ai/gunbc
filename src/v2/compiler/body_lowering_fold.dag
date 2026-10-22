@@ -1282,7 +1282,17 @@ fn body_lower_where_predicate_set(where_clause: Node) -> Outcome<Node> {
         f: fn(edges) {
           outcome_accepted(value: node_with_occurrence_id(
             kind: TypeNode { connective: Conj },
-            children: edges,
+            children: Cons {
+              head: Edge {
+                label: Authored { name: ^reflected_predicate_standing },
+                target: node_with_occurrence_id(
+                  kind: TypeNode { connective: Atom { identity: ^elaborated } },
+                  children: [],
+                  occurrence_id: where_clause.occurrence_id
+                )
+              },
+              tail: edges
+            },
             occurrence_id: where_clause.occurrence_id
           ))
         }
@@ -1290,6 +1300,8 @@ fn body_lower_where_predicate_set(where_clause: Node) -> Outcome<Node> {
   }
 }
 
+// The captured set leads with reflected_predicate_standing -> elaborated: the POSITIVE mark that
+// v2.std.type_binder where_clause_standing reads as ElaboratedWhere; this fold is its only producer.
 // Conj is LabeledEdges: every child must be labeled. The clause is a production-shaped Conj whose
 // captured child is the predicate set above. The clause and each predicate call are images of their
 // sources, closed at the root each returns (v2.std.node close_lowered_image).

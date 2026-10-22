@@ -1,8 +1,8 @@
 module v2.test.claim.parse.parameter_refinement
 
-import v2.std.type_binder { refinement_declaration_of_node }
+import v2.std.type_binder { refinement_declaration_of_node, where_clause_standing, ElaboratedWhere, SourceSpelledWhere, MalformedWhere }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
-import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node }
+import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_surface_edge_label }
 
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
@@ -11,7 +11,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import v2.std.node {
   Authored,
+  Conj,
+  Edge,
   Node,
+  TypeNode,
+  node_with_occurrence_id,
   Positional,
   StructuralLabel,
   Symbol,
@@ -131,3 +135,57 @@ test fn a_parameter_range_min_zero_is_not_min_one_holds() -> Bool {
 }
 
 test fn an_unrefined_parameter_still_normalizes_holds() -> Bool { plain_normalized() }
+
+// THE POSITIVE ELABORATED MARK (v2.std.type_binder where_clause_standing). ElaboratedWhere is read only
+// off the mark body_lower_kept_where_clause stamps; a well-formed clause with no mark is MalformedWhere.
+fn lowered_refined_clause_is_elaborated(tree: Node, name: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: tree), init: false, f: fn(acc, n) {
+    acc || fold(n.children, init: false, f: fn(a, e) {
+      a || match declared_field_from_edge(e: e) {
+        Absent => false
+        Present { value: field } =>
+          (field.name == name) && match refinement_declaration_of_node(decl: field.type_node) {
+            Absent => false
+            Present { value: d } =>
+              match where_clause_standing(clause: d.where_clause) {
+                ElaboratedWhere { clause: _ } => true
+                SourceSpelledWhere { clause: _ } => false
+                MalformedWhere { missing: _ } => false
+              }
+          }
+      }
+    })
+  })
+}
+
+fn unmarked_well_formed_clause() -> Node {
+  let captured = node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: [], occurrence_id: 0)
+  let production = node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured }],
+    occurrence_id: 0
+  )
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: production }],
+    occurrence_id: 0
+  )
+}
+
+// RED: the hand-built clause has every structure the reader needs except the mark.
+test fn a_well_formed_clause_with_no_mark_is_malformed_not_elaborated() -> Bool {
+  match where_clause_standing(clause: unmarked_well_formed_clause()) {
+    MalformedWhere { missing: m } => m == ^reflected_predicate_standing
+    ElaboratedWhere { clause: _ } => false
+    SourceSpelledWhere { clause: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: the route, not the shape -- the clause comes out of the real parse + lowering.
+test fn a_clause_lowered_through_body_lower_kept_where_clause_is_elaborated() -> Bool {
+  match conservation_subject_of_text(path: "probe_refined.dag", text: refined_source).normalized {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      lowered_refined_clause_is_elaborated(tree: tree.root, name: symbol_intern_lexeme(lexeme: "seconds"))
+  }
+}
