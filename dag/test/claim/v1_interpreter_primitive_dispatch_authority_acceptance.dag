@@ -42,15 +42,15 @@ fn roster_rows_are_authored_in_roster_not_transcribed_from_rust() -> Bool {
 }
 
 fn self_reading_bridge_arm_is_deleted() -> Bool {
-  !v1_interpreter_free_call_arms()
-    |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
+  !(v1_interpreter_free_call_arms()
+    |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows"))
 }
 
 fn declared_residual_rows_retain_independent_dispositions() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]
   let actual = v1_interpreter_declared_arms() |> map(r => r.dispatch_symbol)
-  count(actual |> filter(s => !expected |> any(e => e == s))) == 0
-    && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
+  count(actual |> filter(s => !(expected |> any(e => e == s)))) == 0
+    && count(expected |> filter(e => !(actual |> any(s => s == e)))) == 0
     && (v1_interpreter_declared_arms() |> all(r =>
       match r.enumeration {
         DeclaredHere => arm_is_declared_here(arm: r)
