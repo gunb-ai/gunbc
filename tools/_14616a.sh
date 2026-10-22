@@ -32,7 +32,7 @@ rm -rf /tmp/w616; git worktree add --detach /tmp/w616 $OID 2>&1 | tail -2 | sed 
 [ -d /tmp/w616 ] || { echo WT_FAIL; exit 9; }
 cd /tmp/w616 || exit 9
 [ "$(git cat-file blob $OID:$GAUNT | sha256sum | cut -d' ' -f1)" = "$(sha $GAUNT)" ] || { echo "NOT_HEAD_BLOB GAUNT -- STOP"; exit 9; }
-GN=$(grep -oE '^test fn [a-z_0-9]+' $GAUNT | sed 's/^test fn //' | paste -sd,)
+GN=$(grep -oE "^test fn [A-Za-z_0-9]+" $GAUNT | sed 's/^test fn //' | paste -sd,)
 echo "HEADSHA=$OID"
 echo "GAUNT_NAMES=$GN COUNT=$(echo $GN | tr ',' ' ' | wc -w)"
 export CARGO_TARGET_DIR=/root/workspace/repo-root/.t616
