@@ -1,6 +1,6 @@
 module v2.test.claim.traversal_order_census
 
-import std.types { Bool, List }
+import std.types { Bool, List, NonEmptyStr }
 import std.algebra { fold_list, length, string_contains }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -50,7 +50,7 @@ fn key(path: List<Int>, shape: String) -> TraversalSiteKey {
 }
 
 fn structural_row(path: List<Int>, shape: String) -> TraversalDisposition {
-  TraversalDisposition { key: key(path: path, shape: shape), class: StructuralEnumeration { builds: "an index" } }
+  TraversalDisposition { key: key(path: path, shape: shape), class: StructuralEnumeration { builds: "an index" as NonEmptyStr } }
 }
 
 fn fold_call(path: List<Int>, shape: String) -> TraversalMention {
@@ -90,7 +90,7 @@ test fn an_unclassified_direct_traversal_is_unresolved_holds() -> Bool {
 test fn a_classified_traversal_holds_when_every_site_has_its_row() -> Bool {
   let rows = [
     structural_row(path: [0], shape: "a"),
-    TraversalDisposition { key: TraversalSiteKey { function: "h.pos", path: [0], callee: "children", kind: SiteChildrenRead, shape: "c" }, class: StructuralEnumeration { builds: "child list" } }
+    TraversalDisposition { key: TraversalSiteKey { function: "h.pos", path: [0], callee: "children", kind: SiteChildrenRead, shape: "c" }, class: StructuralEnumeration { builds: "child list" as NonEmptyStr } }
   ]
   let r = join(facts: [root_fact(mentions: [fold_call(path: [0], shape: "a")]), helper_fact], rows: rows, discharges: [])
   count_class(r: r, word: "structural") == 2 && count_class(r: r, word: "unresolved") == 0 && traversal_census_exit(report: r) == 0

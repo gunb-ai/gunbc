@@ -397,20 +397,20 @@ fn trav_row_for(rows: List<TraversalDisposition>, key: TraversalSiteKey) -> Opti
   })
 }
 
-// A row is a CLAIM and is judged: an empty `builds` or `carrier` names nothing, and a fused arm is valid
+// A row is a CLAIM and is judged: a fused arm is valid
 // only when its discharge is an existing plan-discharge record.
 fn trav_judged_word(c: TraversalClass, discharges: List<String>) -> String {
   match c {
-    StructuralEnumeration { builds: b } => if b == "" { "unresolved" } else { "structural" }
-    ExplicitRecurrence { carrier: k } => if k == "" { "unresolved" } else { "recurrence" }
+    StructuralEnumeration { builds: _ } => "structural"
+    ExplicitRecurrence { carrier: _ } => "recurrence"
     AdmittedFusedRealization { discharge: d } => if fold_list(xs: discharges, empty: false, cons: fn(any, x) { any || x == d.part }) { "fused" } else { "unresolved" }
   }
 }
 
 fn trav_judged_cause(c: TraversalClass, discharges: List<String>) -> String {
   match c {
-    StructuralEnumeration { builds: b } => if b == "" { "defective_row" } else { "" }
-    ExplicitRecurrence { carrier: k } => if k == "" { "defective_row" } else { "" }
+    StructuralEnumeration { builds: _ } => ""
+    ExplicitRecurrence { carrier: _ } => ""
     AdmittedFusedRealization { discharge: d } => if fold_list(xs: discharges, empty: false, cons: fn(any, x) { any || x == d.part }) { "" } else { "fused_without_discharge" }
   }
 }

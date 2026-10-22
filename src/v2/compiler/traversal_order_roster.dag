@@ -10,9 +10,9 @@ module v2.compiler.traversal_order_roster
 // A CLASS IS CLAIMED FROM WHAT THE SITE COMPUTES, NEVER FROM ITS SHAPE:
 //   StructuralEnumeration       -- the site visits every child to build an index, census or hash, and the
 //                                  order it visits them in is representation only. `builds` names what is
-//                                  built; an empty `builds` is a defective row.
+//                                  built. A `builds` that names nothing is unwritable (NonEmptyStr).
 //   ExplicitRecurrence          -- a real carrier: each step's result feeds the next. `carrier` names the
-//                                  value that is threaded; an empty `carrier` is a defective row.
+//                                  value that is threaded. A `carrier` that names nothing is unwritable (NonEmptyStr).
 //   AdmittedFusedRealization    -- the site realizes a named part of the demand-engine plan. It carries the
 //                                  path of an ACTUAL plan-discharge record; the arm is not valid unless
 //                                  that path is one of traversal_plan_discharges(), and no plan exists
@@ -25,7 +25,7 @@ module v2.compiler.traversal_order_roster
 // reassignment. The digest is what catches two same-callee sites exchanged in place: the row's key then
 // disagrees with the code now at that path. No line number or ordinal appears in a key.
 
-import std.types { List }
+import std.types { List, NonEmptyStr }
 import v2.std.text { String }
 import v2.std.integer { Int }
 
@@ -47,8 +47,8 @@ type TraversalPlanDischarge {
 }
 
 type TraversalClass
-  = StructuralEnumeration { builds: String }
-  | ExplicitRecurrence { carrier: String }
+  = StructuralEnumeration { builds: NonEmptyStr }
+  | ExplicitRecurrence { carrier: NonEmptyStr }
   | AdmittedFusedRealization { discharge: TraversalPlanDischarge }
 
 type TraversalDisposition {
