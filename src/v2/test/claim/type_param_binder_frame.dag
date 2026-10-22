@@ -1,5 +1,6 @@
 module v2.test.claim.type_param_binder_frame
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import v2.compiler.resolve { ResolvedTree }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.std.arrow_signature { declared_signature }
@@ -110,23 +111,28 @@ fn tpb_std_optional_witness() -> DagSourceReadWitness {
   }
 }
 
-fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: tpb_std_optional_witness(),
-      tail: Cons {
-        head: DagSourceReadWitness {
-          source: Medium { carried: src, fidelity: Lossless },
-          artifact: tpb_artifact,
-          compilation_unit: ^type_param_binder_frame_cu,
-          source_root: V2Tree
-        },
-        tail: Empty
-      }
+fn tpb_src_ingest(src: String) -> List<DagSourceReadWitness> {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: tpb_artifact,
+      compilation_unit: ^type_param_binder_frame_cu,
+      source_root: V2Tree
     },
+    tail: Empty
+  }
+}
+
+fn tpb_assemble_ingest(ingest: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: ingest,
     admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
     lm: dag_language_model()
   )
+}
+
+fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
+  tpb_assemble_ingest(ingest: tpb_src_ingest(src: src))
 }
 
 // THE RESOLVED OUTCOME IS THE SHARE POINT, for the reason v2.test.claim.match_arm_binder_frame
@@ -708,7 +714,7 @@ test fn tpb_binder_mixed_into_a_member_is_refused() -> Bool {
 }
 
 fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
-  emit_semantic_type_decl(header: [], imports: [], members: [], 
+  emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Box,
     params: Empty,
     node: tpb_box_member(with_params: with_params),
