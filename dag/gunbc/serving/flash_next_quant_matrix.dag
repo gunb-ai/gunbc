@@ -326,6 +326,37 @@ fn decode_ceiling_deci(rows: List<CeilingReading>, v: ServingVariant, c: QuantCe
   }
 }
 
+// RESULTS THAT WERE RUN BUT NEVER RETRIEVED: the H200 and B200 rentals became unreachable (connection refused on every
+// route) at about 04:55Z on 2026-10-22, before the raw files were copied. Unobserved with the cause, not Refused and not
+// zero; the operator restarting the instances lets the parent pull and fill them. The B200 FP8-weights/BF16-KV cell keeps
+// its matrix values (KV 1,010,317 tokens, replay rows).
+type UnretrievedMode = ModeCeiling | ModeFillWithItl | ModeHitFraction | ModeOutputLength | ModeOpenLoop
+
+type UnretrievedResult {
+  variant: ServingVariant
+  cell: QuantCell
+  mode: UnretrievedMode
+  cause: NonEmptyStr
+}
+
+data rental_ended_cause: NonEmptyStr = "rental ended before results were retrieved" as NonEmptyStr
+
+fn unretrieved(v: ServingVariant, w: WeightDtype, kv: KvDtype, m: UnretrievedMode) -> UnretrievedResult {
+  UnretrievedResult { variant: v, cell: kv_cell(weights: w, kv: kv), mode: m, cause: rental_ended_cause }
+}
+
+data flash_next_unretrieved_results: List<UnretrievedResult> = [
+  unretrieved(v: B200UpstreamV032, w: WeightFp8Qwen128Blocks, kv: KvBf16, m: ModeCeiling),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeFillWithItl),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeHitFraction),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOutputLength),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOpenLoop),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeFillWithItl),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeHitFraction),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOutputLength),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOpenLoop),
+]
+
 data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(
   description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver is committed, the FP8 cells report their GPU-resident weights, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr
 )
