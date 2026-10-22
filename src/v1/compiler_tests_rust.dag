@@ -196,6 +196,39 @@ fn ct_tokenizer_tests() -> String {
     "    }\n\n")
 }
 
+// DIFFERENTIAL CONTROL (seed half): `c is V` parses to the same Match shape as the explicit
+// `match c { V => true  _ => false }` (v1 02_parse parse_is_arm_test); the v2 half is
+// v2.test.claim.is_surface is_unit_shape_equals_explicit_match. The shape is expr_data, arm pattern and
+// children, which carry no occurrence identity, so a swapped-arms lowering changes it.
+fn ct_is_arm_seed_lowering_test() -> String {
+  concat(
+    "    fn is_shape(n: &std::rc::Rc<crate::v1_std_core::Node>) -> String {\n",
+    "        let mut s = format!(\"{:?}|{:?}\", n.expr_data, n.match_pattern);\n",
+    "        if let Some(b) = n.body.as_ref() { s.push_str(&format!(\"[body:{}]\", is_shape(b))); }\n",
+    "        for c in n.children.iter() { s.push_str(&format!(\"[{}]\", is_shape(c))); }\n",
+    "        s\n",
+    "    }\n\n",
+    "    fn is_body_shape(src: &str) -> Option<String> {\n",
+    "        let tokens = tokenize(src.to_string(), \"test.dag\".to_string(), crate::extdeps_languages_dag_syntax::dag_parse_environment());\n",
+    "        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));\n",
+    "        if result.error.is_some() { return None; }\n",
+    "        let module = result.module.as_ref()?;\n",
+    "        let items = crate::v1_std_core::module_items(module.clone());\n",
+    "        let f = items.iter().find(|it| it.name == \"f\")?;\n",
+    "        Some(is_shape(f.body.as_ref()?))\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn is_arm_seed_lowering_agrees_with_explicit_match() {\n",
+    "        let is_src = \"module t\\nfn f(c: Color) -> Bool {\\n  c is Red\\n}\\n\";\n",
+    "        let explicit = \"module t\\nfn f(c: Color) -> Bool {\\n  match c {\\n    Red => true\\n    _ => false\\n  }\\n}\\n\";\n",
+    "        let swapped = \"module t\\nfn f(c: Color) -> Bool {\\n  match c {\\n    Red => false\\n    _ => true\\n  }\\n}\\n\";\n",
+    "        let a = is_body_shape(is_src).expect(\"is parses\");\n",
+    "        assert_eq!(a, is_body_shape(explicit).expect(\"explicit parses\"));\n",
+    "        assert_ne!(a, is_body_shape(swapped).expect(\"swapped parses\"));\n",
+    "        assert!(is_body_shape(\"module t\\nfn f(c: Color) -> Bool {\\n  c is red\\n}\\n\").is_none(), \"lowercase V must refuse\");\n",
+    "    }\n\n")
+}
+
 fn ct_parse_tests() -> String {
   concat(
     "    #[test]\n",
@@ -5895,6 +5928,7 @@ fn compiler_tests_source() -> String {
     ct_source_builders(),
     ct_tokenizer_tests(),
     ct_parse_tests(),
+    ct_is_arm_seed_lowering_test(),
     ct_test_marker_item_kind_test(),
     ct_test_reference_import_all_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
