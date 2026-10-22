@@ -34,7 +34,7 @@ pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_owner
 pub use crate::std_measure::{millisecond_count};
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity};
 pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, StructuralOrderingBinding, OrderingTest, OperandDemand, operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label, HostRealizationReason};
-pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration};
+pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration, never_projection_declarations};
 pub use crate::std_repair_input_origin::{repair_input_origin_candidates, repair_input_origin_compatibility_names, qualified_item_emit_surface_compatibility_names};
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
 pub use crate::std_syntax::{LiteralValue, BinOp, AlgebraFieldKind};
@@ -13409,7 +13409,18 @@ pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bo
 pub fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
     {
         let here = crate::std_decl_ref::decl_ref(module_path.clone(), name.clone());
-        if crate::std_decl_ref::declaration_ref_eq(here.clone(), never_eliminator_declaration()) {
+        if (crate::std_decl_ref::declaration_ref_eq(here.clone(), never_eliminator_declaration())
+            || {
+                let mut __found = false;
+                for d in never_projection_declarations().iter().cloned() {
+                    if crate::std_decl_ref::declaration_ref_eq(here.clone(), d.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+        {
             "#[allow(unreachable_code)]\n".to_string()
         } else {
             "".to_string()
