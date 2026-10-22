@@ -328,7 +328,7 @@ pub fn dag_prefix_operators() -> Rc<Vec<Rc<PrefixOperatorSpec>>> {
 pub fn dag_postfix_operators() -> Rc<Vec<Rc<PostfixOperatorSpec>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<PostfixOperatorSpec>>> = {
-            serde_json::from_str("[{\"symbol\": \"(\", \"binding_power\": 21}, {\"symbol\": \"[\", \"binding_power\": 21}, {\"symbol\": \"as\", \"binding_power\": 19}, {\"symbol\": \"{\", \"binding_power\": 13}]")
+            serde_json::from_str("[{\"symbol\": \"(\", \"binding_power\": 21}, {\"symbol\": \"[\", \"binding_power\": 21}, {\"symbol\": \"as\", \"binding_power\": 19}, {\"symbol\": \"{\", \"binding_power\": 18}]")
                 .expect("valid data definition")
         };
     }
