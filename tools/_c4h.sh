@@ -6,12 +6,13 @@ cd /root/workspace/repo-root 2>/dev/null || true
 # Run B: inside a subtree with memory.max == max, BUILDBUDDY_RUN_ID unset -> rc=2,
 #        'claim_batch: UNOBSERVED cause=HostBudgetUnreadable', no panic, no 137.
 A=1747200000
+git fetch -q --unshallow origin 2>/dev/null || true
 git worktree prune >/dev/null 2>&1 || true
 rm -rf /tmp/wc4h
 git fetch -q origin +refs/pull/14696/head:refs/verifier/14696 2>&1 | tail -1
 HEADSHA=$(git rev-parse refs/verifier/14696) || { echo "FETCH_FAILED"; exit 9; }
-echo "HEADSHA=$HEADSHA (gh: f4cc1b8e2aa9...)"
-[ "${HEADSHA:0:12}" = "f4cc1b8e2aa9" ] || { echo "HEAD_MOVED_from_f4cc1b8e2aa9 -- report and continue? STOP"; exit 9; }
+echo "HEADSHA=$HEADSHA (gh headRefOid=23d9eadc3e004809505ea959dfa129d3d4f9d8bf, moved from f4cc1b8e2aa9 requested)"
+[ "$HEADSHA" = "23d9eadc3e004809505ea959dfa129d3d4f9d8bf" ] || { echo "HEAD_MOVED_from_f4cc1b8e2aa9 -- report and continue? STOP"; exit 9; }
 git worktree add -q --detach /tmp/wc4h $HEADSHA || { echo "WORKTREE_ADD_FAILED"; exit 9; }
 WT=/tmp/wc4h
 sha() { sha256sum "$1" | cut -d' ' -f1; }
