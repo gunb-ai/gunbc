@@ -200,8 +200,14 @@ test fn an_admitted_pair_arrives_with_both_figures_intact_and_distinct() -> Bool
 
 // THE CENSUS REACHES THESE CLAIMS THROUGH THE SHARED PROBE ALGEBRA, and no answer here stands in for
 // an observation. Each claim below returns ProcessExit: an unrunnable census is CensusUnobserved
-// carrying the builtin's own cause text and exits 2, which the harness reports as not-evaluated rather
-// than as a verdict. What stood at this seam was a hand-written fold of the refusal arm onto `0 - 1`
+// carrying the builtin's own cause text, which the claim returns as ExitFailure with code 2. State what
+// that buys TODAY, not what it will buy: the harness still renders any claim's ExitFailure as a FAIL
+// row, so a refused census and a genuine finding BOTH print FAIL -- the driver exits 1 either way --
+// and are separated only by the reason text and by the code the claim returned (2 for a refusal, 1 for
+// a finding) -- which is why the reason carries the cause verbatim. Mapping a returned code 2 onto a
+// UNOBSERVED verdict line is a named follow-up in claim_batch's own lane (on gunbc#14539's axis) and is
+// deliberately not done here.
+// What stood at this seam was a hand-written fold of the refusal arm onto `0 - 1`
 // beside a hand-written Bool "did it run" predicate, so "the census could not run" and "the census ran
 // and found nothing" shared one Int and the cause string was dropped on the floor. State it exactly,
 // because the honest version is narrower than it sounds: every path out of that refusal arm fed a `>= 1`
@@ -211,14 +217,16 @@ test fn an_admitted_pair_arrives_with_both_figures_intact_and_distinct() -> Bool
 // arithmetic slip from reading the other way. That collapse is one of the could-not-measure instances
 // Charter 4 census, and it is removed here rather than documented. The algebra is
 // gunbc.compile_census_probe (keen-owl-704, row 11) consumed rather than forked, per DESIGN §3; the
-// harness-side half of the same work is still open as #14783 and nothing here waits on it, because these
-// claims no longer answer false when they cannot run.
+// harness-side half (a code 2 printing as UNOBSERVED rather than FAIL) belongs to claim_batch's own
+// lane on gunbc#14539's axis, NOT to #14783, which converts the six consumer sites. Neither is waited
+// on here: these claims no longer answer false when they cannot run, which is the change this file makes.
 //
 // THE DRIVER IS PART OF THE EVIDENCE, named so any green here can be checked. Measured on this head:
 // driven through claim_batch with --source-root src/v1 among its roots, the census is refused outright
 // (SharedIndexSecondResidentPool -- the slot already holds ["dag", "src/v1", "src/v2"] while the claim
-// demands ["dag", "src/v2"]) and each census claim here exits 2 with that cause preserved verbatim
-// instead of returning a verdict; under the sanctioned driver -- claim_batch, roots dag and src/v2, run
+// demands ["dag", "src/v2"]) and each census claim here returns ExitFailure code 2 with that cause
+// preserved verbatim, so the FAIL row names the refusal rather than a measured disagreement; under the
+// sanctioned driver -- claim_batch, roots dag and src/v2, run
 // from inside the checkout -- the census runs and all eleven pass. A red on this file is therefore
 // evidence only once its driver is named, and a run that prints no PASS/FAIL line is a refusal, not a
 // result.
