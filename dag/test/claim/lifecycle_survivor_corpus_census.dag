@@ -20,9 +20,12 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // MEASURED: 18482ms eval for the gate below (claim_batch, whole corpus, 3475 modules),
 // against the 5s per-witness fast-lane budget gunbc_ci_fast_lane_eval_budget_ms. Enrolled on
 // FalsifierSubstrateLongLane rather than relocated -- the file is excluded from per-PR
-// discovery by a WitnessExclusionRow AND carries a FalsifierCadenceJob enrollment, so it has
-// a named executing consumer. A witness moved out of discovery without one executes nowhere,
-// which is deletion of the evidence with the file retained.
+// discovery by a WitnessExclusionRow AND carries a FalsifierCadenceJob enrollment, which is a
+// declared consumer that is UNREALIZED: the cadence's executor (falsifier.yml) was deleted at
+// 611fd02770/#8283, so nothing schedules this census today. That loss is carried by the typed
+// frontier and the rung drop gunbc.rung_drop.falsifier_rehomed_rows_unexecuted (#14615), not by
+// an executing consumer. A witness moved out of discovery without even a declared consumer
+// executes nowhere, which is deletion of the evidence with the file retained.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // The claim. Not "every survivor is classified" -- there are none to classify, which is the

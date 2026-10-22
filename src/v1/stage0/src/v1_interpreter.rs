@@ -24753,6 +24753,15 @@ macro_rules! v1_builtin_arms {
                                         .collect::<Vec<_>>(),
                                 ),
                             ),
+                            (
+                                $ctx.sym("executable_input_refs"),
+                                list_value(
+                                    row.executable_input_refs
+                                        .into_iter()
+                                        .map(str_value)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
                         ])),
                     });
                 }
