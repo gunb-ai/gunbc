@@ -5,6 +5,7 @@ import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
 
 type ExternalAuthority {
   uri: Uri

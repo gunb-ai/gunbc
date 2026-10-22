@@ -21,7 +21,7 @@ import gunbc.host.verified_archive_install {
   ArchiveInstalled, ArchiveFetchRefused, ArchiveDigestMismatched, ArchiveDigestUnverified, ArchiveInstallRefused,
   staged_archive_fetch_commands, staged_archive_install_commands, publish_staged_tree_command,
   npm_integrity_non_local_shell_reason,
-  archive_sha256_verify_command, archive_digest_from_sha256_transport, archive_digest_from_sha256sum_stdout,
+  archive_sha256_verify_command, archive_digest_from_sha256_transport,
 }
 import test.claim.host.verified_archive_install_local_shell_recorder {
   local_shell_legs_record_text, argv_list_record, argv_record_line,
@@ -130,7 +130,7 @@ fn observed_sha256_stdout(stdout: String, success: Bool) -> RunArgvTransportOutc
 }
 
 test fn a_remote_sha256_line_that_matches_the_pin_is_matches() -> Bool {
-  match archive_digest_from_sha256sum_stdout(stdout: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /remote/a", expected: empty_file_sha256) {
+  match archive_digest_from_sha256_transport(outcome: observed_sha256_stdout(stdout: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /remote/a", success: true), expected: empty_file_sha256) {
     ArchiveDigestMatches => true
     ArchiveDigestMismatch => false
     ArchiveDigestUnverifiable { reason: _ } => false
@@ -138,7 +138,7 @@ test fn a_remote_sha256_line_that_matches_the_pin_is_matches() -> Bool {
 }
 
 test fn a_remote_sha256_line_that_does_not_match_the_pin_is_mismatch() -> Bool {
-  match archive_digest_from_sha256sum_stdout(stdout: "0000000000000000000000000000000000000000000000000000000000000000  /remote/a", expected: empty_file_sha256) {
+  match archive_digest_from_sha256_transport(outcome: observed_sha256_stdout(stdout: "0000000000000000000000000000000000000000000000000000000000000000  /remote/a", success: true), expected: empty_file_sha256) {
     ArchiveDigestMismatch => true
     ArchiveDigestMatches => false
     ArchiveDigestUnverifiable { reason: _ } => false
@@ -146,7 +146,7 @@ test fn a_remote_sha256_line_that_does_not_match_the_pin_is_mismatch() -> Bool {
 }
 
 test fn a_remote_sha256_line_without_a_digest_field_is_unverifiable_not_mismatch() -> Bool {
-  match archive_digest_from_sha256sum_stdout(stdout: "mock-ssh-portable-words", expected: empty_file_sha256) {
+  match archive_digest_from_sha256_transport(outcome: observed_sha256_stdout(stdout: "mock-ssh-portable-words", success: true), expected: empty_file_sha256) {
     ArchiveDigestUnverifiable { reason: _ } => true
     ArchiveDigestMatches => false
     ArchiveDigestMismatch => false

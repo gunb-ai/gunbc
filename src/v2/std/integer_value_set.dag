@@ -18,6 +18,7 @@ import v2.std.diagnostic {
 import v2.std.integer { integer_interval_spec_node_contains }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed }
 import v2.std.node_query { find_named_child }
+import std.algebra { collection_count_shape }
 
 type IntegerValueSet
   = IntegerValueSetUnbounded

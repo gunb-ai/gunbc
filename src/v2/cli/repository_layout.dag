@@ -3,7 +3,7 @@ module v2.cli.repository_layout
 import std.types { Bool, List }
 import std.optional { Optional, optional_absent, optional_present, Absent, Present }
 import v2.std.text { String }
-import std.algebra { list_head }
+import std.algebra { list_head, collection_concat_shape, collection_map_shape }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.compiler.source_authority { ModuleFileRef, SourceStorageLayout, StorageNamespaceRoot }
 import gunbc.source_layout {

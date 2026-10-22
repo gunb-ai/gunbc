@@ -9,6 +9,7 @@ import extdeps.llm.cursor_sdk {
   cursor_sdk_projection_argv_excludes_token,
   cursor_sdk_projection_binds_environment,
 }
+import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import extdeps.llm.cursor_cli {
   CursorAuth,
   CursorApiKeyArgument,
@@ -67,12 +68,14 @@ test fn argv_api_key_projection_refuses() -> Bool {
 test fn cli_argument_arm_leaks_key_into_argv_red_control() -> Bool {
   cursor_argv_contains(
     argv: shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
       inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
     ).argv,
     token: witness_key as String,
   )
     && cursor_argv_contains(
       argv: shape_cursor_invocation(
+    program: cursor_agent_pinned_program(),
         inv: witness_invocation(auth: CursorApiKeyArgument { key: witness_key }),
       ).argv,
       token: "--api-key",

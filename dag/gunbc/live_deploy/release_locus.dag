@@ -60,7 +60,13 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
   }
 }
 
-data approval_broker_release_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
+// THE LOCUS IS NAMED FOR WHAT IT IS, NOT ITS FIRST TENANT. These folds were spelled
+// approval_broker_* while the microVM controller, the attempt units and workspace commissioning
+// already resolved their release directories through them: one concept carrying one consumer's name
+// (DESIGN section 3). The dashboard and belt move onto the same locus under
+// gunbc.plans.deploy_convergence_observed_side (staged release generations), so the name is the
+// locus's own before a second service family reads it.
+data release_locus_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
 
 // THE ROOT IS THE SERVICE CONFIG'S, NOT host_layout's, READ DIRECTLY. Both name the same directory
 // today, and reading the row here would still be correct -- but it would make the broker's root a
@@ -68,26 +74,32 @@ data approval_broker_release_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREAC
 // whose config named a different root would install its tree under one path and start its unit from
 // another. The config is the parameter every other member of this unit comes from; the root is not
 // an exception to that.
-fn approval_broker_release_dir(root: String, revision: ReleaseRevisionBinding) -> String {
+fn release_locus_dir(root: String, revision: ReleaseRevisionBinding) -> String {
   match revision {
     RevisionBoundAtEmission { revision: r } => join([root, "/releases/", r as String], "")
-    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+    RevisionNotInstalled => release_locus_dir_unbound_poison
   }
 }
 
-fn approval_broker_releases_dir(root: String) -> String {
+fn release_locus_releases_dir(root: String) -> String {
   join([root, "/releases"], "")
 }
 
-fn approval_broker_release_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
-  join([approval_broker_release_dir(root: root, revision: revision), "/", gunbc_release_bin_name], "")
+// A MEMBER OF THE LOCUS IS NAMED BY ONE FOLD: the gunbc binary and any further binary installed beside it (the
+// device-crypto sidecar) resolve their path through it, so a second binary is a name, not a second path rule.
+fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, name: String) -> String {
+  join([release_locus_dir(root: root, revision: revision), "/", name], "")
 }
 
-fn approval_broker_tree_receipt_path_for(root: String, revision: ReleaseRevisionBinding) -> String {
-  join([approval_broker_release_dir(root: root, revision: revision), "/", release_locus_tree_receipt_name], "")
+fn release_locus_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
+  release_locus_member_path(root: root, revision: revision, name: gunbc_release_bin_name)
 }
 
-data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
+fn release_locus_tree_receipt_path(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([release_locus_dir(root: root, revision: revision), "/", release_locus_tree_receipt_name], "")
+}
+
+data release_locus_tree_subdirs: List<String> = ["dag", "src/v2"]
 
 data approval_broker_helper_root_principal: NonEmptyStr = "root"
 
@@ -107,7 +119,7 @@ fn approval_broker_helper_snapshot_locus() -> HelperLocus {
 fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> String {
   match revision {
     RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
-    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+    RevisionNotInstalled => release_locus_dir_unbound_poison
   }
 }
 
@@ -117,7 +129,7 @@ fn approval_broker_ntfy_runtime_observe_operation_at(locus: HelperLocus, revisio
     run_as: approval_ntfy_runtime_observe_run_as(),
     workspace_root: dir as NonEmptyStr,
     binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
-    source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+    source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
     entry: join([dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
     function: approval_ntfy_runtime_observe_function,
   }

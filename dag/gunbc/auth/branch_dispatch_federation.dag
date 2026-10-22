@@ -11,6 +11,9 @@ import gunbc.auth.oidc_claim_pins {
 }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, RunScopedImpersonation }
+import gunbc.auth.gcp_secret_access { secret_accessor_grant, SecretAccessGrant }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+import gunbc.gcp.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -132,17 +135,41 @@ data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 // which the branch's own workflow file renders, so it is the branch's claim; this table is main's, so
 // a branch can only ever reach an account a mode here maps to, and the operator reads both in the
 // request.
+//
+// THIS TABLE IS THE ONE RELATION OVER FLEET-CONVERGE MODES THAT SAYS WHICH ONES A BRANCH MAY RUN. The
+// generated workflow (gunbc.fleet.fleet_converge_workflow) derives its grant-wait, branch-pool
+// sign-in and main-only fleet sign-in from these rows and from nothing else; a mode with no row keeps
+// the main-only route, so coverage can only widen by a row here. main_route says what the same mode
+// does when dispatched at main: MainUsesFleetIdentity signs in through the main-only fleet pool,
+// MainUsesGrantedAccount keeps the grant at every ref, MainUsesSelectedSource leaves the choice to the
+// mode's own job (the boot job's select_boot_credential_source).
+//
+// dashboard_deploy IS DELIBERATELY NOT A ROW. Its job holds no cloud credential, so there is nothing for
+// IAM to refuse and an approval would be enforced only by the branch's own workflow text, which the
+// branch can delete. A row is admitted only where the grant gates a credential the branch cannot obtain
+// without it. Trigger to add it: an enforcement point outside the branch's workflow text (a main-side
+// gate, or a verified environment protection on srv1-production).
+//
+type RunScopedMainRoute = MainUsesGrantedAccount | MainUsesFleetIdentity | MainUsesSelectedSource
+
 type RunScopedMode {
   mode: NonEmptyStr
   account_id: NonEmptyStr
+  main_route: RunScopedMainRoute
+}
+
+fn run_scoped_account_id(m: RunScopedMode) -> NonEmptyStr {
+  m.account_id
 }
 
 data mtcollins1_boot_mode_name: NonEmptyStr = "mtcollins1_boot"
 
 fn run_scoped_modes() -> List<RunScopedMode> {
   [
-    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id },
-    RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: mtcollins1_boot_run_scoped_service_account_id },
+    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id, main_route: MainUsesGrantedAccount },
+    RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: mtcollins1_boot_run_scoped_service_account_id, main_route: MainUsesSelectedSource },
+    RunScopedMode { mode: "plan", account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+    RunScopedMode { mode: "apply", account_id: fleet_apply_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
   ]
 }
 
@@ -157,14 +184,16 @@ fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
 fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
   match run_scoped_mode_named(mode: mode) {
     Absent => none
-    Present { value: m } =>
-      if mode != (mtcollins1_boot_mode_name as String) { Present { value: m } } else {
+    Present { value: m } => match m.main_route {
+      MainUsesGrantedAccount => Present { value: m }
+      MainUsesFleetIdentity => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
+      MainUsesSelectedSource =>
         match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none
           BootCredentialSourceRefused { cause: _ } => none
         }
-      }
+    }
   }
 }
 
@@ -253,8 +282,52 @@ fn mtcollins1_boot_run_scoped_federation() -> DedicatedFederation? {
   mtcollins1_boot_run_scoped_federations().first()
 }
 
+// THE FLEET-CONVERGE MODES THAT RUN AS THE FLEET'S OWN ACCOUNTS FROM A BRANCH (operator, relayed
+// 2026-10-17): plan reads through the existing fleet-cloud-convergence account, which holds no secret
+// grant of its own here; apply gets a narrow account holding only the fleet
+// SSH key version, so a mistaken approval costs that key for one run and nothing else. Every account
+// is reached only through a per-attempt cell, never a standing one.
+data fleet_plan_run_scoped_service_account_id: NonEmptyStr = "fleet-cloud-convergence"
+
+data fleet_apply_run_scoped_service_account_id: NonEmptyStr = "fleet-apply-run"
+
+data fleet_apply_run_scoped_service_account: ServiceAccountEmail = "fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com"
+
+fn fleet_run_scoped_federation(label: String, account_id: NonEmptyStr, email: ServiceAccountEmail, display: String, grants: List<SecretAccessGrant>) -> DedicatedFederation {
+  DedicatedFederation {
+    label: label,
+    pool_id: branch_dispatch_wif_pool_id,
+    pool_display_name: "Fleet converge (branch runs)",
+    provider_id: branch_dispatch_wif_provider_id,
+    attribute_mapping: branch_dispatch_attribute_mapping,
+    attribute_condition: branch_dispatch_attribute_condition(),
+    impersonation: RunScopedImpersonation,
+    service_account: email,
+    service_account_id: account_id,
+    service_account_display_name: display,
+    service_account_member: federated_service_account_member(email: email),
+    secret_grants: grants,
+  }
+}
+
+// The plan row's account is the existing standing fleet account: its policy is already a converge
+// target (fleet_convergence_federation), so this federation only lets the grant planner derive a
+// per-run cell on it; it is not a second target.
+fn fleet_plan_run_scoped_federation() -> DedicatedFederation {
+  fleet_run_scoped_federation(label: "fleet plan (approved branch runs)", account_id: fleet_plan_run_scoped_service_account_id, email: fleet_cloud_convergence_sa_email, display: "Fleet cloud convergence (WIF-only, no keys)", grants: [])
+}
+
+fn fleet_apply_run_scoped_federation() -> DedicatedFederation {
+  fleet_run_scoped_federation(label: "fleet apply (approved branch runs)", account_id: fleet_apply_run_scoped_service_account_id, email: fleet_apply_run_scoped_service_account, display: "Fleet apply (run-scoped, WIF-only, no keys)", grants: [secret_accessor_grant(target: fleet_automation_ssh_privkey_secret)])
+}
+
+// The accounts this table's rows need provisioned; the plan row reuses an account that is already a target.
+fn fleet_run_scoped_new_federations() -> List<DedicatedFederation> {
+  [fleet_apply_run_scoped_federation()]
+}
+
 fn run_scoped_federations() -> List<DedicatedFederation> {
-  concat([hetzner_cloud_control_federation()], mtcollins1_boot_run_scoped_federations())
+  concat(concat([hetzner_cloud_control_federation(), fleet_plan_run_scoped_federation()], fleet_run_scoped_new_federations()), mtcollins1_boot_run_scoped_federations())
 }
 
 fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
@@ -333,6 +406,7 @@ fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationP
       }
     HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
     OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
+    AdministratorEdge => BootCredentialSourceRefused { cause: "the selection named the administrator edge, which a boot credential does not use" as NonEmptyStr }
   }
 }
 
@@ -349,4 +423,11 @@ fn boot_credential_source_from_selection(on_reviewed_main: Bool, s: Authorizatio
 
 fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialStanding {
   boot_credential_source_from_selection(on_reviewed_main: on_reviewed_main, s: select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)))
+}
+
+// ── the table, read as the workflow's coverage ───────────────────────────────────────────────
+// Which rows a fleet-converge job's shared prelude routes, by what each does at main. The workflow
+// generator reads these two and the table itself; it holds no per-mode list of its own.
+fn run_scoped_modes_with_route(route: RunScopedMainRoute) -> List<RunScopedMode> {
+  filter(run_scoped_modes(), m => m.main_route == route)
 }

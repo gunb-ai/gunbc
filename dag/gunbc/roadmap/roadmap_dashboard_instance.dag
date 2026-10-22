@@ -15,7 +15,8 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.managed_directory { DirectoryOwnerOnly, DirectoryOwnerAllEveryoneTraverse, srv1_dashboard_service_principal }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, srv1_dashboard_service_principal }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, owned_directory_path }
 import gunbc.deployment_risk {
   DeploymentId,
@@ -241,6 +242,13 @@ type HostDashboardInstance {
   toolchain: DashboardToolchain
   dispatch_worker_memory_max: ByteSize
   directory_owner: PosixOwnerNames
+  // THE ACCOUNT A DISPATCHED WORKER UNIT RUNS AS. Equal to directory_owner is the STAGED form of a
+  // replacement migration (DESIGN section 3, gap-intolerant boundary): the worker as the service user is
+  // X, a worker as a dedicated account with no root-equivalent group is Y. Y runs in shadow on the srv1
+  // lab, which opts in; srv1 prod keeps WorkerIsServiceUser until an operator qualifies the
+  // lab and decides the cutover, at which point this field is deleted and the worker is always the
+  // dedicated account. The group of a distinct worker_user is the shared attempt group.
+  worker: WorkerIdentity
   materialization_store_root: MaterializationStoreRoot?
 }
 
@@ -979,6 +987,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: macbook_local_directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: MacbookLocal } },
   }
 }
@@ -1082,6 +1091,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: DurableHostVolume },
   }
 }
@@ -1143,6 +1153,7 @@ fn isolated_dashboard_instance(
     actuation: actuation, provision_transport: provision_transport,
     admitted_revision: fleet_admitted_revision_source,
     publication_base_branch: "main" as NonEmptyStr,
+    worker: WorkerIsServiceUser,
   )
 }
 
@@ -1161,6 +1172,7 @@ fn isolated_dashboard_instance_admitting(
   provision_transport: DashboardProvisionTransport,
   admitted_revision: DashboardAdmittedRevisionSource,
   publication_base_branch: NonEmptyStr,
+  worker: WorkerIdentity,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1205,6 +1217,7 @@ fn isolated_dashboard_instance_admitting(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
+    worker: worker,
     materialization_store_root: none,
   }
 }
@@ -1232,6 +1245,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     admitted_revision: srv1_lab_admitted_revision_source,
     publication_base_branch: srv1_lab_publication_base_branch,
+    worker: WorkerDedicatedAccount,
   )
 }
 
@@ -1366,6 +1380,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: Srv2Deploy } },
   }
 }
@@ -1499,6 +1514,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: fleet_compute_hermetic_directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: FrameJobWorkspace { frame: frame } },
   }
 }
@@ -1672,6 +1688,40 @@ fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<F
 // empty-directory refusal that guards the source tree (gunbc.live_deploy.emit emit_artifact_teardown).
 data dashboard_dispatch_worktree_member: NonEmptyStr = "dispatch-worktree-root" as NonEmptyStr
 
+// THE WORKER'S IDENTITY IS A DECLARED TWO-ARM SUM, NOT A COMPARISON OF USER NAMES. WorkerIsServiceUser is the
+// STAGED form of a replacement migration (DESIGN section 3, gap-intolerant boundary): the worker runs as
+// the instance's service user (X). WorkerDedicatedAccount is Y: gunbc.fleet.fleet_posix_accounts
+// fleet_posix_worker_user in the shared attempt group, both read from that row, so no instance can name a
+// third account or another group. Y runs in shadow on the srv1 lab; the cutover (an operator decision
+// after the lab qualifies) deletes the first arm and this sum with it.
+type WorkerIdentity
+  = WorkerIsServiceUser
+  | WorkerDedicatedAccount
+
+// The account the worker unit runs as, derived from the arm.
+fn dashboard_instance_worker_user(instance: HostDashboardInstance) -> NonEmptyStr {
+  match instance.worker {
+    WorkerIsServiceUser => instance.directory_owner.user
+    WorkerDedicatedAccount => fleet_posix_worker_user.name
+  }
+}
+
+// OWNER OF A DIRECTORY THE WORKER WRITES: the service user keeps ownership; a dedicated worker's group is the
+// shared attempt group. The staged arm keeps the pre-existing pair, so prod's directories are unchanged.
+fn dashboard_instance_worker_writable_owner(instance: HostDashboardInstance) -> PosixOwnerNames {
+  match instance.worker {
+    WorkerIsServiceUser => instance.directory_owner
+    WorkerDedicatedAccount => PosixOwnerNames { user: instance.directory_owner.user, group: fleet_posix_worker_shared_group_name }
+  }
+}
+
+fn dashboard_instance_worker_writable_mode(instance: HostDashboardInstance, staged: DeclaredDirectoryMode) -> DeclaredDirectoryMode {
+  match instance.worker {
+    WorkerIsServiceUser => staged
+    WorkerDedicatedAccount => DirectoryOwnerGroupWritableSetgid
+  }
+}
+
 data dashboard_attempt_state_member: NonEmptyStr = "attempt-state-root" as NonEmptyStr
 
 fn dashboard_instance_dispatch_worktree_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
@@ -1682,8 +1732,8 @@ fn dashboard_instance_dispatch_worktree_directory(instance: HostDashboardInstanc
         dashboard_instance_child(root: instance.instance_root, child: worktree_child)
       DispatchStateHostShared { worktree_root, attempt_state_root: _ } => worktree_root
     },
-    owner: instance.directory_owner,
-    mode: DirectoryOwnerAllEveryoneTraverse,
+    owner: dashboard_instance_worker_writable_owner(instance: instance),
+    mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerAllEveryoneTraverse),
   }
 }
 
@@ -1726,8 +1776,8 @@ fn dashboard_instance_dispatch_attempt_state_directory(instance: HostDashboardIn
         dashboard_instance_child(root: instance.instance_root, child: attempt_state_child)
       DispatchStateHostShared { worktree_root: _, attempt_state_root } => attempt_state_root
     },
-    owner: instance.directory_owner,
-    mode: DirectoryOwnerOnly,
+    owner: dashboard_instance_worker_writable_owner(instance: instance),
+    mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerOnly),
   }
 }
 
@@ -1735,6 +1785,11 @@ fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstanc
   owned_directory_path(t: dashboard_instance_dispatch_attempt_state_directory(instance: instance))
 }
 
+// THE MODEL-ENDPOINT CREDENTIAL'S CUSTODY: the provider login writes the model credential under this
+// root and the worker reads it, so for a dedicated worker the root is owned by the service user, grouped
+// to the shared attempt group and group-writable (the worker's refresh writes there too). The deploy
+// asserts this owner and mode through the owned-directory provider; nothing is chowned by hand.
+//
 // THE PROVIDER STATE ROOT is a directory, never a credential: the provider login writes into it, and
 // nothing the deploy carries populates it. It lives outside the instance root (so it is never an owned
 // footprint path) and nothing tears it down.
@@ -1742,8 +1797,32 @@ fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) 
   OwnedDirectoryDeclared {
     member: "provider-state-root" as NonEmptyStr,
     path: dashboard_instance_provider_state_root(instance: instance),
-    owner: instance.directory_owner,
-    mode: DirectoryOwnerAllEveryoneTraverse,
+    owner: dashboard_instance_worker_writable_owner(instance: instance),
+    mode: dashboard_instance_worker_writable_mode(instance: instance, staged: DirectoryOwnerAllEveryoneTraverse),
+  }
+}
+
+// THE GIT DIRECTORIES A DEDICATED WORKER WRITES (WORKER-ROOT-EQUIVALENT-2, item 2). The worker commits
+// into repo_root/.git/objects, refs and logs (gunbc.roadmap.roadmap_dispatch_actuator
+// dispatch_worker_git_writable_paths), which the service user owns; a unit running as gunbc-worker
+// reaches them only through the shared attempt group, so each is declared group-writable setgid exactly as
+// the worktree and attempt-state roots are. NOT declared: .git itself, hooks, config, info and the
+// .git/worktrees parent, which stay service-user-only (gunbc#13942's carve-out). The staged arm declares
+// none, so prod's repository is untouched.
+// DECLARED RESIDUALS: the provider asserts these directories, not their existing contents (it does not
+// recurse), and packed-refs plus the per-attempt .git/worktrees/<key> are a file and a runtime-created
+// directory it cannot assert; both are read back by the lab qualification (a live worker commits).
+data dashboard_git_worker_directory_children: List<NonEmptyStr> = [".git/objects", ".git/refs", ".git/logs"] as List<NonEmptyStr>
+
+fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => map(dashboard_git_worker_directory_children, child => OwnedDirectoryDeclared {
+      member: join(["git-worker-", child as String], "") as NonEmptyStr,
+      path: dashboard_instance_child(root: instance.repo_root, child: child as String),
+      owner: dashboard_instance_worker_writable_owner(instance: instance),
+      mode: DirectoryOwnerGroupWritableSetgid,
+    })
   }
 }
 
@@ -1774,7 +1853,7 @@ fn dashboard_instance_own_directory_demands(instance: HostDashboardInstance) -> 
     dashboard_instance_dispatch_worktree_directory(instance: instance),
     dashboard_instance_dispatch_attempt_state_directory(instance: instance),
     dashboard_instance_provider_state_directory(instance: instance),
-  ], dashboard_instance_inbox_directories(instance: instance))
+  ], concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance)))
 }
 fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [

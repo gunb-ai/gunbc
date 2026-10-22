@@ -1,6 +1,7 @@
 module test.claim.host.sessions_slice_cpu_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.algebra { non_empty_append, non_empty_singleton, non_empty_to_list }
 import std.measure { byte_size, hardware_thread_count, hardware_thread_count_value }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
@@ -45,7 +46,7 @@ fn plan_is_refused(p: SliceControlPlan) -> Bool {
 // the broker stays uncapped; srv3 (no sessions reservation, no broker) owes no slice control.
 test fn srv1_sessions_slice_is_owed_its_derived_cpu_cap() -> Bool {
   (match slice_control_plan_for(host: operator_host_srv1) {
-    SliceControlPlanDerived { units: us } => any(us, u => is_capped_sessions(u: u)) && any(us, u => is_uncapped_broker(u: u))
+    SliceControlPlanDerived { units: us } => any(non_empty_to_list(xs: us), u => is_capped_sessions(u: u)) && any(non_empty_to_list(xs: us), u => is_uncapped_broker(u: u))
     SliceControlPlanNotOwed => false
     SliceControlPlanRefused { cause: _ } => false
   })
@@ -77,8 +78,8 @@ test fn the_sessions_cpu_cap_is_set_after_the_single_revert() -> Bool {
 // even beside a derivable broker; the broker alone, which owes no CPU, still derives.
 test fn a_sessions_slice_without_a_derivable_cap_refuses_the_member() -> Bool {
   let refused = SessionsSliceCpuQuotaRefused { cause: "fixture: allocation refused" }
-  plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: [fixture_broker_caps(), fixture_sessions_caps()] }, cpu: refused))
-    && !plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: [fixture_broker_caps()] }, cpu: refused))
-    && !plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: [fixture_sessions_caps()] }, cpu: SessionsSliceCpuQuotaDerived { threads: hardware_thread_count(count: 32) }))
+  plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: non_empty_append(left: non_empty_singleton(item: fixture_broker_caps()), right: non_empty_singleton(item: fixture_sessions_caps())) }, cpu: refused))
+    && !plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: non_empty_singleton(item: fixture_broker_caps()) }, cpu: refused))
+    && !plan_is_refused(p: slice_control_plan_of(control: SliceControlDerived { caps: non_empty_singleton(item: fixture_sessions_caps()) }, cpu: SessionsSliceCpuQuotaDerived { threads: hardware_thread_count(count: 32) }))
     && plan_is_refused(p: slice_control_plan_of(control: SliceControlRefused { cause: "memory half refused" }, cpu: SessionsSliceCpuQuotaDerived { threads: hardware_thread_count(count: 32) }))
 }

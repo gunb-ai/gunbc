@@ -23,7 +23,7 @@ import extdeps.github.actions {
 import extdeps.languages.yaml.types { kv, yaml_string }
 import extdeps.github.expressions {
   ingest_template, context_name, Expression, Interpolation, LiteralText,
-  ContextAccess, FunctionCall, StringLiteral, LogicalOr, LogicalAnd, Equals, NotEquals,
+  ContextAccess, FunctionCall, StringLiteral, LogicalOr, LogicalAnd, Equals, NotEquals, LogicalNot,
 }
 import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs {
@@ -58,7 +58,7 @@ import gunbc.host.host_budget_source {
 }
 import gunbc.witness.witness_floor_workflow { required_floor_claim_cost_artifact_name }
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
-import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlot, host_unit_slot_attempt }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.runner.runner_qualification_ref_pin {
   QualificationRefPin, QualificationBranchName, qualification_workflow_path, qualification_selected_workflow,
@@ -192,6 +192,7 @@ type QualificationSubjectRefusal
   | SubjectPinForAnotherAttempt { pin_attempt: NonEmptyStr, slot_attempt: NonEmptyStr }
   | SubjectDeliveryForAnotherDispatch
   | SubjectSlotNotHostUnit
+  | SubjectSlotNotAttemptScoped
   | SubjectSlotForAnotherWorkflow { slot_workflow: NonEmptyStr, qualification_workflow: NonEmptyStr }
   | SubjectAttemptInputUndeclared { input: String }
   | SubjectFloorJobAbsent { job_id: NonEmptyStr }
@@ -248,6 +249,7 @@ fn expression_reads_exactly_the_input(expression: Expression, input: DispatchInp
     LogicalAnd { left: _, right: _ } => false
     Equals { left: _, right: _ } => false
     NotEquals { left: _, right: _ } => false
+    LogicalNot { operand: _ } => false
   }
 }
 
@@ -351,31 +353,37 @@ fn qualification_dispatch_subject_over(
         let h = slot
         if !(host_unit_slot_subject(slot: h) == registration.subject) {
           QualificationSubjectRefused { refusal: SubjectSlotNotHostUnit }
-        } else if (pin.name.attempt as String) != (h.attempt as String) {
-              QualificationSubjectRefused { refusal: SubjectPinForAnotherAttempt { pin_attempt: pin.name.attempt, slot_attempt: h.attempt } }
-            } else if dispatch.request.runner_group_id.value != pin.group.group.value {
-              QualificationSubjectRefused { refusal: SubjectMintedIntoAnotherGroup { minted_group: dispatch.request.runner_group_id.value, pinned_group: pin.group.group.value } }
-            } else {
-            match qualification_slot_refusal(slot_workflow: h.workflow, branch: pin.name.branch) {
-              Present { value: r } => QualificationSubjectRefused { refusal: r }
-              Absent =>
-                match qualification_floor_admission(workflow: workflow, floor_job_id: floor_job_id) {
-                  QualificationFloorRefused { refusal: r } => QualificationSubjectRefused { refusal: r }
-                  QualificationFloorAdmitted { floor_job_name: n } =>
-                    QualificationSubjectAdmitted {
-                      subject: QualificationDispatchSubject {
-                        registration: registration,
-                        slot: h,
-                        host: h.host.host,
-                        attempt: h.attempt,
-                        runner_id: runner_id,
-                        pin: pin,
-                        floor_job_name: n,
-                      },
+        } else {
+          match host_unit_slot_attempt(slot: h) {
+            Absent => QualificationSubjectRefused { refusal: SubjectSlotNotAttemptScoped }
+            Present { value: slot_attempt } =>
+              if (pin.name.attempt as String) != (slot_attempt as String) {
+                QualificationSubjectRefused { refusal: SubjectPinForAnotherAttempt { pin_attempt: pin.name.attempt, slot_attempt: slot_attempt } }
+              } else if dispatch.request.runner_group_id.value != pin.group.group.value {
+                QualificationSubjectRefused { refusal: SubjectMintedIntoAnotherGroup { minted_group: dispatch.request.runner_group_id.value, pinned_group: pin.group.group.value } }
+              } else {
+                match qualification_slot_refusal(slot_workflow: h.workflow, branch: pin.name.branch) {
+                  Present { value: r } => QualificationSubjectRefused { refusal: r }
+                  Absent =>
+                    match qualification_floor_admission(workflow: workflow, floor_job_id: floor_job_id) {
+                      QualificationFloorRefused { refusal: r } => QualificationSubjectRefused { refusal: r }
+                      QualificationFloorAdmitted { floor_job_name: n } =>
+                        QualificationSubjectAdmitted {
+                          subject: QualificationDispatchSubject {
+                            registration: registration,
+                            slot: h,
+                            host: h.host.host,
+                            attempt: slot_attempt,
+                            runner_id: runner_id,
+                            pin: pin,
+                            floor_job_name: n,
+                          },
+                        }
                     }
                 }
-            }
-            }
+              }
+          }
+        }
       }
     }
     other => QualificationSubjectRefused { refusal: SubjectCredentialNotDelivered { delivery: other } }

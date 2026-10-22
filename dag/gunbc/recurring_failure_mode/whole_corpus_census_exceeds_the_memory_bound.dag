@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.whole_corpus_census_exceeds_the_memory_bound
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
+
+data whole_corpus_census_exceeds_the_memory_bound: RecurringFailureMode = RecurringFailureMode {
+  identity: "whole_corpus_census_exceeds_the_memory_bound" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
+
+  receipts: [
+    "**the native census walk over the whole corpus (`census-infer` over dag + src/v2) does not fit the bounded runner it is dispatched to: the kernel's cgroup OOM killer ends it with no stage marker and no terminal, so the census answers nothing about any module.** INVALID STATE: an instrument whose memory grows with the CORPUS rather than with the module it is reading, dispatched under a bound smaller than the corpus needs. HARM: every census reading that needs the whole tree -- the refusal census, the ambient-name census, a wave's binding diff -- is unobservable, and a reader of the killed run sees status -1 and an empty stdout that a careless reader folds into an empty census (both ambient-name-census and namespace-wave-binding-diff held vacuously over one before their readers learned to refuse an empty side, PR #14112).",
+
+    "RECEIPT 2026-10-16 (wise-moth-707, PR #14112), BuildBuddy linux/amd64, EstimatedMemory=32GB, the gunbc process self-attached to a cgroup with memory.max=30064771072 (28 GiB), worker kernel 5.15 (no memory.peak). `gunbc test //gunbc/instruments:v2-native-census` was OOM-killed on MAIN e7f987be7e8 (memory.events oom 1, oom_kill 1) and on the PR's head alike; `gunbc test //gunbc/instruments:ambient-name-census`, whose whole-tree run was the same walk, was killed the same way three times (oom_kill 1 each). The same lane reports `compile-clean-diagnostic-census` dying at 30 GB. A scoped run of one subject's closure (`v2-native-census-scoped`, about 140-160 modules) completes on the same recipe.",
+
+    "THE STANDING MITIGATION AND WHAT IT LEAVES UNOBSERVED. tidy-ant-251's ruling on PR #14112 (2026-10-16): the ambient-name census and the namespace-wave binding diff read SCOPED closures -- a standing subject roster plus every module the wave rewrites -- read as one census-scoped run over the union of those closures, each member resolved once and attributed to its subjects (gunbc.instruments.ambient_name_census_reading). MODULES OUTSIDE EVERY SCOPED SUBJECT'S CLOSURE ARE UNOBSERVED: the census does not read them and claims nothing about them, and a rewritten module no subject run observed is listed by name and answers exit 2. Holding the instrument at the whole corpus (waiting) and buying a larger runner were both declined: neither changes that the walk's memory scales with the corpus.",
+
+    "RUNG FOUND AT: silent -- the killed run left an empty stdout two readers accepted. NOW: mitigated -- both readers refuse an empty side as no observation, and the scoped population names what it did not read. ATTAINABLE CEILING: the whole corpus observable under a fixed bound, because a module's census is a per-module fact. NEXT-RUNG TRIGGER, stated as the capability: a census whose memory is bounded PER MODULE rather than per corpus -- each module's resolve and infer step releasing its trees and keeping only its rows, with the closure index the step needs held at a size independent of the corpus -- SUFFICIENT FOR `gunbc test //gunbc/instruments:v2-native-census` over dag + src/v2 to complete under the 28 GiB recipe, at which point the scoped population widens to the whole tree and the unobserved list empties.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.instrument_targets", decl_name: "v2_native_census_label", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.instruments.ambient_name_census_reading", decl_name: "ambient_name_census_standing", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.instruments.namespace_wave_binding_diff", decl_name: "binding_diff_standing", field: WholeDeclaration },
+  ],
+}

@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import v2.std.decl_ref_resolution {
+import v2.std.decl_ref_resolution_host {
   DeclarationRefResolution,
   DeclarationRefResolved,
   DeclarationRefModuleAbsent,

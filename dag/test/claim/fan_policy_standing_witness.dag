@@ -389,8 +389,8 @@ fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservati
     round_index: 0,
     chassis: ChassisPowerRead { power_on: true },
     chassis_raw: "",
-    thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
-    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
+    fans: FanSensorsRead { lines: [], undecoded_lines: [] },
   }
 }
 
@@ -400,10 +400,10 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
     round_index: index,
     chassis: ChassisPowerRead { power_on: power_on },
     chassis_raw: "",
-    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0) } } else { ThermalUnreadable },
+    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] } } else { ThermalUnreadable },
     fans: FanSensorsRead {
       lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
-      undecoded_line_count: sdr_undecoded_line_count(count: 0),
+      undecoded_lines: [],
     },
   }
 }
@@ -448,8 +448,8 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     round_index: 0,
     chassis: ChassisUnreadable,
     chassis_raw: "",
-    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
-    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
+    fans: FanSensorsRead { lines: [], undecoded_lines: [] },
   }
 }
 
@@ -938,12 +938,24 @@ test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
 // reds here.
 test fn witness_unread_fan_list_is_not_a_fanless_chassis() -> Bool {
   let unread = witness_round_fans(fans: FanSensorsUnreadable)
-  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) })
+  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: [] })
   round_fan_lines(round: unread).length() == 0
     && round_fan_lines(round: empty_read).length() == 0
     && string_contains(render_series(rounds: [unread]), "fans=UNREAD")
     && string_contains(render_series(rounds: [empty_read]), "fans=sensors=0")
     && !string_contains(render_series(rounds: [empty_read]), "UNREAD")
+}
+
+// AN UNSTRUCTURED FAN LINE'S TEXT REACHES THE RECEIPT, not only its count. The two rounds differ only
+// in the text of one unstructured line; a revision that renders the count alone makes them identical
+// and reds the second conjunct, and one that drops the line from the render reds the first.
+test fn witness_unstructured_fan_line_text_is_rendered() -> Bool {
+  let one = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Deasserted"] })
+  let other = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_lines: ["FAN0_Failure | 17h | ok | 29.0 | State Asserted"] })
+  string_contains(render_series(rounds: [one]), "fan_undecoded_line=[FAN0_Failure | 17h | ok | 29.0 | State Deasserted]")
+    && string_contains(render_series(rounds: [one]), "undecoded=1")
+    && !string_contains(render_series(rounds: [one]), "State Asserted")
+    && string_contains(render_series(rounds: [other]), "State Asserted")
 }
 
 fn witness_round_fans(fans: FanSensorObservation) -> FanObservationRound {
@@ -952,7 +964,7 @@ fn witness_round_fans(fans: FanSensorObservation) -> FanObservationRound {
     round_index: 0,
     chassis: ChassisPowerRead { power_on: true },
     chassis_raw: "",
-    thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0), unrecognised_readings: [] },
     fans: fans,
   }
 }

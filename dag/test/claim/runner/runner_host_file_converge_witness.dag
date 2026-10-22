@@ -59,10 +59,16 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, NoValidation, remote_file_mode_octal }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
+import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
+  CapPhaseObserved,
+  runner_host_cap_phase_not_owed,
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
@@ -72,6 +78,8 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_files_deliver_fragment,
   RunnerSlotExpectation,
   runner_slot_expectation,
+  SlotReloadNotPending,
+  ReachesLiveCgroup,
   SlotAllocationNotEffective,
   RetiredResidueObservation,
   ResidueAbsent,
@@ -130,6 +138,8 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_leg_argv,
   runner_host_leg_kind,
   runner_host_leg_kinds,
+  runner_host_file_mode_find_argv,
+  runner_host_file_readback_refusal,
   LegRetireeCgroupEvents,
   classify_runner_slot_population_with_fabric,
   runner_host_fabric_member_units,
@@ -142,6 +152,7 @@ import gunbc.runner.runner_host_file_converge {
   HostFileActionRefused,
   RunnerHostFileAction,
   runner_host_file_action,
+  runner_host_file_action_wire,
   RunnerSlotUnitReading,
   RunnerSlotUnitStanding,
   SlotTeardownEffective,
@@ -273,13 +284,14 @@ test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> 
   match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid()) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 3
+      length(fs) == 4
         && length(w) == 2
         && !runner_host_files_deliver_fragment(files: fs)
         && any(fs, f => (f.subject as String) == "runner-cpu-dropin")
         && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "was not read"))
         && any(w, x => (x.subject as String) == "runner-unit-fragment")
         && any(fs, f => (f.subject as String) == "runner-teardown-dropin")
+        && any(fs, f => (f.subject as String) == "runner-host-sudoers")
         && any(fs, f => (f.subject as String) == "needrestart-runner-deferral")
         && !any(fs, f => (f.subject as String) == "runner-unit-fragment")
         && !any(fs, f => (f.subject as String) == "runner-depriv-dropin")
@@ -290,7 +302,8 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 5
+      length(fs) == 6
+        && any(fs, f => (f.subject as String) == "runner-host-sudoers")
         && length(w) == 0
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-cpu-dropin") == "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf"
@@ -374,13 +387,15 @@ test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
         && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
-        && length(s.retired_units) == 47
+        && length(s.retired_units) == 46
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-04.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-13.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-14.service")
         && any(s.fabric_units, u => (u as String) == "actions-runner@srv1-13.service")
+        && any(s.fabric_units, u => (u as String) == "actions-runner@srv1-14.service")
   }
 }
 
@@ -555,9 +570,9 @@ test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
     PathsNotApplicable => false
   }
   let missing = match classify_root_only_paths(requested: ["/etc/needrestart/conf.d"], exit_code: 1, stdout: "", stderr: "find: '/etc/needrestart/conf.d': No such file or directory") {
-    PathsNotRootOnly { paths: ps, detail: _ } => ps == ["/etc/needrestart/conf.d"]
+    PathsUnobservable { reason: r } => string_contains(s: r, pattern: "did not succeed")
+    PathsNotRootOnly { paths: _, detail: _ } => false
     PathsRootOnly => false
-    PathsUnobservable { reason: _ } => false
     PathsNotApplicable => false
   }
   all_safe && one_unsafe && missing
@@ -697,7 +712,7 @@ test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> 
 }
 
 fn population_of(standings: List<RunnerSlotUnitStanding>) -> RunnerSlotPopulation {
-  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st }) }
+  SlotPopulationObserved { units: map(standings, st => RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: st, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }) }
 }
 
 // THE HOST-WIDE VERDICT IS OVER EVERY UNIT. One not-effective, not-loaded, pending or unread unit among
@@ -764,6 +779,15 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             residue: ResidueAlreadyAbsent,
             reload: reload,
             slots: slots,
+            // The observe arm now has to CONSUME the cap phase (manager ruling, review 5588645431):
+            // production's observe mode can only ever answer CapPhaseObserved since P4, so this
+            // fixture carries the fully-read observed arm for observe (a hand-fabricated NotOwed --
+            // the base's two-valued answer -- would now refuse, and this claim would be lying about
+            // what production produces). Apply still accepts a settled NotOwed phase (unchanged path).
+            cap_phase: match mode {
+              RunnerHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
+              RunnerHostFilesApply => runner_host_cap_phase_not_owed
+            },
           })
       }
   }
@@ -1365,6 +1389,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
   }
 }
@@ -1522,6 +1547,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
@@ -1535,6 +1561,152 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
+        cap_phase: runner_host_cap_phase_not_owed,
       })
   }
+}
+
+// ── The sudoers install row (msg_b6241e41) ────────────────────────────────────────────────────────
+
+fn sudoers_desired() -> RunnerHostFileDesired? {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => none
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
+      fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-host-sudoers" { Present { value: f } } else { acc })
+  }
+}
+
+// The row carries the RENDERED bytes from the one producer, at the one path, 0440, validated: no
+// second rendering, no widening. Reads the producer independently of the row's own fold.
+test fn the_sudoers_row_is_the_rendered_body_at_the_sudoers_path_validated_and_0440() -> Bool {
+  match sudoers_desired() {
+    Absent => false
+    Present { value: f } =>
+      match runner_host_sudoers_body(host: "srv1" as HostIdentity, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: "srv1" as HostIdentity })) {
+        RunnerHostSudoersBodyProduced { content: c } =>
+          f.content == c
+            && (f.path as String) == "/etc/sudoers.d/gunbc-ghrunner"
+            && remote_file_mode_octal(mode: f.mode) == "440"
+            && (match f.validation { VisudoCheck => true NoValidation => false })
+        RunnerHostSudoersBodyRefused { reason: _ } => false
+      }
+  }
+}
+
+// Only the sudoers row is validated: every other row keeps NoValidation, so visudo is never pointed at
+// a systemd or needrestart file.
+test fn only_the_sudoers_row_is_visudo_validated() -> Bool {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
+      all(fs, f => ((f.subject as String) == "runner-host-sudoers") == (match f.validation { VisudoCheck => true NoValidation => false }))
+  }
+}
+
+// ADOPT: an identical root-only file is left in place -- no write, so no replaced-file decision.
+test fn an_identical_installed_sudoers_file_is_adopted_untouched() -> Bool {
+  is_leave(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
+}
+
+// REPLACE: a differing file is written (renamed over), and the decision is printed as `write`.
+test fn a_differing_installed_sudoers_file_is_replaced_and_the_decision_prints() -> Bool {
+  let a = action_of(content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly)
+  is_write(a: a) && runner_host_file_action_wire(action: a) == "write"
+    && runner_host_file_action_wire(action: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly)) == "leave-in-place"
+}
+
+// An unreadable observation refuses typed; it is never read as absent (and so never as a write).
+test fn an_unreadable_sudoers_observation_refuses_rather_than_writes() -> Bool {
+  is_refused(a: action_of(content: HostFileUnobservable { reason: "sudo: a password is required" }, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
+}
+
+// ── The mode is part of what a file IS (review: an identical root-owned 0644 file must not adopt) ───
+
+// The permission clause is the EXACT desired mode, spelled by the write's own octal authority.
+test fn the_file_leg_asks_for_the_exact_desired_mode_not_merely_no_other_writer() -> Bool {
+  runner_host_file_mode_find_argv(path: "/etc/sudoers.d/gunbc-ghrunner", mode: RemoteFileModeOwnerGroupRead)
+    == ["find", "/etc/sudoers.d/gunbc-ghrunner", "-maxdepth", "0", "-type", "f", "-user", "root", "-group", "root", "-perm", "440"]
+    && runner_host_file_mode_find_argv(path: "/p", mode: RemoteFileModeOwnerReadWriteWorldRead)
+      == ["find", "/p", "-maxdepth", "0", "-type", "f", "-user", "root", "-group", "root", "-perm", "644"]
+}
+
+// RED: identical bytes, root-owned, mode 0644 against a 0440 desire. find (exact -perm 440) does not
+// print the path, the classifier reads NotRootOnly, and the action is a repair WRITE -- never an adoption.
+test fn identical_bytes_at_the_wrong_mode_do_not_adopt() -> Bool {
+  match classify_root_only_paths(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "", stderr: "") {
+    PathsNotRootOnly { paths: ps, detail: d } =>
+      ps == ["/etc/sudoers.d/gunbc-ghrunner"]
+        && is_write(a: action_of(content: HostFileIdentical, file_metadata: PathsNotRootOnly { paths: ps, detail: d }, ancestors: PathsRootOnly))
+    PathsRootOnly => false
+    PathsUnobservable { reason: _ } => false
+    PathsNotApplicable => false
+  }
+}
+
+// Positive: identical bytes at exactly 0440 (find prints the path) adopt.
+test fn identical_bytes_at_the_desired_mode_adopt() -> Bool {
+  match classify_root_only_paths(requested: ["/etc/sudoers.d/gunbc-ghrunner"], exit_code: 0, stdout: "/etc/sudoers.d/gunbc-ghrunner\n", stderr: "") {
+    PathsRootOnly => is_leave(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
+    PathsNotRootOnly { paths: _, detail: _ } => false
+    PathsUnobservable { reason: _ } => false
+    PathsNotApplicable => false
+  }
+}
+
+// RED: an unavailable mode observation refuses; it is never read as a mismatch to repair or as a match.
+test fn an_unavailable_mode_observation_refuses_rather_than_adopts_or_writes() -> Bool {
+  is_refused(a: action_of(content: HostFileIdentical, file_metadata: PathsUnobservable { reason: "ssh dropped" }, ancestors: PathsRootOnly))
+    && is_refused(a: action_of(content: HostFileIdentical, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly))
+}
+
+// RED: after a write whose bytes read back identical, a wrong or unreadable mode refuses at the
+// metadata readback; only a root-only-at-mode reading converges.
+test fn a_wrong_or_unreadable_mode_after_the_write_refuses_at_the_metadata_readback() -> Bool {
+  let refused = readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 0, stdout: "", stderr: ""))
+  refused
+    && readback_refused(m: PathsUnobservable { reason: "x" })
+    && !readback_refused(m: PathsRootOnly)
+}
+
+fn readback_refused(m: RunnerHostPathMetadata) -> Bool {
+  match runner_host_file_readback_refusal(metadata: m) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ── A find that did not succeed observed nothing (review: exit=1 + empty stdout read as a mismatch) ──
+// Controls run the PROCESS RESULT through the result classifier and then the action fold, never a
+// supplied PathsUnobservable.
+
+fn result_action(content: RunnerHostFileStanding, exit_code: Int, stdout: String) -> RunnerHostFileAction {
+  action_of(
+    content: content,
+    file_metadata: classify_root_only_paths(requested: ["/p"], exit_code: exit_code, stdout: stdout, stderr: "find: '/p': Permission denied"),
+    ancestors: PathsRootOnly,
+  )
+}
+
+// RED: a nonzero exit refuses with an empty stdout (was: a repairable mismatch, so a write) and with a
+// stdout that names the path (was: a match, so an adoption), for identical AND differing content.
+test fn a_failed_find_neither_adopts_nor_repairs_nor_writes() -> Bool {
+  is_refused(a: result_action(content: HostFileIdentical, exit_code: 1, stdout: ""))
+    && is_refused(a: result_action(content: HostFileIdentical, exit_code: 1, stdout: "/p\n"))
+    && is_refused(a: result_action(content: HostFileDiffers, exit_code: 1, stdout: ""))
+    && is_refused(a: result_action(content: HostFileDiffers, exit_code: 255, stdout: "/p\n"))
+}
+
+// A successful read with a metadata mismatch takes the repair path; a successful read with matching
+// metadata and identical bytes adopts; a genuinely absent file stays the creation case.
+test fn only_a_successful_find_establishes_a_mismatch_or_a_match() -> Bool {
+  is_write(a: result_action(content: HostFileIdentical, exit_code: 0, stdout: ""))
+    && is_leave(a: result_action(content: HostFileIdentical, exit_code: 0, stdout: "/p\n"))
+    && is_write(a: action_of(content: HostFileAbsent, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly))
+}
+
+// RED: the post-write readback of a failed find refuses; a successful matching one does not.
+test fn a_failed_post_write_metadata_read_refuses_at_the_metadata_readback() -> Bool {
+  readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "/p\n", stderr: "boom"))
+    && readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 1, stdout: "", stderr: "boom"))
+    && !readback_refused(m: classify_root_only_paths(requested: ["/p"], exit_code: 0, stdout: "/p\n", stderr: ""))
 }

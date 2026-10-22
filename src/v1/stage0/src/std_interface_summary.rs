@@ -6,16 +6,14 @@ use self::InterfaceContract::*;
 use crate::std_content_hash::ContentHash::*;
 pub use crate::std_content_hash::{
     as_content_hash_structural, content_hash_atom, content_hash_combine_structural,
-    content_hash_tagged, content_hash_tagged_structural,
+    content_hash_tagged, content_hash_tagged_structural, ContentHash, Fnv1a64Structural,
 };
-pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_disposition::ConstructionMechanism::SingleAuthority;
 use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
-pub use crate::std_types::brand;
-pub use crate::std_types::{List, NonEmptyStr};
+pub use crate::std_types::{brand, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

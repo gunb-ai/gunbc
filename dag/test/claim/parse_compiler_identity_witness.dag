@@ -1,0 +1,58 @@
+module test.claim.parse_compiler_identity_witness
+
+import std.types { Bool }
+import v2.compiler.self_host.seed_retention_frontier {
+  ReasonDeclaredElsewhere,
+  seed_retention_frontier_roster,
+}
+import gunbc.parse_verdict_schema {
+  parse_compiler_identity_entries,
+  parse_compiler_tokenize_entry,
+  parse_compiler_parse_entry,
+  parse_compiler_schema_entry,
+  parse_verdict_request_family,
+  parse_verdict_receipt_accepted,
+  parse_verdict_stored_accepted_line,
+  parse_verdict_pr2_restore_frontier,
+}
+import extdeps.filesystem.filesystem_io
+
+data native_lane_runner_source_path: String = "src/v1/stage0/src/cli_run/native_lane_runner.rs"
+
+fn rust_str_const_line(name: String, value: String) -> String {
+  join(["const ", name, ": &str = \"", value, "\";"], "")
+}
+
+// THE SEED HASHER MUST NAME THE SCHEMA ROOTS. parse_compiler_identity_entries is the membership
+// authority; the host consts are the route. A rename on one side alone reds here.
+test fn the_seed_parse_compiler_entry_consts_match_the_schema() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  (parse_compiler_identity_entries()
+    == [parse_compiler_tokenize_entry, parse_compiler_parse_entry, parse_compiler_schema_entry])
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "PARSE_COMPILER_TOKENIZE_ENTRY", value: parse_compiler_tokenize_entry))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "PARSE_COMPILER_PARSE_ENTRY", value: parse_compiler_parse_entry))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "PARSE_COMPILER_SCHEMA_ENTRY", value: parse_compiler_schema_entry))
+    && string_contains(s: runner, pattern: "fn parse_compiler_identity_entries()")
+}
+
+test fn the_stored_line_stamps_compiler() -> Bool {
+  parse_verdict_stored_accepted_line(source_digest: "abc", compiler: "cid")
+    == join([parse_verdict_request_family, "\tabc\tcid\t", parse_verdict_receipt_accepted], "")
+}
+
+test fn pr2_is_the_named_restore_consumer() -> Bool {
+  (parse_verdict_pr2_restore_frontier.declaration.decl_name == "parse_verdict_request_family")
+    && ((parse_verdict_pr2_restore_frontier.named_consumer as String) != parse_verdict_pr2_restore_frontier.declaration.decl_name)
+}
+
+test fn the_gen_one_sidecar_writer_is_seed_retained_against_the_hasher_justification() -> Bool {
+  any(seed_retention_frontier_roster, row =>
+    (row.crate_relative_path == "src/cli_run/native_lane_runner.rs")
+      && match row.reason {
+        ReasonDeclaredElsewhere { authority: a } =>
+          (a.module_path as String) == "gunbc.parse_compiler_identity_seed_growth"
+            && (a.decl_name as String) == "parse_compiler_identity_seed_growth_justification"
+        _ => false
+      }
+  )
+}

@@ -11,11 +11,11 @@ import extdeps.clock { Clock }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.crypto.mac { MacKey, MacSigned, MacKeyMaterialNotHex, mac_sign }
-import extdeps.crypto.signature { SignatureVerification, SignatureInvalid, EcdsaP256Sha256, verify_signature }
+import extdeps.crypto.signature { SignatureVerification, SignatureInvalid, EcdsaP256Sha256 }
 import extdeps.apple.app_attest {
   AttestKeyId, AttestationVerification, AttestationRefused, AttestationRefusal, AttestationUndecodable,
   AssertionVerification, AssertionRefused, AssertionUndecodable, AssertionAuthentic,
-  AttestationExpectation, verify_attestation, AssertionExpectation, verify_assertion,
+  AttestationExpectation, AssertionExpectation,
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability {
@@ -26,7 +26,11 @@ import gunbc.auth.approval_app_attest_config {
   AppAttestVerifierConfig, AppAttestVerifierConfigured, AppAttestVerifierAwaitingOperator, approval_app_attest_verifier, approval_app_attest_app_id,
 }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoRealization, DeviceCryptoAdmitted, DeviceCryptoRefused, device_crypto_admission, approval_device_crypto_realization,
+  DeviceCryptoRealization, DeviceCryptoGate, DeviceCryptoGateRefused, device_crypto_gate, approval_device_crypto_realization,
+}
+import gunbc.auth.approval_device_crypto_client {
+  SidecarResult, SidecarAnswered, SidecarFailed,
+  sidecar_signature_verification, sidecar_attestation_verification, sidecar_assertion_verification,
 }
 import gunbc.auth.approval_assertion_counter {
   AssertionCounterAdmitted, admit_assertion_counter, approval_assertion_counter_root, assertion_counter_refusal_status, assertion_counter_refusal_reason,
@@ -45,6 +49,9 @@ import gunbc.auth.approval_device_wire {
   EnrolmentRequest, decode_enrolment_request, IosAppAttestAttestation, AndroidKeyAttestationChain,
   SignedRedemption, decode_signed_redemption, IosAppAttestAssertion, AndroidDecisionKeyOnly, device_redemption_signing_input,
   WireDecoded, WireRefused,
+  EnrolmentRefusalWire, EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired,
+  EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes,
+  EnrolmentRefusalAndroidUnrealized, enrolment_refusal_json,
   EnrolmentGrant, enrolment_grant_json, PendingApproval, pending_list_json, VerbCapability, FetchedRequest, fetched_request_json,
   RedemptionChallenge, redemption_challenge_message, enrolment_readback_json, redemption_response_json,
   approval_device_pending_path, device_request_path, device_enrollment_path, approval_device_push_path,
@@ -80,7 +87,7 @@ import gunbc.auth.approval_device_redemption {
 // operator's verb over the SSH edge, never a route), and mint a verified value -- SignatureVerified,
 // AttestationVerified, AssertionAuthentic and the admitted enrolment/redemption are minted by the
 // seams and folds they belong to, and this module only carries them from the verifier to the
-// admission.
+// gate.
 
 type DeviceRouteResponse {
   status: HttpStatus
@@ -148,16 +155,16 @@ fn assertion_expectation_for(app_id: NonEmptyStr, config: AppAttestVerifierConfi
 // The App Attest assertion for an enrolment's evidence over given client data: the verifier's
 // verdict, or a refusal minted through the seam when the object does not decode as base64 or the
 // enrolment is not an iOS one.
-fn assertion_for_enrollment(enrollment: VerifiedDeviceEnrollment, assertion_b64: NonEmptyStr, client_data: NonEmptyStr, app_id: NonEmptyStr, config: AppAttestVerifierConfig) -> AssertionVerification {
+fn assertion_for_enrollment(enrollment: VerifiedDeviceEnrollment, assertion_b64: NonEmptyStr, client_data: NonEmptyStr, app_id: NonEmptyStr, config: AppAttestVerifierConfig, gate: DeviceCryptoGate) -> SidecarResult<AssertionVerification> {
   match enrollment.evidence {
-    AndroidAttestedDecisionKey => AssertionRefused { cause: AssertionUndecodable { cause: "no assertion verifier for an Android enrolment" } }
+    AndroidAttestedDecisionKey => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no assertion verifier for an Android enrolment" } } }
     IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: pk, receipt_b64: _ } =>
       match base64_decode(s: assertion_b64 as String, variant: Standard) {
-        Absent => AssertionRefused { cause: AssertionUndecodable { cause: "assertion_b64 is not base64" } }
-        Present { value: object } =>
+        Absent => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "assertion_b64 is not base64" } } }
+        Present { value: _ } =>
           match assertion_expectation_for(app_id: app_id, config: config, key_id: k, public_key_point_b64url: pk, client_data: client_data) {
-            Absent => AssertionRefused { cause: AssertionUndecodable { cause: "verifier unconfigured" } }
-            Present { value: e } => verify_assertion(object: object, e: e)
+            Absent => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "verifier unconfigured" } } }
+            Present { value: e } => sidecar_assertion_verification(gate: gate, object_b64: assertion_b64, e: e)
           }
       }
   }
@@ -195,13 +202,22 @@ fn seconds_within_half_open_window(d: Int, w: Int) -> Bool {
 // redeem_device_over_store, and because Apple's counter is monotonic across the key, a redemption
 // that does not advance the standing leaves the reads' strict comparison sound.
 fn admit_device_read(realization: DeviceCryptoRealization, auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp) -> DeviceReadAdmission {
-  match device_crypto_admission(r: realization) {
-    DeviceCryptoRefused { status: st, reason: why } => DeviceReadRefused { status: st, reason: why }
-    DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } => admit_device_read_realized(auth: auth, client_data: client_data, observed_at: observed_at)
+  match device_crypto_gate(r: realization) {
+    DeviceCryptoGateRefused { status: st, reason: why } => DeviceReadRefused { status: st, reason: why }
+    admitted => admit_device_read_realized(auth: auth, client_data: client_data, observed_at: observed_at, gate: admitted)
   }
 }
 
-fn admit_device_read_realized(auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp) -> DeviceReadAdmission {
+// THE SIDECAR FAILING IS A 503 WITH ITS CAUSE, never a verification and never a fallback to the interpreted folds.
+fn sidecar_unavailable_reason(cause: NonEmptyStr) -> String {
+  "the device-crypto verifier is unavailable: " + (cause as String)
+}
+
+fn sidecar_failure_response(cause: NonEmptyStr) -> DeviceRouteResponse {
+  device_refused(status: 503, reason: sidecar_unavailable_reason(cause: cause))
+}
+
+fn admit_device_read_realized(auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp, gate: DeviceCryptoGate) -> DeviceReadAdmission {
   match verifier_expectations() {
     VerifierUnconfigured { missing: m } => DeviceReadRefused { status: 503, reason: "the App Attest verifier is not configured: " + (m as String) }
     VerifierReady { app_id: app_id, config: config } =>
@@ -214,9 +230,10 @@ fn admit_device_read_realized(auth: ReadAuthentication, client_data: NonEmptyStr
           if !requested_at_within_skew(requested_at: auth.requested_at, observed_at: observed_at) {
             DeviceReadRefused { status: 403, reason: "requested_at is outside the read skew window" }
           } else {
-            match assertion_for_enrollment(enrollment: e, assertion_b64: auth.assertion_b64, client_data: client_data, app_id: app_id, config: config) {
-              AssertionRefused { cause: _ } => DeviceReadRefused { status: 403, reason: "the read assertion did not verify" }
-              AssertionAuthentic { authentic: a } =>
+            match assertion_for_enrollment(enrollment: e, assertion_b64: auth.assertion_b64, client_data: client_data, app_id: app_id, config: config, gate: gate) {
+              SidecarFailed { cause: why } => DeviceReadRefused { status: 503, reason: sidecar_unavailable_reason(cause: why) }
+              SidecarAnswered { verification: AssertionRefused { cause: _ } } => DeviceReadRefused { status: 403, reason: "the read assertion did not verify" }
+              SidecarAnswered { verification: AssertionAuthentic { authentic: a } } =>
                 if a.client_data != client_data { DeviceReadRefused { status: 403, reason: "the read assertion covers other bytes" } }
                 else {
                   match admit_assertion_counter(root: approval_assertion_counter_root, enrollment_id: e.enrollment_id, observed: a.counter) {
@@ -255,16 +272,35 @@ fn enrolment_refusal_reason(r: EnrolmentRefusal) -> String {
   }
 }
 
-fn attestation_for_request(r: EnrolmentRequest, app_id: NonEmptyStr, config: AppAttestVerifierConfig, observed_at: Timestamp) -> AttestationVerification {
+fn enrolment_refusal_wire(r: EnrolmentRefusal) -> EnrolmentRefusalWire {
+  match r {
+    EnrolmentCodeNotIssued => EnrolmentRefusalCodeNotIssued
+    EnrolmentCodeAlreadyUsed => EnrolmentRefusalCodeAlreadyUsed
+    EnrolmentCodeExpired { expires_at: _, observed_at: _ } => EnrolmentRefusalCodeExpired
+    EnrolmentStoreUnreadable { detail: _ } => EnrolmentRefusalStoreUnreadable
+    EnrolmentAttestationRefused { cause: _ } => EnrolmentRefusalAttestationRefused
+    EnrolmentAttestationForOtherBytes => EnrolmentRefusalAttestationForOtherBytes
+    EnrolmentAndroidUnrealized => EnrolmentRefusalAndroidUnrealized
+  }
+}
+
+fn enrolment_refused(r: EnrolmentRefusal) -> DeviceRouteResponse {
+  DeviceRouteResponse {
+    status: enrolment_refusal_status(r: r),
+    body: enrolment_refusal_json(reason: enrolment_refusal_reason(r: r), kind: enrolment_refusal_wire(r: r)),
+  }
+}
+
+fn attestation_for_request(r: EnrolmentRequest, app_id: NonEmptyStr, config: AppAttestVerifierConfig, observed_at: Timestamp, gate: DeviceCryptoGate) -> SidecarResult<AttestationVerification> {
   match r.evidence {
-    AndroidKeyAttestationChain { chain: _ } => AttestationRefused { cause: AttestationUndecodable { cause: "no attestation verifier for Android" } }
+    AndroidKeyAttestationChain { chain: _ } => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "no attestation verifier for Android" } } }
     IosAppAttestAttestation { attest_key_id: k, attestation_b64: b } =>
       match base64_decode(s: b as String, variant: Standard) {
-        Absent => AttestationRefused { cause: AttestationUndecodable { cause: "attestation_b64 is not base64" } }
-        Present { value: object } =>
+        Absent => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "attestation_b64 is not base64" } } }
+        Present { value: _ } =>
           match attestation_expectation_for(app_id: app_id, config: config, key_id: k, client_data: enrolment_transcript(code: r.code, decision_key: r.decision_key, platform: r.platform), observed_at: observed_at) {
-            Absent => AttestationRefused { cause: AttestationUndecodable { cause: "verifier unconfigured" } }
-            Present { value: e } => verify_attestation(object: object, e: e)
+            Absent => SidecarAnswered { verification: AttestationRefused { cause: AttestationUndecodable { cause: "verifier unconfigured" } } }
+            Present { value: e } => sidecar_attestation_verification(gate: gate, object_b64: b, e: e)
           }
       }
   }
@@ -311,16 +347,18 @@ fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, 
       match decode_enrolment_request(text: body) {
         WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "enrolment request refused at " + (a as String) + ": " + (c as String))
         WireDecoded { value: r } =>
-          match device_crypto_admission(r: realization) {
-            DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
-            DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } =>
+          match device_crypto_gate(r: realization) {
+            DeviceCryptoGateRefused { status: st, reason: why } => device_refused(status: st, reason: why)
+            admitted =>
               match verifier_expectations() {
                 VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
                 VerifierReady { app_id: app_id, config: config } => {
                   let slot = observe_enrolment_slot(root: approval_device_store_root, code: r.code)
-                  let attestation = attestation_for_request(r: r, app_id: app_id, config: config, observed_at: observed_at)
+                  match attestation_for_request(r: r, app_id: app_id, config: config, observed_at: observed_at, gate: admitted) {
+                    SidecarFailed { cause: why } => sidecar_failure_response(cause: why)
+                    SidecarAnswered { verification: attestation } =>
                   match enrolment_admission(slot: slot, platform: r.platform, decision_key: r.decision_key, attestation: attestation, observed_at: observed_at) {
-                    EnrolmentRefused { cause: c } => device_refused(status: enrolment_refusal_status(r: c), reason: enrolment_refusal_reason(r: c))
+                    EnrolmentRefused { cause: c } => enrolment_refused(r: c)
                     EnrolmentAdmitted { enrollment: e } =>
                       match commit_enrolment(root: approval_device_store_root, admitted: EnrolmentAdmitted { enrollment: e }) {
                         DeviceStoreSlotOccupied => device_refused(status: 409, reason: "the code was consumed concurrently")
@@ -331,6 +369,7 @@ fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, 
                             Absent => DeviceRouteResponse { status: 200, body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: e.enrollment_id }) }
                           }
                       }
+                  }
                   }
                 }
               }
@@ -372,27 +411,27 @@ fn redemption_status(o: DeviceRedemptionOutcome) -> HttpStatus {
 // over exactly the signing input's framed bytes. With no active enrolment there is no key to
 // verify under, and the fold refuses on the slot before it reads this value; SignatureInvalid is
 // the honest carrier for "not verified", never a success.
-fn redemption_signature(slot: EnrolmentSlotStanding, r: SignedRedemption) -> SignatureVerification {
+fn redemption_signature(slot: EnrolmentSlotStanding, r: SignedRedemption, gate: DeviceCryptoGate) -> SidecarResult<SignatureVerification> {
   match slot {
-    EnrolmentCodeConsumed { enrollment: e } => verify_signature(key: e.decision_key, signature: r.signature, message: device_redemption_signing_input(i: r.signing_input))
-    EnrolmentCodeUnspent { challenge: _ } => SignatureInvalid { suite: EcdsaP256Sha256 }
-    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => SignatureInvalid { suite: EcdsaP256Sha256 }
-    EnrolmentCodeUnknown => SignatureInvalid { suite: EcdsaP256Sha256 }
-    EnrolmentSlotUnreadable { detail: _ } => SignatureInvalid { suite: EcdsaP256Sha256 }
+    EnrolmentCodeConsumed { enrollment: e } => sidecar_signature_verification(gate: gate, key: e.decision_key, signature: r.signature, message: device_redemption_signing_input(i: r.signing_input))
+    EnrolmentCodeUnspent { challenge: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    EnrolmentCodeUnknown => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
+    EnrolmentSlotUnreadable { detail: _ } => SidecarAnswered { verification: SignatureInvalid { suite: EcdsaP256Sha256 } }
   }
 }
 
-fn redemption_assertion(slot: EnrolmentSlotStanding, r: SignedRedemption, app_id: NonEmptyStr, config: AppAttestVerifierConfig) -> AssertionVerification {
+fn redemption_assertion(slot: EnrolmentSlotStanding, r: SignedRedemption, app_id: NonEmptyStr, config: AppAttestVerifierConfig, gate: DeviceCryptoGate) -> SidecarResult<AssertionVerification> {
   match slot {
     EnrolmentCodeConsumed { enrollment: e } =>
       match r.platform_proof {
-        AndroidDecisionKeyOnly => AssertionRefused { cause: AssertionUndecodable { cause: "no platform proof verifier for Android" } }
-        IosAppAttestAssertion { assertion_b64: b } => assertion_for_enrollment(enrollment: e, assertion_b64: b, client_data: device_redemption_signing_input(i: r.signing_input), app_id: app_id, config: config)
+        AndroidDecisionKeyOnly => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no platform proof verifier for Android" } } }
+        IosAppAttestAssertion { assertion_b64: b } => assertion_for_enrollment(enrollment: e, assertion_b64: b, client_data: device_redemption_signing_input(i: r.signing_input), app_id: app_id, config: config, gate: gate)
       }
-    EnrolmentCodeUnspent { challenge: _ } => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
-    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
-    EnrolmentCodeUnknown => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
-    EnrolmentSlotUnreadable { detail: _ } => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
+    EnrolmentCodeUnspent { challenge: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
+    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
+    EnrolmentCodeUnknown => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
+    EnrolmentSlotUnreadable { detail: _ } => SidecarAnswered { verification: AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } } }
   }
 }
 
@@ -410,23 +449,32 @@ fn device_redeem_response_at(realization: DeviceCryptoRealization, body: String,
       match decode_signed_redemption(text: body) {
         WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "redemption refused at " + (a as String) + ": " + (c as String))
         WireDecoded { value: r } =>
-          match device_crypto_admission(r: realization) {
-            DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
-            DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } =>
+          match device_crypto_gate(r: realization) {
+            DeviceCryptoGateRefused { status: st, reason: why } => device_refused(status: st, reason: why)
+            admitted =>
               match verifier_expectations() {
                 VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
                 VerifierReady { app_id: app_id, config: config } => {
                   let slot = observe_enrollment(root: approval_device_store_root, enrollment_id: r.signing_input.enrollment_id)
-                  let outcome = redeem_device_over_store(
-                    root: approval_decision_store_root,
-                    keyring: read_approval_keyring(),
-                    enrolment: slot,
-                    signed: r.signing_input,
-                    signature: redemption_signature(slot: slot, r: r),
-                    assertion: redemption_assertion(slot: slot, r: r, app_id: app_id, config: config),
-                    observed_at: observed_at,
-                  )
-                  DeviceRouteResponse { status: redemption_status(o: outcome), body: redemption_response_json(r: redemption_response_of(o: outcome)) }
+                  match redemption_signature(slot: slot, r: r, gate: admitted) {
+                    SidecarFailed { cause: why } => sidecar_failure_response(cause: why)
+                    SidecarAnswered { verification: signature } =>
+                      match redemption_assertion(slot: slot, r: r, app_id: app_id, config: config, gate: admitted) {
+                        SidecarFailed { cause: why } => sidecar_failure_response(cause: why)
+                        SidecarAnswered { verification: assertion } => {
+                          let outcome = redeem_device_over_store(
+                            root: approval_decision_store_root,
+                            keyring: read_approval_keyring(),
+                            enrolment: slot,
+                            signed: r.signing_input,
+                            signature: signature,
+                            assertion: assertion,
+                            observed_at: observed_at,
+                          )
+                          DeviceRouteResponse { status: redemption_status(o: outcome), body: redemption_response_json(r: redemption_response_of(o: outcome)) }
+                        }
+                      }
+                  }
                 }
               }
           }
@@ -536,7 +584,7 @@ fn device_request_response_at(realization: DeviceCryptoRealization, body: String
 
 // ── POST /approve/device/enrollments/<segment> ───────────────────────────────────────────────
 // The readback authenticates under the enrolment it asks about, so a revoked enrolment answers
-// through the read admission's refusal, and an unknown one is 404 before any verification.
+// through the read gate's refusal, and an unknown one is 404 before any verification.
 fn device_enrollment_readback_response(body: String, segment: String) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()

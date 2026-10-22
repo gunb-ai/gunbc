@@ -26,10 +26,12 @@ import extdeps.bmc.ipmi_sdr {
   TemperatureNoSensorRows,
   TemperatureUndecodable,
   sdr_decode_lines,
+  sdr_unrecognised_temperature_texts,
   sdr_decoded_lines,
   sdr_fan_reading,
   sdr_temperature_publication,
   sdr_unstructured_count,
+  sdr_unstructured_texts,
 }
 import product.fan_tach { FanTachEndpointIdentity }
 import product.host_identity { HostIdentity }
@@ -97,7 +99,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // with the boot handoff's power-state read.
 
 type ThermalObservation
-  = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount }
+  = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount, unrecognised_readings: List<String> }
   | ThermalUnreadable
 
 // THE FAN READ GETS THE SAME ARM, AND IT IS THE FOURTH TIME THIS ONE DEFECT HAS BEEN FIXED IN THIS
@@ -114,7 +116,7 @@ type ThermalObservation
 // read, not of a round, and putting it inside the arm makes that unwritable rather than merely
 // avoided.
 type FanSensorObservation
-  = FanSensorsRead { lines: List<SdrTypeLine>, undecoded_line_count: SdrUndecodedLineCount }
+  = FanSensorsRead { lines: List<SdrTypeLine>, undecoded_lines: List<String> }
   | FanSensorsUnreadable
 
 type FanObservationRound {
@@ -175,7 +177,7 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
     } else {
       match round.thermal {
         ThermalUnreadable => HostPostStateUnobserved
-        ThermalRead { publication: p, undecoded_line_count: _ } => match p {
+        ThermalRead { publication: p, undecoded_line_count: _, unrecognised_readings: _ } => match p {
           TemperaturePublished => HostPosted
           TemperatureSensorsSilent => HostPoweredOnPrePost
           TemperatureUndecodable => HostPostStateUnobserved
@@ -257,7 +259,7 @@ fn fan_observation(success: Bool, results: List<SdrLineResult>) -> FanSensorObse
   if success {
     FanSensorsRead {
       lines: sdr_decoded_lines(results: results),
-      undecoded_line_count: sdr_unstructured_count(results: results),
+      undecoded_lines: sdr_unstructured_texts(results: results),
     }
   } else {
     FanSensorsUnreadable
@@ -277,6 +279,7 @@ fn thermal_observation(success: Bool, results: List<SdrLineResult>) -> ThermalOb
     ThermalRead {
       publication: sdr_temperature_publication(results: results),
       undecoded_line_count: sdr_unstructured_count(results: results),
+      unrecognised_readings: sdr_unrecognised_temperature_texts(results: results),
     }
   } else {
     ThermalUnreadable
@@ -423,23 +426,23 @@ fn render_round(round: FanObservationRound) -> String {
 fn round_fan_lines(round: FanObservationRound) -> List<SdrTypeLine> {
   match round.fans {
     FanSensorsUnreadable => []
-    FanSensorsRead { lines: l, undecoded_line_count: _ } => l
+    FanSensorsRead { lines: l, undecoded_lines: _ } => l
   }
 }
 
 fn render_fan_observation(fans: FanSensorObservation) -> String {
   match fans {
     FanSensorsUnreadable => "UNREAD"
-    FanSensorsRead { lines: l, undecoded_line_count: u } =>
-      join(["sensors=", to_string(l.length()), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+    FanSensorsRead { lines: l, undecoded_lines: u } =>
+      join(["sensors=", to_string(l.length()), " undecoded=", to_string(u.length())], "")
   }
 }
 
 fn render_thermal_detail(thermal: ThermalObservation) -> String {
   match thermal {
     ThermalUnreadable => "UNREAD"
-    ThermalRead { publication: p, undecoded_line_count: u } =>
-      join([render_thermal_publication(publication: p), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+    ThermalRead { publication: p, undecoded_line_count: u, unrecognised_readings: r } =>
+      join([render_thermal_publication(publication: p), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u)), " unrecognised=", to_string(r.length())], "")
   }
 }
 
@@ -469,9 +472,17 @@ fn render_fan_line(round: FanObservationRound, line: SdrTypeLine) -> String {
   ], "")
 }
 
+fn round_undecoded_fan_lines(round: FanObservationRound) -> List<String> {
+  match round.fans {
+    FanSensorsUnreadable => []
+    FanSensorsRead { lines: _, undecoded_lines: u } => u
+  }
+}
+
 fn render_round_block(round: FanObservationRound) -> String {
   join([render_round(round: round)]
-    .concat(map(round_fan_lines(round: round), l => render_fan_line(round: round, line: l))), "\n")
+    .concat(map(round_fan_lines(round: round), l => render_fan_line(round: round, line: l)))
+    .concat(map(round_undecoded_fan_lines(round: round), t => join(["  round=", to_string(round.round_index), " fan_undecoded_line=[", t, "]"], ""))), "\n")
 }
 
 fn render_series(rounds: List<FanObservationRound>) -> String {

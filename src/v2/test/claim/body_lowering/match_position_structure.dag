@@ -11,8 +11,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Bind, ComputationNode, Found, Match, Node, Symbol, node_subtree_nodes, MatchArmBodyEdge, core_edge_target_lookup }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Bind, ComputationNode, Found, Match, Node, Symbol, node_subtree_nodes, MatchArmBodyEdge, core_edge_target_lookup }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -107,7 +106,7 @@ fn mps_is_unary_call(n: Node, callee: Symbol, arg: Symbol) -> Bool {
 }
 
 fn mps_positional(n: Node, i: Int) -> Optional<Node> {
-  list_at_optional(xs: node_positional_child_targets(node: n), index: i)
+  list_at_optional(xs: positional_child_target_nodes(node: n), index: i)
 }
 
 // A Match whose scrutinee (its first positional child, v2.std.compilers.body_lowering lower_match)

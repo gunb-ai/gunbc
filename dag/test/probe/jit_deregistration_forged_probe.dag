@@ -18,7 +18,7 @@ import gunbc.runner.jit_registration_subject { JitRegistrationSubject }
 import gunbc.runner.runner_jit_perform { JitMintDispatch, JitMintDispatchAuthorized, AuthorizedJitMintDispatch }
 import gunbc.github_effect_perform { OrganizationRunnerListRead }
 import gunbc.runner.runner_jit_deregistration {
-  JitRegistration, JitDeregistration, JitDeregistrationReceipt, JitRunnerDeregistered, JitSlotExit, SlotJobCompleted,
+  JitRegistration, JitDeregistrationSubject, AuthorizedDispatchRegistration, RecoveredReservedRegistration, RecoveredReservedServiceRegistration, JitDeregistration, JitDeregistrationReceipt, JitRunnerDeregistered, JitSlotExit, SlotListenerExitedClean,
   jit_registration_of, conclude_from_readback,
 }
 
@@ -75,10 +75,23 @@ fn forged_listing(app: DeclaredGitHubApp, installation: GitHubAppInstallationId)
 // (d) THE RECEIPT'S CONSTRUCTOR, CALLED FROM OUTSIDE THE ENSURE with a real registration beside a
 // listing of the caller's choosing. Refuses at conclude_from_readback.
 fn unadmitted_conclusion(registration: JitRegistration, readback: OrganizationRunnerListRead) -> JitDeregistration {
-  conclude_from_readback(registration: registration, exit: SlotJobCompleted, deletes: [], readback: readback)
+  conclude_from_readback(subject: AuthorizedDispatchRegistration { registration: registration }, exit: SlotListenerExitedClean, deletes: [], readback: readback)
 }
 
 // (e) A HAND-BUILT SUCCESS RECEIPT. Refuses at JitDeregistrationReceipt.
 fn forged_receipt(registration: JitRegistration, readback: OrganizationRunnerListRead) -> JitDeregistration {
-  JitRunnerDeregistered { receipt: JitDeregistrationReceipt { registration: registration, exit: SlotJobCompleted, deletes: [], readback: readback } }
+  JitRunnerDeregistered { receipt: JitDeregistrationReceipt { subject: AuthorizedDispatchRegistration { registration: registration }, exit: SlotListenerExitedClean, deletes: [], readback: readback } }
+}
+
+// (f) A HAND-BUILT RECOVERED SUBJECT: the deletable name chosen by the caller, bypassing the
+// service-slot round trip. Refuses at RecoveredReservedRegistration.
+fn forged_recovered(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitDeregistrationSubject {
+  RecoveredReservedServiceRegistration {
+    recovered: RecoveredReservedRegistration {
+      organization: GitHubOrganizationRef { login: "gunb-ai" },
+      name: JitRunnerName { value: "victim-runner" },
+      app: app,
+      installation: installation,
+    },
+  }
 }

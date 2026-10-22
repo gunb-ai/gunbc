@@ -570,6 +570,7 @@ fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCo
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
     decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_open"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_open"),
   ]
 {
   let reserved = codec.with_state(record, AttemptReserved)
@@ -644,6 +645,7 @@ fn attempt_terminate_payload<P>(
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_terminate"),
     decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_terminate"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_close"),
   ]
 {
   attempt_advance_payload(

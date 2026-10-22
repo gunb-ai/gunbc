@@ -1,0 +1,180 @@
+module test.claim.roadmap.worker_dedicated_account_witness
+
+import std.types { Bool, NonEmptyStr, List, String }
+import std.optional { Present, Absent }
+import std.measure { kibibyte }
+import extdeps.systemd { systemd_service_unit_name, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_worker_user,
+  HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
+  dashboard_instance_dispatch_worktree_directory, dashboard_instance_dispatch_attempt_state_directory,
+  dashboard_instance_provider_state_directory, dashboard_instance_worker_git_directories,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_unit_stem, dispatch_review_unit_properties }
+import extdeps.systemd { NoNewPrivilegesProperty, RestrictSUIDSGIDProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet }
+import gunbc.roadmap.attempt_system_unit_launch {
+  AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
+  attempt_system_unit_start_admitted,
+}
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryManaged }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode_octal }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_worker_shared_group_gid,
+  fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_automation_user, fleet_posix_root_user,
+  fleet_srv1_observed_numeric_ids,
+  fleet_posix_worker_supplementary_groups, fleet_root_equivalent_group_names,
+}
+
+// WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
+// gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds
+// no root-equivalent group; the srv1 lab opts in, prod stays on the service user (the staged form of
+// the replacement migration; see HostDashboardInstance worker).
+
+fn start_facts(instance: HostDashboardInstance, user: NonEmptyStr) -> AttemptSystemUnitStartFacts? {
+  match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: "n", attempt_key: "k")) {
+    SystemdUnitNameStemEmpty => none
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => none
+    SystemdUnitNameOverlong { length: _ } => none
+    SystemdUnitNameAdmitted { name } => Present {
+      value: AttemptSystemUnitStartFacts {
+        unit: name, node_id: "n", attempt_key: "k", user: user,
+        working_directory: instance.repo_root as String, attempt_worktree: "/tmp/wt",
+        stdout_path: "/tmp/out", stderr_path: "/tmp/err", granted: kibibyte(count: 1),
+        exit_hook: "true" as NonEmptyStr, inner_argv: [instance.serve_binary as String],
+      },
+    }
+  }
+}
+
+fn admits_user(instance: HostDashboardInstance, user: NonEmptyStr) -> Bool {
+  match start_facts(instance: instance, user: user) {
+    Absent => false
+    Present { value: facts } =>
+      match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+        AttemptSystemUnitAdmitted { unit: _, facts: _ } => true
+        AttemptSystemUnitRefused { reason: _ } => false
+      }
+  }
+}
+
+fn declared_owner_group(t: OwnedDirectoryTarget) -> String {
+  match t {
+    OwnedDirectoryDeclared { member: _, path: _, owner, mode: _ } => owner.group as String
+    OwnedDirectoryManaged { directory: _ } => ""
+  }
+}
+
+fn declared_mode_octal(t: OwnedDirectoryTarget) -> String {
+  match t {
+    OwnedDirectoryDeclared { member: _, path: _, owner: _, mode } => declared_directory_mode_octal(m: mode)
+    OwnedDirectoryManaged { directory: _ } => ""
+  }
+}
+
+// CLAIM 1 (RED on main: HostDashboardInstance has no worker and the lab's unit runs as the service user).
+test fn the_lab_worker_unit_runs_as_the_dedicated_account() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  (dashboard_instance_worker_user(instance: lab) as String) == (fleet_posix_worker_user.name as String)
+    && (dashboard_instance_worker_user(instance: lab) as String) != (lab.directory_owner.user as String)
+    && admits_user(instance: lab, user: fleet_posix_worker_user.name)
+    && !admits_user(instance: lab, user: lab.directory_owner.user)
+}
+
+// The staged form: prod still derives the owner.
+test fn the_live_worker_unit_still_runs_as_the_service_user() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  (dashboard_instance_worker_user(instance: live) as String) == (live.directory_owner.user as String)
+    && admits_user(instance: live, user: live.directory_owner.user)
+    && !admits_user(instance: live, user: fleet_posix_worker_user.name)
+}
+
+// DECLARATION CHECK, NOT HOST EVIDENCE: compares two declared lists. It cannot go red if the host account
+// is hand-created inside docker; that needs a host readback (declared frontier, not built here).
+test fn the_worker_account_holds_no_root_equivalent_group() -> Bool {
+  all(fleet_posix_worker_supplementary_groups, g =>
+    !any(fleet_root_equivalent_group_names, bad => (bad as String) == (g as String)))
+    && (fleet_posix_worker_user.uid != 0)
+}
+
+// CLAIM 3 (control): the worker can still write what it needs; the service user keeps owning it.
+test fn the_lab_attempt_directories_are_shared_with_the_worker() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let group = fleet_posix_worker_shared_group_name as String
+  declared_owner_group(t: dashboard_instance_dispatch_worktree_directory(instance: lab)) == group
+    && declared_owner_group(t: dashboard_instance_dispatch_attempt_state_directory(instance: lab)) == group
+    && declared_owner_group(t: dashboard_instance_provider_state_directory(instance: lab)) == group
+    && declared_mode_octal(t: dashboard_instance_dispatch_worktree_directory(instance: lab)) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
+    && declared_mode_octal(t: dashboard_instance_dispatch_attempt_state_directory(instance: lab)) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
+}
+
+test fn the_live_attempt_directories_keep_their_staged_owner_and_mode() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  declared_owner_group(t: dashboard_instance_dispatch_attempt_state_directory(instance: live)) == (live.directory_owner.group as String)
+    && declared_mode_octal(t: dashboard_instance_dispatch_attempt_state_directory(instance: live)) == declared_directory_mode_octal(m: DirectoryOwnerOnly)
+    && declared_mode_octal(t: dashboard_instance_dispatch_worktree_directory(instance: live)) == declared_directory_mode_octal(m: DirectoryOwnerAllEveryoneTraverse)
+}
+
+// CLAIM 1 (RED on main: gunbc-worker declared 1002, which srv1 reads as ubuntu's uid and gid). Declared
+// accounts of different names share no uid and no gid, the attempt group's gid is none of their ids, and
+// none of the ids srv1 was READ holding (a supplied reading, fleet_srv1_observed_numeric_ids) is the
+// worker's or the attempt group's. ghrunner and gunbc-fleet are one declared slot (1001) on different hosts.
+test fn the_worker_ids_collide_with_no_other_declared_or_observed_account() -> Bool {
+  let w = fleet_posix_worker_user
+  let others = [fleet_posix_root_user, fleet_posix_operator_user, fleet_automation_user]
+  all(others, o => o.uid != w.uid && o.gid != w.gid)
+    && fleet_posix_worker_shared_group_gid != w.gid
+    && fleet_posix_worker_shared_group_gid != w.uid
+    && all(fleet_srv1_observed_numeric_ids, n => n != w.uid && n != w.gid && n != fleet_posix_worker_shared_group_gid)
+}
+
+// CLAIM 2 (RED on main: the git directories had no declaration). The lab derives objects, refs and logs
+// as gunbc-attempt group-writable setgid, and not .git itself, hooks, config or info; the staged prod arm
+// declares none.
+test fn the_lab_git_carve_outs_are_group_writable_setgid_and_nothing_wider() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let dirs = dashboard_instance_worker_git_directories(instance: lab)
+  let setgid = declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
+  length(dirs) == 3
+    && all(dirs, d => declared_owner_group(t: d) == (fleet_posix_worker_shared_group_name as String)
+      && declared_mode_octal(t: d) == setgid)
+    && length(dashboard_instance_worker_git_directories(instance: srv1_live_dashboard_instance())) == 0
+    && any(dirs, d => owned_path_text(t: d) == join([lab.repo_root as String, "/.git/objects"], ""))
+    && !any(dirs, d => owned_path_text(t: d) == join([lab.repo_root as String, "/.git"], ""))
+}
+
+fn owned_path_text(t: OwnedDirectoryTarget) -> String {
+  match t {
+    OwnedDirectoryDeclared { member: _, path, owner: _, mode: _ } => path as String
+    OwnedDirectoryManaged { directory: _ } => ""
+  }
+}
+
+fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
+  any(props, p => match p {
+    NamedUnitSetting { property: NoNewPrivilegesProperty, value: _ } => true
+    _ => false
+  })
+    && any(props, p => match p {
+    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: _ } => true
+    _ => false
+  })
+    && any(props, p => match p {
+    EmptyCapabilityBoundingSet => true
+    _ => false
+  })
+}
+
+// CLAIM 4 (RED on main: the review, audit and supervisor property set, one function, lacked all three).
+test fn the_review_audit_and_supervisor_units_carry_the_worker_confinement() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  carries_privilege_confinement(props: dispatch_review_unit_properties(
+    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr))
+}
+
+// CLAIM 3: the lab worker's User= is derived as gunbc-worker and applied on the system-manager path;
+// the admission claims above execute attempt_system_unit_start_admitted, which is the only launcher
+// that sets User= (the belt's SystemdUnitContainer arm enqueues through attempt_system_unit_enqueue_start).
+test fn the_lab_system_launch_applies_the_dedicated_user() -> Bool {
+  admits_user(instance: srv1_lab_dashboard_instance(), user: fleet_posix_worker_user.name)
+}

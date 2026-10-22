@@ -15,14 +15,13 @@ use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::{
 use crate::std_occurrence_binding_candidates::OccurrenceModulePathIndexRefusal::*;
 pub use crate::std_occurrence_binding_candidates::{
     candidate_occurrence_ids_for_reference, occurrence_candidate_index_build,
-};
-pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderIndexRefusal, DeclarationExposureIndexRefusal, OccurrenceBindingCandidateInputs,
     OccurrenceCandidateIndexBuild, OccurrenceModulePathIndexRefusal,
 };
-pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated;
-pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::*;
+pub use crate::std_occurrence_binding_resolve::{
+    resolve_reference_occurrence_binding_validated, OccurrenceReferenceBindingOutcome,
+};
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
 pub use crate::std_occurrence_identity::{
     OccurrenceId, OccurrenceTransport, OccurrenceTransportRefusal, ReferenceOccurrence,

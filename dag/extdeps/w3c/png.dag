@@ -3,7 +3,7 @@ module extdeps.w3c.png
 import std.types { Int, List }
 import std.logic { Bool }
 import std.optional { Absent, Present }
-import std.bitwise { word32_xor, word32_not, nibbles_xor, nibble_values }
+import std.machine_word { word32_xor, word32_not, machine_word_apply, OperatorXor, Width8 }
 import extdeps.color.srgb { Srgb8, srgb8_admissible }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -44,8 +44,11 @@ fn png_crc_entry(n: Int) -> Int {
 }
 
 // Entry n is the register after shifting n through eight bits. Derived, never transcribed.
-data png_crc_table: List<Int> = fold(nibble_values(), init: [], f: (acc, hi) =>
-  fold(nibble_values(), init: acc, f: (row, lo) => row |> list_push(png_crc_entry(n: hi * 16 + lo))))
+data png_crc_table: List<Int> = png_crc_entries(n: 256, acc: [])
+
+fn png_crc_entries(n: Int, acc: List<Int>) -> List<Int> {
+  if n <= 0 { acc } else { png_crc_entries(n: n - 1, acc: acc |> list_push(png_crc_entry(n: 256 - n))) }
+}
 
 // The Absent arm is the definition itself and is unreachable for an index below 256.
 fn png_crc_lookup(i: Int) -> Int {
@@ -58,7 +61,7 @@ fn png_crc_lookup(i: Int) -> Int {
 // One octet into the register: the low octet of the register meets the input, the table entry it
 // selects meets the register's remaining three octets.
 fn png_crc_step(crc: Int, octet: Int) -> Int {
-  word32_xor(a: png_crc_lookup(i: nibbles_xor(a: crc % 256, b: octet, digits: 2)), b: crc / 256)
+  word32_xor(a: png_crc_lookup(i: machine_word_apply(op: OperatorXor, width: Width8, a: crc % 256, b: octet)), b: crc / 256)
 }
 
 // The register continued over more octets, before the final complement.

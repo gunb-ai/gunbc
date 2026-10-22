@@ -19,8 +19,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
-import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Hash, Node, Symbol, content_hash, node_subtree_nodes }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string }
 import v2.std.map_introduction { MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, map_introduction_duplicate_key, map_introduction_head_path }
 import v2.std.text { String }
@@ -182,7 +181,7 @@ fn ml_mixed_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
 // Every node under the root that is a call headed by the introduction, in tree order.
 fn ml_introductions(root: Node) -> List<Node> {
   fold(node_subtree_nodes(root: root), init: Empty, f: fn(acc, n) {
-    match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+    match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
       Present { value: head } =>
         match declaration_reference_path_optional(node: head) {
           Present { value: path } => if path == map_introduction_head_path() { list_snoc_item(xs: acc, item: n) } else { acc }

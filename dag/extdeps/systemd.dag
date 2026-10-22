@@ -14,6 +14,7 @@ import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatRea
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -114,6 +115,9 @@ type SystemdUnitProperty
   | JobProperty
   | NoNewPrivilegesProperty
   | RestrictSUIDSGIDProperty
+  // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
+  // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
+  | DelegateProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
 //
@@ -201,6 +205,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     JobProperty => "Job" as NonEmptyStr
     NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    DelegateProperty => "Delegate" as NonEmptyStr
   }
 }
 
@@ -283,7 +288,7 @@ fn systemd_time_span_unit_usec(unit: String) -> Nat? {
 }
 
 fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
-  let scan = fold(chars(s: part), init: 0, f: (n, c) =>
+  let scan = fold(chars(text: part), init: 0, f: (n, c) =>
     if n < 0 { n } else if c >= 48 && c <= 57 { n + 1 } else { 0 - n - 1 })
   let digits = if scan < 0 { 0 - scan - 1 } else { scan }
   if digits == 0 {
@@ -623,7 +628,7 @@ fn systemd_unit_name_char_admitted(cp: Int) -> Bool {
 }
 
 fn systemd_unit_name_first_disallowed(stem: String) -> String? {
-  match fold(chars(s: stem), init: SystemdUnitNameCharsWalking { index: 0 }, f: (acc, cp) =>
+  match fold(chars(text: stem), init: SystemdUnitNameCharsWalking { index: 0 }, f: (acc, cp) =>
     match acc {
       SystemdUnitNameCharHit { index: i } => SystemdUnitNameCharHit { index: i }
       SystemdUnitNameCharsWalking { index: i } =>

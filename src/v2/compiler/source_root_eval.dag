@@ -77,6 +77,9 @@ import v2.compiler.infer {
 import v2.compiler.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
+import v2.compiler.occurrence_binding_census {
+  occurrence_binding_contribution, occurrence_binding_contribution_lines, occurrence_binding_partial_lines, occurrence_binding_locus_text
+}
 import v2.compiler.name_resolve {
   resolution_context_namespace,
   closure_declarations_demand,
@@ -94,6 +97,7 @@ import std.occurrence_identity {
   OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
+  authored_occurrence_of,
   occurrence_id_allocator_initial,
   scoped_occurrence_allocator,
 }
@@ -138,12 +142,12 @@ import std.optional {
 import v2.std.provenance {
   SpanIndex,
   node_authored_span_optional,
-  node_occurrence_id_optional,
   span_index_empty,
   span_index_textual_locus_optional,
 }
 import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import v2.std.source_position {
+  SourceLineCol,
   SourcePositionIndex,
   source_line_col_in,
   source_position_index,
@@ -206,6 +210,7 @@ import v2.compiler.module_acquisition {
   CensusMemberSitesUnreadable,
   acquire_census_closure_of,
   acquire_verified,
+  acquisition_reached,
   acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
@@ -264,6 +269,7 @@ import v2.compiler.dependency_demand {
   FunctionFact,
   OperationFact,
 }
+import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
   AuthoredTypeUnresolved,
@@ -297,6 +303,7 @@ import v2.compiler.parse {
   PreparedGrammar,
 }
 import v2.compiler.resolve {
+  OccurrenceBindingEntry,
   ResolveContext,
   resolve_ctx_init,
   ObservationComplete,
@@ -340,6 +347,7 @@ import std.algebra {
   Empty,
   FreeMonoid,
   FreeSemigroup,
+  string_contains,
   trim,
   list_append,
   list_snoc_item,
@@ -355,6 +363,7 @@ import std.algebra {
   map_contains_key,
   map_insert,
   map_lookup,
+  map_support_keys,
 }
 import v2.std.integer {
   Int,
@@ -411,6 +420,7 @@ import v2.compiler.inferred_tree {
   AuthoredOccurrenceCollision,
   DerivedGrounding,
   GroundingNotDerived,
+  NotDerivedSite,
   authored_occurrence_collisions,
 }
 import v2.std.node_query {
@@ -548,6 +558,7 @@ type NativeInferAdvisoryCount {
 
 type NativeInferAcceptedFrontier {
   grounding_not_derived: Int
+  not_derived_sites: List<NativeInferSiteCount>
   advisories: List<NativeInferAdvisoryCount>
 }
 
@@ -577,16 +588,38 @@ fn native_infer_advisory_counts(d: Diagnostics) -> List<NativeInferAdvisoryCount
   }
 }
 
-fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
+// THE CENSUS OF WHICH SITE LEFT EACH NODE UNDERIVED (v2.compiler.inferred_tree NotDerivedSite). The advisory
+// is one reason, so its count says how many and never why; the site on each GroundingNotDerived fact is the
+// cause. One row per site present, in first-met order, keyed on the NotDerivedSite value itself. The frontier's
+// grounding_not_derived total is the sum of these rows: one walk, not two.
+type NativeInferSiteCount {
+  site: NotDerivedSite
+  count: Int
+}
+
+fn native_infer_site_counts_add(acc: List<NativeInferSiteCount>, site: NotDerivedSite) -> List<NativeInferSiteCount> {
+  match acc {
+    Empty => [NativeInferSiteCount { site: site, count: 1 }]
+    Cons { head: row, tail: rest } =>
+      if row.site == site {
+        Cons { head: NativeInferSiteCount { site: site, count: row.count + 1 }, tail: rest }
+      } else {
+        Cons { head: row, tail: native_infer_site_counts_add(acc: rest, site: site) }
+      }
+  }
+}
+
+fn native_infer_not_derived_site_counts(tree: InferredTree) -> List<NativeInferSiteCount> {
   fold_list(
     xs: node_subtree_nodes(root: tree.root),
-    empty: 0,
+    empty: [],
     cons: fn(acc, n) {
       match tree.facts.lookup(n) {
         Absent => acc
         Present { value: facts } =>
           match facts.grounding {
-            GroundingNotDerived { node: _ } => acc + 1
+            GroundingNotDerived { node: _, site: s } =>
+              native_infer_site_counts_add(acc: acc, site: s)
             DerivedGrounding { grounding: _ } => acc
           }
       }
@@ -594,11 +627,20 @@ fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
   )
 }
 
-fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
+fn native_infer_site_rows_total(rows: List<NativeInferSiteCount>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.count })
+}
+
+fn native_infer_accepted_frontier_from_sites(sites: List<NativeInferSiteCount>, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
   NativeInferAcceptedFrontier {
-    grounding_not_derived: native_infer_grounding_not_derived_count(tree: tree),
+    grounding_not_derived: native_infer_site_rows_total(rows: sites),
+    not_derived_sites: sites,
     advisories: native_infer_advisory_counts(d: diagnostics)
   }
+}
+
+fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
+  native_infer_accepted_frontier_from_sites(sites: native_infer_not_derived_site_counts(tree: tree), diagnostics: diagnostics)
 }
 
 fn native_infer_advisory_count_for(frontier: NativeInferAcceptedFrontier, reason: Symbol) -> Int {
@@ -1323,7 +1365,6 @@ fn native_test_eval_one(
             TypeNode { connective: Atom { identity: _ } } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Conj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Disj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
-            TypeNode { connective: Occupancy } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             TypeNode { connective: Instantiation } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
             ComputationNode { behavior: _ } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
           }
@@ -1499,7 +1540,8 @@ type NativeDriverVerb
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
   | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
-  | NativeDriverCensusScoped { subject: String, against: Optional<String>, source_roots: FreeMonoid<String> }
+  | NativeDriverDeclRefCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
 type NativeDriverPlan
@@ -1517,6 +1559,8 @@ data native_driver_verb_census_infer: String = "census-infer"
 
 data native_driver_verb_demand_census: String = "demand-census"
 
+data native_driver_verb_decl_ref_census: String = "decl-ref-census"
+
 data native_driver_verb_census_scoped: String = "census-scoped"
 
 data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
@@ -1525,9 +1569,13 @@ data native_driver_census_scoped_against_flag: String = "--against"
 
 data native_driver_census_scoped_needs_against: String = "REFUSED: census-scoped --against takes the path of a previous run record"
 
+// A RUN RECORD NAMES ONE SUBJECT (CensusRunRecord.subject), so a baseline is comparable only to a run
+// over that one subject's closure; a union run is a different population and has no record to compare.
+data native_driver_census_scoped_against_one_subject: String = "REFUSED: census-scoped --against compares one subject's run record; a run over several subjects has none"
+
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | decl-ref-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1560,10 +1608,11 @@ type NativeDriverParseState
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
+  | DriverDeclRefCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusScopedSeekSubject
-  | DriverCensusScopedAfterSubject { subject: String }
+  | DriverCensusScopedAfterSubject { subject: String, rest: List<String> }
   | DriverCensusScopedSeekAgainst { subject: String }
-  | DriverCensusScopedRoots { subject: String, against: Optional<String>, roots: FreeMonoid<String> }
+  | DriverCensusScopedRoots { subject: String, rest: List<String>, against: Optional<String>, roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
   | DriverAdjudicateOptions { facts_path: String }
   | DriverAdjudicateSeekPatternValue { facts_path: String }
@@ -1573,7 +1622,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped or demand-census"
+    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census or decl-ref-census"
   )
 }
 
@@ -1593,6 +1642,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusInferRoots { roots: [] }
       } else if word == native_driver_verb_demand_census {
         DriverDemandCensusRoots { roots: [] }
+      } else if word == native_driver_verb_decl_ref_census {
+        DriverDeclRefCensusRoots { roots: [] }
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
@@ -1611,22 +1662,37 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverDeclRefCensusRoots { roots: roots } =>
+      DriverDeclRefCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusScopedSeekSubject =>
       match native_census_subject_module(label: word) {
         NativeCensusSubjectModuleUnavailable { reason: reason } =>
           DriverParseRefused { reason: reason, detail: concat("REFUSED: census-scoped subject ", word, " names no module") }
-        NativeCensusSubjectModuleNamed { module: _ } => DriverCensusScopedAfterSubject { subject: word }
+        NativeCensusSubjectModuleNamed { module: _ } => DriverCensusScopedAfterSubject { subject: word, rest: [] }
       }
-    DriverCensusScopedAfterSubject { subject: subject } =>
+    // FURTHER SUBJECTS: a word spelled as a label (`//...`) before the first root is one more subject, and
+    // the run reads the UNION of their closures once (native_lane_census_scoped_ingest). A source root is
+    // a directory path and never begins with `//`, so the two never share a spelling.
+    DriverCensusScopedAfterSubject { subject: subject, rest: rest } =>
       if word == native_driver_census_scoped_against_flag {
-        DriverCensusScopedSeekAgainst { subject: subject }
+        if length(xs: rest) == 0 {
+          DriverCensusScopedSeekAgainst { subject: subject }
+        } else {
+          DriverParseRefused { reason: ^native_driver_census_scoped_against_one_subject, detail: native_driver_census_scoped_against_one_subject }
+        }
+      } else if starts_with(s: word, prefix: "//") {
+        match native_census_subject_module(label: word) {
+          NativeCensusSubjectModuleUnavailable { reason: reason } =>
+            DriverParseRefused { reason: reason, detail: concat("REFUSED: census-scoped subject ", word, " names no module") }
+          NativeCensusSubjectModuleNamed { module: _ } => DriverCensusScopedAfterSubject { subject: subject, rest: list_snoc_item(xs: rest, item: word) }
+        }
       } else {
-        DriverCensusScopedRoots { subject: subject, against: optional_absent(), roots: [word] }
+        DriverCensusScopedRoots { subject: subject, rest: rest, against: optional_absent(), roots: [word] }
       }
     DriverCensusScopedSeekAgainst { subject: subject } =>
-      DriverCensusScopedRoots { subject: subject, against: optional_present(value: word), roots: [] }
-    DriverCensusScopedRoots { subject: subject, against: against, roots: roots } =>
-      DriverCensusScopedRoots { subject: subject, against: against, roots: list_snoc_item(xs: roots, item: word) }
+      DriverCensusScopedRoots { subject: subject, rest: [], against: optional_present(value: word), roots: [] }
+    DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: roots } =>
+      DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateOptions { facts_path: word }
     DriverAdjudicateOptions { facts_path: facts_path } =>
@@ -1683,20 +1749,22 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
+    DriverDeclRefCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverDeclRefCensus { source_roots: roots } }
     DriverCensusScopedSeekSubject =>
       NativeDriverPlanRefused {
         reason: ^native_driver_census_scoped_without_subject,
         detail: native_driver_census_scoped_needs_subject
       }
-    DriverCensusScopedAfterSubject { subject: subject } =>
-      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, against: optional_absent(), source_roots: [] } }
+    DriverCensusScopedAfterSubject { subject: subject, rest: rest } =>
+      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, subjects_rest: rest, against: optional_absent(), source_roots: [] } }
     DriverCensusScopedSeekAgainst { subject: _ } =>
       NativeDriverPlanRefused {
         reason: ^native_driver_census_scoped_against_without_path,
         detail: native_driver_census_scoped_needs_against
       }
-    DriverCensusScopedRoots { subject: subject, against: against, roots: roots } =>
-      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, against: against, source_roots: roots } }
+    DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, subjects_rest: rest, against: against, source_roots: roots } }
     DriverAdjudicateOptions { facts_path: facts_path } =>
       NativeDriverPlanned {
         verb: NativeDriverAdjudicate {
@@ -1736,7 +1804,8 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
         NativeDriverDemandCensus { source_roots: roots } => roots
-        NativeDriverCensusScoped { subject: _, against: _, source_roots: roots } => roots
+        NativeDriverDeclRefCensus { source_roots: roots } => roots
+        NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
   }
@@ -2505,6 +2574,9 @@ type NativeModuleResolveStep {
   verdict: NativeModuleResolveVerdict
   context: NativeTestContext
   import_attribution: NativeImportTargetAttribution
+  // A refused walk's partial binding record (v2.compiler.resolve ResolveWalkRefused.partial); empty for
+  // every other verdict. Read only by the binding census, as binding_partial rows.
+  partial: List<OccurrenceBindingEntry>
 }
 
 // WHETHER A REFUSED MODULE'S REFUSAL IS ATTRIBUTABLE TO AN IMPORT TARGET THE CONTEXT REFUSED. Three
@@ -2586,7 +2658,8 @@ fn native_module_resolve_verdict(
       NativeModuleResolveStep {
         verdict: NativeModuleResolveFileRefused { refusal: fr },
         context: context,
-        import_attribution: NativeImportTargetNotAsked
+        import_attribution: NativeImportTargetNotAsked,
+        partial: []
       }
     Absent =>
       match context.resolution {
@@ -2598,7 +2671,8 @@ fn native_module_resolve_verdict(
               observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
             },
             context: context,
-            import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
+            import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused },
+            partial: []
           }
         Accepted { value: shared, diagnostics: d } =>
           let closure = closure_declarations_demand(shared: shared)
@@ -2610,7 +2684,7 @@ fn native_module_resolve_verdict(
             module: qualified_name_from_dotted_string(dotted: module)
           )
       match step.walk {
-        ResolveWalkRefused { first: f, rest: r, observation: o } =>
+        ResolveWalkRefused { first: f, rest: r, observation: o, partial: p } =>
           let attribution = native_import_target_attribution(
             context: step.context,
             module: qualified_name_from_dotted_string(dotted: module)
@@ -2624,9 +2698,10 @@ fn native_module_resolve_verdict(
               NativeImportTargetNotAsked => NativeModuleResolveRefused { first: f, rest: r, observation: o }
             },
             context: step.context,
-            import_attribution: attribution
+            import_attribution: attribution,
+            partial: p
           }
-        ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: lexical } =>
+        ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: bindings } =>
           match step.context.resolution {
             Accepted { value: shared, diagnostics: d } =>
               let closure = closure_declarations_demand(shared: shared)
@@ -2639,14 +2714,15 @@ fn native_module_resolve_verdict(
                     module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index,
                     member_kinds: no_member_declaration_kinds(),
                     type_declaration_modifiers: shared.type_declaration_modifiers,
-                    lexical: lexical
+                    bindings: bindings
                   )
                 },
                 context: native_test_context_with_resolution(
                   context: step.context,
                   resolution: Accepted { value: closure.context, diagnostics: d }
                 ),
-                import_attribution: NativeImportTargetNotAsked
+                import_attribution: NativeImportTargetNotAsked,
+                partial: []
               }
             Rejected { diagnostics: r } =>
               NativeModuleResolveStep {
@@ -2656,7 +2732,8 @@ fn native_module_resolve_verdict(
                   observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
                 },
                 context: step.context,
-                import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
+                import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused },
+                partial: []
               }
           }
       }
@@ -3147,6 +3224,272 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
   }
 }
 
+// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (`decl-ref-census`). Cut to its demand: the
+// candidates (modules whose Node tree constructs a DeclarationRef, or whose prose cites a symbol) and
+// the targets those cite, each reached by one path lookup in the layout and a normalize, never the
+// corpus-wide ResolutionContext. A literal's head is identified by the module's own import rows; a bare
+// head (no import) is a typed counted refusal, stricter than the resolver by design. Every decision is
+// v2.compiler.decl_ref_census (exit 0 held, 1 a refused reference, bare head or stale symbol span, 2 no
+// observation); this function only reads the ingest. Prose is scoped to the two ledgers named below.
+data native_decl_ref_census_prose_scope_rfm: String = "gunbc/recurring_failure_mode"
+
+data native_decl_ref_census_prose_scope_rung_drop: String = "gunbc/rung_drop"
+
+fn native_decl_ref_census_file_in_prose_scope(path: String) -> Bool {
+  string_contains(s: path, pattern: native_decl_ref_census_prose_scope_rfm) || string_contains(s: path, pattern: native_decl_ref_census_prose_scope_rung_drop)
+}
+
+type NativeDeclRefCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+// THE CENSUS DEMANDS THE CANDIDATES AND THE MODULES THEIR CITATIONS NAME, NOTHING ELSE (DESIGN 2:
+// minimise the demand graph before paying for it; DESIGN 3: module a.b.c is stored at one path, so a
+// target is one lookup and one parse, never an index over the corpus). The plan is one text pass: the
+// name-to-read storage lookup, and which files spell DeclarationRef (a necessary condition for a
+// literal, and for an alias of it) or are in the prose scope. Candidates are normalized WITHOUT a
+// resolver and their literal heads identified by their own import rows (decl_ref_census); only the
+// modules those literals and prose spans name are then normalized, for the one context the references
+// resolve in.
+type NativeDeclRefCensusPlan {
+  by_name: Map<String, DagSourceReadWitness>
+  known: Map<String, Bool>
+  spellers: List<DagSourceReadWitness>
+  prose: List<DagSourceReadWitness>
+}
+
+fn native_decl_ref_census_read_spells(read: DagSourceReadWitness) -> Bool {
+  string_contains(s: read.source.carried, pattern: "DeclarationRef")
+}
+
+fn native_decl_ref_census_plan(ingest: SourceRootIngest) -> NativeDeclRefCensusPlan {
+  fold_list(
+    xs: ingest,
+    empty: NativeDeclRefCensusPlan { by_name: empty_map(), known: empty_map(), spellers: [], prose: [] },
+    cons: fn(p, read) {
+      let named = match native_lane_declared_module_name(content: read.source.carried) {
+        Absent => NativeDeclRefCensusPlan { by_name: p.by_name, known: p.known, spellers: p.spellers, prose: p.prose }
+        Present { value: name } => NativeDeclRefCensusPlan { by_name: map_insert(p.by_name, name, read), known: map_insert(p.known, name, true), spellers: p.spellers, prose: p.prose }
+      }
+      let spells = native_decl_ref_census_read_spells(read: read)
+      let scoped = native_decl_ref_census_file_in_prose_scope(path: symbol_lexeme(sym: read.compilation_unit))
+      NativeDeclRefCensusPlan {
+        by_name: named.by_name,
+        known: named.known,
+        spellers: if spells { list_snoc_item(xs: named.spellers, item: read) } else { named.spellers },
+        prose: if scoped { list_snoc_item(xs: named.prose, item: read) } else { named.prose }
+      }
+    }
+  )
+}
+
+type NativeDeclRefCensusScan {
+  literals: LiteralScan
+  targets: Map<String, Bool>
+  target_list: List<String>
+  aliases: List<String>
+  refused_files: List<String>
+  bare_heads: Int
+  alloc: OccurrenceIdAllocator
+}
+
+fn native_decl_ref_census_scan_target(scan: NativeDeclRefCensusScan, module: String) -> NativeDeclRefCensusScan {
+  match map_lookup(m: scan.targets, key: module) {
+    Present { value: _ } => scan
+    Absent =>
+      NativeDeclRefCensusScan {
+        literals: scan.literals,
+        targets: map_insert(scan.targets, module, true),
+        target_list: list_snoc_item(xs: scan.target_list, item: module),
+        aliases: scan.aliases,
+        refused_files: scan.refused_files,
+        bare_heads: scan.bare_heads,
+        alloc: scan.alloc
+      }
+  }
+}
+
+fn native_decl_ref_census_scan_refused(scan: NativeDeclRefCensusScan, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator) -> NativeDeclRefCensusScan {
+  NativeDeclRefCensusScan {
+    literals: scan.literals,
+    targets: scan.targets,
+    target_list: scan.target_list,
+    aliases: scan.aliases,
+    refused_files: list_snoc_item(xs: scan.refused_files, item: symbol_lexeme(sym: read.compilation_unit)),
+    bare_heads: scan.bare_heads,
+    alloc: alloc
+  }
+}
+
+fn native_decl_ref_census_bare_heads(literals: LiteralScan) -> Int {
+  fold_list(xs: literals.unreadable, empty: 0, cons: fn(acc, u) { if string_contains(s: u, pattern: " bare-head ") { acc + 1 } else { acc } })
+}
+
+// One speller, normalized unresolved: its literals read with heads identified by its own import rows.
+fn native_decl_ref_census_scan_speller(
+  scan: NativeDeclRefCensusScan,
+  read: DagSourceReadWitness,
+  front: NativeTestFrontEnd,
+  ingest_scope: Fnv1a64Structural
+) -> NativeDeclRefCensusScan {
+  let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: scan.alloc, scope: ingest_scope)
+  match result.produced {
+    Rejected { diagnostics: _ } => native_decl_ref_census_scan_refused(scan: scan, read: read, alloc: result.alloc)
+    Accepted { value: root, diagnostics: _ } =>
+      match qualified_name_from_module_node(root: root.root) {
+        Rejected { diagnostics: _ } => native_decl_ref_census_scan_refused(scan: scan, read: read, alloc: result.alloc)
+        Accepted { value: qn, diagnostics: _ } =>
+          let dotted = qualified_name_to_dotted_string(qn: qn)
+          let lc = LiteralCtx { self_module: dotted, pairs: import_pairs_of(rows: normalized_tree_import_bindings(tree: root)) }
+          let found = declaration_ref_literals(file: read.compilation_unit, root: root.root, lc: lc)
+          let merged = NativeDeclRefCensusScan {
+            literals: LiteralScan { cited: list_append(left: scan.literals.cited, right: found.cited), unreadable: list_append(left: scan.literals.unreadable, right: found.unreadable) },
+            targets: scan.targets,
+            target_list: scan.target_list,
+            aliases: if root_aliases_declaration_ref(root: root.root) { list_snoc_item(xs: scan.aliases, item: dotted) } else { scan.aliases },
+            refused_files: scan.refused_files,
+            bare_heads: scan.bare_heads + native_decl_ref_census_bare_heads(literals: found),
+            alloc: result.alloc
+          }
+          fold_list(xs: found.cited, empty: merged, cons: fn(acc, c) { native_decl_ref_census_scan_target(scan: acc, module: c.ref.module_path as String) })
+      }
+  }
+}
+
+fn native_decl_ref_census_scan_prose(scan: NativeDeclRefCensusScan, read: DagSourceReadWitness, front: NativeTestFrontEnd, plan: NativeDeclRefCensusPlan, namespaces: List<String>) -> NativeDeclRefCensusScan {
+  match program_assembly_phase_tokenize(read: read, lex: front.lex) {
+    Rejected { diagnostics: _ } => scan
+    Accepted { value: t, diagnostics: _ } =>
+      fold_list(
+        xs: prose_target_modules(tokens: t.all, namespaces: namespaces, known: plan.known),
+        empty: scan,
+        cons: fn(acc, m) { native_decl_ref_census_scan_target(scan: acc, module: m) }
+      )
+  }
+}
+
+type NativeDeclRefCensusLoad {
+  roots: FreeMonoid<NormalizedTree>
+  index: SourceRootIndex
+  alloc: OccurrenceIdAllocator
+  refused_files: List<String>
+}
+
+fn native_decl_ref_census_load_target(
+  load: NativeDeclRefCensusLoad,
+  plan: NativeDeclRefCensusPlan,
+  front: NativeTestFrontEnd,
+  ingest_scope: Fnv1a64Structural,
+  module: String
+) -> NativeDeclRefCensusLoad {
+  match map_lookup(m: plan.by_name, key: module) {
+    Absent => load
+    Present { value: read } =>
+      let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: load.alloc, scope: ingest_scope)
+      let refused = NativeDeclRefCensusLoad { roots: load.roots, index: load.index, alloc: result.alloc, refused_files: list_snoc_item(xs: load.refused_files, item: symbol_lexeme(sym: read.compilation_unit)) }
+      match result.produced {
+        Rejected { diagnostics: _ } => refused
+        Accepted { value: root, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: root.root) {
+            Rejected { diagnostics: _ } => refused
+            Accepted { value: qn, diagnostics: _ } =>
+              NativeDeclRefCensusLoad {
+                roots: list_snoc_item(xs: load.roots, item: root),
+                index: source_root_index_insert(index: load.index, module: qn, root: read.source_root),
+                alloc: result.alloc,
+                refused_files: load.refused_files
+              }
+          }
+      }
+  }
+}
+
+fn native_decl_ref_census_prose_census(
+  plan: NativeDeclRefCensusPlan,
+  front: NativeTestFrontEnd,
+  namespaces: List<String>,
+  context: ResolutionContext
+) -> DeclRefCensus {
+  fold_list(
+    xs: plan.prose,
+    empty: empty_decl_ref_census,
+    cons: fn(acc, read) {
+      match program_assembly_phase_tokenize(read: read, lex: front.lex) {
+        Rejected { diagnostics: _ } => acc
+        Accepted { value: t, diagnostics: _ } =>
+          decl_ref_census_merge(
+            left: acc,
+            right: decl_ref_census_of_prose(file: read.compilation_unit, tokens: t.all, namespaces: namespaces, known: plan.known, context: context)
+          )
+      }
+    }
+  )
+}
+
+fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensusOutput {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: d } =>
+      NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: front, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: ingest) {
+        Rejected { diagnostics: d } =>
+          NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+        Accepted { value: ingest_scope, diagnostics: _ } =>
+          let plan = native_decl_ref_census_plan(ingest: ingest)
+          let namespaces = top_level_namespaces(all: layout_namespaces())
+          let spelled = fold_list(
+            xs: plan.spellers,
+            empty: NativeDeclRefCensusScan { literals: LiteralScan { cited: [], unreadable: [] }, targets: empty_map(), target_list: [], aliases: [], refused_files: [], bare_heads: 0, alloc: occurrence_id_allocator_initial() },
+            cons: fn(acc, read) { native_decl_ref_census_scan_speller(scan: acc, read: read, front: front, ingest_scope: ingest_scope) }
+          )
+          let scanned = fold_list(
+            xs: plan.prose,
+            empty: spelled,
+            cons: fn(acc, read) { native_decl_ref_census_scan_prose(scan: acc, read: read, front: front, plan: plan, namespaces: namespaces) }
+          )
+          let loaded = fold_list(
+            xs: scanned.target_list,
+            empty: NativeDeclRefCensusLoad { roots: Empty, index: source_root_index_empty(), alloc: scanned.alloc, refused_files: [] },
+            cons: fn(acc, m) { native_decl_ref_census_load_target(load: acc, plan: plan, front: front, ingest_scope: ingest_scope, module: m) }
+          )
+          match resolution_context(
+            lm: front.lm,
+            roots: loaded.roots,
+            index: loaded.index,
+            active_roots: source_root_set_from_ingest(ingest: ingest),
+            policy: v2.std.resolution_policy.default_name_resolution_policy()
+          ) {
+            Rejected { diagnostics: d } =>
+              NativeDeclRefCensusOutput { lines: [concat("[decl-ref-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+            Accepted { value: context, diagnostics: _ } =>
+              let refused = list_append(left: scanned.refused_files, right: loaded.refused_files)
+              let literal_census = decl_ref_census_of_literals(literals: scanned.literals, context: context)
+              let prose_census = native_decl_ref_census_prose_census(plan: plan, front: front, namespaces: namespaces, context: context)
+              let merged = decl_ref_census_merge(left: literal_census, right: prose_census)
+              let census = DeclRefCensus {
+                refused_files: refused,
+                cited: merged.cited,
+                resolutions: merged.resolutions,
+                prose: merged.prose,
+                sites: merged.sites,
+                unreadable: list_append(left: fold_list(xs: scanned.aliases, empty: [], cons: fn(acc, m) { list_snoc_item(xs: acc, item: concat("alias-of-DeclarationRef ", m)) }), right: merged.unreadable)
+              }
+              NativeDeclRefCensusOutput {
+                lines: list_append(
+                  left: list_append(
+                    left: [concat("[decl-ref-census] candidates=", to_string(n: length(xs: plan.spellers)), "/", to_string(n: length(xs: ingest)), " targets=", to_string(n: length(xs: loaded.roots)), " alias_modules=", to_string(n: length(xs: scanned.aliases)), " bare_heads=", to_string(n: scanned.bare_heads)), concat("[decl-ref-census] ingest_refused_files=", to_string(n: length(xs: refused)))],
+                    right: fold_list(xs: refused, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ingest_refused ", f)) })
+                  ),
+                  right: decl_ref_census_lines(c: census)
+                ),
+                exit: decl_ref_census_exit(c: census)
+              }
+          }
+      }
+  }
+}
+
 type NativeCensusModule {
   module: String
   path: Symbol
@@ -3256,13 +3599,17 @@ type NativeInferCensusOutcome
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
       observation: ObservationCompleteness
+      partial: List<OccurrenceBindingEntry>
+      loci: Map<OccurrenceId, SourceLineCol>
+      unbound: List<String>
     }
   | NativeInferCensusInferred {
       resolved: ResolvedTree
       inferred: InferredTree
       frontier: NativeInferAcceptedFrontier
+      loci: Map<OccurrenceId, SourceLineCol>
     }
-  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics }
+  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics, loci: Map<OccurrenceId, SourceLineCol> }
 
 // `cascade` IS THE RESOLVE VERDICT'S IMPORT ATTRIBUTION, carried exactly as
 // native_census_module_resolution carries it, so a resolve refusal reached through this walk files
@@ -3288,23 +3635,104 @@ fn native_census_module_inference(
     outcome: match step.verdict {
       NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
       NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
       NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
       NativeModuleResolveAccepted { resolved: resolved } =>
         match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
           Accepted { value: prepared, diagnostics: _ } =>
             NativeInferCensusInferred {
               resolved: resolved,
               inferred: prepared.inferred,
-              frontier: prepared.frontier
+              frontier: prepared.frontier,
+              loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings))
             }
           Rejected { diagnostics: d } =>
-            NativeInferCensusInferRefused { resolved: resolved, chain: d }
+            NativeInferCensusInferRefused { resolved: resolved, chain: d, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings)) }
         }
     },
     context: step.context,
     cascade: native_census_import_cascade(attribution: step.import_attribution)
+  }
+}
+
+// THE OCCURRENCE-BINDING CENSUS'S LINES, DISPATCHED FROM THE census-infer WALK
+// (v2.compiler.occurrence_binding_census). Binding is a resolve-level fact, so a module that resolved
+// contributes its rows on BOTH infer arms; one that did not has no binding record and prints one
+// unreached line with its stage, which the reader counts as no observation of that module -- never as
+// a module with no bindings.
+// EACH RECORDED OCCURRENCE'S SOURCE LOCUS, `<line>:<byte column>` in the module's own file, read through the same
+// position table the residual rows locate their fatals with (native_census_locate): the span index the accepted parse
+// recorded and the file's line index. It is the provenance a binding row needs for a cross-compilation join: an
+// occurrence id is not shared by two compilations, the source position of an untouched occurrence is. An id this file's
+// span index does not record has no entry and prints `-`.
+fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol, ids: List<OccurrenceId>) -> Map<OccurrenceId, SourceLineCol> {
+  match map_lookup(positions.files, path) {
+    Absent => empty_map()
+    Present { value: file } =>
+      fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) {
+        match span_index_textual_locus_optional(index: file.spans, id: id) {
+          Present { value: Textual { file: _, extent: ByteRange { start: st, end: _ } } } =>
+            map_insert(m, id, source_line_col_in(index: file.lines, offset: st))
+          _ => m
+        }
+      })
+  }
+}
+
+// THE BASE HALF OF A WAVE'S OCCURRENCE JOIN: every refusal chain of a refused module whose fatal is an unbound free
+// name, as `binding_unbound <module> <spelling> <line>:<byte column>`, located by the same position table as the
+// residual rows (native_census_locate_fatal). A name with no binding has no binding row; this is its occurrence-grain
+// record, so a wave that binds it can be joined occurrence by occurrence on the source locus.
+fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
+  let folded = fold_list(xs: Cons { head: first, tail: rest }, empty: NativeCensusUnbound { lines: [], unreadable: 0 }, cons: fn(acc, chain) {
+    if diagnostics_fatal(d: chain).reason == ^resolve_reason_unbound_symbol {
+      match native_census_unbound_spelling(at: diagnostics_fatal(d: chain).at) {
+        Present { value: spelling } =>
+          NativeCensusUnbound { lines: list_snoc_item(xs: acc.lines, item: "binding_unbound\t" + entry.module + "\t" + spelling + "\t" + occurrence_binding_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions)))), unreadable: acc.unreadable }
+        Absent => NativeCensusUnbound { lines: acc.lines, unreadable: acc.unreadable + 1 }
+      }
+    } else {
+      acc
+    }
+  })
+  list_snoc_item(xs: folded.lines, item: "binding_unbound_module\t" + entry.module + "\t" + int_to_decimal_string(value: length(xs: folded.lines)) + "\t" + int_to_decimal_string(value: folded.unreadable))
+}
+
+// The unbound fatals of one refused module: the rows that printed, and the count of those whose name did not read
+// (counted in `binding_unbound_module`, never dropped).
+type NativeCensusUnbound {
+  lines: List<String>
+  unreadable: Int
+}
+
+fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
+  match at {
+    NodeLocus { anchor: a } =>
+      match a.at.kind {
+        TypeNode { connective: Atom { identity: id } } => optional_present(value: symbol_lexeme(sym: id))
+        _ => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn native_census_at_locus(at: FileRefusalAt) -> Optional<SourceLineCol> {
+  match at {
+    FileRefusalAtLine { line: l, byte_column: c } => optional_present(value: SourceLineCol { line: l, byte_column: c })
+    _ => optional_absent()
+  }
+}
+
+fn native_census_infer_binding_lines(entry: NativeCensusModule, outcome: NativeInferCensusOutcome) -> List<String> {
+  match outcome {
+    NativeInferCensusFileRefused => ["binding_unreached\t" + entry.module + "\tfront_end"]
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: p, loci: l, unbound: u } =>
+      list_snoc_item(xs: list_append(left: occurrence_binding_partial_lines(module: entry.module, entries: p, loci: l), right: u), item: "binding_unreached\t" + entry.module + "\tresolve")
+    NativeInferCensusInferred { resolved: r, inferred: _, frontier: _, loci: l } =>
+      occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r, loci: l))
+    NativeInferCensusInferRefused { resolved: r, chain: _, loci: l } =>
+      occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r, loci: l))
   }
 }
 
@@ -3321,7 +3749,7 @@ fn native_census_infer_type_contribution(
   match outcome {
     NativeInferCensusFileRefused =>
       type_census_unreached(module: entry.module, stage: "front_end", cause: "file refused by the context")
-    NativeInferCensusResolveRefused { first: f, rest: _, observation: _ } =>
+    NativeInferCensusResolveRefused { first: f, rest: _, observation: _, partial: _ } =>
       type_census_unreached(module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)))
     NativeInferCensusInferred { resolved: r, inferred: i, frontier: _ } =>
       type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsTypedBy { tree: i, resolved: r })
@@ -3468,12 +3896,30 @@ type NativeCensusClosureFanOut
   | NativeCensusClosureFanOutAtLeast { modules: Int, unread_refused_files: Int }
   | NativeCensusClosureFanOutUnavailable { reason: Symbol }
 
+// THE OCCURRENCE COLUMN OF A CAUSE-GROUP ROW (T2.5-B, M1 GO): the authored occurrence the member's
+// fatal answers for, read through the authored keying rule `census_occurrence_from_locus` ->
+// std.occurrence_identity authored_occurrence_of. A member whose fatal is a node refusal carries
+// `Present`; a member filed WITHOUT a fatal of its own -- a cascade member of someone else's root, or
+// a front-end refusal whose chain was collapsed to a FileRefusalAt before the census read it --
+// carries `Absent`, which is the measured (B) finding, not a guess.
+// CONSUMERS, named (DESIGN 3c): (1) the emitted census main prints every cause group and every
+// ranked root through serde (src/v1/05_emit_rust.dag, the `cause_group` and `census_root` printlns) --
+// the field is on the row, so the ranked report names the refusal's authored occurrence, which is
+// what the ranking could not do before; (2) `native_census_cause_member_read` relays it when a member
+// is re-keyed through locate, so relocation never drops it; (3) the claim suite
+// test.claim.native_census.infer_cascade (route, supplied-value, keying).
+// NOT a second keying rule: `native_census_owner_key` below answers a DIFFERENT question -- which id
+// the census POSITION TABLE can be joined on, for locating -- and fails closed on Pending and
+// Synthetic, where the authored rule still answers. Where they disagree (Pending), locate's
+// fail-closed collapse is the law (M1 GO: no second locus authority). The obligation rows'
+// `occurrence` reads the same authored helper as this column; these two are the row identity fields.
 type NativeCensusCauseMember {
   stage: NativeCensusCauseStage
   path: Symbol
   module: Optional<QualifiedName>
   head_reason: Symbol
   at: FileRefusalAt
+  occurrence: Optional<OccurrenceId>
   cascade: NativeCensusCascade
 }
 
@@ -3656,6 +4102,12 @@ fn native_census_cause_groups_add_file_refusal(
       module: refusal.module,
       head_reason: native_test_file_refusal_head_reason(fr: refusal),
       at: native_test_file_refusal_fatal_link(fr: refusal).at,
+      // MEASURED, NOT CHOSEN (T2.5-B, (B) finding). A front-end refusal reaches the census through
+      // `NativeTestFileRefusal` (v2.compiler.native_test_vocabulary), whose chain links carry a
+      // classified `FileRefusalAt` and NO `Locus` -- the absorb resolved positions and dropped the
+      // node identity before this read (native_test_vocabulary's own header names the constraint).
+      // So there is no fatal to key here; a non-Absent value would be a fabrication.
+      occurrence: optional_absent(),
       cascade: NativeCensusCascadeRoot {
         closure_fan_out: native_census_closure_fan_out(index: closure, root: refusal),
         resolve_refused_importers: optional_absent()
@@ -3680,6 +4132,7 @@ fn native_census_cause_groups_add_residual(
       module: optional_present(value: qualified_name_from_dotted_string(dotted: row.module)),
       head_reason: row.chain.head.reason,
       at: row.at,
+      occurrence: census_occurrence_from_locus(at: diagnostics_fatal(d: row.chain).at),
       cascade: cascade
     }
   )
@@ -3701,6 +4154,7 @@ fn native_census_cause_groups_add_cascade_member(
       module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
       head_reason: ^native_prepare_reason_import_target_file_refused,
       at: FileRefusalAtUnresolvedNode,
+      occurrence: optional_absent(),
       cascade: NativeCensusCascadeMemberOf { root: root, root_reason: root_reason }
     }
   )
@@ -3905,7 +4359,7 @@ fn native_census_cause_groups_add_infer_module(
 ) -> NativeCensusCauseGroups {
   match step.outcome {
     NativeInferCensusFileRefused => groups
-    NativeInferCensusResolveRefused { first: f, rest: r, observation: _ } =>
+    NativeInferCensusResolveRefused { first: f, rest: r, observation: _, partial: _ } =>
       native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade)
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => groups
     NativeInferCensusInferRefused { resolved: resolved, chain: chain } =>
@@ -3939,6 +4393,7 @@ fn native_census_infer_member(
       module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
       head_reason: chain.head.reason,
       at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions),
+      occurrence: census_occurrence_from_locus(at: diagnostics_fatal(d: chain).at),
       cascade: cascade
     }
   )
@@ -3951,7 +4406,7 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
   match outcome {
     NativeInferCensusFileRefused =>
       NativeCensusCompletenessUnavailable { reason: ^native_census_file_never_reached_resolve }
-    NativeInferCensusResolveRefused { first: _, rest: _, observation: o } =>
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: o, partial: _ } =>
       NativeCensusCompletenessObserved { observation: o }
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } =>
       NativeCensusCompletenessObserved { observation: ObservationComplete }
@@ -3964,7 +4419,7 @@ fn native_census_infer_accepted_frontier(outcome: NativeInferCensusOutcome) -> O
   match outcome {
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: f } => Present { value: f }
     NativeInferCensusFileRefused => Absent
-    NativeInferCensusResolveRefused { first: _, rest: _, observation: _ } => Absent
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: _ } => Absent
     NativeInferCensusInferRefused { resolved: _, chain: _ } => Absent
   }
 }
@@ -3983,39 +4438,90 @@ type NativeCensusScope
   = NativeCensusScopeClosed { subject: String, members: Int }
   | NativeCensusScopeBlocked { subject: String, members: Int, blocked_first: CensusBlock, blocked_rest: List<CensusBlock> }
 
+// `reach` attributes the read population to its subjects: for each subject module, the acquired
+// members its own closure reaches, by the same request selection acquisition followed
+// (v2.compiler.module_acquisition acquisition_reached). A union run resolves each member once and still
+// answers which subject observed it.
+type NativeCensusSubjectReach {
+  subject: String
+  members: List<String>
+}
+
 type NativeCensusScoped {
   scope: NativeCensusScope
   ingest: SourceRootIngest
+  reach: List<NativeCensusSubjectReach>
 }
 
-fn native_census_scoped_from(subject: String, acquisition: CensusAcquisition) -> Outcome<NativeCensusScoped> {
+fn native_census_subject_reach(subjects: List<String>, modules: List<AcquiredModule>) -> List<NativeCensusSubjectReach> {
+  list_map(xs: subjects, f: fn(subject) {
+    let reached = acquisition_reached(entries: [subject], modules: modules)
+    NativeCensusSubjectReach {
+      subject: subject,
+      members: fold_list(xs: modules, empty: [], cons: fn(acc, m) {
+        if map_contains_key(m: reached, key: m.name) { list_snoc_item(xs: acc, item: m.name) } else { acc }
+      })
+    }
+  })
+}
+
+fn native_census_scoped_from(subjects: FreeSemigroup<String>, acquisition: CensusAcquisition) -> Outcome<NativeCensusScoped> {
+  let subject = subjects.head
+  let all = Cons { head: subjects.head, tail: subjects.tail }
   match acquisition {
     CensusAcquisitionRefused { refusal: refusal } =>
       native_lane_refused(reason: ^native_census_scoped_acquisition_refused, detail: acquisition_refusal_text(refusal: refusal))
     CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } =>
       outcome_accepted(value: NativeCensusScoped {
         scope: NativeCensusScopeClosed { subject: subject, members: length(xs: modules) },
-        ingest: census_acquisition_ingest(modules: modules, blocks: [])
+        ingest: census_acquisition_ingest(modules: modules, blocks: []),
+        reach: native_census_subject_reach(subjects: all, modules: modules)
       })
     CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
       outcome_accepted(value: NativeCensusScoped {
         scope: NativeCensusScopeBlocked { subject: subject, members: length(xs: modules), blocked_first: first, blocked_rest: rest },
-        ingest: census_acquisition_ingest(modules: modules, blocks: Cons { head: first, tail: rest })
+        ingest: census_acquisition_ingest(modules: modules, blocks: Cons { head: first, tail: rest }),
+        reach: native_census_subject_reach(subjects: all, modules: modules)
       })
   }
 }
 
-fn native_lane_census_scoped_ingest(label: String, source_roots: FreeMonoid<String>) -> Outcome<NativeCensusScoped> {
-  match native_census_subject_module(label: label) {
-    NativeCensusSubjectModuleUnavailable { reason: reason } => native_lane_refused(reason: reason, detail: label)
-    NativeCensusSubjectModuleNamed { module: subject } =>
+// The subject labels' modules, in argv order, or the first label that names none.
+type NativeCensusSubjectModules
+  = NativeCensusSubjectModulesNamed { modules: List<String> }
+  | NativeCensusSubjectModulesUnavailable { label: String, reason: Symbol }
+
+fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectModules {
+  fold_list(xs: labels, empty: NativeCensusSubjectModulesNamed { modules: [] }, cons: fn(acc, label) {
+    match acc {
+      NativeCensusSubjectModulesUnavailable { label: l, reason: r } => NativeCensusSubjectModulesUnavailable { label: l, reason: r }
+      NativeCensusSubjectModulesNamed { modules: ms } =>
+        match native_census_subject_module(label: label) {
+          NativeCensusSubjectModuleUnavailable { reason: reason } => NativeCensusSubjectModulesUnavailable { label: label, reason: reason }
+          NativeCensusSubjectModuleNamed { module: m } => NativeCensusSubjectModulesNamed { modules: list_snoc_item(xs: ms, item: m) }
+        }
+    }
+  })
+}
+
+// ONE ACQUISITION OVER EVERY SUBJECT: the entries are all the subject modules, so a member two closures
+// share is read, resolved and inferred once. The population is exactly the union of the named subjects'
+// closures; the scope's subject is the first label's module, and `reach` attributes each member.
+fn native_lane_census_scoped_ingest(label: String, rest: List<String>, source_roots: FreeMonoid<String>) -> Outcome<NativeCensusScoped> {
+  match native_census_subject_modules(labels: Cons { head: label, tail: rest }) {
+    NativeCensusSubjectModulesUnavailable { label: bad, reason: reason } => native_lane_refused(reason: reason, detail: bad)
+    NativeCensusSubjectModulesNamed { modules: subjects } =>
       let resolved = source_root_bindings(roots: source_roots)
       match resolved {
         SourceRootsBound { bindings: bindings } =>
-          native_census_scoped_from(
-            subject: subject,
-            acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: [subject])
-          )
+          match subjects {
+            Empty => native_lane_refused(reason: ^native_driver_census_scoped_without_subject, detail: label)
+            Cons { head: first, tail: others } =>
+              native_census_scoped_from(
+                subjects: FreeSemigroup { head: first, tail: others },
+                acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: subjects)
+              )
+          }
         SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
         SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)
       }
@@ -4135,6 +4641,7 @@ fn native_census_cause_member_read(groups: NativeCensusCauseGroups, member: Nati
         module: member.module,
         head_reason: member.head_reason,
         at: member.at,
+        occurrence: member.occurrence,
         cascade: NativeCensusCascadeRoot {
           closure_fan_out: fan_out,
           resolve_refused_importers: match groups.importers {
@@ -5797,7 +6304,7 @@ fn census_obligation_row(module: String, stage: NativeCensusCauseStage, outcome:
 
 fn census_occurrence_from_locus(at: Locus) -> Optional<OccurrenceId> {
   match at {
-    NodeLocus { anchor: a } => node_occurrence_id_optional(node: a.at)
+    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.occurrence_id)
     _ => optional_absent()
   }
 }
@@ -5886,7 +6393,7 @@ fn census_obligation_rows_from_infer(
         resolve: census_unobserved_behind(stage: NativeCensusCauseFrontEnd),
         infer: census_unobserved_behind(stage: NativeCensusCauseFrontEnd)
       )
-    NativeInferCensusResolveRefused { first: first, rest: rest, observation: _ } =>
+    NativeInferCensusResolveRefused { first: first, rest: rest, observation: _, partial: _ } =>
       census_three_stage_rows(
         module: module,
         front_end: CensusObligationPassed,

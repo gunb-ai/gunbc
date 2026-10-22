@@ -23,6 +23,7 @@ import gunbc.host.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport,
   run_argv_transport_succeeded, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused,
+  sha256_observation_of_outcome, sha256_unobserved_cause_text, Sha256Observed, Sha256Unobserved,
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
@@ -93,23 +94,11 @@ fn run_archive_commands(commands: List<ArgvCommand>, transport: HostEffectTransp
   }
 }
 
-fn archive_digest_from_sha256sum_stdout(stdout: String, expected: NonEmptyStr) -> ArchiveDigestVerdict {
-  match sha256sum_line_digest(line: stdout) {
-    Absent => ArchiveDigestUnverifiable { reason: "sha256sum printed no 64-hex digest field" }
-    Present { value: d } =>
-      if (d.hex as String) == (expected as String) { ArchiveDigestMatches } else { ArchiveDigestMismatch }
-  }
-}
-
 fn archive_digest_from_sha256_transport(outcome: RunArgvTransportOutcome, expected: NonEmptyStr) -> ArchiveDigestVerdict {
-  match outcome {
-    RunArgvTransportRefused { reason: r } => ArchiveDigestUnverifiable { reason: r }
-    RunArgvTransportObserved { observed: o } =>
-      if o.success == false {
-        ArchiveDigestUnverifiable { reason: o.stderr }
-      } else {
-        archive_digest_from_sha256sum_stdout(stdout: o.stdout, expected: expected)
-      }
+  match sha256_observation_of_outcome(outcome: outcome) {
+    Sha256Unobserved { cause: c } => ArchiveDigestUnverifiable { reason: sha256_unobserved_cause_text(cause: c) }
+    Sha256Observed { digest: d } =>
+      if (d.hex as String) == (expected as String) { ArchiveDigestMatches } else { ArchiveDigestMismatch }
   }
 }
 

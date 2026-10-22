@@ -2,8 +2,9 @@
 // Source module: std.unicode.scalar
 
 use self::NotUnicodeScalar::*;
-pub use crate::std_algebra::list_snoc_item;
-pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_join_shape, list_snoc_item, FreeMonoid,
+};
 pub use crate::std_coercion::unicode_scalar_fold;
 pub use crate::std_error_primitives::Result;
 use crate::std_error_primitives::Result::{Err, Ok};

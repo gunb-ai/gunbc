@@ -1,0 +1,55 @@
+module test.claim.machine_word_literal_lowering_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Int, String, Bool }
+import std.machine_word { OperatorAnd, OperatorOr, OperatorXor, OperatorNot, OperatorShiftRight, OperatorShiftLeft, OperatorRotateRight, OperatorAddWrapping, Width8, Width16, Width32, Width64, machine_word_operator_label, word_width_bits }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PERMANENT REGRESSION CONTROL for emit-time lowering of std.machine_word machine_word_apply
+// (v1.compiler.emit_rust emit_machine_word_lowered_call, row extdeps.languages.rust.emit
+// rust_machine_word_lowering). A call whose operator and width are constructor literals is the
+// host's own operator; every other call keeps the declared call to the runtime seam. THE CASES ARE
+// DISCRIMINATING IN BOTH DIRECTIONS: the joins go red if the lowering stops firing or restates a label
+// or bit count, and the non-literal case goes red if the lowering widens past a literal.
+// dissolve-on: never -- a literal operator and width are a statically known operation.
+
+// THE EXPECTED TEXT IS THE AUTHORITY'S OWN ANSWER, evaluated here: the label is machine_word_operator_label
+// at the constructor and the bit count is word_width_bits at the width, so a lowering that restated either
+// (or a declaration whose arm changed) disagrees with the probe's emitted text. The join below covers
+// EVERY operator and EVERY width constructor.
+fn lowers_to_the_declared_row(op_spelling: String, width_spelling: String, label: String, bits: Int) -> Bool {
+  compile_dag_rust_emit_check(
+    concat("module test.claim.mw_literal_probe\nimport std.types { Int }\nimport std.machine_word { machine_word_apply, ", op_spelling, ", ", width_spelling, " }\nfn probe(a: Int, b: Int) -> Int { machine_word_apply(op: ", op_spelling, ", width: ", width_spelling, ", a: a, b: b) }\n"),
+    "src/test_claim_mw_literal_probe.rs",
+    [concat("v1_rt::machine_word_operate_at::<\{v1_rt::machine_word_row_index(\"", label, "\")\}, ", to_string(value: bits), ">(")],
+    ["machine_word_apply(", "machine_word_native_operate"]
+  )
+}
+
+test fn w_every_operator_lowers_to_its_declared_label_at_width32() -> Bool {
+  lowers_to_the_declared_row(op_spelling: "OperatorAnd", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorAnd), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorOr", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorOr), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorXor", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorXor), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorNot", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorNot), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorShiftRight", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorShiftRight), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorShiftLeft", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorShiftLeft), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorRotateRight", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorRotateRight), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorAddWrapping", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorAddWrapping), bits: word_width_bits(w: Width32))
+}
+
+test fn w_every_width_lowers_to_its_declared_bit_count() -> Bool {
+  lowers_to_the_declared_row(op_spelling: "OperatorXor", width_spelling: "Width8", label: machine_word_operator_label(op: OperatorXor), bits: word_width_bits(w: Width8))
+    && lowers_to_the_declared_row(op_spelling: "OperatorXor", width_spelling: "Width16", label: machine_word_operator_label(op: OperatorXor), bits: word_width_bits(w: Width16))
+    && lowers_to_the_declared_row(op_spelling: "OperatorXor", width_spelling: "Width32", label: machine_word_operator_label(op: OperatorXor), bits: word_width_bits(w: Width32))
+    && lowers_to_the_declared_row(op_spelling: "OperatorXor", width_spelling: "Width64", label: machine_word_operator_label(op: OperatorXor), bits: word_width_bits(w: Width64))
+}
+
+test fn w_non_literal_operator_keeps_the_declared_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.mw_dynamic_op_probe\nimport std.types { Int }\nimport std.machine_word { machine_word_apply, MachineWordOperator, Width32 }\nfn probe(op: MachineWordOperator, a: Int, b: Int) -> Int { machine_word_apply(op: op, width: Width32, a: a, b: b) }\n",
+    "src/test_claim_mw_dynamic_op_probe.rs",
+    ["machine_word_apply("],
+    ["machine_word_operate_at"]
+  )
+}

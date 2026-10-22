@@ -31,7 +31,7 @@ import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileMode, RemoteFileModeOwnerReadWrite, RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
   typed_remote_file_write_seal, converge_typed_remote_file, TypedRemoteFileWriteAdmissionRefused, TypedRemoteFileWriteAdmitted,
@@ -441,7 +441,8 @@ fn write_staged_file(
         target: target, context: context,
         admission: typed_remote_file_write_seal(path: file.path as FilePath,
           content: file.content, allowed_scope: runner_microvm_admin_staging_scope),
-        mode: RemoteFileModeOwnerReadWrite, privilege: RemoteFileViaNonInteractiveSudo) {
+        mode: RemoteFileModeOwnerReadWrite, privilege: RemoteFileViaNonInteractiveSudo,
+        validation: NoValidation,) {
         TypedRemoteFileConvergenceRefused { step: st, reason: why } => StagedWriteRefused { step: st, reason: why }
         TypedRemoteFileConverged { converged: _ } => StagedWritten
       }

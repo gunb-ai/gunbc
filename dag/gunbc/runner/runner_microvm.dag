@@ -203,15 +203,17 @@ fn jit_drive_without_credential() -> String {
   jit_drive_newline_sector()
 }
 
-fn jit_drive_content(encoded_jit_config: NonEmptyStr) -> String {
-  let body = jit_drive_assignment(encoded_jit_config: encoded_jit_config)
+// ANY TEXT A GUEST READS FROM A FIRECRACKER DRIVE, PADDED WITH NEWLINES TO WHOLE SECTORS: the one
+// padding fold every such drive uses (the credential drive here, the workspace bootstrap, the
+// revision job's spec), for the reason the block comment above gives.
+fn newline_padded_to_whole_sectors(body: String) -> String {
   let sector = byte_size_count(b: firecracker_block_sector_size)
   let tail = byte_size_count(b: jit_drive_utf8_size(text: body)) % sector
-  if tail == 0 {
-    body
-  } else {
-    concat(body, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail))
-  }
+  if tail == 0 { body } else { concat(body, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail)) }
+}
+
+fn jit_drive_content(encoded_jit_config: NonEmptyStr) -> String {
+  newline_padded_to_whole_sectors(body: jit_drive_assignment(encoded_jit_config: encoded_jit_config))
 }
 
 // WHAT ONE RUNNER VM IS SIZED AT, IN GROUNDED MAGNITUDES RATHER THAN BARE INTEGERS.

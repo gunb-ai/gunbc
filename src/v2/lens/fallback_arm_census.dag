@@ -6,8 +6,8 @@ import std.disposition { RealizationDispatch }
 import std.algebra { Empty, list_snoc_item, fold_list, skip, length, list_tail }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import v2.std.node { ComputationNode, Match, Node, Symbol, TypeNode, MatchArmBodyEdge, MatchArmPatternEdge }
-import v2.std.node_query { node_positional_child_targets, find_core_child }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Match, Node, Symbol, TypeNode, MatchArmBodyEdge, MatchArmPatternEdge }
+import v2.std.node_query { find_core_child }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.extdeps.languages.dag { dag_match_arm_node, dag_match_body_from_arms, dag_type_atom_node }
 import v2.std.grammar { node_atom_identity_optional }
@@ -164,7 +164,7 @@ fn planted_match_with_wildcard_opaque() -> Node {
 fn match_positional_arms(match_node: Node) -> List<Node> {
   match match_node.kind {
     ComputationNode { behavior: Match } =>
-      skip(xs: node_positional_child_targets(node: match_node), n: 1)
+      skip(xs: positional_child_target_nodes(node: match_node), n: 1)
     TypeNode { connective: _ } => Empty
     ComputationNode { behavior: _ } => Empty
   }

@@ -70,9 +70,10 @@ fn rented_allocation_wire(id: RentedAllocationIdentity) -> NonEmptyStr {
 // owner is the label that isolates this bidder's rentals from another bidder on the same provider account.
 // asked_rate is the rate actually PUT, not the offer's advertised minimum. asked_at is the PUT time, the
 // same instant a rent cooldown starts from, because a create that timed out may still have rented.
-// DECLARED FRONTIER (DESIGN 3c): the producer of Acquired is the flex bidder's wet create loop
-// (product.fabric.flex_vast_shadow flex_rented_serving_allocation_join). It constructs on an answered
-// create, and on a lost create whose reconcile finds the instance held; it never constructs on a refused
+// The producer of Acquired is the flex bidder's wet create loop
+// (product.fabric.flex_vast_loop flex_acquired_allocation). It constructs on an answered
+// create (flex_created_outcome); a lost create whose reconcile finds the instance held is built by
+// flex_reconciled_allocation, which only the next pass's entry will call (flex_run_pass_caller_frontier); it never constructs on a refused
 // create. STATED DIVERGENCE (DESIGN 3, upstream decomposition): the provider ask is Vast's own receipt
 // type because Vast is the only bidder; a second acquiring provider makes it a per-provider receipt
 // rather than a widened field here.
@@ -189,7 +190,7 @@ type RentedAllocationEnrollment
 // these rows in gunbc.serving.rented_enrollment rented_cohort_enrollments is the enroll-and-seat slice of
 // the rented-serving-allocation vertical (gunbc.harness.rented_allocation_seat consumes it for the seat);
 // gunbc.harness.harness_operator_route is KEPT as the last executing api-key path and retires on the frontier
-// row in gunbc.serving.serving_launch; until #13989 lands the witnesses are the only caller.
+// row in gunbc.serving.serving_launch; until the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation the witnesses are the only caller.
 fn rented_allocation_enrollment(a: RentedServingAllocation) -> RentedAllocationEnrollment {
   match rented_allocation_endpoint(a: a) {
     RentedEndpointRefused { allocation: id, obligation: o } => RentedAllocationNotEnrollable { allocation: id, obligation: o }

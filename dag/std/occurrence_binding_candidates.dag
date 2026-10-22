@@ -2742,44 +2742,6 @@ data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
   },
 ]
 
-fn section13_population_law_id_eq(
-  left: Section13PopulationLawId,
-  right: Section13PopulationLawId
-) -> Bool {
-  match left {
-    Section13StructuralVisibility =>
-      match right {
-        Section13StructuralVisibility => true
-        _ => false
-      }
-    Section13SiblingArmExclusion =>
-      match right {
-        Section13SiblingArmExclusion => true
-        _ => false
-      }
-    Section13LexicalEnclosure =>
-      match right {
-        Section13LexicalEnclosure => true
-        _ => false
-      }
-    Section13SourceOrderGate =>
-      match right {
-        Section13SourceOrderGate => true
-        _ => false
-      }
-    Section13DistinctIdentityAmbiguity =>
-      match right {
-        Section13DistinctIdentityAmbiguity => true
-        _ => false
-      }
-    Section13RepeatedDiscoverySameIdentityCollapse =>
-      match right {
-        Section13RepeatedDiscoverySameIdentityCollapse => true
-        _ => false
-      }
-  }
-}
-
 // Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/'
 // or '.dag'). This is a §5 heuristic standing where a type should stand — the same class
 // occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs
@@ -2795,7 +2757,7 @@ fn section13_roster_has_law(
   rows: List<Section13PopulationLawRosterRow>,
   law: Section13PopulationLawId
 ) -> Bool {
-  rows |> any(row => section13_population_law_id_eq(left: row.law, right: law))
+  rows |> any(row => row.law == law)
 }
 
 fn section13_roster_covers_all_laws(rows: List<Section13PopulationLawRosterRow>) -> Bool {
@@ -2822,7 +2784,7 @@ fn section13_roster_has_duplicate_law(rows: List<Section13PopulationLawRosterRow
             rows,
             init: 0,
             f: (count, other) =>
-              match section13_population_law_id_eq(left: row.law, right: other.law) {
+              match row.law == other.law {
                 true => count + 1
                 false => count
               },
@@ -2845,7 +2807,7 @@ fn section13_first_duplicate_law(
             rows,
             init: 0,
             f: (count, other) =>
-              match section13_population_law_id_eq(left: row.law, right: other.law) {
+              match row.law == other.law {
                 true => count + 1
                 false => count
               },

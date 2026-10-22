@@ -3,7 +3,7 @@ module gunbc.fleet.site_pxe_edge_converge
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { ContentHash, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, serialize_content_hash }
 import extdeps.uri { Uri }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address }
 import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint, operator_lan_segment }
@@ -39,7 +39,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileWriteAdmission,
@@ -111,24 +111,97 @@ data site_pxe_edge_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc"
 // THE CHAINLOADER PIN IS A BUILD RECEIPT, and the gate checks every field of it. A filename and a digest
 // alone admit any binary that happens to share a basename, including an x86 build; the receipt names
 // the upstream revision it was built from, the exact extdeps.firmware.ipxe build target, the
-// architecture, the digest of the built file and the name it is installed under in the TFTP root.
-// Unpinned is today's state and names what would ground it. The chainloader is THIS edge's artifact
-// (the global boot origin carries kernel, initrd and images, not the chainloader); a guessed URL or
-// filename with no digest is exactly what may not be served.
-type SitePxeEdgeChainloaderBuildReceipt {
-  upstream_revision: NonEmptyStr
+// architecture, the digest of the built file, the name it is installed under in the TFTP root and the
+// standing of the Secure Boot check. The chainloader is THIS edge's artifact (the global boot origin
+// carries kernel, initrd and images, not the chainloader); a guessed URL or filename with no digest is
+// exactly what may not be served. Unpinned stays a variant for the day a rebuild invalidates a pin.
+
+// SECURE BOOT IS A CHECK WITH THREE STANDINGS, NOT A BOOL. "Not accepted because nobody signed it or
+// looked" and "not accepted because a firmware was observed refusing it" have different remedies (observe
+// vs. sign/enroll), and a Bool cannot tell them apart. Observed carries the verdict AND the evidence that
+// settled it (a firmware observed refusing the image is Observed with SecureBootVerdictRejected, never
+// Refused); Unobserved is the honest default for an artifact no firmware has been shown; Refused means
+// only that the operator declines to attempt the check, so no firmware was shown the image by choice.
+// There is no stored or parallel Bool: acceptance IS the absence of a Secure Boot cause in
+// site_pxe_edge_gate_causes, the one fold that decides it. A new settling source
+// (an enrolled certificate, a second firmware family) is a new evidence value, not a new variant.
+type SitePxeEdgeSecureBootVerdict
+  = SecureBootVerdictBooted
+  | SecureBootVerdictRejected
+
+type SitePxeEdgeSecureBootStanding
+  = SecureBootObserved { verdict: SitePxeEdgeSecureBootVerdict, evidence: NonEmptyStr }
+  | SecureBootUnobserved { why: NonEmptyStr }
+  | SecureBootRefused { why: NonEmptyStr }
+
+// embedded_revision is the DECISION field: the exact five hex characters iPXE's Makefile appends as "(g<5>)"
+// to the version it prints into the image, which is the only revision the artefact itself can testify to.
+// built_from_commit is the full upstream SHA kept as build provenance for a reader reproducing the build;
+// NO gate reads it, because the image cannot confirm the other 35 characters, so a gate on it would be a
+// check the artefact cannot answer. Gating on the full SHA would need a source the image does not carry.
+type SitePxeEdgeChainloaderBuildReceipt sole_constructor {
+  embedded_revision: NonEmptyStr
+  built_from_commit: NonEmptyStr
   build_target: IpxeBuildTarget
   architecture: Architecture
   digest: ContentHash
   installed_filename: NonEmptyStr
+  secure_boot: SitePxeEdgeSecureBootStanding
+}
+
+fn site_pxe_edge_chainloader_build_receipt(
+  embedded_revision: NonEmptyStr,
+  built_from_commit: NonEmptyStr,
+  build_target: IpxeBuildTarget,
+  architecture: Architecture,
+  digest: ContentHash,
+  installed_filename: NonEmptyStr,
+  secure_boot: SitePxeEdgeSecureBootStanding,
+) -> SitePxeEdgeChainloaderBuildReceipt {
+  SitePxeEdgeChainloaderBuildReceipt {
+    embedded_revision: embedded_revision,
+    built_from_commit: built_from_commit,
+    build_target: build_target,
+    architecture: architecture,
+    digest: digest,
+    installed_filename: installed_filename,
+    secure_boot: secure_boot,
+  }
 }
 
 type SitePxeEdgeChainloaderPin
   = SitePxeEdgeChainloaderPinned { build: SitePxeEdgeChainloaderBuildReceipt }
   | SitePxeEdgeChainloaderUnpinned { obligation: NonEmptyStr }
 
-data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChainloaderUnpinned {
-  obligation: "build iPXE extdeps.firmware.ipxe ipxe_arm64_efi_snponly for Aarch64 at a recorded upstream revision, pin a SitePxeEdgeChainloaderBuildReceipt with its sha256 and installed filename here, and place the file in site_pxe_edge_tftp_root",
+// BUILD PROVENANCE (annotation, not a stored fact: the command is derived from build_target, so a second copy could disagree with it):
+// `make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- bin-arm64-efi/snponly.efi` with aarch64-linux-gnu-gcc 14.2.0 (Debian 14.2.0-19),
+// GNU Make 4.4.1, GNU ld 2.44. A future requirement to gate on toolchain identity adds typed tool entries to the receipt then.
+// THE COMMITTED IMAGE IS GUARDED BY REAL EXECUTION, OFF THE REQUIRED PATH: the witness
+// test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness runs `sha256sum` and
+// `grep -a -o -E "[(]g[0-9a-f]{5}[)]"` over artifacts/ipxe/snponly-arm64.efi and feeds the production parsers and gate,
+// so a swapped blob or flipped marker bytes red there. It is a LocalRepoWetLane exclusion in
+// gunbc.ci.ci_layer_roots witness_exclusion_frontier, so it is not merge-blocking; the wet placement step's digest
+// check against this pin is the other guard.
+// BUILT, NOT YET PLACED. The committed image's consumer is the wet placement step (the srv4 TFTP write run
+// by swift-wren-451 after operator approval), which must verify its sha256 against this pin before copying;
+// that step is the declared later change, triggered by operator approval of the srv4 write.
+// Evidence: the sha256 (337920 bytes) of the committed artifacts/ipxe/snponly-arm64.efi, built from the upstream revision below with ipxe.org's
+// documented `make <platform>/<image>` grammar (extdeps.firmware.ipxe). The file is NOT on srv4: the
+// gate still closes on the chainloader observation until a wet step places it at
+// site_pxe_edge_chainloader_path and the post-placement sha256 agrees with this digest.
+// Secure Boot is Unobserved: the image is self-built, signed by no key a firmware trusts by default, and
+// no Altra board's Secure Boot state has been read. Settling it takes an enrolled certificate or an
+// observed boot attempt, recorded as SecureBootObserved evidence.
+data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChainloaderPinned {
+  build: site_pxe_edge_chainloader_build_receipt(
+    embedded_revision: "c51ca",
+    built_from_commit: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
+    build_target: ipxe_arm64_efi_snponly,
+    architecture: Aarch64,
+    digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
+    installed_filename: ipxe_arm64_efi_snponly.image,
+    secure_boot: SecureBootUnobserved { why: "self-built iPXE is unsigned and no Altra board's Secure Boot state has been read; an enrolled certificate or an observed boot attempt would settle it" },
+  ),
 }
 
 fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderBuildReceipt? {
@@ -252,6 +325,15 @@ type SitePxeEdgeProbe
   | SitePxeEdgeProbeUnobservable { reason: String }
   | SitePxeEdgeProbeNotAttempted { reason: String }
 
+// THE REVISION THE BINARY ITSELF CARRIES. iPXE prints its git abbreviation into the image ("2.0.0+ (gc51ca)"),
+// so the pinned embedded_revision is checkable against the artefact rather than trusted: a digest says WHICH
+// bytes, the embedded revision says the receipt's claim about where they came from is not a different build's.
+// Unobservable is its own arm because "the image carries no revision" and "grep could not run" are both a
+// failure to read, never a mismatch.
+type SitePxeEdgeEmbeddedRevision
+  = EmbeddedRevisionRead { abbreviated: NonEmptyStr }
+  | EmbeddedRevisionUnobservable { reason: String }
+
 type SitePxeEdgeChainloaderObservation
   = ChainloaderDigestObserved { digest: ContentHash }
   | ChainloaderDigestUnobservable { reason: String }
@@ -269,9 +351,14 @@ type SitePxeEdgeGateCause
   | ChainloaderUnpinned { obligation: NonEmptyStr }
   | ChainloaderUnobservable { reason: String }
   | ChainloaderDigestMismatch { observed: ContentHash, pinned: ContentHash }
+  | ChainloaderEmbeddedRevisionUnobservable { reason: String }
+  | ChainloaderEmbeddedRevisionMismatch { embedded: NonEmptyStr, pinned: NonEmptyStr }
   | ChainloaderNotTheIpxeArm64Build { pinned: NonEmptyStr, expected: NonEmptyStr }
   | ChainloaderBuildTargetNotIpxeArm64 { pinned: IpxeBuildTarget, expected: IpxeBuildTarget }
   | ChainloaderArchitectureNotAarch64 { architecture: Architecture }
+  | ChainloaderSecureBootUnobserved { why: NonEmptyStr }
+  | ChainloaderSecureBootRefused { why: NonEmptyStr }
+  | ChainloaderSecureBootRejected { evidence: NonEmptyStr }
   | DnsmasqBinaryAbsent { reason: String }
   | DnsmasqBinaryUnobservable { reason: String }
   | AdministratorPrivilegeRefused { reason: String }
@@ -283,6 +370,7 @@ fn site_pxe_edge_gate_causes(
   roster: MacParseResult,
   pin: SitePxeEdgeChainloaderPin,
   chainloader: SitePxeEdgeChainloaderObservation,
+  embedded: SitePxeEdgeEmbeddedRevision,
   dnsmasq_binary: SitePxeEdgeProbe,
   privilege: SitePxeEdgeProbe,
 ) -> List<SitePxeEdgeGateCause> {
@@ -302,6 +390,10 @@ fn site_pxe_edge_gate_causes(
         ChainloaderDigestUnobservable { reason: r } => [ChainloaderUnobservable { reason: r }]
         ChainloaderDigestObserved { digest: d } =>
           if content_hash_equal(left: d, right: b.digest) { [] } else { [ChainloaderDigestMismatch { observed: d, pinned: b.digest }] }
+      }) + (match embedded {
+        EmbeddedRevisionUnobservable { reason: r } => [ChainloaderEmbeddedRevisionUnobservable { reason: r }]
+        EmbeddedRevisionRead { abbreviated: a } =>
+          if (a as String) == (b.embedded_revision as String) { [] } else { [ChainloaderEmbeddedRevisionMismatch { embedded: a, pinned: b.embedded_revision }] }
       }) + (if b.build_target == ipxe_arm64_efi_snponly {
         []
       } else {
@@ -314,6 +406,14 @@ fn site_pxe_edge_gate_causes(
         []
       } else {
         [ChainloaderNotTheIpxeArm64Build { pinned: b.installed_filename, expected: ipxe_arm64_efi_snponly.image }]
+      }) + (match b.secure_boot {
+        SecureBootObserved { verdict: v, evidence: e } =>
+          match v {
+            SecureBootVerdictBooted => []
+            SecureBootVerdictRejected => [ChainloaderSecureBootRejected { evidence: e }]
+          }
+        SecureBootUnobserved { why: w } => [ChainloaderSecureBootUnobserved { why: w }]
+        SecureBootRefused { why: w } => [ChainloaderSecureBootRefused { why: w }]
       })
   }) + (match dnsmasq_binary {
     SitePxeEdgeProbeHeld => []
@@ -335,13 +435,17 @@ fn site_pxe_edge_gate_causes(
 // the type is shared and the match must be total, not because the producer can reach it. What it may
 // never do is mint an ObservedNegative -- a leg that never ran is not a leg that ran and said no,
 // which is the distinction the gate is here to keep.
-// WHICH GATE CAUSES MEAN THE RUN COULD NOT LOOK, as opposed to what it saw when it did. Only the three
+// The three Secure Boot causes are false here: they are a property of the pinned receipt, not a leg that
+// failed to execute, so observe reports them as findings.
+// WHICH GATE CAUSES MEAN THE RUN COULD NOT LOOK, as opposed to what it saw when it did. Only the four
 // Unobservable arms are true: a leg that never executed. A sudo -n that RAN and answered no privilege,
 // like an absent dnsmasq or an unpinned chainloader, is a finding an observe dispatch reports and
 // still succeeds on.
 fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
   match cause {
     ChainloaderUnobservable { reason: _ } => true
+    ChainloaderEmbeddedRevisionUnobservable { reason: _ } => true
+    ChainloaderEmbeddedRevisionMismatch { embedded: _, pinned: _ } => false
     DnsmasqBinaryUnobservable { reason: _ } => true
     AdministratorPrivilegeUnobservable { reason: _ } => true
     AdministratorPrivilegeRefused { reason: _ } => false
@@ -353,6 +457,9 @@ fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
     ChainloaderNotTheIpxeArm64Build { pinned: _, expected: _ } => false
     ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
     ChainloaderArchitectureNotAarch64 { architecture: _ } => false
+    ChainloaderSecureBootUnobserved { why: _ } => false
+    ChainloaderSecureBootRefused { why: _ } => false
+    ChainloaderSecureBootRejected { evidence: _ } => false
     DnsmasqBinaryAbsent { reason: _ } => false
   }
 }
@@ -364,10 +471,15 @@ fn site_pxe_edge_gate_cause_text(cause: SitePxeEdgeGateCause) -> String {
     KnownClientMacUnparseable { error: _ } => "known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"
     ChainloaderUnpinned { obligation: o } => concat("chainloader-unpinned: ", o as String)
     ChainloaderUnobservable { reason: r } => concat("chainloader-unobservable: ", r)
+    ChainloaderEmbeddedRevisionUnobservable { reason: r } => concat("chainloader-embedded-revision-unobservable: ", r)
+    ChainloaderEmbeddedRevisionMismatch { embedded: e, pinned: p } => join(["chainloader-embedded-revision-mismatch: image carries ", e as String, ", pinned ", p as String], "")
     ChainloaderDigestMismatch { observed: o, pinned: p } => join(["chainloader-digest-mismatch: observed ", serialize_content_hash(hash: o) as String, ", pinned ", serialize_content_hash(hash: p) as String], "")
     ChainloaderNotTheIpxeArm64Build { pinned: p, expected: e } => join(["chainloader-not-the-ipxe-arm64-build: pinned ", p as String, ", expected ", e as String], "")
     ChainloaderBuildTargetNotIpxeArm64 { pinned: p, expected: e } => join(["chainloader-build-target-not-ipxe-arm64: pinned ", ipxe_build_target_path(target: p) as String, ", expected ", ipxe_build_target_path(target: e) as String], "")
     ChainloaderArchitectureNotAarch64 { architecture: _ } => "chainloader-architecture-not-aarch64: the pinned build is not an Aarch64 build"
+    ChainloaderSecureBootUnobserved { why: w } => concat("chainloader-secure-boot-unobserved: ", w as String)
+    ChainloaderSecureBootRefused { why: w } => concat("chainloader-secure-boot-refused: ", w as String)
+    ChainloaderSecureBootRejected { evidence: e } => concat("chainloader-secure-boot-rejected: ", e as String)
     DnsmasqBinaryAbsent { reason: r } => concat("dnsmasq-binary-absent: ", r)
     DnsmasqBinaryUnobservable { reason: r } => concat("dnsmasq-binary-unobservable: ", r)
     AdministratorPrivilegeRefused { reason: r } => concat("administrator-privilege-refused: ", r)
@@ -383,6 +495,40 @@ fn site_pxe_edge_digest_observation(path: NonEmptyStr, success: Bool, line: Stri
         Absent => ChainloaderDigestUnobservable { reason: "sha256sum printed a field that is not a sha256 digest" }
         Present { value: h } => ChainloaderDigestObserved { digest: h }
       }
+  }
+}
+
+// THE ONE PATH THAT READS A REVISION, shared by production and the witness. `output` is stdout of
+// `grep -a -o -E "[(]g[0-9a-f]{5}[)]"` over the image. iPXE prints the same "(g<5>)" into the image
+// several times (version string, SBOM), so repeated IDENTICAL matches are one reading; no match, a match
+// that is not exactly five characters, or two DISTINCT matches are unobservable, never a guess at which
+// one is the build's.
+fn site_pxe_edge_embedded_revision(success: Bool, output: String) -> SitePxeEdgeEmbeddedRevision {
+  if success == false {
+    EmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }
+  } else {
+    let lines = split(s: trim(s: output), delimiter: "\n")
+    match get(xs: lines, index: 0) {
+      Absent => EmbeddedRevisionUnobservable { reason: "grep printed no line" }
+      Present { value: first } =>
+        if !all(lines, l => l == first) {
+          EmbeddedRevisionUnobservable { reason: "the image carries more than one distinct embedded revision" }
+        } else {
+          match get(xs: split(s: first, delimiter: "(g"), index: 1) {
+            Absent => EmbeddedRevisionUnobservable { reason: "embedded revision line has no (g<hex>) group" }
+            Present { value: rest } =>
+              match get(xs: split(s: rest, delimiter: ")"), index: 0) {
+                Absent => EmbeddedRevisionUnobservable { reason: "embedded revision group is not closed" }
+                Present { value: hex } =>
+                  if hex.length() == 5 {
+                    EmbeddedRevisionRead { abbreviated: hex as NonEmptyStr }
+                  } else {
+                    EmbeddedRevisionUnobservable { reason: "embedded revision is not exactly five characters" }
+                  }
+              }
+          }
+        }
+    }
   }
 }
 
@@ -417,6 +563,18 @@ fn site_pxe_edge_argv_probe(target: SshTarget, context: FleetSshExecutionContext
         SitePxeEdgeProbeHeld
       } else {
         SitePxeEdgeProbeObservedNegative { reason: join([what, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+      }
+  }
+}
+
+fn observe_site_pxe_edge_embedded_revision(target: SshTarget, context: FleetSshExecutionContext, pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeEmbeddedRevision
+{
+  match site_pxe_edge_chainloader_target(pin: pin) {
+    Absent => EmbeddedRevisionUnobservable { reason: "no pinned chainloader to read a revision from" }
+    Present { value: c } =>
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["grep", "-a", "-o", "-E", "[(]g[0-9a-f]{5}[)]", site_pxe_edge_chainloader_path(target: c) as String]) {
+        TypedArgvExecRefused { reason: why } => EmbeddedRevisionUnobservable { reason: why }
+        TypedArgvExecConverged { result: r } => site_pxe_edge_embedded_revision(success: r.success, output: r.stdout)
       }
   }
 }
@@ -565,6 +723,7 @@ fn write_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext
     admission: site_pxe_edge_file_admission(file: file),
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     privilege: RemoteFileViaNonInteractiveSudo,
+    validation: NoValidation,
   ) {
     TypedRemoteFileConvergenceRefused { step: st, reason: why } => EdgeFileWriteRefused { step: st, reason: why }
     TypedRemoteFileConverged { converged: _ } => EdgeFileWrittenAndReadBack
@@ -627,7 +786,8 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let chainloader = observe_site_pxe_edge_chainloader(target: target, context: context, pin: pin)
-  let causes = site_pxe_edge_gate_causes(tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network, roster: first_onboarding_known_client_mac, pin: pin, chainloader: chainloader, dnsmasq_binary: binary, privilege: privilege)
+  let embedded = observe_site_pxe_edge_embedded_revision(target: target, context: context, pin: pin)
+  let causes = site_pxe_edge_gate_causes(tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network, roster: first_onboarding_known_client_mac, pin: pin, chainloader: chainloader, embedded: embedded, dnsmasq_binary: binary, privilege: privilege)
   let files = match site_pxe_edge_desired_inputs(pin: pin, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
     Absent => [site_pxe_edge_unit_file()]
     Present { value: inputs } => site_pxe_edge_desired_files(roster: inputs.roster, network: inputs.network)

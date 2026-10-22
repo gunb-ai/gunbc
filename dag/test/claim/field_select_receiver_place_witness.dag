@@ -1,0 +1,32 @@
+module test.claim.field_select_receiver_place_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PERMANENT REGRESSION CONTROL for `gunbc.recurring_failure_mode`
+// `emitter_clones_a_whole_record_to_read_one_field`. v1.compiler.emit_rust emit_typed_field_access
+// emitted the receiver of a field read as a VALUE, so `r.a.b` cloned `r.a` (a whole record) and read
+// one field out of the copy. The receiver is a PLACE; only the outermost read clones.
+// WHAT MAKES THE ROWS DISCRIMINATING: the same source is checked for the presence of the place read
+// and the absence of the receiver clone, so an emitter that cloned again flips the first row red, and
+// one that stopped emitting the read flips the second.
+// dissolve-on: never -- a field select on an immutable binding needs no receiver copy.
+
+test fn w_nested_field_read_does_not_clone_the_receiver() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nested_field_place_probe\nimport std.types { Int }\ntype Inner { b: Int, c: Int }\ntype Outer { a: Inner, d: Int }\nfn probe(r: Outer) -> Int { r.a.b }\n",
+    "src/test_claim_nested_field_place_probe.rs",
+    ["r.a.b"],
+    ["r.a.clone()"]
+  )
+}
+
+test fn w_three_deep_field_read_clones_only_the_leaf() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deep_field_place_probe\nimport std.types { Int }\ntype L3 { z: Int }\ntype L2 { y: L3 }\ntype L1 { x: L2 }\nfn probe(r: L1) -> Int { r.x.y.z }\n",
+    "src/test_claim_deep_field_place_probe.rs",
+    ["r.x.y.z"],
+    ["r.x.clone()", "r.x.y.clone()"]
+  )
+}

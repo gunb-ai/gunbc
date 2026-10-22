@@ -254,6 +254,10 @@ pub enum V2NativeCensusReading {
         subject: &'static [&'static str],
     },
     TypeDeclarationUse,
+    /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
+    OccurrenceBinding,
+    /// `gunbc.instruments.namespace_wave_binding_diff`: those rows on base and on head, joined.
+    BindingDiff,
     NativeProcessMemory {
         workload: NativeMeasuredWorkload,
     },
@@ -311,6 +315,7 @@ pub enum TargetProducer {
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
+    DeclRefCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -428,6 +433,18 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("ambient-name-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::OccurrenceBinding,
+            },
+        ),
+        (
+            instrument_label("namespace-wave-binding-diff"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::BindingDiff,
+            },
+        ),
+        (
             instrument_label("native-process-memory-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::NativeProcessMemory {
@@ -445,6 +462,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-crypto-vectors"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
+            },
+        ),
+        (
+            instrument_label("rfm-rung-census"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/rfm_rung_census.dag",
             },
         ),
         (
@@ -472,6 +495,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-allocation-observation"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_allocation_observation.dag",
+            },
+        ),
+        (
             instrument_label("native-xl2-rehearsal"),
             TargetProducer::NativeClaimProgram {
                 entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
@@ -493,6 +522,30 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-serve"),
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_fixture.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-device-crypto"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/auth/approval_device_crypto_serve.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-startup-refusal"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_refusal_fixture.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-startup-slow"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve-startup-overrun"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
             },
         ),
         (
@@ -540,6 +593,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::DependencyDemandCensus,
         ),
         (
+            instrument_label("decl-ref-census"),
+            TargetProducer::DeclRefCensus,
+        ),
+        (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
         ),
@@ -558,6 +615,20 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("regen-round-cost"),
             TargetProducer::RegenRoundCost,
+        ),
+        (
+            instrument_label("roster-import-sweep-controls"),
+            TargetProducer::CliWireProgram {
+                entry: "src/v2/workflow/roster_import_sweep.dag",
+                function: "roster_import_sweep_controls_wire",
+            },
+        ),
+        (
+            instrument_label("claim-coverage-census"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/claim_coverage_census_live.dag",
+                function: "claim_coverage_census_exit",
+            },
         ),
         (
             instrument_label("compute-run-unit-cold"),
@@ -988,7 +1059,13 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         ),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
-        } => run_type_declaration_use_census(&self_host_source_roots()),
+        } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::OccurrenceBinding,
+        } => run_ambient_name_census(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::BindingDiff,
+        } => run_namespace_wave_binding_diff(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::NativeProcessMemory { workload },
         } => run_native_process_memory(&self_host_source_roots(), workload),
@@ -1021,9 +1098,16 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::DependencyDemandCensus => {
-            run_dependency_demand_census(&self_host_source_roots())
-        }
+        TargetProducer::DependencyDemandCensus => run_census_verb(
+            "demand-census",
+            "dependency-demand-census",
+            &self_host_source_roots(),
+        ),
+        TargetProducer::DeclRefCensus => run_census_verb(
+            "decl-ref-census",
+            "decl-ref-census",
+            &self_host_source_roots(),
+        ),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -1104,9 +1188,13 @@ fn run_cli_wire_census(
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    // `source_indices` came back from the resolve alongside the graph and was never used; the
+    // reader-facing refusal lines now go through the located renderer with it.
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,
@@ -1193,9 +1281,13 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
             };
         }
     };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
+    // `source_indices` came back from the resolve alongside the graph and was never used; the
+    // reader-facing refusal lines now go through the located renderer with it.
+    let blocking =
+        crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+            graph.diagnostics.clone(),
+            source_indices.clone(),
+        );
     if !blocking.is_empty() {
         return InvocationOutcome {
             termination: Termination::Refused,
@@ -1468,27 +1560,48 @@ fn fixture_file_rows(
         .collect()
 }
 
-/// THE TYPE-DECLARATION-USE CENSUS PRODUCER (the nominal-type plan's M0). The host writes the two
-/// control roots from the reader's own rows (`type_census_fixture_files`,
-/// `type_census_unindexed_files`), runs the emitted compiler's `census-infer` over them and over the
-/// whole tree, and hands all three to `type_declaration_use_census_standing`, which decides the
-/// standing and filters the affected modules by the required gate. The host decides nothing.
-fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome {
-    let label_name = "type-declaration-use-census";
+/// WHICH `.dag` READER A census-infer LABEL HANDS ITS THREE RUNS TO: the reader module, its two
+/// fixture-root producers and its standing function. Each census-infer label is one row of this
+/// shape; the host below is shared, so a new reading is a row, not a second copy of the host.
+struct CensusInferReading {
+    label: &'static str,
+    reader: &'static str,
+    fixture_files: &'static str,
+    unindexed_files: &'static str,
+    standing: &'static str,
+}
+
+const TYPE_DECLARATION_USE_READING: CensusInferReading = CensusInferReading {
+    label: "type-declaration-use-census",
+    reader: "dag/gunbc/instruments/type_declaration_use_census_reading.dag",
+    fixture_files: "type_census_fixture_files",
+    unindexed_files: "type_census_unindexed_files",
+    standing: "type_declaration_use_census_standing",
+};
+
+/// THE census-infer READING PRODUCER (first written for the nominal-type plan's M0, generalized for
+/// the occurrence-binding census). The host writes the two control roots from the reader's own rows,
+/// runs the emitted compiler's `census-infer` over them and over the whole tree, and hands all three
+/// to the reader's standing function, which decides. The host decides nothing.
+fn run_census_infer_reading(
+    source_roots: &[String],
+    reading: &CensusInferReading,
+) -> InvocationOutcome {
+    let label_name = reading.label;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    const READER: &str = "dag/gunbc/instruments/type_declaration_use_census_reading.dag";
+    let reader_path = reading.reader;
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, reader_path) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+                message: format!("{label_name}: resolve failed for {reader_path}: {cause}"),
             };
         }
     };
@@ -1497,10 +1610,13 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
         source_indices,
         crate::v1_interpreter::ExecutionMode::Wet,
     );
-    let scratch = std::path::Path::new("target").join("type-declaration-use-census");
+    let scratch = std::path::Path::new("target").join(label_name);
     let mut write_root = |name: &str, function: &str| -> Result<String, String> {
-        let root = scratch.join(name);
-        let _ = std::fs::remove_dir_all(&root);
+        // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
+        // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
+        // directory, so `examples.decls` lands at <root>/dag/examples/decls.dag and the driver binds the root.
+        let _ = std::fs::remove_dir_all(scratch.join(name));
+        let root = scratch.join(name).join("dag");
         let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
             .map_err(|cause| format!("{label_name}: {function} failed: {cause}"))?;
         for (path, content) in fixture_file_rows(&ctx, &files)? {
@@ -1512,8 +1628,8 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
         }
         Ok(root.to_string_lossy().into_owned())
     };
-    let roots_written = write_root("fixture", "type_census_fixture_files")
-        .and_then(|f| write_root("unindexed", "type_census_unindexed_files").map(|u| (f, u)));
+    let roots_written = write_root("fixture", reading.fixture_files)
+        .and_then(|f| write_root("unindexed", reading.unindexed_files).map(|u| (f, u)));
     let (fixture_root, unindexed_root) = match roots_written {
         Ok(pair) => pair,
         Err(cause) => {
@@ -1558,7 +1674,7 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
     ];
     let value = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        "type_declaration_use_census_standing",
+        reading.standing,
         &args,
         true,
     ) {
@@ -1570,12 +1686,400 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             }
         }
     };
-    reader_standing_outcome(
+    reader_standing_outcome(&ctx, &value, label_name, reading.standing)
+}
+
+/// `git <args>` in the current directory, its trimmed stdout or a stated cause.
+fn git_text(args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {} exited {:?}: {}",
+            args.join(" "),
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// THE COMMIT WHOSE WAVE IS BEING READ: `GITHUB_SHA` when the run names one (CI, and the binding
+/// diff's base run, which is handed head's commit so both sides read one rewritten set), else HEAD.
+fn census_head_commit() -> Result<String, String> {
+    match std::env::var("GITHUB_SHA") {
+        Ok(sha) if !sha.is_empty() => Ok(sha),
+        _ => git_text(&["rev-parse", "HEAD"]),
+    }
+}
+
+/// The merge base of `head` and `base_ref`, fetching the base ref by name first: a shallow or
+/// single-branch checkout may not carry it.
+fn census_merge_base(head: &str, base_ref: &str) -> Result<String, String> {
+    if let Some((remote, branch)) = base_ref.split_once('/') {
+        git_text(&[
+            "fetch",
+            "--quiet",
+            "--depth=500",
+            remote,
+            &format!("{branch}:refs/remotes/{base_ref}"),
+        ])?;
+        let _ = git_text(&["fetch", "--quiet", "--deepen=500", remote]);
+    }
+    git_text(&["merge-base", head, base_ref])
+}
+
+/// THE MODULES A WAVE REWRITES: every `.dag` file under the two governed trees that differs between
+/// the merge base and `head`, named by the storage rule (`src/v2/a/b.dag` is `v2.a.b`, `dag/a/b.dag`
+/// is `a.b`; DESIGN section 3), each with whether this checkout holds it. A path outside the trees is
+/// no module and is not listed.
+fn census_rewritten_modules(merge_base: &str, head: &str) -> Result<Vec<(String, bool)>, String> {
+    let names = git_text(&[
+        "diff",
+        "--name-only",
+        "--no-renames",
+        merge_base,
+        head,
+        "--",
+        "dag",
+        "src/v2",
+    ])?;
+    let mut modules = Vec::new();
+    for path in names.lines().filter(|p| p.ends_with(".dag")) {
+        let stem = &path[..path.len() - ".dag".len()];
+        let module = if let Some(rest) = stem.strip_prefix("src/v2/") {
+            format!("v2.{}", rest.replace('/', "."))
+        } else if let Some(rest) = stem.strip_prefix("dag/") {
+            rest.replace('/', ".")
+        } else {
+            continue;
+        };
+        modules.push((module, std::path::Path::new(path).exists()));
+    }
+    Ok(modules)
+}
+
+/// THE AMBIENT-NAME CENSUS PRODUCER. The census reads SCOPED closures, one subject at a time, because
+/// the whole-corpus walk does not fit a bounded runner (gunbc.recurring_failure_mode
+/// whole_corpus_census_exceeds_the_memory_bound). Its subjects are the reader's roster
+/// (`ambient_census_subjects`) and every module the wave at this commit rewrites against the reader's
+/// base ref; a rewritten module this checkout lacks is reported, not run. The host writes the two
+/// control roots, runs them and the subjects over ONE prepared binary, and hands every run to
+/// `ambient_name_census_standing`, which decides. The host decides nothing.
+fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
+    let label_name = "ambient-name-census";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{label_name}: {message}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/ambient_name_census_reading.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => return unreached(format!("resolve failed for {READER}: {cause}")),
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let call =
+        |function: &str| crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true);
+    let strings =
+        |value: &crate::v1_interpreter::Value, what: &str| -> Result<Vec<String>, String> {
+            match value {
+                crate::v1_interpreter::Value::List(items) => items
+                    .iter()
+                    .map(|item| match item {
+                        crate::v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                        _ => Err(format!("{what} holds a non-string")),
+                    })
+                    .collect(),
+                _ => Err(format!("{what} is not a list")),
+            }
+        };
+    let roster = match call("ambient_census_subjects")
+        .map_err(|c| c.to_string())
+        .and_then(|v| strings(&v, "ambient_census_subjects"))
+    {
+        Ok(roster) => roster,
+        Err(cause) => return unreached(format!("ambient_census_subjects: {cause}")),
+    };
+    let base_ref = match call("ambient_census_base_ref") {
+        Ok(value) => match &value {
+            crate::v1_interpreter::Value::Str(s) => s.to_string(),
+            _ => return unreached("ambient_census_base_ref did not return a string".to_string()),
+        },
+        Err(cause) => return unreached(format!("ambient_census_base_ref failed: {cause}")),
+    };
+    let rewritten = match census_head_commit()
+        .and_then(|head| census_merge_base(&head, &base_ref).map(|mb| (mb, head)))
+        .and_then(|(mb, head)| census_rewritten_modules(&mb, &head))
+    {
+        Ok(rewritten) => rewritten,
+        Err(cause) => {
+            return unreached(format!("the rewritten modules could not be read: {cause}"))
+        }
+    };
+    let scratch = std::path::Path::new("target").join(label_name);
+    let write_root = |name: &str, function: &str| -> Result<String, String> {
+        // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
+        // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
+        // directory, so `examples.decls` lands at <root>/dag/examples/decls.dag and the driver binds the root.
+        let _ = std::fs::remove_dir_all(scratch.join(name));
+        let root = scratch.join(name).join("dag");
+        let files = call(function).map_err(|cause| format!("{function} failed: {cause}"))?;
+        for (path, content) in fixture_file_rows(&ctx, &files)? {
+            let target = root.join(&path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&target, content).map_err(|e| e.to_string())?;
+        }
+        Ok(root.to_string_lossy().into_owned())
+    };
+    let (fixture_root, unindexed_root) = match write_root("fixture", "ambient_census_fixture_files")
+        .and_then(|f| write_root("unindexed", "ambient_census_unindexed_files").map(|u| (f, u)))
+    {
+        Ok(pair) => pair,
+        Err(cause) => return unreached(cause),
+    };
+    let mut subjects: Vec<String> = roster.clone();
+    for (module, present) in &rewritten {
+        if *present && !subjects.contains(module) {
+            subjects.push(module.clone());
+        }
+    }
+    let (controls, union) = match cli_run::run_census_controls_and_subjects(
+        source_roots,
+        &[vec![fixture_root], vec![unindexed_root]],
+        &subjects,
+    ) {
+        Ok(runs) => runs,
+        Err(cause) => return unreached(cause),
+    };
+    let status = |s: Option<i32>| i64::from(s.unwrap_or(-1));
+    let tree_stdout = union.stdout.clone();
+    let tree_runs: String = subjects
+        .iter()
+        .map(|subject| format!("{subject}\t{}\n", status(union.status)))
+        .collect();
+    let rewritten_text: String = rewritten
+        .iter()
+        .map(|(m, present)| format!("{m}\t{}\n", if *present { "present" } else { "absent" }))
+        .collect();
+    let text = |s: &str| crate::v1_interpreter::Value::Str(s.to_string().into());
+    let args = [
+        (
+            Some("fixture_stdout".to_string()),
+            text(&controls[0].stdout),
+        ),
+        (
+            Some("fixture_status".to_string()),
+            crate::v1_interpreter::Value::Int(status(controls[0].status)),
+        ),
+        (
+            Some("unindexed_status".to_string()),
+            crate::v1_interpreter::Value::Int(status(controls[1].status)),
+        ),
+        (Some("tree_stdout".to_string()), text(&tree_stdout)),
+        (Some("tree_runs".to_string()), text(&tree_runs)),
+        (Some("rewritten".to_string()), text(&rewritten_text)),
+    ];
+    match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        &value,
-        label_name,
-        "type_declaration_use_census_standing",
-    )
+        "ambient_name_census_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => {
+            reader_standing_outcome(&ctx, &value, label_name, "ambient_name_census_standing")
+        }
+        Err(cause) => unreached(format!("the reader failed: {cause}")),
+    }
+}
+
+/// THE NAMESPACE-WAVE BINDING DIFF PRODUCER. Everything it decides is
+/// `gunbc.instruments.namespace_wave_binding_diff`'s: the base ref (`binding_diff_base_ref`, a policy
+/// fact the readers own), the two re-bind fixture roots, and the standing. The host performs only the
+/// effects no fold can: it writes the fixture roots and runs `census-infer` over them; it runs HEAD's
+/// `gunbc test //gunbc/instruments:ambient-name-census` as a child of this executable, and BASE's in a
+/// private worktree of the merge base with base's own seed -- base is read by base's compiler, never
+/// by head's, because a wave deletes a table row the head compiler no longer has -- handing both the
+/// same head commit as `GITHUB_SHA` so both census the same rewritten modules; and it removes the
+/// worktree it added. It substitutes nothing for a run that did not happen: every failure is a typed
+/// `InvocationOutcome`.
+fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome {
+    let label_name = "namespace-wave-binding-diff";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{label_name}: {message}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/namespace_wave_binding_diff.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => return unreached(format!("resolve failed for {READER}: {cause}")),
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let scratch = std::path::Path::new("target").join(label_name);
+    let write_root = |name: &str, function: &str| -> Result<String, String> {
+        // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
+        // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
+        // directory, so `examples.decls` lands at <root>/dag/examples/decls.dag and the driver binds the root.
+        let _ = std::fs::remove_dir_all(scratch.join(name));
+        let root = scratch.join(name).join("dag");
+        let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
+            .map_err(|cause| format!("{function} failed: {cause}"))?;
+        for (path, content) in fixture_file_rows(&ctx, &files)? {
+            let target = root.join(&path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&target, content).map_err(|e| e.to_string())?;
+        }
+        Ok(root.to_string_lossy().into_owned())
+    };
+    let fixture_roots = write_root("rebind_base", "binding_diff_rebind_base_files")
+        .and_then(|b| write_root("rebind_head", "binding_diff_rebind_head_files").map(|h| (b, h)));
+    let (rebind_base, rebind_head) = match fixture_roots {
+        Ok(pair) => pair,
+        Err(cause) => return unreached(cause),
+    };
+    let base_ref = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "binding_diff_base_ref",
+        &[],
+        true,
+    ) {
+        Ok(value) => match &value {
+            crate::v1_interpreter::Value::Str(s) => s.to_string(),
+            _ => return unreached("binding_diff_base_ref did not return a string".to_string()),
+        },
+        Err(cause) => return unreached(format!("binding_diff_base_ref failed: {cause}")),
+    };
+    let head = match census_head_commit() {
+        Ok(head) => head,
+        Err(cause) => return unreached(format!("head commit: {cause}")),
+    };
+    let base = match run_base_ambient_name_census(&scratch, &base_ref, &head) {
+        Ok(base) => base,
+        Err(cause) => return unreached(format!("base: {cause}")),
+    };
+    let head_run = match run_head_ambient_name_census(&head) {
+        Ok(run) => run,
+        Err(cause) => return unreached(format!("head: {cause}")),
+    };
+    let runs = match cli_run::run_census_infer_root_sets(
+        source_roots,
+        &[vec![rebind_base], vec![rebind_head]],
+    ) {
+        Ok(runs) => runs,
+        Err(cause) => return unreached(cause),
+    };
+    let text = |s: &str| crate::v1_interpreter::Value::Str(s.to_string().into());
+    let args = [
+        (
+            Some("rebind_base_stdout".to_string()),
+            text(&runs[0].stdout),
+        ),
+        (
+            Some("rebind_head_stdout".to_string()),
+            text(&runs[1].stdout),
+        ),
+        (Some("base_stdout".to_string()), text(&base.0)),
+        (
+            Some("base_status".to_string()),
+            crate::v1_interpreter::Value::Int(i64::from(base.1.unwrap_or(-1))),
+        ),
+        (Some("head_stdout".to_string()), text(&head_run.0)),
+        (
+            Some("head_status".to_string()),
+            crate::v1_interpreter::Value::Int(i64::from(head_run.1.unwrap_or(-1))),
+        ),
+    ];
+    match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "binding_diff_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => reader_standing_outcome(&ctx, &value, label_name, "binding_diff_standing"),
+        Err(cause) => unreached(format!("the reader failed: {cause}")),
+    }
+}
+
+/// Base's own `ambient-name-census`, run by base's own seed in a private worktree of the merge base of
+/// `head` and `base_ref`, handed head's commit as `GITHUB_SHA` so it reads the SAME rewritten modules
+/// head does. Returns that run's reading and status; removes the worktree it added.
+fn run_base_ambient_name_census(
+    scratch: &std::path::Path,
+    base_ref: &str,
+    head: &str,
+) -> Result<(String, Option<i32>), String> {
+    let merge_base = census_merge_base(head, base_ref)?;
+    let tree = scratch.join("base_tree");
+    let tree_text = tree.to_string_lossy().into_owned();
+    let _ = git_text(&["worktree", "remove", "--force", &tree_text]);
+    let _ = std::fs::remove_dir_all(&tree);
+    std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
+    git_text(&["worktree", "add", "--detach", &tree_text, &merge_base])?;
+    let target_dir = std::fs::canonicalize(scratch)
+        .map_err(|e| e.to_string())?
+        .join("base_target");
+    let run = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--release",
+            "-p",
+            "v1-compiler",
+            "--bin",
+            "gunbc",
+            "--",
+            "test",
+            "//gunbc/instruments:ambient-name-census",
+        ])
+        .current_dir(&tree)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env("GITHUB_SHA", head)
+        .output();
+    let removed = git_text(&["worktree", "remove", "--force", &tree_text]);
+    let output = run.map_err(|e| format!("spawning base's gunbc test: {e}"))?;
+    removed?;
+    // `gunbc test` writes its reading to STDERR (the verdict message), so that is what is read.
+    let reading = String::from_utf8(output.stderr).map_err(|e| e.to_string())?;
+    Ok((reading, output.status.code()))
+}
+
+/// Head's `ambient-name-census`, run by this executable in its own process (one bounded census at a
+/// time, never beside base's), with the same `GITHUB_SHA` base was handed.
+fn run_head_ambient_name_census(head: &str) -> Result<(String, Option<i32>), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let output = std::process::Command::new(exe)
+        .args(["test", "//gunbc/instruments:ambient-name-census"])
+        .env("GITHUB_SHA", head)
+        .output()
+        .map_err(|e| format!("spawning head's gunbc test: {e}"))?;
+    let reading = String::from_utf8(output.stderr).map_err(|e| e.to_string())?;
+    Ok((reading, output.status.code()))
 }
 
 /// A reader's `CliWireResponse`, as the invocation outcome: exit 0 held, 1 did not hold, any other
@@ -2338,11 +2842,92 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
     }
 }
 
+/// THE NATIVE SERVE PROGRAM BINDING READ: the reader module, the phases the row declares and the
+/// reader's own judgment of them, all `.dag` facts the host only carries. The row is
+/// `gunbc.target_binding` `NativeServeProgramProducer { entry, probe }` read through
+/// `gunbc.instrument_targets` (`native_serve_probe_reader_for_entry` and the per-phase answers); the
+/// join of declared to judged phases is `gunbc.native_serve_probe_plan` `native_serve_phase_refusals`,
+/// exposed by the reader as `native_serve_probe_phases_refused`. A non-empty join refuses before
+/// anything is built or spawned.
+struct NativeServeBindingRead {
+    reader: String,
+    phases: cli_run::NativeServePhases,
+    declared: Vec<String>,
+}
+
+fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, String> {
+    const BINDINGS: &str = "dag/gunbc/instrument_targets.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = cli_run::resolve_entry_graph(&roots, BINDINGS)
+        .map_err(|cause| format!("resolve failed for {BINDINGS}: {cause}"))?;
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let ask = |function: &str| -> Result<crate::v1_interpreter::Value, String> {
+        crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            function,
+            &[(
+                Some("entry".to_string()),
+                crate::v1_interpreter::str_value(entry),
+            )],
+            true,
+        )
+        .map_err(|cause| format!("{BINDINGS} {function} failed: {cause}"))
+    };
+    let flag = |function: &str| -> Result<bool, String> {
+        match ask(function)? {
+            crate::v1_interpreter::Value::Bool(b) => Ok(b),
+            other => Err(format!("{function} is not a Bool: {other:?}")),
+        }
+    };
+    let reader_value = ask("native_serve_probe_reader_for_entry")?;
+    let reader = match &reader_value {
+        crate::v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Present") => match ctx.field(fields, "value") {
+            Some(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
+            other => return Err(format!("the probe reader is not a String: {other:?}")),
+        },
+        _ => {
+            return Err(format!(
+                "no NativeServeProgramProducer binding names the entry {entry}"
+            ))
+        }
+    };
+    let declared_value = ask("native_serve_probe_declared_names_for_entry")?;
+    let declared = match &declared_value {
+        crate::v1_interpreter::Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                crate::v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!("a declared phase is not a String: {other:?}")),
+            })
+            .collect::<Result<Vec<String>, String>>()?,
+        other => return Err(format!("the declared phases are not a List: {other:?}")),
+    };
+    Ok(NativeServeBindingRead {
+        reader,
+        phases: cli_run::NativeServePhases {
+            peer_instance: flag("native_serve_probe_runs_peer")?,
+            refused_launch: flag("native_serve_probe_runs_refused_launch")?,
+            stuck_ceiling_exit: flag("native_serve_probe_runs_stuck_ceiling_exit")?,
+        },
+        declared,
+    })
+}
+
 /// THE NATIVE SERVE PROGRAM PRODUCER: emit, build and start a `NativeServeDriver` entry, exchange
-/// the requests `gunbc.native_serve_probe` names over real TCP, then let that module decide what the
-/// run established. The host decides nothing about a case: the requests and both launch revisions
-/// are read from the reader module, the bytes go back to `native_serve_probe_standing` unjudged, and
-/// its `ProcessExit` maps through the one classifier exactly as the claim producer's does.
+/// the requests the binding row's probe reader names over real TCP, then let that reader decide what
+/// the run established. The host decides nothing about a case, and branches on no binding: the
+/// reader module and the phases come from the row (`read_native_serve_binding`), the requests and
+/// both launch revisions are read from the reader module, the bytes go back to its
+/// `native_serve_probe_standing` unjudged, and its `ProcessExit` maps through the one classifier
+/// exactly as the claim producer's does.
 fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let label_name = "native-serve";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
@@ -2351,7 +2936,17 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    const READER: &str = "dag/gunbc/native_serve_probe.dag";
+    let binding = match read_native_serve_binding(entry) {
+        Ok(binding) => binding,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("{label_name}: the binding row is unreadable: {cause}"),
+            }
+        }
+    };
+    #[allow(non_snake_case)]
+    let READER: &str = binding.reader.as_str();
     let roots = cli_run::default_source_roots();
     let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
         Ok(resolved) => resolved,
@@ -2377,8 +2972,54 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
-    // The requests depend on the peer's bound port, which only exists once the peer is up, so they
-    // are read from the reader module with that port as its argument -- still every byte there.
+    // A DECLARED PHASE THE READER CANNOT JUDGE (or a judged phase nobody declared) STOPS THE LINE
+    // before anything is built: the join is the reader's native_serve_probe_phases_refused.
+    let declared_value = crate::v1_interpreter::Value::List(std::rc::Rc::new(
+        binding
+            .declared
+            .iter()
+            .map(|name| crate::v1_interpreter::str_value(name))
+            .collect::<Vec<_>>()
+            .into(),
+    ));
+    let refusals = crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_serve_probe_phases_refused",
+        &[(Some("declared".to_string()), declared_value)],
+        true,
+    );
+    match &refusals {
+        Ok(crate::v1_interpreter::Value::List(items)) if items.is_empty() => {}
+        Ok(crate::v1_interpreter::Value::List(items)) => {
+            let causes: Vec<String> = items.iter().filter_map(|item| text(item)).collect();
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "{label_name}: NATIVE-SERVE REFUSAL cause=PhaseUnsatisfied entry={entry} reader={READER} — {}",
+                    causes.join("; ")
+                ),
+            };
+        }
+        Ok(other) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                "{label_name}: {READER} native_serve_probe_phases_refused is not a List: {other:?}"
+            ),
+            }
+        }
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "{label_name}: {READER} native_serve_probe_phases_refused failed: {cause}"
+                ),
+            }
+        }
+    }
+    // The requests may depend on the peer's bound port, which only exists once the peer is up (and
+    // is -1 for a row declaring no peer), so they are read from the reader module with that port as
+    // its argument -- still every byte there.
     let requests_for_peer_port = |peer_port: i64| -> Result<Vec<String>, String> {
         let value = crate::v1_interpreter::run_in_context_with_args(
             &ctx,
@@ -2403,8 +3044,14 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let plan = (|| -> Result<(String, String, String), String> {
         let release = text(&read("native_serve_probe_release_revision")?)
             .ok_or("the release revision is not a String")?;
-        let refused = text(&read("native_serve_probe_refused_revision")?)
-            .ok_or("the refused revision is not a String")?;
+        // The refused revision is read only for a row that declares the refused launch; a reader
+        // with no such phase owes no such function.
+        let refused = if binding.phases.refused_launch {
+            text(&read("native_serve_probe_refused_revision")?)
+                .ok_or("the refused revision is not a String")?
+        } else {
+            String::new()
+        };
         let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
             .ok_or("the request deadline is not a String")?;
         Ok((release, refused, deadline))
@@ -2424,6 +3071,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         &release,
         &refused,
         &deadline,
+        binding.phases,
         &requests_for_peer_port,
     ) {
         Ok(run) => run,
@@ -4853,17 +5501,17 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
-fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_demand_census(source_roots) {
+/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
+/// the exit are decided by the emitted verb; the host adds no verdict.
+fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_census_verb(verb, source_roots) {
         Ok(code) => InvocationOutcome {
             termination: match code {
                 0 => Termination::ObservationHeld,
                 1 => Termination::ObservationDidNotHold,
                 _ => Termination::SubjectUnreached,
             },
-            message: format!(
-                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
-            ),
+            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,

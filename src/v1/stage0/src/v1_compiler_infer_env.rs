@@ -16,27 +16,27 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{TextRepresentation, TypeDeclarationProvenance};
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_display_key, declaration_ref_eq};
+pub use crate::std_decl_ref::{
+    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclarationRef,
+};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_literal_elaboration::kernel_mint_declaration_for;
-pub use crate::std_literal_elaboration::KernelMintDeclarationLookup;
 use crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationFound;
+pub use crate::std_literal_elaboration::{
+    kernel_mint_declaration_for, KernelMintDeclarationLookup,
+};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_operator_realization::OperandDeclaration;
-pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{is_container_type, is_kernel_type};
-pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
+pub use crate::std_types::{is_container_type, is_kernel_type, SourceSpan};
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
     ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
 };
 pub use crate::v1_compiler_infer_occurrence_binding::{
-    ambiguity_labels_from_decide, module_path_owner_binding_decide,
+    ambiguity_labels_from_decide, module_path_owner_binding_decide, ModulePathBindingProjection,
 };
 pub use crate::v1_compiler_type_head_exposure::TypeHeadExposure;
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::*;
@@ -54,11 +54,8 @@ pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
     param_node_name_at, param_node_type_expr, qualified_last_segment,
-    resolved_node_is_kernel_identity_for_name, source_text_at,
-};
-pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode,
-    InternTable, NewlineIndex, Node,
+    resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
+    Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -461,7 +458,7 @@ pub fn symbol_index_bare_declarations(index: Rc<SymbolIndex>, name: String) -> R
             Rc::new({
                 let mut __result = Vec::new();
                 for c in cs.iter().cloned() {
-                    __result.push(c.binding.clone().resolved.clone());
+                    __result.push(c.binding.resolved.clone());
                 }
                 __result
             })
@@ -475,10 +472,7 @@ pub fn bare_occurrence_import(
     name: String,
     reference: Rc<Node>,
 ) -> Option<Rc<BareOccurrenceBinding>> {
-    match v1_rt::map_get(
-        &index.file_modules.clone(),
-        reference.span.clone().file.clone(),
-    ) {
+    match v1_rt::map_get(&index.file_modules.clone(), reference.span.file.clone()) {
         std::option::Option::None => std::option::Option::None,
         Some(referencing_module) => match symbol_index_named_import_source(
             index.clone(),
@@ -493,6 +487,16 @@ pub fn bare_occurrence_import(
                 16,
             )),
         },
+    }
+}
+
+pub fn declared_module_owner(index: Rc<SymbolIndex>, name: String) -> Option<String> {
+    {
+        let owner = qualified_all_but_last(name.clone());
+        match v1_rt::map_get(&index.module_named_imports.clone(), owner.clone()) {
+            Some(_) => Some(owner.clone()),
+            std::option::Option::None => std::option::Option::None,
+        }
     }
 }
 
@@ -574,7 +578,7 @@ pub fn bare_occurrence_binding(
                 .iter()
                 .cloned()
             {
-                if (d.span.clone().file.clone() == reference.span.clone().file.clone()) {
+                if (d.span.file.clone() == reference.span.file.clone()) {
                     __result.push(d);
                 }
             }
@@ -619,7 +623,7 @@ pub fn global_bare_candidates_contain(
     {
         let mut __found = false;
         for c in candidates.iter().cloned() {
-            if (c.binding.clone().resolved.clone() == resolved.clone()) {
+            if (c.binding.resolved.clone() == resolved.clone()) {
                 __found = true;
                 break;
             }
@@ -700,19 +704,43 @@ pub fn symbol_index_insert(
     qualified_name: String,
     resolved: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = v1_rt::rc_map_insert(
             index.entries.clone(),
             qualified_name.clone(),
             resolved.clone(),
-        ),
-        global_bare: index.global_bare.clone(),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
+        );
+        let __rb_1_0 = index.global_bare.clone();
+        let __rb_2_0 = index.services.clone();
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.type_head_exposures.clone();
+        let __rb_5_0 = index.file_modules.clone();
+        let __rb_6_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.type_head_exposures = __rb_4_0;
+                __rb_r.file_modules = __rb_5_0;
+                __rb_r.module_named_imports = __rb_6_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    type_head_exposures: __rb_4_0,
+                    file_modules: __rb_5_0,
+                    module_named_imports: __rb_6_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn symbol_index_insert_decl(
@@ -720,26 +748,50 @@ pub fn symbol_index_insert_decl(
     module_path: String,
     binding: Rc<TypeBinding>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = v1_rt::rc_map_insert(
             index.entries.clone(),
             v1_rt::concat(
                 v1_rt::concat(module_path.clone(), ".".to_string()),
                 binding.name.clone(),
             ),
             binding.resolved.clone(),
-        ),
-        global_bare: symbol_index_track_global_bare(
+        );
+        let __rb_1_0 = symbol_index_track_global_bare(
             index.global_bare.clone(),
             module_path.clone(),
             binding.clone(),
-        ),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
+        );
+        let __rb_2_0 = index.services.clone();
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.type_head_exposures.clone();
+        let __rb_5_0 = index.file_modules.clone();
+        let __rb_6_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.type_head_exposures = __rb_4_0;
+                __rb_r.file_modules = __rb_5_0;
+                __rb_r.module_named_imports = __rb_6_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    type_head_exposures: __rb_4_0,
+                    file_modules: __rb_5_0,
+                    module_named_imports: __rb_6_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn symbol_index_insert_service(
@@ -748,38 +800,46 @@ pub fn symbol_index_insert_service(
     module_path: String,
     item: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: index.entries.clone(),
-        global_bare: index.global_bare.clone(),
-        services: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = index.entries.clone();
+        let __rb_1_0 = index.global_bare.clone();
+        let __rb_2_0 = v1_rt::rc_map_insert(
             index.services.clone(),
             name.clone(),
             Rc::new(ServiceCensusEntry {
                 module_path: module_path.clone(),
                 item: item.clone(),
             }),
-        ),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-        file_modules: index.file_modules.clone(),
-        module_named_imports: index.module_named_imports.clone(),
-    })
-}
-
-pub fn empty_scope() -> Rc<Scope> {
-    Rc::new(Scope {
-        locals: v1_rt::rc_empty_map::<String, Rc<ScopeBinding>>(),
-    })
-}
-
-pub fn scope_lookup(scope: Rc<Scope>, name: String) -> Option<Rc<ScopeBinding>> {
-    v1_rt::map_get(&scope.locals.clone(), name.clone())
-}
-
-pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
-    Rc::new(Scope {
-        locals: v1_rt::rc_map_insert(scope.locals.clone(), binding.name.clone(), binding.clone()),
-    })
+        );
+        let __rb_3_0 = index.transparent_alias_rep.clone();
+        let __rb_4_0 = index.type_head_exposures.clone();
+        let __rb_5_0 = index.file_modules.clone();
+        let __rb_6_0 = index.module_named_imports.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.entries = __rb_0_0;
+                __rb_r.global_bare = __rb_1_0;
+                __rb_r.services = __rb_2_0;
+                __rb_r.transparent_alias_rep = __rb_3_0;
+                __rb_r.type_head_exposures = __rb_4_0;
+                __rb_r.file_modules = __rb_5_0;
+                __rb_r.module_named_imports = __rb_6_0;
+            }
+            None => {
+                __rb_h = Rc::new(SymbolIndex {
+                    entries: __rb_0_0,
+                    global_bare: __rb_1_0,
+                    services: __rb_2_0,
+                    transparent_alias_rep: __rb_3_0,
+                    type_head_exposures: __rb_4_0,
+                    file_modules: __rb_5_0,
+                    module_named_imports: __rb_6_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -838,10 +898,6 @@ pub fn source_tree_of(file: String) -> String {
     }
 }
 
-pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
-    (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardedTypeEnvCacheMerge {
     pub cache: Rc<TypeEnvCache>,
@@ -849,7 +905,7 @@ pub struct GuardedTypeEnvCacheMerge {
 }
 
 pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
-    if (a.resolved.clone().span.clone() == b.resolved.clone().span.clone()) {
+    if (a.resolved.span.clone() == b.resolved.span.clone()) {
         true
     } else {
         (a.clone() == b.clone())
@@ -905,25 +961,13 @@ pub fn guarded_union_str_bindings_into_acc(
                                 Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
                                     name: name.clone(),
                                     import_path: import_path.clone(),
-                                    existing_site: existing
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    incoming_site: incoming
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    span: incoming.resolved.clone().span.clone(),
+                                    existing_site: existing.resolved.span.file.clone(),
+                                    incoming_site: incoming.resolved.span.file.clone(),
+                                    span: incoming.resolved.span.clone(),
                                     same_tree: (source_tree_of(
-                                        existing.resolved.clone().span.clone().file.clone(),
+                                        existing.resolved.span.file.clone(),
                                     ) == source_tree_of(
-                                        incoming.resolved.clone().span.clone().file.clone(),
+                                        incoming.resolved.span.file.clone(),
                                     )),
                                 })]),
                             ),
@@ -969,25 +1013,13 @@ pub fn guarded_union_str_bindings_into_overlay(
                                 Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
                                     name: name.clone(),
                                     import_path: import_path.clone(),
-                                    existing_site: accumulated
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    incoming_site: incoming
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    span: incoming.resolved.clone().span.clone(),
+                                    existing_site: accumulated.resolved.span.file.clone(),
+                                    incoming_site: incoming.resolved.span.file.clone(),
+                                    span: incoming.resolved.span.clone(),
                                     same_tree: (source_tree_of(
-                                        accumulated.resolved.clone().span.clone().file.clone(),
+                                        accumulated.resolved.span.file.clone(),
                                     ) == source_tree_of(
-                                        incoming.resolved.clone().span.clone().file.clone(),
+                                        incoming.resolved.span.file.clone(),
                                     )),
                                 })]),
                             ),
@@ -1226,27 +1258,31 @@ pub fn merge_type_env_cache_guarded(
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
-    Rc::new(TypeEnvCache {
-        deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
-        cycle_set_str: v1_rt::rc_map_merge(
-            base.cycle_set_str.clone(),
-            overlay.cycle_set_str.clone(),
-        ),
-        variant_locals: v1_rt::rc_map_merge(
-            base.variant_locals.clone(),
-            overlay.variant_locals.clone(),
-        ),
-    })
-}
-
-pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
-        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
-            Some(binding) => Some(binding.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
-        std::option::Option::None => std::option::Option::None,
+    {
+        let __rb_0_0 = v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone());
+        let __rb_1_0 = v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone());
+        let __rb_2_0 =
+            v1_rt::rc_map_merge(base.cycle_set_str.clone(), overlay.cycle_set_str.clone());
+        let __rb_3_0 =
+            v1_rt::rc_map_merge(base.variant_locals.clone(), overlay.variant_locals.clone());
+        let mut __rb_h = overlay;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.deps_map = __rb_0_0;
+                __rb_r.str_bindings = __rb_1_0;
+                __rb_r.cycle_set_str = __rb_2_0;
+                __rb_r.variant_locals = __rb_3_0;
+            }
+            None => {
+                __rb_h = Rc::new(TypeEnvCache {
+                    deps_map: __rb_0_0,
+                    str_bindings: __rb_1_0,
+                    cycle_set_str: __rb_2_0,
+                    variant_locals: __rb_3_0,
+                });
+            }
+        }
+        __rb_h
     }
 }
 
@@ -1332,17 +1368,14 @@ pub fn lookup_qualified_module_projection(
     env: Rc<TypeEnv>,
     name: String,
 ) -> Option<Rc<TypeBinding>> {
-    match v1_rt::contains(name.clone(), ".".to_string()) {
-        false => std::option::Option::None,
-        true => match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-            Some(resolved) => Some(Rc::new(TypeBinding {
-                name: name.clone(),
-                resolved: resolved.clone(),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
-            })),
-            std::option::Option::None => std::option::Option::None,
-        },
+    match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+        Some(resolved) => Some(Rc::new(TypeBinding {
+            name: name.clone(),
+            resolved: resolved.clone(),
+            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+            alias_rhs: std::option::Option::None,
+        })),
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1536,7 +1569,7 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
         if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
             return Rc::new(vec![]);
         }
-        match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+        match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
             .as_deref()
             .cloned()
         {
@@ -1587,7 +1620,7 @@ pub fn global_bare_owner_module(
     owner_module_path: String,
     name: String,
 ) -> Option<String> {
-    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+    match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
@@ -1716,9 +1749,8 @@ pub fn qualify_borrowed_type_names(
             Some(InferredNode::TypeVariable { id: _, .. }) => true,
             _ => false,
         };
-        let rewrite = (((((((n.connective.clone() == Connective::NoConnective)
+        let rewrite = ((((((n.connective.clone() == Connective::NoConnective)
             && (name.clone() != "".to_string()))
-            && !v1_rt::contains(name.clone(), ".".to_string()))
             && !crate::std_types::is_kernel_type(name.clone()))
             && !crate::std_types::is_container_type(name.clone()))
             && !v1_rt::map_has(&excluded, name.clone()))
@@ -1900,7 +1932,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
 }
 
 pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+    match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
@@ -1935,7 +1967,7 @@ pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<R
 }
 
 pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
-    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+    match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
@@ -1995,19 +2027,19 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env.clone(), name.clone()) {
-        Some(binding) => match (v1_rt::contains(name.clone(), ".".to_string())
-            || binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
-        {
-            true => Some(binding.resolved.clone()),
-            false => match variant_arm_type_projection(
-                env.clone(),
-                binding.resolved.clone(),
-                name.clone(),
-            ) {
-                Some(arm) => Some(arm.clone()),
-                std::option::Option::None => Some(binding.resolved.clone()),
-            },
-        },
+        Some(binding) => {
+            match binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()) {
+                true => Some(binding.resolved.clone()),
+                false => match variant_arm_type_projection(
+                    env.clone(),
+                    binding.resolved.clone(),
+                    name.clone(),
+                ) {
+                    Some(arm) => Some(arm.clone()),
+                    std::option::Option::None => Some(binding.resolved.clone()),
+                },
+            }
+        }
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -2178,8 +2210,8 @@ pub fn is_static_width_index_arm(
     ((variant_name.clone() == static_width_index_arm_name())
         && match width_resolution_declaration(env.clone()) {
             Some(decl) => {
-                ((decl.span.clone().file.clone() == coproduct.span.clone().file.clone())
-                    && (decl.span.clone().start.clone() == coproduct.span.clone().start.clone()))
+                ((decl.span.file.clone() == coproduct.span.file.clone())
+                    && (decl.span.start.clone() == coproduct.span.start.clone()))
             }
             std::option::Option::None => false,
         })
@@ -2188,8 +2220,8 @@ pub fn is_static_width_index_arm(
 pub fn static_width_index_declaring_module(env: Rc<TypeEnv>) -> Option<String> {
     match width_resolution_declaration(env.clone()) {
         Some(decl) => v1_rt::map_get(
-            &env.symbol_index.clone().file_modules.clone(),
-            decl.span.clone().file.clone(),
+            &env.symbol_index.file_modules.clone(),
+            decl.span.file.clone(),
         ),
         std::option::Option::None => std::option::Option::None,
     }
@@ -2208,23 +2240,19 @@ pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> boo
             if variant_resolves.clone() {
                 true
             } else {
-                if v1_rt::contains(name.clone(), ".".to_string()) {
-                    {
-                        let prefix = qualified_all_but_last(name.clone());
-                        if type_ref_module_path_is_containment_prefix(
-                            prefix.clone(),
-                            env.module_path.clone(),
-                        ) {
-                            match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                                Some(_) => true,
-                                std::option::Option::None => false,
-                            }
-                        } else {
-                            false
+                {
+                    let prefix = qualified_all_but_last(name.clone());
+                    if type_ref_module_path_is_containment_prefix(
+                        prefix.clone(),
+                        env.module_path.clone(),
+                    ) {
+                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                            Some(_) => true,
+                            std::option::Option::None => false,
                         }
+                    } else {
+                        false
                     }
-                } else {
-                    false
                 }
             }
         }
@@ -2316,29 +2344,6 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
             )
         }
     })
-}
-
-pub fn is_inductive_field(
-    env: Rc<TypeEnv>,
-    type_name: String,
-    variant_name: String,
-    field_name: String,
-) -> bool {
-    {
-        let mut __found = false;
-        for f in inductive_fields_for(env.clone(), type_name.clone())
-            .iter()
-            .cloned()
-        {
-            if ((f.variant_name.clone() == variant_name.clone())
-                && (f.field_name.clone() == field_name.clone()))
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
 }
 
 pub fn put_inductive_field_guard_note() -> String {
@@ -2648,7 +2653,7 @@ pub fn census_declaration_type_env(
 }
 
 pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bool {
-    match binding.resolved.clone().ident_span.clone() {
+    match binding.resolved.ident_span.clone() {
         Some(s) => ((s.file.clone() == sp.file.clone()) && (s.start.clone() == sp.start.clone())),
         std::option::Option::None => false,
     }
@@ -2675,60 +2680,59 @@ pub fn type_reference_declaration(
         }
         match rt.ident_span.clone() {
             std::option::Option::None => std::option::Option::None,
-            Some(sp) => match v1_rt::map_get(
-                &env.symbol_index.clone().global_bare.clone(),
-                decl_name.clone(),
-            )
-            .as_deref()
-            .cloned()
-            {
-                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                    module_path: mp,
-                    binding: b,
-                    ..
-                }) => {
-                    if binding_declares_span(b.clone(), sp.clone()) {
-                        Some(Rc::new(OperandDeclaration {
+            Some(sp) => {
+                match v1_rt::map_get(&env.symbol_index.global_bare.clone(), decl_name.clone())
+                    .as_deref()
+                    .cloned()
+                {
+                    Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path: mp,
+                        binding: b,
+                        ..
+                    }) => {
+                        if binding_declares_span(b.clone(), sp.clone()) {
+                            Some(Rc::new(OperandDeclaration {
+                                declaration: crate::std_decl_ref::decl_ref(
+                                    mp.clone(),
+                                    decl_name.clone(),
+                                ),
+                                provenance: crate::v1_std_core::declaration_provenance_of(
+                                    b.resolved.clone(),
+                                ),
+                            }))
+                        } else {
+                            std::option::Option::None
+                        }
+                    }
+                    Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                        candidates: cands,
+                        ..
+                    }) => match Rc::new({
+                        let mut __result = Vec::new();
+                        for c in cands.iter().cloned() {
+                            if binding_declares_span(c.binding.clone(), sp.clone()) {
+                                __result.push(c);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(c) => Some(Rc::new(OperandDeclaration {
                             declaration: crate::std_decl_ref::decl_ref(
-                                mp.clone(),
+                                c.module_path.clone(),
                                 decl_name.clone(),
                             ),
                             provenance: crate::v1_std_core::declaration_provenance_of(
-                                b.resolved.clone(),
+                                c.binding.resolved.clone(),
                             ),
-                        }))
-                    } else {
-                        std::option::Option::None
-                    }
-                }
-                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                    candidates: cands,
-                    ..
-                }) => match Rc::new({
-                    let mut __result = Vec::new();
-                    for c in cands.iter().cloned() {
-                        if binding_declares_span(c.binding.clone(), sp.clone()) {
-                            __result.push(c);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(c) => Some(Rc::new(OperandDeclaration {
-                        declaration: crate::std_decl_ref::decl_ref(
-                            c.module_path.clone(),
-                            decl_name.clone(),
-                        ),
-                        provenance: crate::v1_std_core::declaration_provenance_of(
-                            c.binding.clone().resolved.clone(),
-                        ),
-                    })),
+                        })),
+                        std::option::Option::None => std::option::Option::None,
+                    },
                     std::option::Option::None => std::option::Option::None,
-                },
-                std::option::Option::None => std::option::Option::None,
-            },
+                }
+            }
         }
     }
 }
@@ -2743,12 +2747,9 @@ pub fn operand_declaration_from_qualified_name(
         if ((decl_name.clone() == "".to_string()) || (module_prefix.clone() == "".to_string())) {
             return std::option::Option::None;
         }
-        match v1_rt::map_get(
-            &env.symbol_index.clone().global_bare.clone(),
-            decl_name.clone(),
-        )
-        .as_deref()
-        .cloned()
+        match v1_rt::map_get(&env.symbol_index.global_bare.clone(), decl_name.clone())
+            .as_deref()
+            .cloned()
         {
             Some(GlobalBareLookupState::GlobalBareUniqueBinding {
                 module_path: mp,
@@ -2756,7 +2757,7 @@ pub fn operand_declaration_from_qualified_name(
                 ..
             }) => {
                 if (mp.clone() == module_prefix.clone()) {
-                    match b.resolved.clone().ident_span.clone() {
+                    match b.resolved.ident_span.clone() {
                         Some(_) => Some(Rc::new(OperandDeclaration {
                             declaration: crate::std_decl_ref::decl_ref(
                                 mp.clone(),
@@ -2786,14 +2787,14 @@ pub fn operand_declaration_from_qualified_name(
             .first()
             .cloned()
             {
-                Some(c) => match c.binding.clone().resolved.clone().ident_span.clone() {
+                Some(c) => match c.binding.resolved.ident_span.clone() {
                     Some(_) => Some(Rc::new(OperandDeclaration {
                         declaration: crate::std_decl_ref::decl_ref(
                             c.module_path.clone(),
                             decl_name.clone(),
                         ),
                         provenance: crate::v1_std_core::declaration_provenance_of(
-                            c.binding.clone().resolved.clone(),
+                            c.binding.resolved.clone(),
                         ),
                     })),
                     std::option::Option::None => std::option::Option::None,
@@ -2839,10 +2840,7 @@ pub fn declaration_reading_of_type_node(
                 cause: Rc::new(TypeNodeUnidentifiedCause::TypeNodeAuthoredNameEmpty),
             });
         }
-        let entry = v1_rt::map_get(
-            &env.symbol_index.clone().global_bare.clone(),
-            decl_name.clone(),
-        );
+        let entry = v1_rt::map_get(&env.symbol_index.global_bare.clone(), decl_name.clone());
         let by_span =
             declaration_ref_of_declaration_node(rt.clone(), source_indices.clone(), env.clone());
         match by_span.clone() {
@@ -2930,47 +2928,46 @@ pub fn declaration_ref_of_declaration_node(
         }
         match decl.ident_span.clone() {
             std::option::Option::None => std::option::Option::None,
-            Some(sp) => match v1_rt::map_get(
-                &env.symbol_index.clone().global_bare.clone(),
-                decl_name.clone(),
-            )
-            .as_deref()
-            .cloned()
-            {
-                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                    module_path: mp,
-                    binding: b,
-                    ..
-                }) => {
-                    if binding_declares_span(b.clone(), sp.clone()) {
-                        Some(crate::std_decl_ref::decl_ref(mp.clone(), decl_name.clone()))
-                    } else {
-                        std::option::Option::None
-                    }
-                }
-                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                    candidates: cands,
-                    ..
-                }) => match Rc::new({
-                    let mut __result = Vec::new();
-                    for c in cands.iter().cloned() {
-                        if binding_declares_span(c.binding.clone(), sp.clone()) {
-                            __result.push(c);
+            Some(sp) => {
+                match v1_rt::map_get(&env.symbol_index.global_bare.clone(), decl_name.clone())
+                    .as_deref()
+                    .cloned()
+                {
+                    Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path: mp,
+                        binding: b,
+                        ..
+                    }) => {
+                        if binding_declares_span(b.clone(), sp.clone()) {
+                            Some(crate::std_decl_ref::decl_ref(mp.clone(), decl_name.clone()))
+                        } else {
+                            std::option::Option::None
                         }
                     }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(c) => Some(crate::std_decl_ref::decl_ref(
-                        c.module_path.clone(),
-                        decl_name.clone(),
-                    )),
+                    Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                        candidates: cands,
+                        ..
+                    }) => match Rc::new({
+                        let mut __result = Vec::new();
+                        for c in cands.iter().cloned() {
+                            if binding_declares_span(c.binding.clone(), sp.clone()) {
+                                __result.push(c);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(c) => Some(crate::std_decl_ref::decl_ref(
+                            c.module_path.clone(),
+                            decl_name.clone(),
+                        )),
+                        std::option::Option::None => std::option::Option::None,
+                    },
                     std::option::Option::None => std::option::Option::None,
-                },
-                std::option::Option::None => std::option::Option::None,
-            },
+                }
+            }
         }
     }
 }
@@ -3108,12 +3105,9 @@ pub fn declaration_node_of_ref(d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> Optio
     {
         let want_name = d.decl_name.clone();
         let want_module = d.module_path.clone();
-        match v1_rt::map_get(
-            &env.symbol_index.clone().global_bare.clone(),
-            want_name.clone(),
-        )
-        .as_deref()
-        .cloned()
+        match v1_rt::map_get(&env.symbol_index.global_bare.clone(), want_name.clone())
+            .as_deref()
+            .cloned()
         {
             Some(GlobalBareLookupState::GlobalBareUniqueBinding {
                 module_path: mp,
@@ -3140,7 +3134,7 @@ pub fn declaration_node_of_ref(d: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> Optio
             .first()
             .cloned()
             {
-                Some(c) => Some(c.binding.clone().resolved.clone()),
+                Some(c) => Some(c.binding.resolved.clone()),
                 std::option::Option::None => std::option::Option::None,
             },
             std::option::Option::None => std::option::Option::None,
@@ -3178,12 +3172,9 @@ pub fn declaration_binding_of_ref(
     d: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(
-        &env.symbol_index.clone().global_bare.clone(),
-        d.decl_name.clone(),
-    )
-    .as_deref()
-    .cloned()
+    match v1_rt::map_get(&env.symbol_index.global_bare.clone(), d.decl_name.clone())
+        .as_deref()
+        .cloned()
     {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             module_path: mp,
@@ -3555,6 +3546,529 @@ pub fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) 
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SettledType {
+    pub head: Rc<DeclarationRef>,
+    pub args: Rc<Vec<Rc<Node>>>,
+}
+
+pub fn settled_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<SettledType>> {
+    {
+        let read = match n.declaration.clone() {
+            Some(dn) => Rc::new(
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: dn.clone(),
+                },
+            ),
+            std::option::Option::None => {
+                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
+            }
+        };
+        let reading = match (*read.clone()).clone() {
+            TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => {
+                match v1_rt::map_get(&env.symbol_index.file_modules.clone(), n.span.file.clone()) {
+                    Some(authoring) => match declaration_named_in_module(
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                        authoring.clone(),
+                        env.clone(),
+                    ) {
+                        Some(d) => Rc::new(
+                            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                                declaration: d.clone(),
+                            },
+                        ),
+                        std::option::Option::None => read.clone(),
+                    },
+                    std::option::Option::None => read.clone(),
+                }
+            }
+            _ => read.clone(),
+        };
+        match (*reading.clone()).clone() {
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: d,
+                ..
+            } => match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                std::option::Option::None => Some(Rc::new(SettledType {
+                    head: d.clone(),
+                    args: n.children.clone(),
+                })),
+                Some(rhs) => settled_alias_rhs(
+                    rhs.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                    fuel.clone(),
+                ),
+            },
+            _ => std::option::Option::None,
+        }
+    }
+}
+
+pub fn settled_alias_rhs(
+    rhs: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<SettledType>> {
+    if (fuel.clone() <= 0) {
+        std::option::Option::None
+    } else {
+        match rhs.declaration.clone() {
+            Some(rhs_head) => settled_rhs(
+                rhs.clone(),
+                rhs_head.clone(),
+                source_indices.clone(),
+                env.clone(),
+                v1_rt::int_sub(fuel.clone(), 1),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
+pub fn settled_type_of_declaration(
+    d: Rc<DeclarationRef>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<SettledType>> {
+    match alias_rhs_of_declaration(d.clone(), env.clone()) {
+        std::option::Option::None => Some(Rc::new(SettledType {
+            head: d.clone(),
+            args: Rc::new(vec![]),
+        })),
+        Some(rhs) => settled_alias_rhs(
+            rhs.clone(),
+            source_indices.clone(),
+            env.clone(),
+            fuel.clone(),
+        ),
+    }
+}
+
+pub fn settled_rhs(
+    mut __tco_loop_rhs: Rc<Node>,
+    mut __tco_loop_head: Rc<DeclarationRef>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> Option<Rc<SettledType>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut rhs = __tco_loop_rhs;
+        #[allow(unused_mut)]
+        let mut head = __tco_loop_head;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        match alias_rhs_of_declaration(head.clone(), env.clone()) {
+            std::option::Option::None => {
+                break Some(Rc::new(SettledType {
+                    head: head.clone(),
+                    args: rhs.children.clone(),
+                }));
+            }
+            Some(next) => match next.declaration.clone() {
+                Some(next_head) => {
+                    if (fuel.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        {
+                            let __tco_0 = next.clone();
+                            let __tco_1 = next_head.clone();
+                            let __tco_2 = source_indices;
+                            let __tco_3 = env;
+                            let __tco_4 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_rhs = __tco_0;
+                            __tco_loop_head = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            __tco_loop_env = __tco_3;
+                            __tco_loop_fuel = __tco_4;
+                            continue;
+                        }
+                    }
+                }
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+            },
+        }
+    }
+}
+
+pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
+    if (((((pre.connective.clone() != Connective::NoConnective)
+        || ((pre.params.clone().len() as i64) > 0))
+        || (pre.type_annotation.clone() != std::option::Option::None))
+        || ((pre.children.clone().len() as i64) > 0))
+        || (pre.return_cardinality.clone() != Cardinality::Required))
+    {
+        std::option::Option::None
+    } else {
+        match pre.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if (((rhs.connective.clone() != Connective::NoConnective)
+                    || (rhs.return_cardinality.clone() != Cardinality::Required))
+                    || (rhs.type_annotation.clone() != std::option::Option::None))
+                {
+                    std::option::Option::None
+                } else {
+                    Some(rhs.clone())
+                }
+            }
+            _ => std::option::Option::None,
+        }
+    }
+}
+
+pub fn alias_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    {
+        let declaring = if (env.module_path.clone() == item_ref.module_path.clone()) {
+            Some(env.clone())
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in env.parents.clone().iter().cloned() {
+                    if (p.module_path.clone() == item_ref.module_path.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned()
+        };
+        let from_env = match declaring.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(owner) => {
+                match v1_rt::map_get(&owner.str_bindings.clone(), item_ref.decl_name.clone()) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(binding) => binding.alias_rhs.clone(),
+                }
+            }
+        };
+        match from_env.clone() {
+            Some(rhs) => Some(rhs.clone()),
+            std::option::Option::None => match symbol_index_lookup(
+                env.symbol_index.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+                    item_ref.decl_name.clone(),
+                ),
+            ) {
+                std::option::Option::None => std::option::Option::None,
+                Some(item) => match transparent_alias_rhs(item.clone()) {
+                    Some(rhs) => match rhs.declaration.clone() {
+                        Some(_) => Some(rhs.clone()),
+                        std::option::Option::None => alias_rhs_with_index_identity(
+                            rhs.clone(),
+                            item_ref.module_path.clone(),
+                            env.clone(),
+                        ),
+                    },
+                    std::option::Option::None => std::option::Option::None,
+                },
+            },
+        }
+    }
+}
+
+pub fn alias_rhs_with_index_identity(
+    rhs: Rc<Node>,
+    owner_module: String,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    {
+        let spelled = crate::v1_std_core::authored_name_at(env.source_indices.clone(), rhs.clone());
+        match declaration_named_in_module(spelled.clone(), owner_module.clone(), env.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(d) => Some(Rc::new(Node {
+                occurrence_identity: rhs.occurrence_identity.clone(),
+                name: rhs.name.clone(),
+                span: rhs.span.clone(),
+                ident_span: rhs.ident_span.clone(),
+                children: rhs.children.clone(),
+                connective: rhs.connective.clone(),
+                params: rhs.params.clone(),
+                inferred: rhs.inferred.clone(),
+                return_cardinality: rhs.return_cardinality.clone(),
+                uses: rhs.uses.clone(),
+                body: rhs.body.clone(),
+                transport: rhs.transport.clone(),
+                properties: rhs.properties.clone(),
+                type_annotation: rhs.type_annotation.clone(),
+                is_self_recursive: rhs.is_self_recursive.clone(),
+                has_non_tail_self_call: rhs.has_non_tail_self_call.clone(),
+                match_pattern: rhs.match_pattern.clone(),
+                module_item_kind: rhs.module_item_kind.clone(),
+                declaration_marker: rhs.declaration_marker.clone(),
+                declaration: Some(d.clone()),
+                expr_data: rhs.expr_data.clone(),
+                ident: None,
+            })),
+        }
+    }
+}
+
+pub fn declaration_named_in_module(
+    name: String,
+    module_path: String,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    if (name.clone() == "".to_string()) {
+        std::option::Option::None
+    } else {
+        if (qualified_all_but_last(name.clone()) != "".to_string()) {
+            match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                Some(_) => Some(crate::std_decl_ref::decl_ref(
+                    qualified_all_but_last(name.clone()),
+                    crate::v1_std_core::qualified_last_segment(name.clone()),
+                )),
+                std::option::Option::None => std::option::Option::None,
+            }
+        } else {
+            match symbol_index_named_import_source(
+                env.symbol_index.clone(),
+                module_path.clone(),
+                name.clone(),
+            ) {
+                Some(m) => Some(crate::std_decl_ref::decl_ref(m.clone(), name.clone())),
+                std::option::Option::None => match symbol_index_lookup(
+                    env.symbol_index.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(module_path.clone(), ".".to_string()),
+                        name.clone(),
+                    ),
+                ) {
+                    Some(_) => Some(crate::std_decl_ref::decl_ref(
+                        module_path.clone(),
+                        name.clone(),
+                    )),
+                    std::option::Option::None => std::option::Option::None,
+                },
+            }
+        }
+    }
+}
+
+pub fn settled_args_agree(
+    left: Rc<Vec<Rc<Node>>>,
+    right: Rc<Vec<Rc<Node>>>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
+    {
+        let mut __all = true;
+        for pair in Rc::new(
+            left.clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            if !(match right.clone().get((pair.0.clone()) as usize).cloned() {
+                Some(r) => agree(pair.1.clone(), r.clone()),
+                std::option::Option::None => false,
+            }) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    }
+}
+
+pub fn settled_arity_agrees(
+    head: Rc<DeclarationRef>,
+    l: Rc<SettledType>,
+    r: Rc<SettledType>,
+    env: Rc<TypeEnv>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
+    match declaration_node_of_ref(head.clone(), env.clone()) {
+        std::option::Option::None => false,
+        Some(decl) => {
+            let arity = (decl.params.clone().len() as i64);
+            if (arity.clone() == 0) {
+                true
+            } else {
+                ((((l.args.clone().len() as i64) == arity.clone())
+                    && ((r.args.clone().len() as i64) == arity.clone()))
+                    && settled_args_agree(l.args.clone(), r.args.clone(), agree.clone()))
+            }
+        }
+    }
+}
+
+pub fn kernel_settled_name(
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> Option<String> {
+    loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        let reading = match n.declaration.clone() {
+            Some(dn) => Rc::new(
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: dn.clone(),
+                },
+            ),
+            std::option::Option::None => {
+                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
+            }
+        };
+        match (*reading.clone()).clone() {
+            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kernel, .. } => {
+                break Some(kernel.clone());
+            }
+            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                declaration: d,
+                ..
+            } => {
+                if (fuel.clone() <= 0) {
+                    break std::option::Option::None;
+                } else {
+                    match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                        std::option::Option::None => {
+                            break std::option::Option::None;
+                        }
+                        Some(rhs) => {
+                            let __tco_0 = rhs.clone();
+                            let __tco_1 = source_indices;
+                            let __tco_2 = env;
+                            let __tco_3 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_source_indices = __tco_1;
+                            __tco_loop_env = __tco_2;
+                            __tco_loop_fuel = __tco_3;
+                            continue;
+                        }
+                    }
+                }
+            }
+            _ => {
+                break std::option::Option::None;
+            }
+        }
+    }
+}
+
+pub fn alias_settled_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
+    match settled_type(left.clone(), source_indices.clone(), env.clone(), 16) {
+        std::option::Option::None => kernel_settled_agree(
+            left.clone(),
+            right.clone(),
+            source_indices.clone(),
+            env.clone(),
+        ),
+        Some(l) => match settled_type(right.clone(), source_indices.clone(), env.clone(), 16) {
+            std::option::Option::None => kernel_settled_agree(
+                left.clone(),
+                right.clone(),
+                source_indices.clone(),
+                env.clone(),
+            ),
+            Some(r) => settled_types_agree(l.clone(), r.clone(), env.clone(), agree.clone()),
+        },
+    }
+}
+
+pub fn settled_types_agree(
+    l: Rc<SettledType>,
+    r: Rc<SettledType>,
+    env: Rc<TypeEnv>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
+    (crate::std_decl_ref::declaration_ref_eq(l.head.clone(), r.head.clone())
+        && settled_arity_agrees(
+            l.head.clone(),
+            l.clone(),
+            r.clone(),
+            env.clone(),
+            agree.clone(),
+        ))
+}
+
+pub fn alias_names_settled_agree(
+    left: String,
+    right: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
+    match declaration_named_by_type_name(left.clone(), env.clone()) {
+        std::option::Option::None => false,
+        Some(ld) => match declaration_named_by_type_name(right.clone(), env.clone()) {
+            std::option::Option::None => false,
+            Some(rd) => match settled_type_of_declaration(
+                ld.clone(),
+                source_indices.clone(),
+                env.clone(),
+                16,
+            ) {
+                std::option::Option::None => false,
+                Some(l) => match settled_type_of_declaration(
+                    rd.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                    16,
+                ) {
+                    std::option::Option::None => false,
+                    Some(r) => {
+                        settled_types_agree(l.clone(), r.clone(), env.clone(), agree.clone())
+                    }
+                },
+            },
+        },
+    }
+}
+
+pub fn kernel_settled_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    match kernel_settled_name(left.clone(), source_indices.clone(), env.clone(), 16) {
+        std::option::Option::None => false,
+        Some(l) => {
+            match kernel_settled_name(right.clone(), source_indices.clone(), env.clone(), 16) {
+                std::option::Option::None => false,
+                Some(r) => (l.clone() == r.clone()),
+            }
+        }
+    }
+}
+
 pub fn type_reference_declaration_ref(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3593,5 +4107,53 @@ pub fn type_reference_declaration_ref(
                 },
             },
         }
+    }
+}
+
+pub fn declaration_named_by_type_name(
+    name: String,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let scoped = match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(decl) => declaration_ref_of_declaration_node(
+                decl.clone(),
+                env.source_indices.clone(),
+                env.clone(),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        };
+        if (scoped.clone() != std::option::Option::None) {
+            return scoped.clone();
+        }
+        match operand_declaration_from_qualified_name(name.clone(), env.clone()) {
+            Some(od) => Some(od.declaration.clone()),
+            std::option::Option::None => {
+                if (qualified_all_but_last(name.clone()) != "".to_string()) {
+                    std::option::Option::None
+                } else {
+                    match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
+                        .as_deref()
+                        .cloned()
+                    {
+                        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                            module_path: mp,
+                            ..
+                        }) => Some(crate::std_decl_ref::decl_ref(mp.clone(), name.clone())),
+                        _ => std::option::Option::None,
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn alias_rhs_head_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match alias_rhs_of_declaration(item_ref.clone(), env.clone()) {
+        Some(rhs) => rhs.declaration.clone(),
+        std::option::Option::None => std::option::Option::None,
     }
 }

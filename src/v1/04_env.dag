@@ -321,6 +321,22 @@ fn bare_occurrence_import(index: SymbolIndex, name: String, reference: Node) -> 
   }
 }
 
+// THE ONE QUESTION "IS THIS A CALL INTO A MODULE, OR SOMETHING ELSE", ANSWERED FROM DECLARATIONS.
+// A name qualifies exactly when its owner prefix IS a module of the census (module_named_imports is
+// keyed by every census module's authored path), never because the spelling contains a dot: a
+// dotted spelling whose prefix is a value, a service or a type is not a module call, and a bare
+// spelling is never one. Every call path -- direct call, pipe callee, method form on a module
+// path, signature lookup, census borrow -- reads this result; a site that re-derives the answer
+// from the spelling is the fork gunbc.recurring_failure_mode
+// a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling records.
+fn declared_module_owner(index: SymbolIndex, name: String) -> String? {
+  let owner = qualified_all_but_last(name: name)
+  match map_get(index.module_named_imports, owner) {
+    Present { value: _ } => Present { value: owner }
+    Absent => none
+  }
+}
+
 fn symbol_index_named_import_source(index: SymbolIndex, module_path: String, name: String) -> String? {
   match map_get(index.module_named_imports, module_path) {
     Absent => none
@@ -424,18 +440,6 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
   }
 }
 
-fn empty_scope() -> Scope {
-  Scope { locals: empty_map() }
-}
-
-fn scope_lookup(scope: Scope, name: String) -> ScopeBinding? {
-  map_get(scope.locals, name)
-}
-
-fn scope_push(scope: Scope, binding: ScopeBinding) -> Scope {
-  Scope { locals: map_insert(scope.locals, binding.name, binding) }
-}
-
 type TypeEnvCache {
   deps_map: Map<String, List<String>>
   str_bindings: Map<String, TypeBinding>
@@ -484,10 +488,6 @@ fn source_tree_of(file: String) -> String {
   } else {
     "other"
   }
-}
-
-fn conflict_is_cross_tree(c: TypeEnvCacheMergeConflict) -> Bool {
-  source_tree_of(file: c.existing_site) != source_tree_of(file: c.incoming_site)
 }
 
 type GuardedTypeEnvCacheMerge {
@@ -725,17 +725,6 @@ fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCac
   }
 }
 
-fn lookup_binding_local_by_name(env: TypeEnv, name: String) -> TypeBinding? {
-  match intern_find(table: env.intern_table, s: name) {
-    Present { value: ident } =>
-      match map_get(env.bindings, ident) {
-        Present { value: binding } => Present { value: binding }
-        Absent => Absent
-      }
-    Absent => Absent
-  }
-}
-
 fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, TypeBinding> {
   fold(bindings |> map_values, init: empty_map(), f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
@@ -806,20 +795,16 @@ fn lookup_binding_after_global_bare(env: TypeEnv, name: String) -> TypeBinding? 
 }
 
 fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding? {
-  match contains(name, ".") {
-    false => Absent
-    true =>
-      match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
-        Present { value: resolved } =>
-          Present {
-            value: TypeBinding {
-              name: name,
-              resolved: resolved,
-              provenance: SubValueUnknown, alias_rhs: none
-            }
-          }
-        Absent => Absent
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+    Present { value: resolved } =>
+      Present {
+        value: TypeBinding {
+          name: name,
+          resolved: resolved,
+          provenance: SubValueUnknown, alias_rhs: none
+        }
       }
+    Absent => Absent
   }
 }
 
@@ -1004,7 +989,6 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
   }
   let rewrite = n.connective == NoConnective
     && name != ""
-    && !contains(name, ".")
     && !is_kernel_type(name: name)
     && !is_container_type(name: name)
     && !map_has(excluded, name)
@@ -1198,7 +1182,7 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {
     Present { value: binding } =>
-      match contains(name, ".") || binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
+      match binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
         true => Present { value: binding.resolved }
         false =>
           match variant_arm_type_projection(env: env, owner: binding.resolved, name: name) {
@@ -1356,7 +1340,7 @@ fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
         UnitVariantPhantomEvidenceUnavailable => false
       }
       if variant_resolves { true }
-      else if contains(name, ".") {
+      else {
         let prefix = qualified_all_but_last(name: name)
         if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
           match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
@@ -1366,8 +1350,6 @@ fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
         } else {
           false
         }
-      } else {
-        false
       }
     }
   }
@@ -1435,11 +1417,6 @@ fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField>
       }
     )
   }
-}
-
-fn is_inductive_field(env: TypeEnv, type_name: String, variant_name: String, field_name: String) -> Bool {
-  inductive_fields_for(env: env, type_name: type_name)
-    |> any(f => f.variant_name == variant_name && f.field_name == field_name)
 }
 
 data put_inductive_field_guard_note: String = "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count."
@@ -2081,6 +2058,264 @@ fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> B
   }
 }
 
+// ALIAS IDENTITY BY DECLARATION, DECIDED ONCE. Two type positions agree when they settle to the same
+// declaration and their applied arguments agree, whichever alias spelling either side wore. A side
+// settles by chasing the alias right-hand side the resolver recorded (TypeBinding.alias_rhs, written in
+// the alias's own scope), never by re-reading a spelling, so `IntBox` and `Boxed<Int>` settle to the
+// declaration of Boxed with the argument Int. A side that identifies no declaration, an alias whose
+// right-hand side is not retained does not settle (resolve retains alias_rhs only for a non-parameterized
+// alias, so a node of an alias head carries the alias's expansion, never its own arguments): the
+// relation answers false and the spelling comparison keeps its refusal (fail closed, DESIGN 5).
+// gunbc.recurring_failure_mode carrier_alias_refuses_its_own_carriers_constructor.
+type SettledType {
+  head: DeclarationRef
+  args: List<Node>
+}
+
+fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+  let read = match n.declaration {
+    Present { value: dn } => TypeReferenceNamesDeclaration { declaration: dn }
+    Absent => type_reference_declaration_reading(n: n, source_indices: source_indices, env: env)
+  }
+  // A reference read through another module's declaration (a record field typed by an alias this module never imported) carries no
+  // identity here; its spelling is then resolved in the module of the file that authored it, which names the declaration exactly or answers none.
+  let reading = match read {
+    TypeReferenceUnidentified { authored: _, resolved: _ } =>
+      match map_get(env.symbol_index.file_modules, n.span.file) {
+        Present { value: authoring } =>
+          match declaration_named_in_module(name: authored_name_at(source_indices: source_indices, node: n), module_path: authoring, env: env) {
+            Present { value: d } => TypeReferenceNamesDeclaration { declaration: d }
+            Absent => read
+          }
+        Absent => read
+      }
+    _ => read
+  }
+  match reading {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      match alias_rhs_of_declaration(item_ref: d, env: env) {
+        Absent => Present { value: SettledType { head: d, args: n.children } }
+        Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
+      }
+    _ => none
+  }
+}
+
+fn settled_alias_rhs(rhs: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+  if fuel <= 0 { none }
+  else {
+    match rhs.declaration {
+      Present { value: rhs_head } => settled_rhs(rhs: rhs, head: rhs_head, source_indices: source_indices, env: env, fuel: fuel - 1)
+      Absent => none
+    }
+  }
+}
+
+// A declaration named without a node (a name-only seam that resolved its spelling to a DeclarationRef) settles through the same
+// chase as a node does; a non-alias declaration exposes no arguments of its own.
+fn settled_type_of_declaration(d: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+  match alias_rhs_of_declaration(item_ref: d, env: env) {
+    Absent => Present { value: SettledType { head: d, args: [] } }
+    Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
+  }
+}
+
+fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+  match alias_rhs_of_declaration(item_ref: head, env: env) {
+    Absent => Present { value: SettledType { head: head, args: rhs.children } }
+    Present { value: next } =>
+      match next.declaration {
+        Present { value: next_head } =>
+          if fuel <= 0 { none }
+          else { settled_rhs(rhs: next, head: next_head, source_indices: source_indices, env: env, fuel: fuel - 1) }
+        Absent => none
+      }
+  }
+}
+
+// The right-hand side of a transparent alias item (`type A = B`, `type A = B<C>`): a bare, required, unannotated item whose
+// `inferred` is its authored RHS. Every other item answers none. The one predicate both the env binding writer and the index
+// reader use.
+fn transparent_alias_rhs(pre: Node) -> Node? {
+  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
+    || (pre.children |> count) > 0 || pre.return_cardinality != Required {
+    none
+  } else {
+    match pre.inferred {
+      Present { value: Resolved { node: rhs } } =>
+        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
+        else { Present { value: rhs } }
+      _ => none
+    }
+  }
+}
+
+// An alias declared outside the module and its direct imports (a record field typed by an alias a transitive module owns) is not in
+// any reachable env binding; its item is read from the symbol index by its exact module path and name, and its right-hand side is
+// admitted only when the resolver already recorded the head's identity there. No spelling is re-resolved.
+fn alias_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
+  let declaring = if env.module_path == (item_ref.module_path as String) {
+    Present { value: env }
+  } else {
+    env.parents |> filter(p => p.module_path == (item_ref.module_path as String)) |> first
+  }
+  let from_env = match declaring {
+    Absent => none
+    Present { value: owner } =>
+      match map_get(owner.str_bindings, item_ref.decl_name as String) {
+        Absent => none
+        Present { value: binding } => binding.alias_rhs
+      }
+  }
+  match from_env {
+    Present { value: rhs } => Present { value: rhs }
+    Absent =>
+      match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(item_ref.module_path as String, ".", item_ref.decl_name as String)) {
+        Absent => none
+        Present { value: item } =>
+          match transparent_alias_rhs(pre: item) {
+            Present { value: rhs } =>
+              match rhs.declaration {
+                Present { value: _ } => Present { value: rhs }
+                Absent => alias_rhs_with_index_identity(rhs: rhs, owner_module: item_ref.module_path as String, env: env)
+              }
+            Absent => none
+          }
+      }
+  }
+}
+
+// The stored right-hand side of an alias outside every reachable env carries no recorded head. Its head is the declaration its
+// spelling names IN THE ALIAS'S OWN MODULE: the module its named import comes from, else the module itself when that module
+// declares the name. The scope is the alias's, never the asking module's; a spelling neither imported nor declared there answers none.
+fn alias_rhs_with_index_identity(rhs: Node, owner_module: String, env: TypeEnv) -> Node? {
+  let spelled = authored_name_at(source_indices: env.source_indices, node: rhs)
+  match declaration_named_in_module(name: spelled, module_path: owner_module, env: env) {
+    Absent => none
+    Present { value: d } =>
+      Present { value: Node { occurrence_identity: rhs.occurrence_identity, name: rhs.name, span: rhs.span, ident_span: rhs.ident_span, children: rhs.children, connective: rhs.connective, params: rhs.params, inferred: rhs.inferred, return_cardinality: rhs.return_cardinality, uses: rhs.uses, body: rhs.body, transport: rhs.transport, properties: rhs.properties, type_annotation: rhs.type_annotation, is_self_recursive: rhs.is_self_recursive, has_non_tail_self_call: rhs.has_non_tail_self_call, match_pattern: rhs.match_pattern, module_item_kind: rhs.module_item_kind, declaration_marker: rhs.declaration_marker, declaration: Present { value: d }, expr_data: rhs.expr_data } }
+  }
+}
+
+// A BARE TYPE SPELLING IS RESOLVED IN THE MODULE THAT AUTHORED IT: the module its named import comes from, else the module itself
+// when it declares the name. A spelling neither imported nor declared there answers none.
+fn declaration_named_in_module(name: String, module_path: String, env: TypeEnv) -> DeclarationRef? {
+  if name == "" { none }
+  else if qualified_all_but_last(name: name) != "" {
+    // A qualified spelling names its declaring module outright; it is a declaration only when the index holds exactly that module-and-name.
+    match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {
+      Present { value: _ } => Present { value: decl_ref(module_path: qualified_all_but_last(name: name), decl_name: qualified_last_segment(name: name)) }
+      Absent => none
+    }
+  }
+  else {
+    match symbol_index_named_import_source(index: env.symbol_index, module_path: module_path, name: name) {
+      Present { value: m } => Present { value: decl_ref(module_path: m, decl_name: name) }
+      Absent =>
+        match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(module_path, ".", name)) {
+          Present { value: _ } => Present { value: decl_ref(module_path: module_path, decl_name: name) }
+          Absent => none
+        }
+    }
+  }
+}
+
+fn settled_args_agree(left: List<Node>, right: List<Node>, agree: fn(Node, Node) -> Bool) -> Bool {
+  left |> enumerate |> all(pair =>
+    match right |> skip(pair.first) |> first {
+      Present { value: r } => agree(pair.second, r)
+      Absent => false
+    }
+  )
+}
+
+// ARGUMENTS ARE JUDGED BY THE HEAD'S DECLARED ARITY, NOT BY WHICHEVER SIDE HAPPENS TO CARRY CHILDREN. A head declaring no type
+// parameters has no arguments to compare: an alias-typed node's children are the expansion's fields, so identity of the head
+// is the whole judgment. A parameterized head requires both sides to expose exactly its declared arity and every argument to
+// agree; a side that exposes none refuses, never agrees by default.
+fn settled_arity_agrees(head: DeclarationRef, l: SettledType, r: SettledType, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
+  match declaration_node_of_ref(d: head, env: env) {
+    Absent => false
+    Present { value: decl } =>
+      let arity = decl.params |> count
+      if arity == 0 { true }
+      else {
+        (l.args |> count) == arity && (r.args |> count) == arity
+          && settled_args_agree(left: l.args, right: r.args, agree: agree)
+      }
+  }
+}
+
+// An alias whose chain ends at a KERNEL type (`type ParseTree = Node` where Node is a primitive) has no declaration to settle to:
+// its identity is the kernel type's name, which is the kernel's own identity and not a user-declared spelling. The chain is
+// followed by declaration; the reading names either the kernel type directly or the alias's terminal right-hand side.
+fn kernel_settled_name(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> String? {
+  let reading = match n.declaration {
+    Present { value: dn } => TypeReferenceNamesDeclaration { declaration: dn }
+    Absent => type_reference_declaration_reading(n: n, source_indices: source_indices, env: env)
+  }
+  match reading {
+    TypeReferenceIsKernelType { name: kernel } => Present { value: kernel }
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      if fuel <= 0 { none }
+      else {
+        match alias_rhs_of_declaration(item_ref: d, env: env) {
+          Absent => none
+          Present { value: rhs } =>
+            kernel_settled_name(n: rhs, source_indices: source_indices, env: env, fuel: fuel - 1)
+        }
+      }
+    _ => none
+  }
+}
+
+fn alias_settled_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
+  match settled_type(n: left, source_indices: source_indices, env: env, fuel: 16) {
+    Absent => kernel_settled_agree(left: left, right: right, source_indices: source_indices, env: env)
+    Present { value: l } =>
+      match settled_type(n: right, source_indices: source_indices, env: env, fuel: 16) {
+        Absent => kernel_settled_agree(left: left, right: right, source_indices: source_indices, env: env)
+        Present { value: r } => settled_types_agree(l: l, r: r, env: env, agree: agree)
+      }
+  }
+}
+
+fn settled_types_agree(l: SettledType, r: SettledType, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
+  declaration_ref_eq(a: l.head, b: r.head) && settled_arity_agrees(head: l.head, l: l, r: r, env: env, agree: agree)
+}
+
+// The name-only entry of the one relation: each spelling is read as the declaration it names (declaration_named_by_type_name), then
+// the two declarations settle and agree exactly as two nodes do. An undeclared or ambiguous spelling does not settle.
+fn alias_names_settled_agree(left: String, right: String, source_indices: Map<String, NewlineIndex>, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
+  match declaration_named_by_type_name(name: left, env: env) {
+    Absent => false
+    Present { value: ld } =>
+      match declaration_named_by_type_name(name: right, env: env) {
+        Absent => false
+        Present { value: rd } =>
+          match settled_type_of_declaration(d: ld, source_indices: source_indices, env: env, fuel: 16) {
+            Absent => false
+            Present { value: l } =>
+              match settled_type_of_declaration(d: rd, source_indices: source_indices, env: env, fuel: 16) {
+                Absent => false
+                Present { value: r } => settled_types_agree(l: l, r: r, env: env, agree: agree)
+              }
+          }
+      }
+  }
+}
+
+fn kernel_settled_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match kernel_settled_name(n: left, source_indices: source_indices, env: env, fuel: 16) {
+    Absent => false
+    Present { value: l } =>
+      match kernel_settled_name(n: right, source_indices: source_indices, env: env, fuel: 16) {
+        Absent => false
+        Present { value: r } => l == r
+      }
+  }
+}
+
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let from_authored = declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
   if from_authored != none { return from_authored }
@@ -2099,5 +2334,38 @@ fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIn
             Absent => declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
           }
       }
+  }
+}
+
+// A TYPE NAME AT A NAME-ONLY SEAM IS READ AS ITS DECLARATION, NEVER COMPARED AS A SPELLING. The name
+// resolves through the symbol index to the DeclarationRef it names (qualified: its declaring module;
+// bare: the unique global binding); an ambiguous or undeclared name is Absent and the seam refuses.
+fn declaration_named_by_type_name(name: String, env: TypeEnv) -> DeclarationRef? {
+  let scoped = match lookup_type_by_name(env: env, name: name) {
+    Present { value: decl } => declaration_ref_of_declaration_node(decl: decl, source_indices: env.source_indices, env: env)
+    Absent => none
+  }
+  if scoped != none { return scoped }
+  match operand_declaration_from_qualified_name(qualified: name, env: env) {
+    Present { value: od } => Present { value: od.declaration }
+    Absent =>
+      if qualified_all_but_last(name: name) != "" { none }
+      else {
+        match map_get(env.symbol_index.global_bare, name) {
+          Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } => Present { value: decl_ref(module_path: mp, decl_name: name) }
+          _ => none
+        }
+      }
+  }
+}
+
+// THE ALIAS'S RHS HEAD, READ FROM THE REFERENCE THAT NAMES IT. The alias's declaring module env is
+// found by exact module path; its binding retains the right-hand side reference (alias_rhs), whose
+// Node.declaration the one writer set in the alias's own scope. Nothing re-resolves a spelling. An
+// alias outside the module and its direct imports, or a head with no recorded identity, answers none.
+fn alias_rhs_head_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> DeclarationRef? {
+  match alias_rhs_of_declaration(item_ref: item_ref, env: env) {
+    Present { value: rhs } => rhs.declaration
+    Absent => none
   }
 }

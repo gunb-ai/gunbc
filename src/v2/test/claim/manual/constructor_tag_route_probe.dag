@@ -1,5 +1,10 @@
 module v2.test.claim.manual.constructor_tag_route_probe
 
+// v2-side twin of dag/test/claim/constructor_tag_route_probe.dag: the same controls, run on the
+// v2 route. Both trees import the ONE std model; neither declares a carrier.
+
+import std.primitives { ConstructorTag, tag_of, same_arm }
+
 type WideProbe
   = W01 { a: Int }
   | W02 { a: String }
@@ -14,32 +19,29 @@ type WideProbe
   | W11 { a: Int }
   | W12 { a: String }
 
-test fn wide_same_arm_ignores_payload() -> Bool {
-  discriminant(v: W11 { a: 1 }) == discriminant(v: W11 { a: 2 })
+test fn tag_matches_the_value_it_came_from() -> Bool {
+  same_arm(tag: tag_of(v: W11 { a: 1 }), v: W11 { a: 1 })
 }
 
-test fn wide_cross_arm_distinct() -> Bool {
-  (discriminant(v: W10 { a: "x" }) == discriminant(v: W12 { a: "x" })) == false
+test fn wrong_arm_answers_false() -> Bool {
+  !same_arm(tag: tag_of(v: W10 { a: "x" }), v: W12 { a: "x" })
 }
 
-test fn wide_nullary_arms() -> Bool {
-  (discriminant(v: W04) == discriminant(v: W08)) == false
+test fn distinct_unit_arms_answer_false() -> Bool {
+  !same_arm(tag: tag_of(v: W04), v: W08)
 }
 
-type ConstructorTag<T> = ConstructorTag { name: String }
-
-fn tag_of<T>(v: T) -> ConstructorTag<T> {
-  ConstructorTag { name: discriminant(v: v) }
+test fn payload_is_blind_on_a_match() -> Bool {
+  same_arm(tag: tag_of(v: W11 { a: 1 }), v: W11 { a: 2 })
 }
 
-fn same_arm<T>(a: T, b: T) -> Bool {
-  tag_of(v: a) == tag_of(v: b)
+test fn consumer_names_only_two_of_twelve_arms() -> Bool {
+  same_arm(tag: tag_of(v: W01 { a: 1 }), v: W12 { a: "s" }) == false
+    && same_arm(tag: tag_of(v: W03 { a: 1, b: 2 }), v: W03 { a: 9, b: 9 })
 }
 
-test fn carrier_same_arm_ignores_payload() -> Bool {
-  same_arm(a: W11 { a: 1 }, b: W11 { a: 2 })
-}
-
-test fn carrier_cross_arm_distinct() -> Bool {
-  (same_arm(a: W10 { a: "x" }, b: W12 { a: "x" })) == false
+test fn unit_arm_tag_reference_agrees_and_discriminates() -> Bool {
+  discriminant(v: W08) == discriminant(v: W08)
+    && same_arm(tag: tag_of(v: W08), v: W08)
+    && !same_arm(tag: tag_of(v: W08), v: W04)
 }

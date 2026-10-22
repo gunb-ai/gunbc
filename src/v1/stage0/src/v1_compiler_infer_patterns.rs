@@ -12,10 +12,9 @@ pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::*;
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{
     declaration_ref_of_declaration_node, declaration_ref_of_type_node, lookup_type,
-    lookup_type_by_name, lookup_type_for, symbol_index_lookup,
+    lookup_type_by_name, lookup_type_for, symbol_index_lookup, TypeEnv,
 };
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
@@ -37,11 +36,8 @@ pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
     match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
-    with_optional_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
-    InferredNode, MatchPattern, NewlineIndex, Node,
+    with_optional_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -86,6 +82,67 @@ pub fn generic_use_slot_bindings(
                 }
             },
         )
+    }
+}
+
+pub fn instantiate_scrutinee_expansion(
+    use_site: Rc<Node>,
+    expanded: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    {
+        let is_generic_coproduct_use = (((use_site.connective.clone()
+            == Connective::NoConnective)
+            && ((use_site.children.clone().len() as i64) > 0))
+            && (expanded.connective.clone() == Connective::Disj));
+        if is_generic_coproduct_use.clone() {
+            {
+                let decl = crate::v1_compiler_infer_resolve::resolve_generic_use_decl(
+                    env.clone(),
+                    use_site.clone(),
+                );
+                let decl_is_generic_coproduct = ((decl.connective.clone() == Connective::Disj)
+                    && ((decl.params.clone().len() as i64) > 0));
+                if decl_is_generic_coproduct.clone() {
+                    {
+                        let resolved_args = Rc::new({
+                            let mut __result = Vec::new();
+                            for arg in use_site.children.clone().iter().cloned() {
+                                __result.push(match arg.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: target, .. }) => {
+                                        if (((arg.children.clone().len() as i64) == 0)
+                                            && (arg.connective.clone() == Connective::NoConnective))
+                                        {
+                                            target.clone()
+                                        } else {
+                                            arg.clone()
+                                        }
+                                    }
+                                    _ => arg.clone(),
+                                });
+                            }
+                            __result
+                        });
+                        expand_scrut_from_decl(
+                            decl.clone(),
+                            crate::v1_compiler_infer_env::node_with_children(
+                                use_site.clone(),
+                                resolved_args.clone(),
+                            ),
+                            crate::v1_std_core::authored_name_at(
+                                env.source_indices.clone(),
+                                decl.clone(),
+                            ),
+                            env.clone(),
+                        )
+                    }
+                } else {
+                    expanded
+                }
+            }
+        } else {
+            expanded
+        }
     }
 }
 

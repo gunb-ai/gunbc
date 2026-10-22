@@ -10,10 +10,8 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
     algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
-    kernel_algebra_profile,
-};
-pub use crate::std_algebra::{
-    AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
+    kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate,
+    ContainerSource,
 };
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -33,10 +31,8 @@ pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     bool_type, error_type, hash_type, int_type, no_span, string_type, unit_type,
-    with_optional_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData, InferredNode, Node,
+    with_optional_cardinality, Cardinality, Connective, DeclarationMarker, ErrorNode, ExprData,
+    InferredNode, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -777,6 +773,33 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: int_type(),
     }));
                 __m.insert("observed_thread_cpu_nanos".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
+                __m.insert("observed_allocation_available".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: bool_type(),
+    }));
+                __m.insert("observed_allocation_operations".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
+                __m.insert("observed_allocation_bytes".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "label".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {

@@ -2,6 +2,7 @@ module gunbc.typed_remote_file_write
 
 import extdeps.tools.chmod { chmod_path_resolved_program }
 import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
+import extdeps.sudo.visudo { visudo_check_arguments }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -120,6 +121,7 @@ type RemoteFileMode
   | RemoteFileModeOwnerReadWriteGroupRead
   | RemoteFileModeOwnerReadWriteWorldRead
   | RemoteFileModeOwnerRead
+  | RemoteFileModeOwnerGroupRead
 
 fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
   match mode {
@@ -127,6 +129,7 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
     RemoteFileModeOwnerReadWriteGroupRead => "640"
     RemoteFileModeOwnerReadWriteWorldRead => "644"
     RemoteFileModeOwnerRead => "400"
+    RemoteFileModeOwnerGroupRead => "440"
   }
 }
 
@@ -290,21 +293,55 @@ fn typed_remote_file_fresh_staging_steps(write: TypedRemoteFileWrite) -> List<Ty
   ]
 }
 
-fn typed_remote_file_pre_compare_steps(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<TypedRemoteFileWriteStep> {
+// WHAT MUST HOLD OF THE STAGED BYTES BEFORE THEY MAY TAKE THE DESTINATION'S NAME. Most files have no
+// grammar a far-side tool judges, so NoValidation is the arm every existing caller takes. A sudoers
+// drop-in does: a file visudo rejects, renamed into /etc/sudoers.d, breaks sudo for every principal
+// on the host, so the check runs on the STAGING path -- which sudo does not read, its name carrying a
+// dot -- and a failure halts the converge at step "validate", before the rename publishes anything.
+type RemoteFileValidation
+  = NoValidation
+  | VisudoCheck
+
+fn typed_remote_file_validation_steps(write: TypedRemoteFileWrite, validation: RemoteFileValidation) -> List<TypedRemoteFileWriteStep> {
+  match validation {
+    NoValidation => []
+    VisudoCheck =>
+      [
+        TypedRemoteFileWriteStep {
+          step: "validate",
+          argv: visudo_check_arguments(file: typed_remote_file_staging_path(write: write)),
+          stdin_payload: "",
+        },
+      ]
+  }
+}
+
+fn typed_remote_file_pre_compare_steps(
+  write: TypedRemoteFileWrite,
+  mode: RemoteFileMode,
+  validation: RemoteFileValidation,
+) -> List<TypedRemoteFileWriteStep> {
   concat(
     typed_remote_file_fresh_staging_steps(write: write),
-    [
-      TypedRemoteFileWriteStep {
-        step: "mode",
-        argv: typed_remote_file_chmod_argv(write: write, mode: mode),
-        stdin_payload: "",
-      },
-      TypedRemoteFileWriteStep {
-        step: "rename",
-        argv: typed_remote_file_rename_argv(write: write),
-        stdin_payload: "",
-      },
-    ],
+    concat(
+      [
+        TypedRemoteFileWriteStep {
+          step: "mode",
+          argv: typed_remote_file_chmod_argv(write: write, mode: mode),
+          stdin_payload: "",
+        },
+      ],
+      concat(
+        typed_remote_file_validation_steps(write: write, validation: validation),
+        [
+          TypedRemoteFileWriteStep {
+            step: "rename",
+            argv: typed_remote_file_rename_argv(write: write),
+            stdin_payload: "",
+          },
+        ],
+      ),
+    ),
   )
 }
 
@@ -623,6 +660,7 @@ fn converge_typed_remote_file(
   admission: TypedRemoteFileWriteAdmission,
   mode: RemoteFileMode,
   privilege: RemoteFilePrivilege,
+  validation: RemoteFileValidation,
 ) -> TypedRemoteFileConvergence {
   match admission {
     TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
@@ -632,7 +670,7 @@ fn converge_typed_remote_file(
         target: target,
         context: context,
         privilege: privilege,
-        steps: typed_remote_file_pre_compare_steps(write: write, mode: mode),
+        steps: typed_remote_file_pre_compare_steps(write: write, mode: mode, validation: validation),
       ) {
         Present { value: refusal } => refusal
         Absent =>

@@ -1,6 +1,7 @@
 module extdeps.github.action_release
 
 import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha }
+import std.optional { Absent, Optional, Present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -40,6 +41,7 @@ type ActionRelease {
   repo: NonEmptyStr
   tag: NonEmptyStr
   commit: CommitSha
+  subdirectory: Optional<NonEmptyStr>
 }
 
 // `runs.using` in the release's action.yml. A JavaScript action names a Node major; a composite
@@ -59,11 +61,18 @@ type ActionManifestReading {
   declared: ActionExecutionMechanism
 }
 
+fn action_manifest_blob_path(action_release: ActionRelease) -> String {
+  match action_release.subdirectory {
+    Absent => "action.yml"
+    Present { value: p } => join([p as String, "/action.yml"], "")
+  }
+}
+
 fn action_manifest_of(action_release: ActionRelease) -> ExternalAuthority {
   ExternalAuthority {
     uri: Uri {
       scheme: Https
-      locator: join(["github.com/", action_release.owner as String, "/", action_release.repo as String, "/blob/", action_release.commit as String, "/action.yml"], "")
+      locator: join(["github.com/", action_release.owner as String, "/", action_release.repo as String, "/blob/", action_release.commit as String, "/", action_manifest_blob_path(action_release: action_release)], "")
     }
   }
 }
@@ -71,12 +80,20 @@ fn action_manifest_of(action_release: ActionRelease) -> ExternalAuthority {
 // SAME PRODUCER means same repository at the same commit. The tag is deliberately excluded: two
 // tags on one commit are one producer, and one tag on two commits is two.
 fn action_release_same_producer(a: ActionRelease, b: ActionRelease) -> Bool {
-  a.owner == b.owner && a.repo == b.repo && a.commit == b.commit
+  a.owner == b.owner && a.repo == b.repo && a.commit == b.commit && a.subdirectory == b.subdirectory
 }
 
-// The `uses:` spelling GitHub resolves: repository at an immutable commit.
+fn action_release_repository_path(action_release: ActionRelease) -> String {
+  let root = join([action_release.owner as String, "/", action_release.repo as String], "")
+  match action_release.subdirectory {
+    Absent => root
+    Present { value: p } => join([root, "/", p as String], "")
+  }
+}
+
+// The `uses:` spelling GitHub resolves: repository (optional subdirectory) at an immutable commit.
 fn action_release_uses_text(action_release: ActionRelease) -> String {
-  join([action_release.owner as String, "/", action_release.repo as String, "@", action_release.commit as String], "")
+  join([action_release_repository_path(action_release: action_release), "@", action_release.commit as String], "")
 }
 
 fn action_execution_mechanism_text(m: ActionExecutionMechanism) -> String {

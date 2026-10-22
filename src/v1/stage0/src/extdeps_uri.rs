@@ -3,7 +3,7 @@
 
 use self::ParsedHrefScheme::*;
 use self::UriScheme::*;
-pub use crate::std_algebra::trim;
+pub use crate::std_algebra::{collection_concat_shape, collection_join_shape, trim};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;

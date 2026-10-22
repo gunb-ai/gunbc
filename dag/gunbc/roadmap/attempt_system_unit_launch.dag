@@ -36,7 +36,7 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
-  HelperLocus, helper_locus_dir, approval_broker_helper_root_principal, approval_broker_tree_subdirs,
+  HelperLocus, helper_locus_dir, approval_broker_helper_root_principal, release_locus_tree_subdirs,
   release_revision_execstart_text,
 }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
@@ -87,6 +87,7 @@ import gunbc.executor_privileged_operation {
   gunbc_entry_run_argv, sudoers_argument_word, executor_sudoers_run_as,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_worker_user,
   HostDashboardInstance, srv1_live_dashboard_instance,
   dashboard_instance_for_instance_root,
   DashboardInstanceForInstanceRoot, DashboardInstanceInstanceRootUnknown,
@@ -243,7 +244,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
             unit: name,
             node_id: request.node_id,
             attempt_key: request.attempt_key,
-            user: instance.directory_owner.user as NonEmptyStr,
+            user: dashboard_instance_worker_user(instance: instance),
             working_directory: dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: instance, worktree_path: worktree),
             attempt_worktree: worktree,
             stdout_path: log,
@@ -273,8 +274,8 @@ type AttemptSystemUnitAdmission
   | AttemptSystemUnitRefused { reason: String }
 
 fn attempt_system_unit_start_admitted(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts) -> AttemptSystemUnitAdmission {
-  if (facts.user as String) != (instance.directory_owner.user as String) {
-    AttemptSystemUnitRefused { reason: "User= is not the instance service user" }
+  if (facts.user as String) != (dashboard_instance_worker_user(instance: instance) as String) {
+    AttemptSystemUnitRefused { reason: "User= is not the instance worker user" }
   } else {
     match facts.inner_argv.first() {
       Absent => AttemptSystemUnitRefused { reason: "ExecStart argv is empty" }
@@ -544,7 +545,7 @@ fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, rev
             gunbc_entry_run_argv(
               workspace_root: dir as NonEmptyStr,
               binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
-              source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+              source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
               entry: join([dir, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
               function: attempt_system_unit_launch_function as NonEmptyStr,
             ),

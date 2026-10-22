@@ -878,6 +878,29 @@ fn git_checkout_revision_command(repository_dir: String, revision: String) -> Ar
   argv_command(program: git_program(), arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
 }
 
+// THE TREE A REVISION NAMES, read from the object store: `rev-parse --verify <rev>^{tree}` prints the
+// tree id or refuses, so a caller compares a printed id rather than trusting the revision.
+// `git hash-object <path>`: the blob object id of the file's bytes (git-hash-object(1)), printed on
+// stdout. Without -w it writes nothing, so it needs no repository.
+fn git_hash_object_command(path: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["hash-object", path])
+}
+
+fn git_rev_parse_tree_command(repository_dir: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "rev-parse", "--verify", join([revision, "^", "{", "tree", "}"], "")])
+}
+
+// THE EXACT TREE OF A REVISION AS A TAR, with file modes and symlinks as git records them (`git
+// archive` writes exactly the tracked tree of that revision, nothing from a working directory).
+fn git_archive_tar_command(repository_dir: String, revision: String, output: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "archive", "--format=tar", "-o", output, revision])
+}
+
+// ONE FILE OF A REVISION, read from the object store without a checkout.
+fn git_show_file_command(repository_dir: String, revision: String, path: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "show", concat(concat(revision, ":"), path)])
+}
+
 // A STAGED TREE, PROVEN EQUAL TO A NAMED TREE OBJECT, WITHOUT HISTORY OR NETWORK. A tree delivered
 // as an archive carries its content but no object store; these four steps make one and ask git
 // itself whether the named tree is the content. `init` creates the store; `add -A -f` stages every
@@ -1147,6 +1170,17 @@ fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
 
 fn shape_git_rev_parse_head_args() -> List<String> {
   ["rev-parse", "HEAD"]
+}
+
+// A worktree removal WITHOUT force: git itself refuses a tree with uncommitted changes, so the
+// release's own cleanliness check is backed by the tool's.
+fn shape_git_worktree_remove_argv(path: FilePath) -> List<String> {
+  ["worktree", "remove", path as String]
+}
+
+// Remote-tracking branches containing HEAD; non-empty means the head is on a remote.
+fn shape_git_branch_remote_contains_head_args() -> List<String> {
+  ["branch", "-r", "--contains", "HEAD"]
 }
 
 fn shape_git_merge_base_args(left: String, right: String) -> List<String> {

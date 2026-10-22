@@ -1,6 +1,6 @@
 module test.claim.runner.runner_slot_allocation_witness
 
-import gunbc.runner.runner_slot_allocation { RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
+import gunbc.runner.runner_slot_allocation { authored_microvm_slot_charge, microvm_controller_slice_memory_max, srv1_revision_job_slot, host_authored_microvm_slots, host_authored_slots_within_width, revision_job_slots, revision_job_slots_match_the_fleet_row, host_committed_identities_at, RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
@@ -120,9 +120,12 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // OPERATOR RULING 2026-10-16 (gunbc.live_deploy.user_work_pool_slots): user-work 88 GiB charged:
 // envelope 145.85 GiB; floor(93.85/22)+1 = 5. Operator decision 2026-10-15 (escalation msg_57614325)
 // stacks attempt-worker 2 x 22 GiB on top: envelope 101.85 GiB; less 52 GiB shakedown;
-// floor(49.85/22)+1 = 3. The pin is the fold's answer.
+// floor(49.85/22)+1 = 3.
+// OPERATOR DECISION 2026-10-18 (user_work_pool_slots 4 -> 2, srv1-14 the revision-job slot): envelope
+// 145.85 GiB; less 52 GiB shakedown and 46 GiB revision-job (22 GiB cell + 24 GiB controller);
+// 2 authored + floor(47.85/22) = 4. The pin is the fold's answer.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 3
+  host_memory_admitted_width(host: operator_host_srv1) == 4
     && host_memory_admitted_width(host: operator_host_srv3) == 21
     && host_memory_admitted_width(host: operator_host_srv4) == 21
     && match host_memory_denominator(host: operator_host_srv2) {
@@ -135,7 +138,7 @@ test fn srv1_runner_host_deploy_count_is_the_derived_width() -> Bool {
   match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
     RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
     RunnerHostDeployAdmitted { deploy } =>
-      deploy.runner_count == 3
+      deploy.runner_count == 4
         && deploy.runner_count == host_memory_admitted_width(host: operator_host_srv1)
   }
 }
@@ -621,7 +624,7 @@ test fn the_fabric_members_are_authored_identities_not_a_top_index_rule() -> Boo
     && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv4), k: n => n == 2)
     && srv1_microvm_shakedown_slot().slot_index == 13
     && (srv1_microvm_shakedown_slot().host as String) == (operator_host_srv1 as String)
-    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv1), k: n => n == 1)
+    && derived_width_or_fail(r: host_fabric_slot_count(host: operator_host_srv1), k: n => n == 2)
     && resolution_is_unresolved(r: host_fabric_slot_count(host: operator_host_srv2))
 }
 
@@ -709,7 +712,8 @@ test fn the_slot_row_declares_one_core_and_no_ceiling() -> Bool {
 // width, so the row does not move when srv1's width moves.
 test fn the_shakedown_host_runner_charge_carries_the_shakedown_slot_at_its_real_size() -> Bool {
   byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
-      == 10 * byte_size_count(b: gunbc_runner_slot_memory_max) + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+      == 9 * byte_size_count(b: gunbc_runner_slot_memory_max) + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+        + byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))
     && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
       > byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: 11))
     && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv3, slots: 17))
@@ -746,8 +750,33 @@ test fn srv1_shakedown_slot_is_committed_by_identity_above_the_fleet_range() -> 
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
-        && srv1_membership_is(slot_index: w - 1, expect_member: true, expect_fabric: false)
-        && srv1_membership_is(slot_index: w, expect_member: false, expect_fabric: false)
+      w == 4
+        && srv1_membership_is(slot_index: 13, expect_member: true, expect_fabric: true)
+        && srv1_membership_is(slot_index: 14, expect_member: true, expect_fabric: true)
+        && srv1_membership_is(slot_index: w - 2, expect_member: true, expect_fabric: false)
+        && srv1_membership_is(slot_index: w - 1, expect_member: false, expect_fabric: false)
   }
+}
+
+// THE REVISION-JOB SLOT IS FUNDED WITHOUT TAKING CI WIDTH (operator decision 2026-10-18). Read from the
+// charged envelope after the user-work move: srv1's committed identities are the two authored slots
+// plus exactly two CI slots, and the revision-job slot is granted exactly the fleet row it is charged.
+test fn srv1_keeps_two_ci_slots_beside_the_two_authored_microvm_slots() -> Bool {
+  let committed = host_committed_identities_at(host: operator_host_srv1, committed: host_memory_admitted_width(host: operator_host_srv1))
+  host_authored_microvm_slots(host: operator_host_srv1).length() == 2
+    && committed.length() == 4
+    && committed.length() - host_authored_microvm_slots(host: operator_host_srv1).length() == 2
+    && revision_job_slots.length() == 1
+    && revision_job_slots_match_the_fleet_row()
+    && byte_size_count(b: authored_microvm_slot_charge(slot: srv1_revision_job_slot()))
+      == byte_size_count(b: gunbc_runner_slot_memory_max) + byte_size_count(b: microvm_controller_slice_memory_max())
+}
+
+// A WIDTH BELOW THE AUTHORED COUNT LISTS AND CHARGES THE SAME SLOTS (review 81866): srv1 at width 1 is
+// srv1-13 alone, and the pool charge is that slot's charge, not one fleet row.
+test fn a_width_below_the_authored_count_lists_and_charges_the_same_slots() -> Bool {
+  host_committed_identities_at(host: operator_host_srv1, committed: 1).length() == 1
+    && host_authored_slots_within_width(host: operator_host_srv1, width: 1).length() == 1
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: 1))
+      == byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
 }

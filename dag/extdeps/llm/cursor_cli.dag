@@ -3,8 +3,8 @@ module extdeps.llm.cursor_cli
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, brand }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.program { ProgramIdentity, uncataloged_program }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -110,12 +110,16 @@ data cursor_sandbox_unsupported_error_class: NonEmptyStr = "SandboxUnsupportedEr
 data cursor_sandbox_env_var: NonEmptyStr = "CURSOR_SANDBOX" as NonEmptyStr
 data cursor_sandbox_linux_native_value: NonEmptyStr = "native" as NonEmptyStr
 
-// cursor-agent has no CliTool row, so its identity is on the debt roster (extdeps.exec.program
-// uncataloged_program). The preflight builder takes the identity as a parameter, so a placement that
-// pins an exact executable supplies its own identity without a second builder.
-fn cursor_cli_program_identity() -> ProgramIdentity {
-  uncataloged_program(invocation: cursor_cli_program as NonEmptyStr)
-}
+// THIS MODULE OWNS THE COMMAND SURFACE AND NO PLACEMENT. Every builder below takes the program from its
+// caller, so which executable runs (an exact root-owned path, gunbc.host.cursor_agent_realization) is the
+// caller's fact and there is no second, PATH-named route here. cursor_cli_program stays only as the
+// CLI's own name, for a reader that matches a process by name rather than launching one.
+//
+// --disable-auto-update IS A HIDDEN GLOBAL OPTION ("Disable auto-updates"): absent from `--help`, accepted
+// by the pinned 2026.09.15-d2fe57e build (exit 0 with --version and with status, srv2 2026-10-17). A
+// root-owned pinned tree cannot be written by the invoking user, so every pinned invocation (preflight, key
+// probe and turn) passes it and never attempts a self-update.
+data cursor_disable_auto_update_flag: String = "--disable-auto-update"
 
 // STATUS OBSERVES STORED AUTH, NOT THE KEY IN THE ENVIRONMENT. Observed on cursor-agent 2026.09.15-d2fe57e
 // on srv2, 2026-10-17: `status` reports only the auth stored under the Cursor config root
@@ -137,17 +141,12 @@ data cursor_list_models_flag: String = "--list-models"
 data cursor_invalid_api_key_marker: NonEmptyStr = "The provided API key is invalid" as NonEmptyStr
 data cursor_list_models_header: NonEmptyStr = "Available models" as NonEmptyStr
 
-// The hidden global --disable-auto-update ("Disable auto-updates"): absent from --help, accepted by
-// 2026.09.15-d2fe57e (exit 0 with --version and with status, srv2 2026-10-17). A root-owned pinned tree
-// cannot be written by the invoking user, so every pinned invocation MUST pass it. Today the key probe does by construction; the status, preflight and turn builders take it when the pinned-program wiring lands.
-data cursor_disable_auto_update_flag: String = "--disable-auto-update"
-
 fn cursor_key_probe_command(program: ProgramIdentity) -> ArgvCommand {
   argv_command(program: program, arguments: [cursor_disable_auto_update_flag, cursor_list_models_flag])
 }
 
 fn cursor_sandbox_preflight_command(program: ProgramIdentity) -> ArgvCommand {
-  argv_command(program: program, arguments: ["sandbox", "run", "printenv", cursor_sandbox_env_var as String])
+  argv_command(program: program, arguments: [cursor_disable_auto_update_flag, "sandbox", "run", "printenv", cursor_sandbox_env_var as String])
 }
 
 // MODEL IS A PER-INVOCATION ARGUMENT AND THE ROSTER IS AN ACCOUNT FACT. --model takes an identifier
@@ -217,9 +216,13 @@ type CursorProcessInvocation {
   environment: List<CursorEnvBinding>
 }
 
-fn cursor_common_argv(run: CursorRunShape) -> List<String> {
+fn cursor_common_argv(program: ProgramIdentity, run: CursorRunShape) -> List<String> {
+  concat([program.invocation as String], cursor_common_arguments(run: run))
+}
+
+fn cursor_common_arguments(run: CursorRunShape) -> List<String> {
   concat(
-    [cursor_cli_program, "--print"],
+    [cursor_disable_auto_update_flag, "--print"],
     concat(
       ["--output-format", cursor_output_format_wire(f: run.output_format)],
       concat(
@@ -248,25 +251,30 @@ fn cursor_tail_argv(run: CursorRunShape) -> List<String> {
 
 // The argv of a run whose key reaches the process through CURSOR_API_KEY set by someone else: the
 // environment arm's argv, with nothing about the key in it.
-fn cursor_environment_authenticated_argv(run: CursorRunShape) -> List<String> {
-  concat(cursor_common_argv(run: run), cursor_tail_argv(run: run))
+fn cursor_environment_authenticated_argv(program: ProgramIdentity, run: CursorRunShape) -> List<String> {
+  argv_words(command: cursor_environment_authenticated_command(program: program, run: run))
 }
 
-fn shape_cursor_invocation(inv: CursorInvocation) -> CursorProcessInvocation {
+// The same run as a command, so a caller can bind the attempt's runtime environment around it.
+fn cursor_environment_authenticated_command(program: ProgramIdentity, run: CursorRunShape) -> ArgvCommand {
+  argv_command(program: program, arguments: concat(cursor_common_arguments(run: run), cursor_tail_argv(run: run)))
+}
+
+fn shape_cursor_invocation(program: ProgramIdentity, inv: CursorInvocation) -> CursorProcessInvocation {
   match inv.auth {
     CursorApiKeyArgument { key } =>
       CursorProcessInvocation {
-        program: cursor_cli_program,
+        program: program.invocation as String,
         argv: concat(
-          cursor_common_argv(run: inv.run),
+          cursor_common_argv(program: program, run: inv.run),
           concat(["--api-key", key as String], cursor_tail_argv(run: inv.run)),
         ),
         environment: [],
       }
     CursorApiKeyEnvironment { key } =>
       CursorProcessInvocation {
-        program: cursor_cli_program,
-        argv: cursor_environment_authenticated_argv(run: inv.run),
+        program: program.invocation as String,
+        argv: cursor_environment_authenticated_argv(program: program, run: inv.run),
         environment: [
           CursorEnvBinding { name: cursor_api_key_env_var, value: key },
         ],

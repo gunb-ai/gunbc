@@ -102,7 +102,6 @@ import v2.std.node {
   Authored,
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   ComputationNode,
   Atom,
@@ -563,7 +562,6 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
           TypeNode { connective: Atom { identity: _ } } => false
           TypeNode { connective: Disj } => false
           TypeNode { connective: Arrow } => false
-          TypeNode { connective: Occupancy } => false
           TypeNode { connective: Instantiation } => false
           ComputationNode { behavior: _ } => false
         },
@@ -616,7 +614,6 @@ fn admit_named_exports(
     TypeNode { connective: Atom { identity: _ } } => state
     TypeNode { connective: Disj } => state
     TypeNode { connective: Arrow } => state
-    TypeNode { connective: Occupancy } => state
     TypeNode { connective: Instantiation } => state
     ComputationNode { behavior: _ } => state
   }
@@ -1562,7 +1559,7 @@ fn closure_phase1_walk_module(
           list_snoc_item(
             xs: racc,
             item: match walk {
-              ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+              ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: _ } =>
                 DeclPhase1Row {
                   module: module_qn,
                   name: binding.name,
@@ -1570,7 +1567,7 @@ fn closure_phase1_walk_module(
                   local: LocallyResolved { node: resolved },
                   callees: closure_collect_declaration_callees(n: resolved, acc: [])
                 }
-              ResolveWalkRefused { first: first, rest: _, observation: _ } =>
+              ResolveWalkRefused { first: first, rest: _, observation: _, partial: _ } =>
                 DeclPhase1Row {
                   module: module_qn,
                   name: binding.name,
@@ -1665,7 +1662,8 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
         walk: ResolveWalkRefused {
           first: r,
           rest: [],
-          observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+          observation: ObservationIncomplete { reason: ^resolve_observation_context_refused },
+          partial: []
         },
         context: context
       }
@@ -1695,7 +1693,8 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
             walk: ResolveWalkRefused {
               first: r,
               rest: [],
-              observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused }
+              observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused },
+              partial: []
             },
             context: threaded
           }

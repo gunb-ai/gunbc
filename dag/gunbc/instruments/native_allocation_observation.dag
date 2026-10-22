@@ -1,0 +1,260 @@
+module gunbc.instruments.native_allocation_observation
+
+import std.types { Bool, Int, List }
+import std.optional { Optional, Present, Absent }
+import std.realization_measurement { AllocationCounter, AllocationObservation, AllocationObserved, AllocationOperationsRanBackwards, AllocationBytesRequestedRanBackwards, AllocationProviderNotSelected, allocation_span_observation, allocation_provider_not_selected }
+import std.measure { byte_size_count }
+import std.nat { Nat, nat_to_decimal_string }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
+import gunbc.emit_dying_base_specimen { DbInner, DbOuter, db_init, db_step, db_opt_absent, db_opt_present, db_opt_step, db_opt_child_k, db_opt_child_xs }
+
+// THE ALLOCATION READING OF THE STATE-THREADING SPECIMEN, taken by a binary that carries the counting
+// allocator BECAUSE this entry `uses` AllocationCounter (std.realization_measurement; the claim route's
+// NativeEffectRealizationAdmission). `gunbc test //gunbc/instruments:native-allocation-observation`
+// emits this closure, builds it and runs it in one process; nothing is interpreted.
+//
+// F lowered this specimen's allocation readings while a separate runtime comparison regressed on
+// container-held records. Allocation counts do not measure copy work or establish a runtime win
+// (gunbc.recurring_failure_mode by_value_record_widens_container_slots).
+//
+// FOUR ANSWERS, NOT ONE VERDICT, because a bound that reds when the repair succeeds punishes the repair:
+//   AVAILABILITY  the selecting main registered the counting allocator before any read
+//                 (observed_allocation_available). It is the realization's statement, never a nonzero count.
+//   OBSERVATION   the meter worked: an empty window reads zero, a window around a known allocation reads
+//                 it on BOTH axes, and every walk returned the sequence it was given.
+//   CALIBRATION   the meter discriminates: a deliberately cloning walk reads above the reference.
+//   SUBJECT       where the specimen's allocator-operation count stands against the declared reference
+//                 form. A READING with the counts, never this label's invariant: the label holds when the
+//                 reading was taken, and a zero-allocation subject is a reading, not a failure. The
+//                 reference is a declared .dag form and not the Rust minimum, and bytes are not judged, so
+//                 the words are `within`/`above declared reference operation count`, not a qualification.
+// The counts are printed with the input size and the producer identity so the ordering is derived from
+// them by the reader, not asserted here.
+//
+// EVERY WINDOW KEEPS THE WALK'S RESULT: the closing read comes after the result exists and the result is
+// returned beside the observation, so its release is outside the window and an unused-allocation elision
+// has nothing to elide. Labels are empty (no allocation on the call).
+//
+// ONE WINDOW, ONE RULE (window_around): read before, run the subject, read after. The subject is a closed
+// variant rather than a function value because a call through a function value leaves the window's effect
+// summary incomplete.
+//
+// THE REFERENCE IS A DECLARED .dag FORM, NOT THE RUST MINIMUM: the same cursor, indexed lookup and stop
+// behavior (a negative head stops it exactly as it stops the specimen), threading only the fields that
+// change (tokens, index, done) and reading the source from the enclosing scope. A moved Rust accumulator
+// cannot be authored in .dag; the distance to that minimum is what the SUBJECT reading exposes.
+//
+// WHAT THIS LABEL CANNOT EXECUTE, AND WHERE IT IS EXECUTED INSTEAD: one emitted binary has one global
+// allocator, so the absent-provider control (a process that allocates but selected no counting allocator
+// must read unobservable, not zero) and the exact per-method calibration (alloc 32 -> +1 op +32 bytes,
+// alloc_zeroed 64, realloc to 96, dealloc +0, each on an isolated allocator instance) are the generated
+// Rust tests counting_allocator_tests of the emitted runtime (src/v1/runtime_rust.dag), which exercise the
+// SAME reader (allocation_reading) this binary reads through. The rendering test
+// the_counting_allocator_is_installed_only_by_demand pins the other half: no registration and no allocator
+// in a main that did not demand the resource.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type RefAcc {
+  tokens: List<Int>
+  index: Int
+  done: Bool
+}
+
+type WindowSubject
+  = SubjectNothing
+  | SubjectSpecimen
+  | SubjectReference
+  | SubjectCloning
+  | SubjectKnownText
+
+type AllocationWindow {
+  tokens: List<Int>
+  observation: AllocationObservation
+}
+
+fn reference_walk(src: List<Int>) -> List<Int> {
+  let r = src |> fold(init: RefAcc { tokens: [], index: 0, done: false }, f: (acc, e) =>
+    if acc.done { acc } else {
+      match get(xs: src, index: acc.index) {
+        Present { value: h } => if h < 0 {
+          RefAcc { tokens: acc.tokens, index: acc.index, done: true }
+        } else {
+          RefAcc { tokens: list_push(acc.tokens, h), index: acc.index + 1, done: false }
+        }
+        Absent => RefAcc { tokens: acc.tokens, index: acc.index, done: true }
+      }
+    })
+  r.tokens
+}
+
+fn cloning_walk(src: List<Int>) -> List<Int> {
+  src |> fold(init: [], f: (toks, e) => concat(toks, [e]) |> map(x => x))
+}
+
+// A KNOWN ALLOCATION: a string grown to 4096 characters is at least 4096 requested bytes and at least one
+// operation, whatever the collection library does elsewhere. The result is returned, so it is kept.
+fn grown_text(n: Int) -> String {
+  if n == 0 { "" } else { concat(grown_text(n: n - 1), "x") }
+}
+
+fn run_subject(subject: WindowSubject, src: List<Int>) -> List<Int> {
+  match subject {
+    SubjectNothing => src
+    SubjectSpecimen => spec_walk_tokens(src: src)
+    SubjectReference => reference_walk(src: src)
+    SubjectCloning => cloning_walk(src: src)
+    SubjectKnownText => [string_length(grown_text(n: 4096))]
+  }
+}
+
+fn window_around(subject: WindowSubject, src: List<Int>) -> AllocationWindow uses counter: AllocationCounter {
+  if observed_allocation_available("") {
+    let ops_before = observed_allocation_operations("")
+    let bytes_before = observed_allocation_bytes("")
+    let tokens = run_subject(subject: subject, src: src)
+    let ops_after = observed_allocation_operations("")
+    let bytes_after = observed_allocation_bytes("")
+    AllocationWindow { tokens: tokens, observation: allocation_span_observation(operations_before: ops_before, operations_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after) }
+  } else {
+    AllocationWindow { tokens: run_subject(subject: subject, src: src), observation: allocation_provider_not_selected() }
+  }
+}
+
+type AllocationCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn span_operations(o: AllocationObservation) -> Nat? {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: _ } => Present { value: n }
+    AllocationOperationsRanBackwards => none
+    AllocationBytesRequestedRanBackwards => none
+    AllocationProviderNotSelected => none
+  }
+}
+
+fn is_observed(o: AllocationObservation) -> Bool {
+  match span_operations(o: o) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn span_is_zero(o: AllocationObservation) -> Bool {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => n == 0 && byte_size_count(b: b) == 0
+    AllocationOperationsRanBackwards => false
+    AllocationBytesRequestedRanBackwards => false
+    AllocationProviderNotSelected => false
+  }
+}
+
+fn span_at_least(o: AllocationObservation, operations: Nat, bytes: Nat) -> Bool {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => n >= operations && byte_size_count(b: b) >= bytes
+    AllocationOperationsRanBackwards => false
+    AllocationBytesRequestedRanBackwards => false
+    AllocationProviderNotSelected => false
+  }
+}
+
+fn operations_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: x } => match span_operations(o: b) {
+      Present { value: y } => x > y
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn operations_within(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: x } => match span_operations(o: b) {
+      Present { value: y } => x <= y
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn count_text(label: String, n: Int) -> String {
+  concat(label, "=", to_string(value: n))
+}
+
+fn span_text(label: String, o: AllocationObservation) -> String {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => concat(concat(label, "_ops=", nat_to_decimal_string(value: n)), " ", concat(label, "_bytes=", nat_to_decimal_string(value: byte_size_count(b: b))))
+    AllocationOperationsRanBackwards => concat(label, "=unobservable(operations: counter ran backwards)")
+    AllocationBytesRequestedRanBackwards => concat(label, "=unobservable(bytes_requested: counter ran backwards)")
+    AllocationProviderNotSelected => concat(label, "=unobservable(allocation: counting allocator not selected)")
+  }
+}
+
+fn subject_verdict(specimen: AllocationObservation, reference: AllocationObservation) -> String {
+  if !is_observed(o: specimen) || !is_observed(o: reference) { "UNOBSERVABLE" }
+  else if operations_within(a: specimen, b: reference) { "WITHIN_DECLARED_REFERENCE_OPERATION_COUNT" }
+  else { "ABOVE_DECLARED_REFERENCE_OPERATION_COUNT" }
+}
+
+fn negative_stop_input() -> List<Int> {
+  list_push(list_push(list_push([], 1), 0 - 1), 2)
+}
+
+fn allocation_cases() -> List<AllocationCase> uses counter: AllocationCounter {
+  let n = 2000
+  let src = spec_build(n: n)
+  let stop_src = negative_stop_input()
+  let empty = window_around(subject: SubjectNothing, src: src)
+  let known = window_around(subject: SubjectKnownText, src: src)
+  let specimen = window_around(subject: SubjectSpecimen, src: src)
+  let reference = window_around(subject: SubjectReference, src: src)
+  let cloning = window_around(subject: SubjectCloning, src: src)
+  [
+    AllocationCase { identity: "availability_provider_registered_by_the_selecting_main", held: observed_allocation_available(""), observed: concat("available=", to_string(value: observed_allocation_available(""))) },
+    AllocationCase { identity: "observation_empty_window_reads_zero", held: span_is_zero(o: empty.observation), observed: span_text(label: "empty", o: empty.observation) },
+    AllocationCase { identity: "observation_known_allocation_reads_both_axes", held: span_at_least(o: known.observation, operations: 1, bytes: 4096), observed: span_text(label: "known_4096_text", o: known.observation) },
+    AllocationCase { identity: "observation_walks_return_the_given_sequence", held: specimen.tokens == src && reference.tokens == src && cloning.tokens == src, observed: count_text(label: "tokens", n: count(src)) },
+    AllocationCase { identity: "observation_negative_head_stops_specimen_and_reference_alike", held: spec_walk_tokens(src: stop_src) == [1] && reference_walk(src: stop_src) == [1], observed: concat("specimen_tokens=", to_string(value: count(spec_walk_tokens(src: stop_src))), " reference_tokens=", to_string(value: count(reference_walk(src: stop_src)))) },
+    AllocationCase { identity: "calibration_cloning_control_reads_above_reference", held: operations_above(a: cloning.observation, b: reference.observation), observed: concat(span_text(label: "cloning", o: cloning.observation), " ", span_text(label: "reference", o: reference.observation)) },
+    AllocationCase {
+      identity: "subject_reading_taken",
+      held: is_observed(o: specimen.observation) && is_observed(o: reference.observation),
+      observed: concat("n=", to_string(value: n), " producer=emitted-native-counting-allocator ", span_text(label: "specimen", o: specimen.observation), " ", span_text(label: "reference", o: reference.observation), " subject=", subject_verdict(specimen: specimen.observation, reference: reference.observation))
+    }
+  ]
+}
+
+// The dying-base reuse form, executed (gunbc.emit_dying_base_specimen). Each case reads results that
+// differ if a slot were overwritten while shared, or computed after an overwrite.
+fn dying_base_cases() -> List<AllocationCase> {
+  let fresh = db_step(o: db_init())
+  let retained = db_init()
+  let from_retained = db_step(o: retained)
+  let kept = DbInner { xs: [1], k: 1 }
+  let sharing = DbOuter { inner: kept, log: [], n: 3 }
+  let from_sharing = db_step(o: sharing)
+  let opt_a = db_opt_step(o: db_opt_absent())
+  let opt_p = db_opt_step(o: db_opt_present())
+  [
+    AllocationCase { identity: "dying_base_unique_outer_computes_from_old_fields", held: fresh.inner.xs == [10, 3] && fresh.inner.k == 8 && fresh.log == [5] && fresh.n == 4, observed: concat("k=", to_string(value: fresh.inner.k), " n=", to_string(value: fresh.n)) },
+    AllocationCase { identity: "dying_base_retained_outer_is_unchanged", held: retained.inner.xs == [10] && retained.inner.k == 5 && retained.log == [] && retained.n == 3 && from_retained.inner.k == 8 && from_retained.n == 4 && from_retained.log == [5], observed: concat("retained_k=", to_string(value: retained.inner.k), " result_k=", to_string(value: from_retained.inner.k)) },
+    AllocationCase { identity: "dying_base_retained_nested_is_preserved", held: kept.xs == [1] && kept.k == 1 && from_sharing.inner.xs == [1, 3] && from_sharing.inner.k == 4 && from_sharing.n == 4, observed: concat("kept_k=", to_string(value: kept.k), " result_k=", to_string(value: from_sharing.inner.k)) },
+    AllocationCase { identity: "dying_base_optional_nested_slot_absent_and_present", held: db_opt_child_k(o: opt_a) == 3 && db_opt_child_xs(o: opt_a) == [3] && db_opt_child_k(o: opt_p) == 3 && db_opt_child_xs(o: opt_p) == [3] && opt_a.n == 4 && opt_p.n == 4, observed: concat("absent_k=", to_string(value: db_opt_child_k(o: opt_a)), " present_k=", to_string(value: db_opt_child_k(o: opt_p))) }
+  ]
+}
+
+fn case_line(c: AllocationCase) -> String {
+  concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
+}
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let cases = concat(allocation_cases(), dying_base_cases())
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
+}

@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.guest_image_digest_is_a_one_build_receipt
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data guest_image_digest_is_a_one_build_receipt: RecurringFailureMode = RecurringFailureMode {
+  identity: "guest_image_digest_is_a_one_build_receipt" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "when a second, independent producer must agree with the first -- third-party verification, or a rebuild that must match a running image." } },
+
+  receipts: [
+    "INVALID STATE: a guest image's SHA-256 (workspace image, revision-job image) read as a promise that rebuilding from the same pinned inputs yields the same bytes, or as a correctness oracle.",
+    "HARM: a digest that cannot be reproduced cannot be re-derived by a second producer, so a rebuild that must match a running image, or a third party checking the image, silently has nothing to compare; and a pin read as correctness would bless whatever the one build produced.",
+    "DISTINGUISHING FACTS: mke2fs -d populates the image with no fixed UUID, hash seed or timestamps (code-derived from extdeps.tools.e2fsprogs mke2fs_populate_command, and MEASURED: see the receipt below), so two builds from identical pinned inputs are not byte-identical; the pin is an IDENTITY BINDING (the installed bytes are the bytes CI built and the reviewer pinned), not evidence the image is correct.",
+    "RUNG FOUND AT: mitigatable. The build refuses unless every input matches its pin and the installer refuses typed on a digest mismatch or absent artifact, but the image bytes themselves are one build's.",
+    "CEILING: mechanically preventable by a deterministic image build (fixed UUID, hash seed and timestamps) checked by building twice and comparing digests. NEXT-RUNG TRIGGER (can climb now, unbuilt, and not yet owed): when a second, independent producer must agree with the first -- third-party verification, or a rebuild that must match a running image.",
+    "SUBJECTS: gunbc.guest_image_delivery guest_image_write_digest_receipt (the one receipt writer both images use).",
+    "INSTANCE (2026-10-18): the revision-job pin was first read as owing a reproducible build; the rebuild work stopped on it until the pin was restated as an identity binding.",
+    "RECEIPT (2026-10-18, srv1): three runs of revision_job_image_build_wet at e44e8469 with identical pinned inputs (kernel sha256 cb1291c6..., toolchain receipt sha256 ac114574...) gave three different digests: f475b1987d60fd72e963ba7a7d916d7035fffbd0658b0a160cdd54cde64dbd85, 62c2c5c972c34f2152339cf758152e94be0046ce410c839d94cf6dc2eb52f9de, 94a1fc3f7d6f963c7c08e11684bf96ba9075587444797865168fe12c41eb5624. The instrument is running the entry twice and comparing.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.tools.e2fsprogs", decl_name: "mke2fs_populate_command", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.guest_image_delivery", decl_name: "guest_image_write_digest_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_revision_job_unit", decl_name: "revision_job_image_pinned_sha256", field: WholeDeclaration },
+  ],
+}

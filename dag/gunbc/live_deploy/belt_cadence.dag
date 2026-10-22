@@ -15,6 +15,15 @@ import gunbc.roadmap.roadmap_belt_obligation {
 
 data belt_tick_cadence: Second = second(count: 60)
 
+// THE EXIT PATH UNIT'S TRIGGER LIMIT IS PINNED, NOT INHERITED. A stalled exit spool is stopped by the drain's own
+// verdict (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_verdict) and the service's
+// `ConditionDirectoryNotEmpty=!stalled`; what the path unit then does while the condition skips every start is
+// hit systemd's trigger limit and fail loudly (a failed .path in `systemctl --failed`, zero processes launched).
+// 200 starts in 2s is systemd 255's default, verified on srv1 2026-10-21; pinning it keeps the loud stop from
+// depending on a distribution default.
+data belt_exit_trigger_limit_interval: Second = second(count: 2)
+data belt_exit_trigger_limit_burst: Int = 200
+
 // THE PER-TICK WATCHDOG, and the 2026-09-21 measurement that put it here. A Type=oneshot unit with
 // no start bound runs as long as the tick runs, and OnUnitInactiveSec only schedules the next tick
 // from INACTIVITY -- so one tick that wedged in the SCM seed (measured that night: 2.25 hours at

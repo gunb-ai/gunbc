@@ -5,6 +5,10 @@ run-name: fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.
 on:
   workflow_dispatch:
     inputs:
+      revision_job_image_run_id:
+        description: Revision-job image build run to download for controller install; installed bytes must match the reviewed image pin
+        required: false
+        type: string
       workspace_image_run_id:
         description: Image build run to download for controller install; installed bytes must match the reviewed image pin
         required: false
@@ -22,7 +26,7 @@ on:
       mode:
         description: "Closed choice of fleet-converge modes. Contracts: gunbc.fleet.fleet_converge_workflow."
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, workspace_commissioning_plan, workspace_allocation_plan, workspace_image_build, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, dashboard_deploy, approval_broker_dark_install, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, host_memory_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, approval_device_enrolment_code_issue, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, r2_workspace_object_read_mint, r2_workspace_object_write_mint, r2_cache_object_read_mint, r2_cache_object_write_mint, r2_conditional_put_race_probe, workspace_source_pack, workspace_checkpoint_measure, workspace_checkpoint_restore, workspace_transcript_rate_observe, fabric_writer_identity_observe, microvm_runner_group_ensure, gcp_iam_converge, namecheap_observe, printer, arrival_converge, hetzner_cloud_server_read, branch_run_grant]
+        options: [plan, launch_environment_plan, allocation_store_plan, workspace_commissioning_plan, workspace_allocation_plan, workspace_image_build, revision_job_image_build, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, microvm_network_observe, microvm_network_apply, guest_image_observe, guest_image_converge, microvm_boot_probe, dashboard_deploy, approval_broker_dark_install, microvm_controller_install, microvm_slot_reserve, microvm_slot_start, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, host_memory_observe, runner_host_file_converge, site_pxe_edge_observe, site_pxe_edge_converge, runner_password_session_tool_converge, runner_browser_toolchain_converge, r2_mint_preflight, r2_object_write_mint, org_runner_roster_observe, approval_keyring_converge, approval_device_enrolment_code_issue, mtcollins1_boot, mtcollins1_fan_observe, mtcollins1_kvm_observer_observe, mtcollins1_census_image_publish, mtcollins1_census_member_readback, mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge, host_credential_custody_converge, app_key_version_verify, r2_bucket_ensure, r2_bucket_admin_mint, r2_workspace_object_read_mint, r2_workspace_object_write_mint, r2_cache_object_read_mint, r2_cache_object_write_mint, r2_conditional_put_race_probe, workspace_source_pack, workspace_checkpoint_measure, workspace_checkpoint_restore, workspace_transcript_rate_observe, fabric_writer_identity_observe, microvm_runner_group_ensure, service_runner_lost_boot_sweep, gcp_iam_converge, namecheap_observe, printer, arrival_converge, hetzner_cloud_server_read, flex_pass, flex_template_ensure, branch_run_grant]
         type: choice
       reset_observer:
         description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
@@ -32,7 +36,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_test_oauth_client_secret, gunbai_bot_publication_app_key, flex_vast_api_key]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_test_oauth_client_secret, gunbai_bot_publication_app_key, flex_vast_api_key, service_slot_app_key]
         type: choice
       app_key_version:
         description: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key"
@@ -60,6 +64,14 @@ on:
         type: string
       runner_ids:
         description: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization"
+        required: false
+        type: string
+      sweep_host:
+        description: "service_runner_lost_boot_sweep only: the managed_host whose runner registrations are swept (its gunbc.host.managed_host row; not the executor host)"
+        required: false
+        type: string
+      host_capture_path:
+        description: "service_runner_lost_boot_sweep only: checkout-relative path of sweep_host's closed runner-host-up capture envelope, which records a boot but does not establish the current one: the mode joins it to an independent current-boot observation of sweep_host, refuses on a missing or mismatched one (and refuses every dispatch until the mtcollins1 enrolment supplies that observation route), and only then deregisters registrations of any other boot. Required, never defaulted, no boot id is typed"
         required: false
         type: string
       roster_page_size:
@@ -92,17 +104,16 @@ on:
         required: false
         type: string
 jobs:
-  build:
+  plan-revision:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 95
-    if: github.event.inputs.mode != 'mtcollins1_boot'
+    timeout-minutes: 65
     permissions:
       contents: read
       actions: read
     outputs:
-      release_bins_key: ${{ steps.release_bins_key.outputs.key }}
+      revision: ${{ steps.plan_revision.outputs.revision }}
     steps:
-      - name: Checkout
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
@@ -145,10 +156,91 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Build the compiler pair that resolves the plan's revision (claim_executor + gunbc)
+        id: pair_build
+        run: |
+          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
+        if: github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'dashboard_deploy'
+        timeout-minutes: 45
+      - name: Download the plan artifact (carries the plan receipt) from the plan run
+        id: plan_revision_download
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: fleet-converge-plan
+          path: /tmp/fleet-converge-plan
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.plan_workflow_run_id }}
+        if: github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'dashboard_deploy'
+        timeout-minutes: 10
+      - name: Admit the plan run's revision (receipt == GitHub's head_sha, on the default branch)
+        id: plan_revision
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function resolve_plan_revision
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FLEET_CONVERGE_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+        if: github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'dashboard_deploy'
+        timeout-minutes: 5
+  build:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [plan-revision]
+    timeout-minutes: 95
+    if: github.event.inputs.mode != 'mtcollins1_boot'
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      release_bins_key: ${{ steps.release_bins_key.outputs.key }}
+      revision: ${{ needs['plan-revision'].outputs.revision || github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ needs['plan-revision'].outputs.revision || github.sha }}
+      - name: Isolate toolchain dirs
+        run: |-
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+          echo "MAKEFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=5" >> "$GITHUB_ENV"
+          if sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          printf '%s\n' "CiSccacheProviderReceipt: provider=bound catalog=sccache_local"
+          else
+          printf '%s\n' "CiSccacheProviderReceipt: provider=SKIPPED catalog=sccache_local host=$(hostname) cause=daemon-unavailable; the release build runs UNCACHED — a counted degradation, not a supported mode (host_build_cache_provision P1b should have converged this host)"
+          fi
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: -D warnings
+        env:
+          HOME: ${{ runner.temp }}
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |-
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |-
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
       - name: Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)
         id: release_bins_key
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'revision_job_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
@@ -303,7 +395,7 @@ jobs:
           'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-vV.out'
           AXIS_TOOLCHAIN=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/rustc-vV.out')
           '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
-          ('printf' 'kind=%s\n' 'gunbc.fleet_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session' "$SOURCE_CLOSURE" 'sha256:'"$AXIS_ENVIRONMENT_DIGEST" 'claim_executor gunbc claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
+          ('printf' 'kind=%s\n' 'gunbc.fleet_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session ; rm -rf "$ROOT/target/emitted/approval_device_crypto_serve" && "$ROOT/target/release/gunbc" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry dag/gunbc/auth/approval_device_crypto_serve.dag --output-dir "$ROOT/target/emitted/approval_device_crypto_serve" --target rust && ( cd "$ROOT/target/emitted/approval_device_crypto_serve" && RUSTFLAGS="-D warnings" "$CARGO_BIN" build --release --offline --message-format json --color never ) > "$ROOT/target/emitted/approval_device_crypto_serve.cargo.json" && cp "$(sed -n '\''s/.*"executable":"\([^"]*\)".*/\1/p'\'' "$ROOT/target/emitted/approval_device_crypto_serve.cargo.json" | tail -n 1)" "$ROOT/target/release/approval_device_crypto_serve"' "$SOURCE_CLOSURE" 'sha256:'"$AXIS_ENVIRONMENT_DIGEST" 'claim_executor gunbc claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session approval_device_crypto_serve'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
           'sha256sum' "$EXPECTED" > "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out'
           PREIMAGE_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out')
           KEY='release-bins-'"$PREIMAGE_DIGEST"
@@ -354,7 +446,7 @@ jobs:
       - name: Decide release-bins outcome; verify a stored pack completely before any restored binary runs
         id: release_bins_outcome
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'revision_job_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STAGE="$ROOT"'/.release-bins-staging'
@@ -427,6 +519,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$STAGE"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the stored pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -451,15 +544,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$STAGE"'/unpacked' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$STAGE"'/unpacked' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the stored pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$STAGE"'/unpacked' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$STAGE"'/unpacked' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the stored pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--strict' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the stored member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$STAGE"'/unpacked' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$STAGE"'/unpacked' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$STAGE"'/unpacked'
           'echo' 'release-bins: stored pack verified and promoted'
           'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
@@ -490,7 +584,7 @@ jobs:
       - name: Build release bins (the dispatched mode's product)
         id: release_build
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'revision_job_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'
@@ -525,6 +619,17 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
+          set -o pipefail
+          BUILD_LOG=$(mktemp)
+          if ! (rm -rf "$ROOT/target/emitted/approval_device_crypto_serve" && "$ROOT/target/release/gunbc" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry dag/gunbc/auth/approval_device_crypto_serve.dag --output-dir "$ROOT/target/emitted/approval_device_crypto_serve" --target rust && ( cd "$ROOT/target/emitted/approval_device_crypto_serve" && RUSTFLAGS="-D warnings" "$CARGO_BIN" build --release --offline --message-format json --color never ) > "$ROOT/target/emitted/approval_device_crypto_serve.cargo.json" && cp "$(sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' "$ROOT/target/emitted/approval_device_crypto_serve.cargo.json" | tail -n 1)" "$ROOT/target/release/approval_device_crypto_serve") 2>&1 | tee "$BUILD_LOG"; then
+            if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
+              echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+              CARGO_BUILD_JOBS=1 rm -rf "$ROOT/target/emitted/approval_device_crypto_serve" && "$ROOT/target/release/gunbc" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry dag/gunbc/auth/approval_device_crypto_serve.dag --output-dir "$ROOT/target/emitted/approval_device_crypto_serve" --target rust && ( cd "$ROOT/target/emitted/approval_device_crypto_serve" && RUSTFLAGS="-D warnings" "$CARGO_BIN" build --release --offline --message-format json --color never ) > "$ROOT/target/emitted/approval_device_crypto_serve.cargo.json" && cp "$(sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' "$ROOT/target/emitted/approval_device_crypto_serve.cargo.json" | tail -n 1)" "$ROOT/target/release/approval_device_crypto_serve"
+            else
+              exit 1
+            fi
+          fi
+          rm -f "$BUILD_LOG"
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
           'sccache' '--show-stats' 2>/dev/null || 'true'
 
@@ -545,7 +650,7 @@ jobs:
         timeout-minutes: 5
       - name: Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'revision_job_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STAGE="$ROOT"'/.release-bins-staging'
@@ -566,8 +671,8 @@ jobs:
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STAGE="$ROOT"'/.release-bins-staging'
           'mkdir' '-p' "$STAGE"
-          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$STAGE"'/release-bins.manifest'
-          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session'
+          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$STAGE"'/release-bins.manifest'
+          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve'
           'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
           'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
           OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
@@ -594,21 +699,21 @@ jobs:
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
-    timeout-minutes: 115
-    if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'host_memory_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'approval_device_enrolment_code_issue' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'hetzner_cloud_server_read'
+    timeout-minutes: 218
+    if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'host_memory_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'approval_device_enrolment_code_issue' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'service_runner_lost_boot_sweep' || github.event.inputs.mode == 'hetzner_cloud_server_read' || github.event.inputs.mode == 'flex_pass' || github.event.inputs.mode == 'flex_template_ensure'
     permissions:
       contents: read
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-read-only-{0}', github.run_id) || github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1' || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'workspace_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'revision_job_image_build' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'host_memory_observe' && format('gunbc-own-run-{0}', github.run_id) || github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1' || github.event.inputs.mode == 'r2_conditional_put_race_probe' && 'r2-conditional-put-race-probe' || github.event.inputs.mode == 'flex_pass' && 'gunbc-flex-vast-account' || github.event.inputs.mode == 'flex_template_ensure' && 'gunbc-flex-vast-account' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ needs.build.outputs.revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -618,7 +723,7 @@ jobs:
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_allocation_plan' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'revision_job_image_build' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_source_pack' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_measure' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_checkpoint_restore' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'workspace_transcript_rate_observe' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
@@ -693,6 +798,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -717,15 +823,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
 
@@ -734,16 +841,6 @@ jobs:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
           FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
         timeout-minutes: 5
-      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
-        id: wif_auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc
-          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
-          token_format: access_token
-          create_credentials_file: false
-        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && !(github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'workspace_allocation_plan')"
-        timeout-minutes: 5
       - name: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt"
         id: branch_run_grant_await
         run: |-
@@ -751,8 +848,18 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/branch_run_grant_await.dag --function await_grant
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        if: github.event.inputs.mode == 'hetzner_cloud_server_read'
+        if: (github.event.inputs.mode == 'hetzner_cloud_server_read') || ((github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main')
         timeout-minutes: 50
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA at main; run-scoped account after this run's grant on a branch)
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc' }}
+          service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
+          token_format: access_token
+          create_credentials_file: false
+        if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && !(github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'workspace_allocation_plan')"
+        timeout-minutes: 5
       - name: WIF auth (OIDC -> branch-dispatch pool -> hetzner-cloud-control SA; only after this run's grant)
         id: wif_auth_hetzner_cloud_control
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -863,6 +970,31 @@ jobs:
           compression-level: 6
         if: github.event.inputs.mode == 'workspace_image_build'
         timeout-minutes: 10
+      - name: "Workspace: revision_job_image_build"
+        id: revision_job_image_build
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          fakeroot -- "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/revision_job_image_delivery.dag --function revision_job_image_build_wet
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ inputs.host }}
+          RLM_EXPECTED_REVISION: ${{ inputs.expected_revision }}
+        if: github.event.inputs.mode == 'revision_job_image_build'
+        timeout-minutes: 30
+      - name: Archive the exact revision-job image build and digest receipt
+        id: revision_job_image_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: revision-job-image
+          path: |-
+            target/revision-job-image-artifact/revision-job.ext4
+            target/revision-job-image-artifact/base/vmlinux-6.1.128
+            target/revision-job-image-artifact/toolchain
+            target/revision-job-image-artifact/build-receipt.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+        if: github.event.inputs.mode == 'revision_job_image_build'
+        timeout-minutes: 10
       - name: Upload fleet converge plan artifact
         id: plan_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -884,6 +1016,13 @@ jobs:
           run-id: ${{ github.event.inputs.plan_workflow_run_id }}
         if: github.event.inputs.mode == 'apply'
         timeout-minutes: 10
+      - name: Verify the checkout is the plan receipt's revision
+        id: checkout_verify
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function verify_checkout_at_plan_revision
+        if: github.event.inputs.mode == 'apply'
+        timeout-minutes: 5
       - name: Fleet converge apply (CAS + generated apply.sh)
         id: apply
         run: |-
@@ -1434,6 +1573,44 @@ jobs:
           retention-days: 30
         if: always() && github.event.inputs.mode == 'hetzner_cloud_server_read'
         timeout-minutes: 10
+      - name: "Flex pass: Vast instances, charges and offers read; one planned write under the policy's actuation"
+        id: flex_pass
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/flex_pass_run.dag --function pass
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'flex_pass'
+        timeout-minutes: 15
+      - name: Upload flex pass receipt (ids, prices, standings, walls; no secret)
+        id: flex_pass_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: flex-pass-receipt
+          path: target/flex-pass-receipt.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'flex_pass'
+        timeout-minutes: 10
+      - name: "Flex template ensure: secret-free Vast template by name, created if absent, read back"
+        id: flex_template_ensure
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/product/fabric/flex_vast_template_control.dag --function ensure
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'flex_template_ensure'
+        timeout-minutes: 5
+      - name: Upload flex template receipt (names, hashes, counts; no secret)
+        id: flex_template_ensure_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: flex-template-ensure-receipt
+          path: target/flex-vast-template-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'flex_template_ensure'
+        timeout-minutes: 10
       - name: R2 cache-blobs object-read token mint (AccountTokens.Create + Secret Manager custody)
         id: r2_cache_object_read_mint
         run: |-
@@ -1669,7 +1846,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'microvm_runner_group_ensure'
-        timeout-minutes: 36
+        timeout-minutes: 53
       - name: Upload the microVM runner group ensure receipt
         id: microvm_runner_group_ensure_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -1679,6 +1856,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
         if: always() && github.event.inputs.mode == 'microvm_runner_group_ensure'
+        timeout-minutes: 10
+      - name: "service runner lost-boot sweep: deregister runner registrations of a boot that is not the current one, read each back absent"
+        id: service_runner_lost_boot_sweep
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_lost_boot_sweep_run.dag --function lost_boot_sweep_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          FLEET_CONVERGE_LOST_BOOT_SWEEP_HOST: ${{ github.event.inputs.sweep_host }}
+          FLEET_CONVERGE_HOST_CAPTURE_PATH: ${{ github.event.inputs.host_capture_path }}
+        if: github.event.inputs.mode == 'service_runner_lost_boot_sweep'
+        timeout-minutes: 42
+      - name: Upload the service runner lost-boot sweep receipt
+        id: service_runner_lost_boot_sweep_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: service-runner-lost-boot-sweep-receipts
+          path: artifacts/service-runner-lost-boot-sweep-*
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'service_runner_lost_boot_sweep'
         timeout-minutes: 10
       - name: "Runner micro-VM guest image: observe base artifacts and their digests"
         id: guest_image_observe
@@ -1980,8 +2178,29 @@ jobs:
           cat "$ROOT/target/runner-host-file-converge-receipt.txt"
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          RUNNER_HOST_CAP_STEP_BUDGET_SECONDS: "3540"
         if: github.event.inputs.mode == 'runner_host_file_converge'
-        timeout-minutes: 15
+        timeout-minutes: 74
+      - name: "Runner host cap bracket: re-admit this host's slots and read them back (always)"
+        id: runner_host_cap_release
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_host_file_converge.dag --function runner_host_cap_release_ci_wet
+          cat "$ROOT/target/runner-host-cap-release-receipt.txt"
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+        if: always() && (github.event.inputs.mode == 'runner_host_file_converge')
+        timeout-minutes: 19
+      - name: Upload runner host cap release receipt
+        id: runner_host_cap_release_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: runner-host-cap-release-receipt
+          path: target/runner-host-cap-release-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'runner_host_file_converge')
+        timeout-minutes: 10
       - name: "Password-session tools: ensure every tool password_session_host_cli_requirements enrolls is present on this runner, installing only what is measured absent"
         id: runner_password_session_tool_converge
         run: |-
@@ -2095,7 +2314,7 @@ jobs:
   mtcollins1-boot:
     runs-on: [self-hosted, linux, arm64, srv1]
     environment: mtcollins1-boot
-    timeout-minutes: 184
+    timeout-minutes: 199
     if: github.event.inputs.mode == 'mtcollins1_boot'
     permissions:
       contents: read
@@ -2226,7 +2445,7 @@ jobs:
 
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_fan_observe.dag --function mtcollins1_fan_observe_boot_phase_wet
           first_line=$('head' '-n' '1' 'target/mtcollins1-fan-observation.txt' 2>/dev/null || 'true')
-          if '[' '-f' 'target/mtcollins1-fan-observation.txt' ']' && '[' "$first_line" '=' 'FanObserveBootPhaseTaken' ']'; then 'printf' '%s
+          if '[' '-f' 'target/mtcollins1-fan-observation.txt' ']' && '[' "$first_line" '=' 'FanObserveBootPhaseTaken' '-o' "$first_line" '=' 'FanObserveBootPhaseFanFunctionNotEstablished reason=HostOff' ']'; then 'printf' '%s
           ' 'fan_outcome=observed' > "$GITHUB_OUTPUT"; else 'printf' '%s
           ' 'fan_outcome=refused' > "$GITHUB_OUTPUT"; 'cat' 'target/mtcollins1-fan-observation.txt' > "$GITHUB_STEP_SUMMARY"; 'echo' '::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller'\''s verbatim answers are in the job summary and the fan-policy-phase-observation artifact'; exit 1; fi
 
@@ -2326,7 +2545,7 @@ jobs:
           GUNBC_BOOT_ATTEMPT_RECEIPT: ${{ github.event.inputs.attempt_receipt }}
           GUNBC_BOOT_ATTEMPT_NONCE: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'mtcollins1_boot' && steps.fan_policy_phase.outputs.fan_outcome == 'observed'
-        timeout-minutes: 134
+        timeout-minutes: 149
       - name: Upload fan-policy-phase observation series
         id: fan_policy_phase_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -2364,7 +2583,7 @@ jobs:
       group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"
       cancel-in-progress: false
     steps:
-      - name: Checkout
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
@@ -2408,6 +2627,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -2432,15 +2652,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -2480,7 +2701,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ needs.build.outputs.revision || github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2520,6 +2741,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -2544,15 +2766,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -2576,6 +2799,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.apply_workflow_run_id }}
         timeout-minutes: 10
+      - name: Verify the checkout is the plan receipt's revision
+        id: checkout_verify
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function verify_checkout_at_plan_revision
+        timeout-minutes: 5
       - name: Deploy dashboard to srv1 (live_deploy_apply_prod_role_transaction_wet, receipted)
         id: dashboard_deploy
         run: |-
@@ -2609,7 +2838,7 @@ jobs:
       group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
     steps:
-      - name: Checkout
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
@@ -2653,6 +2882,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -2677,15 +2907,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -2707,7 +2938,7 @@ jobs:
       group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
     steps:
-      - name: Checkout
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
@@ -2751,6 +2982,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -2775,15 +3007,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -2797,6 +3030,15 @@ jobs:
           path: target/workspace-image-artifact
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.workspace_image_run_id }}
+        timeout-minutes: 10
+      - name: Download the revision-job image selected for installation
+        id: revision_job_image_download
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: revision-job-image
+          path: target/revision-job-image-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.revision_job_image_run_id }}
         timeout-minutes: 10
       - name: Install the microVM slot controller release locus, VMM + jailer and template unit on srv1 (additive; starts no instance)
         id: microvm_controller_install
@@ -2817,7 +3059,7 @@ jobs:
       group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
     steps:
-      - name: Checkout
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
@@ -2861,6 +3103,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -2885,15 +3128,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -2994,12 +3238,140 @@ jobs:
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
-  gcp-iam-converge:
+  gcp-iam-bootstrap-request:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: gcp-iam-converge
     timeout-minutes: 60
-    if: github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'branch_run_grant'
+    if: github.event.inputs.mode == 'gcp_iam_converge'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    concurrency:
+      group: gcp-iam-converge
+      cancel-in-progress: false
+    outputs:
+      bootstrap_approved: ${{ steps.gcp_iam_bootstrap_request.outputs.bootstrap_approved }}
+    steps:
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
+        timeout-minutes: 10
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
+        id: release_bins
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          approval_device_crypto_serve
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          claim_batch:regular file:1
+          interp_recorded_fixture_witness:regular file:1
+          v1_src_dag_parse:regular file:1
+          auth_declared_but_unwired_witness:regular file:1
+          bootstrap_witness:regular file:1
+          dag_collect_fingerprint_witness:regular file:1
+          diagnostics_witness:regular file:1
+          effects_rest_transport_witness:regular file:1
+          infer_semantics_witness:regular file:1
+          parse_witness:regular file:1
+          cssl_assemble:regular file:1
+          namespace_structural_root_exposure_generated_witness:regular file:1
+          codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
+        timeout-minutes: 5
+      - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-gcp-iam-converge/providers/github-gcp-iam-converge-oidc
+          service_account: iam-observe@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: "GCP IAM bootstrap delta: classify the whole roster as iam-observe, file one request over exactly the missing cells, wait for the operator"
+        id: gcp_iam_bootstrap_request
+        run: |
+          'set' '-euo' 'pipefail'
+          'umask' '077'
+          HDR_FILE="$RUNNER_TEMP"'/gcp-iam-bootstrap-delta-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/gcp-iam-bootstrap-delta-sm.json'
+          SUB_FILE="$RUNNER_TEMP"'/approval-submission-mac-key'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"
+          ' 'EXIT'
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          if 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$SUB_FILE"; then 'chmod' '600' "$SUB_FILE"; 'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"; else 'rm' '-f' "$SUB_FILE"; 'echo' 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag --function gcp_iam_bootstrap_delta_request_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'gcp_iam_converge'
+        timeout-minutes: 40
+  gcp-iam-bootstrap-apply:
+    runs-on: [self-hosted, linux, arm64, srv1]
+    needs: [build, gcp-iam-bootstrap-request]
+    environment: gcp-iam-bootstrap
+    timeout-minutes: 35
+    if: github.event.inputs.mode == 'gcp_iam_converge' && needs['gcp-iam-bootstrap-request'].outputs.bootstrap_approved == 'true'
     permissions:
       contents: read
       actions: read
@@ -3052,6 +3424,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -3076,15 +3449,144 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
+        timeout-minutes: 5
+      - name: WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-observe SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-gcp-iam-bootstrap/providers/github-gcp-iam-bootstrap-oidc
+          service_account: iam-observe@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: WIF auth (OIDC -> dedicated gcp-iam-bootstrap pool -> iam-bootstrap SA; only on an approved delta)
+        id: wif_auth_iam_bootstrap
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-gcp-iam-bootstrap/providers/github-gcp-iam-bootstrap-oidc
+          service_account: iam-bootstrap@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_lifetime: 600s
+          create_credentials_file: false
+        if: github.event.inputs.mode == 'gcp_iam_converge'
+        timeout-minutes: 5
+      - name: "GCP IAM bootstrap delta: re-derive, re-admit the approval, apply exactly the approved cells as iam-bootstrap and read each back"
+        id: gcp_iam_bootstrap_apply
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/gcp_iam_bootstrap_delta_run.dag --function gcp_iam_bootstrap_delta_apply_wet
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          IAM_BOOTSTRAP_ACCESS_TOKEN: ${{ steps.wif_auth_iam_bootstrap.outputs.access_token }}
+        if: github.event.inputs.mode == 'gcp_iam_converge'
+        timeout-minutes: 15
+  gcp-iam-converge:
+    runs-on: [self-hosted, linux, arm64, srv1]
+    needs: [build, gcp-iam-bootstrap-request, gcp-iam-bootstrap-apply]
+    environment: gcp-iam-converge
+    timeout-minutes: 60
+    if: "!cancelled() && needs.build.result == 'success' && (needs['gcp-iam-bootstrap-apply'].result == 'success' || needs['gcp-iam-bootstrap-apply'].result == 'skipped') && (github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'branch_run_grant')"
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    concurrency:
+      group: gcp-iam-converge
+      cancel-in-progress: false
+    steps:
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
+        timeout-minutes: 10
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
+        id: release_bins
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          approval_device_crypto_serve
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          claim_batch:regular file:1
+          interp_recorded_fixture_witness:regular file:1
+          v1_src_dag_parse:regular file:1
+          auth_declared_but_unwired_witness:regular file:1
+          bootstrap_witness:regular file:1
+          dag_collect_fingerprint_witness:regular file:1
+          diagnostics_witness:regular file:1
+          effects_rest_transport_witness:regular file:1
+          infer_semantics_witness:regular file:1
+          parse_witness:regular file:1
+          cssl_assemble:regular file:1
+          namespace_structural_root_exposure_generated_witness:regular file:1
+          codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -3101,17 +3603,18 @@ jobs:
         timeout-minutes: 5
       - name: "GCP IAM converge: plan as iam-observe, file one request, wait for the operator (no write credential exists yet)"
         id: gcp_iam_request
-        run: |-
-          # 🟡 dissolve-on: gunbc_ci_gcp_iam_converge_request_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner sharing gunbc_ci_submission_key_prelude with the D0 door: WIF access token (iam-observe) by env, ONE pinned submission-MAC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the key touches disk; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite
-          set -euo pipefail
-          umask 077
-          HDR_FILE="$RUNNER_TEMP/gcp-iam-converge-auth-header"
-          RESP_FILE="$RUNNER_TEMP/gcp-iam-converge-sm.json"
-          SUB_FILE="$RUNNER_TEMP/approval-submission-mac-key"
-          trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"' EXIT
-          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          if DEST_FILE="$SUB_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"; then chmod 600 "$SUB_FILE"; export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"; else rm -f "$SUB_FILE"; echo 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+        run: |
+          'set' '-euo' 'pipefail'
+          'umask' '077'
+          HDR_FILE="$RUNNER_TEMP"'/gcp-iam-converge-auth-header'
+          RESP_FILE="$RUNNER_TEMP"'/gcp-iam-converge-sm.json'
+          SUB_FILE="$RUNNER_TEMP"'/approval-submission-mac-key'
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"
+          ' 'EXIT'
+          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          if 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$SUB_FILE"; then 'chmod' '600' "$SUB_FILE"; 'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"; else 'rm' '-f' "$SUB_FILE"; 'echo' 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi
+          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
+
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/gcp_iam_converge_run.dag --function gcp_iam_converge_request_wet
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
@@ -3216,6 +3719,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -3240,15 +3744,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -3341,6 +3846,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -3365,15 +3871,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
@@ -3465,6 +3972,7 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
+          approval_device_crypto_serve
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -3489,15 +3997,16 @@ jobs:
           cssl_assemble:regular file:1
           namespace_structural_root_exposure_generated_witness:regular file:1
           codex_app_server_stdio_session:regular file:1
+          approval_device_crypto_serve:regular file:1
           ' > "$RUNNER_TEMP"'/member-types.expected'
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve') > "$RUNNER_TEMP"'/member-types.out'
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' 'approval_device_crypto_serve' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:

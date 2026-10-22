@@ -2,6 +2,7 @@ module gunbc.runner.runner_slot_allocation
 
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import std.types { Int, String, List, Bool }
+import std.algebra { take_prefix }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { byte_size_saturating_sub }
@@ -82,6 +83,51 @@ data gunbc_microvm_shakedown_slot_index: Nat = 13
 
 fn srv1_microvm_shakedown_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv1, slot_index: gunbc_microvm_shakedown_slot_index }
+}
+
+// THE SLOTS A REVISION JOB MAY RUN ON, AND THERE IS NO DEFAULT. A revision job (gunbc.runner.
+// runner_revision_job_main) refuses any slot not on this list. A slot is added here only by an
+// operator-approved change: starting a microVM slot on a host is a host mutation and a slot on srv1
+// is a capacity decision there. OPERATOR DECISION 2026-10-18 (msg_ad04724a via bright-moth-475):
+// srv1-14 is the revision-job slot, funded by moving two of the four user-work pool slots to it
+// (gunbc.live_deploy.user_work_pool_slots), so srv1 still admits two CI slots. The workspace
+// commissioning slot (srv1-13) is never a revision-job slot.
+data srv1_revision_job_slot_index: Nat = 14
+
+fn srv1_revision_job_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: srv1_revision_job_slot_index }
+}
+
+data revision_job_slots: List<RunnerSlotIdentity> = [srv1_revision_job_slot()]
+
+// EVERY SLOT WHOSE IDENTITY IS AUTHORED RATHER THAN DERIVED FROM THE WIDTH, AND EACH IS CHARGED ITS
+// OWN CELL PLUS ITS OWN CONTROLLER SLICE. This list is the one fact the single-slot special cases
+// (the shakedown slot's charge, its place in the committed identities) were each a copy of; a second
+// authored slot is a row here, not another special case. Order is the order of the identities.
+data authored_microvm_slots: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot(), srv1_revision_job_slot()]
+
+fn host_authored_microvm_slots(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  filter(authored_microvm_slots, s => (s.host as String) == (host as String))
+}
+
+// A WIDTH SMALLER THAN THE AUTHORED LIST COMMITS ONLY ITS FIRST SLOTS, and membership, fleet range and
+// charge all read this one answer (review 81866): a width of 1 on srv1 is srv1-13 alone, charged as
+// such, never two members charged as one fleet slot.
+fn host_authored_slots_within_width(host: HostIdentity, width: Int) -> List<RunnerSlotIdentity> {
+  take_prefix(host_authored_microvm_slots(host: host), width)
+}
+
+// A REVISION-JOB SLOT MUST BE GRANTED EXACTLY THE FLEET ROW. One image serves every revision-job
+// slot and its guest unit's MemoryMax is baked from the fleet row (runner_revision_job_guest), so a
+// slot whose granted row differs would run a guest sized for a cell it does not have. Asked of the
+// authored rows, so changing a revision-job slot's row refuses here rather than at a job.
+fn revision_job_slots_match_the_fleet_row() -> Bool {
+  fold(
+    revision_job_slots,
+    init: true,
+    f: (ok, s) => ok && byte_size_count(b: gunbc_runner_slot_desired_for(slot: s).memory_max)
+      == byte_size_count(b: gunbc_runner_slot_memory_max)
+  )
 }
 
 fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
@@ -296,7 +342,7 @@ type HostWidthFacts {
   control_plane: HostFabricControlPlaneClaim
   served_deployment: HostServedDeploymentClaim
   disk: HostDiskWidthConstraint
-  carries_shakedown_slot: Bool
+  authored_slots: List<RunnerSlotIdentity>
 }
 
 fn host_width_facts(host: HostIdentity) -> HostWidthFacts {
@@ -310,7 +356,7 @@ fn host_width_facts(host: HostIdentity) -> HostWidthFacts {
     control_plane: host_fabric_control_plane_claim(host: host),
     served_deployment: host_served_deployment_claim(host: host),
     disk: host_disk_admitted_width(host: host),
-    carries_shakedown_slot: host_carries_microvm_shakedown_slot(host: host),
+    authored_slots: host_authored_microvm_slots(host: host),
   }
 }
 
@@ -459,7 +505,7 @@ fn host_memory_admitted_width(host: HostIdentity) -> Int {
 fn memory_admitted_width_of(f: HostWidthFacts) -> Int {
   memory_admitted_width_of_envelope(
     envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
-    carries_shakedown_slot: f.carries_shakedown_slot,
+    authored_slots: f.authored_slots,
   )
 }
 
@@ -487,8 +533,21 @@ fn microvm_controller_slice_memory_max() -> ByteSize {
   measure_add(a: whole_corpus_compile_public_root_peak, b: microvm_controller_slice_cache_headroom)
 }
 
+fn authored_microvm_slot_charge(slot: RunnerSlotIdentity) -> ByteSize {
+  measure_add(a: gunbc_runner_slot_desired_for(slot: slot).memory_max, b: microvm_controller_slice_memory_max())
+}
+
 fn gunbc_microvm_shakedown_slot_charge() -> ByteSize {
-  measure_add(a: gunbc_microvm_shakedown_slot_memory_max, b: microvm_controller_slice_memory_max())
+  authored_microvm_slot_charge(slot: srv1_microvm_shakedown_slot())
+}
+
+// THE CHARGE OF A HOST'S AUTHORED SLOTS IS THE SUM OF EACH SLOT'S OWN CHARGE, in the carrier.
+fn authored_microvm_slots_charge(slots: List<RunnerSlotIdentity>) -> ByteSize {
+  fold(
+    slots,
+    init: byte_size(0),
+    f: (acc, s) => measure_add(a: acc, b: authored_microvm_slot_charge(slot: s))
+  )
 }
 
 // THE WIDTH COST OF THE SHAKEDOWN SLOT IS DERIVED HERE AND NOWHERE ELSE. The host that carries it
@@ -504,12 +563,12 @@ fn gunbc_microvm_shakedown_slot_charge() -> ByteSize {
 // comparison beside the subtraction, and measure_fit_count_floor owns the division and its
 // zero-divisor guard -- so the conservation arithmetic the shakedown rung-drop depends on is
 // unit-checked end to end instead of trusted across an unwrap.
-fn memory_admitted_width_of_envelope(envelope: ByteSize, carries_shakedown_slot: Bool) -> Int {
-  if carries_shakedown_slot {
-    match measure_sub(a: envelope, b: gunbc_microvm_shakedown_slot_charge()) {
+fn memory_admitted_width_of_envelope(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>) -> Int {
+  if authored_slots.length() > 0 {
+    match measure_sub(a: envelope, b: authored_microvm_slots_charge(slots: authored_slots)) {
       MeasureSubtrahendExceedsMinuend => 0
       MeasureDifference { value: rest } =>
-        1 + (measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int)
+        authored_slots.length() + (measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int)
     }
   } else {
     measure_fit_count_floor(capacity: envelope, each: gunbc_runner_slot_memory_max) as Int
@@ -926,10 +985,6 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
   )
 }
 
-fn host_carries_microvm_shakedown_slot(host: HostIdentity) -> Bool {
-  (host as String) == (srv1_microvm_shakedown_slot().host as String)
-}
-
 // WHAT A HOST'S COMMITTED RUNNERS COST ITS MEMORY BUDGET, AND THE ONE PLACE IT IS ANSWERED. The width
 // above charges the shakedown slot at gunbc_microvm_shakedown_slot_charge (its 28 GiB MemoryMax plus
 // the controller slice) before dividing the rest by the fleet row; the conservation verdict in
@@ -939,10 +994,11 @@ fn host_carries_microvm_shakedown_slot(host: HostIdentity) -> Bool {
 // This is the BUDGET charge, not the runner slice's systemd cap (gunbc_runner_slice_cap_for_width):
 // the controller slice is its own unit and is charged here, not inside the runner slice.
 fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
-  if host_carries_microvm_shakedown_slot(host: host) && slots > 0 {
+  let authored = host_authored_slots_within_width(host: host, width: slots)
+  if authored.length() > 0 {
     byte_size(
-      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - 1))
-        + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - authored.length()))
+        + byte_size_count(b: authored_microvm_slots_charge(slots: authored))
     )
   } else {
     gunbc_runner_slice_cap_for_width(slots: slots)
@@ -1661,6 +1717,7 @@ fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
   [
     srv1_microvm_shakedown_slot(),
+    srv1_revision_job_slot(),
     srv3_fabric_first_slot(),
     srv3_fabric_second_slot(),
     srv4_fabric_first_slot(),
@@ -1706,34 +1763,28 @@ fn committed_slot_identities(host: HostIdentity) -> CommittedSlotPopulation {
   }
 }
 
-// THE SHAKEDOWN SLOT IS A MEMBER BY ITS AUTHORED IDENTITY, NOT BY FALLING INSIDE 1..width. The width
-// (memory_admitted_width_of_envelope) charges it FIRST and fills the remainder with fleet slots, so
-// on the host that carries it the width is 1 + the fleet count. Membership mirrors that: fleet slots
-// 1..(width - 1) plus srv1_microvm_shakedown_slot at its authored index. Enumerating 1..width instead
-// named a fleet slot the width never charged for and dropped the shakedown slot the moment the width
-// fell to or below its index -- which is what happened when the served slices entered the envelope
-// and srv1 went from 14 to 11 (operator ruling via the parent session, 2026-09-26: keep srv1-13,
-// rename no live state). The index stays authored for the reason gunbc_microvm_shakedown_slot_index
-// gives; only the fleet range beneath it is derived.
-fn host_fleet_slot_top(host: HostIdentity, committed: Int) -> Int {
-  if host_carries_microvm_shakedown_slot(host: host) && committed > 0 {
-    if committed > (gunbc_microvm_shakedown_slot_index as Int) { committed } else { committed - 1 }
-  } else {
-    committed
-  }
-}
-
-// THE FLEET INDICES ARE 1..top WITH THE AUTHORED INDEX SKIPPED, so a width large enough to reach the
-// shakedown index cannot name that index twice (once as a fleet slot, once as the authored member).
+// AUTHORED SLOTS ARE MEMBERS BY THEIR AUTHORED IDENTITY, NOT BY FALLING INSIDE 1..width. The width
+// (memory_admitted_width_of_envelope) charges them FIRST and fills the remainder with fleet slots, so
+// on a host that carries n of them the width is n + the fleet count. Membership mirrors that: the
+// first (width - n) indices not authored, plus the authored identities. Enumerating 1..width instead
+// named a fleet slot the width never charged for and dropped an authored slot the moment the width
+// fell to or below its index (srv1 14 -> 11, operator ruling via the parent session, 2026-09-26: keep
+// srv1-13, rename no live state). The indices stay authored for the reason
+// gunbc_microvm_shakedown_slot_index gives; only the fleet range is derived.
 fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
-  filter(
-    nat_range_inclusive(lo: 1, hi: host_fleet_slot_top(host: host, committed: committed)),
-    i => !(host_carries_microvm_shakedown_slot(host: host) && i == gunbc_microvm_shakedown_slot_index)
+  let authored = host_authored_slots_within_width(host: host, width: committed)
+  let fleet_count = committed - authored.length()
+  take_prefix(
+    filter(
+      nat_range_inclusive(lo: 1, hi: committed),
+      i => !identity_in_list(identity: RunnerSlotIdentity { host: host, slot_index: i }, members: authored)
+    ),
+    fleet_count
   )
 }
 
 fn host_authored_members_above_fleet_range(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
-  if host_carries_microvm_shakedown_slot(host: host) && committed > 0 { [srv1_microvm_shakedown_slot()] } else { [] }
+  host_authored_slots_within_width(host: host, width: committed)
 }
 
 fn host_committed_identities_at(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {

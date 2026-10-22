@@ -397,6 +397,14 @@ fn systemd_run_transient_wait_unit_command(unit: NonEmptyStr, properties: List<S
   systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Quiet, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
+// The waiting transient whose STDIN is the caller's: `--pipe` (systemd-run(1): "the standard input, output and
+// error of the invoked process are connected to the invoking process") forwards what the caller writes to the
+// unit's main process, so a secret can reach the process through a pipe and never through the unit's argv,
+// Environment= or a file. The wait/quiet/collect vocabulary is the plain waiting form's.
+fn systemd_run_transient_wait_pipe_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Pipe, Quiet, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+}
+
 
 // RETAINED AND COLLECTED DIFFER BY --collect AND THAT IS A DECISION ABOUT EVIDENCE.
 //

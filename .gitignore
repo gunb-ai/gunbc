@@ -204,6 +204,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/ci-merge-freshness.md
 /docs/plans/shell-emission-model.md
 /docs/plans/construction-justification-rule.md
+/docs/plans/srv1-deploy-principal-split.md
 /docs/plans/interpreter-kernel-d.md
 /docs/plans/inert-layer-lens.md
 /docs/plans/solve-higher-order-design.md
@@ -230,5 +231,5 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/v2-compiler-architecture.md
 /docs/plans/durable-work-handoff.md
 /docs/plans/source-layout-authority.md
-/docs/plans/census-scoped-run.md
-dag/test/claim/live_deploy/w2_row_head_red_probe.dag
+/docs/plans/physical-machine-boot-program.md
+/docs/plans/gunb-ai-projection-inventory.md

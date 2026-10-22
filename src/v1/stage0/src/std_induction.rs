@@ -11,11 +11,10 @@ use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{CostShape, Ordering};
+pub use crate::std_algebra::{collection_concat_shape, CostShape, Ordering};
 pub use crate::std_checked_arithmetic::{
     checked_int_add, checked_int_multiply, checked_int_optional,
 };
-pub use crate::std_computation::tree_size_bound;
 use crate::std_computation::CallPattern::{
     ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, SameArgumentCall,
 };
@@ -23,7 +22,7 @@ use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
 pub use crate::std_computation::{
-    CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+    tree_size_bound, CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
 pub use crate::std_optional::Optional;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
@@ -33,10 +32,8 @@ use crate::std_termination::RankingDimension::TreeSize;
 pub use crate::std_termination::{
     peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
     positive_descent_count, proportional_divisor_from_int_at_least_two,
-    proportional_divisor_to_int,
-};
-pub use crate::std_termination::{
-    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+    proportional_divisor_to_int, DescentEvidence, PositiveDescentAmount, ProportionalDivisor,
+    RankingDimension,
 };
 pub use crate::std_types::List;
 use crate::v1_rt;
@@ -841,9 +838,9 @@ pub fn atomic_factors_growth_in_param(
         param_growth_zero(),
         |acc: Rc<ParamGrowth>, c: Rc<AtomicCost>| {
             if (atomic_cost_param(c.clone()) == param.clone()) {
-                param_growth_multiply(acc.clone(), atomic_cost_growth(c.clone()))
+                param_growth_multiply(acc, atomic_cost_growth(c.clone()))
             } else {
-                acc.clone()
+                acc
             }
         },
     )

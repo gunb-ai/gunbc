@@ -8,12 +8,12 @@ use self::OperatorRealization::*;
 use self::OperatorRealizationRefusal::*;
 use self::OrderingTest::*;
 use self::StructuralOrderingLookup::*;
+pub use crate::std_algebra::{collection_concat_shape, collection_count_shape};
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
-pub use crate::std_decl_ref::declaration_ref_eq;
-pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{declaration_ref_eq, DeclarationRef};
 pub use crate::std_optional::Optional;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::{

@@ -3,7 +3,7 @@ module v2.std.compilers.lexing
 import std.coercion { unicode_scalar_unfold }
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Empty, list_append, list_snoc_item, fold_list, length, skip, empty_map, list_at_optional, map_insert, map_lookup }
+import std.algebra { Empty, list_append, list_snoc_item, fold_list, length, skip, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
 
 import std.optional {
@@ -395,26 +395,46 @@ fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
   lex_rule_set_insert_token_classes(m: empty_map(), rules: rules)
 }
 
-fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
-  match lex_rule_token_class_optional(rule: rule) {
-    Present { value: c } => c == token_class
-    Absent => false
+fn lex_rule_set_insert_keyword_classes(
+  m: Map<Symbol, Bool>,
+  rules: LexRuleSet
+) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: lex_rule_set_matching_rules(rules: rules),
+    empty: m,
+    cons: lex_rule_set_insert_keyword_class
+  )
+}
+
+fn lex_rule_set_insert_keyword_class(
+  m: Map<Symbol, Bool>,
+  rule: LexRule
+) -> Map<Symbol, Bool> {
+  match rule {
+    TokenRule { token_class: c, pattern: p } =>
+      if lex_pattern_is_keyword(pattern: p) {
+        map_insert(m: m, key: c, value: true)
+      } else {
+        m
+      }
+    ModeTransitionTokenRule { token_class: c, pattern: p, transition: _ } =>
+      if lex_pattern_is_keyword(pattern: p) {
+        map_insert(m: m, key: c, value: true)
+      } else {
+        m
+      }
+    TriviaRule { pattern: _ } => m
+    AnnotationRule { annotation_class: _, pattern: _ } => m
   }
 }
 
-fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
-  fold_list(
-    xs: lex_rule_set_matching_rules(rules: rules),
-    empty: false,
-    cons: fn(acc, rule) {
-      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
-    }
-  )
+fn lex_rule_set_keyword_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
+  lex_rule_set_insert_keyword_classes(m: empty_map(), rules: rules)
 }
 
 // A token class the rule set lexes by a KEYWORD pattern -- `fn`, `in`, `let` -- as distinct from the
 // classes it lexes by character classes or literals (an identifier, an int literal), which are also
-// token classes (lex_rule_set_token_class_member) and name operands. Whether a pattern IS a keyword
+// token classes (lex_rule_set_token_class_map) and name operands. Whether a pattern IS a keyword
 // is asked through the pattern's one fold, fold_lex_pattern, not a second matcher over LexPattern.
 // Every STRUCTURAL question about a pattern goes through that fold. The one sanctioned direct walk
 // is v2.compiler.tokenize lex_match_pattern, which runs a pattern against input. Matching threads a
@@ -441,23 +461,6 @@ fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
       delimited: fn(open, body, close) { false },
       not_followed_by: fn(element) { false }
     }
-  )
-}
-
-fn lex_rule_keyword_class_member(rule: LexRule, token_class: Symbol) -> Bool {
-  match rule {
-    TokenRule { token_class: c, pattern: p } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
-    ModeTransitionTokenRule { token_class: c, pattern: p, transition: _ } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
-    TriviaRule { pattern: _ } => false
-    AnnotationRule { annotation_class: _, pattern: _ } => false
-  }
-}
-
-fn lex_rule_set_keyword_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
-  fold_list(
-    xs: lex_rule_set_matching_rules(rules: rules),
-    empty: false,
-    cons: fn(acc, rule) { acc || lex_rule_keyword_class_member(rule: rule, token_class: token_class) }
   )
 }
 

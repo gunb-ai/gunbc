@@ -55,7 +55,7 @@ import gunbc.host.host_operation_exec {
 }
 import gunbc.host.host_effect { LocalShell }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
-import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.runner.runner_slot_retirement {
   CgroupObservedEmpty,
   CgroupObservedPopulated,
@@ -978,7 +978,7 @@ test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
           TransitionRetireesNotPermitted { permitted: p, unpermitted: u } =>
             any(u, x => (x as String) == "actions-runner@srv1-07.service")
               && any(u, x => (x as String) == "actions-runner@srv1-12.service")
-              && any(p, x => (x as String) == "actions-runner@srv1-14.service")
+              && any(p, x => (x as String) == "actions-runner@srv1-15.service")
               && any(p, x => (x as String) == "actions-runner@srv1-50.service")
               && !any(p, x => (x as String) == "actions-runner@srv1-07.service")
         }
@@ -1118,7 +1118,7 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
 test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: units } =>
-      list_length(items: units) == 47
+      list_length(items: units) == 46
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-01.service")
     RetireesUnresolved { host: _, cause: _ } => false
@@ -1198,7 +1198,9 @@ test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bo
             && any(units, u => (u as String) == "actions-runner@srv1-12.service")
             && any(units, u => (u as String) == "actions-runner@srv1-50.service")
             && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
-            && !any(units, u => (u as String) == "actions-runner@srv1-06.service")
+            && !any(units, u => (u as String) == "actions-runner@srv1-14.service")
+            && !any(units, u => (u as String) == "actions-runner@srv1-05.service")
+            && any(units, u => (u as String) == "actions-runner@srv1-06.service")
         RetireesUnresolved { host: _, cause: _ } => false
       }
   }
@@ -1208,15 +1210,16 @@ test fn srv1_at_committed_width_3_desires_two_fleet_plus_shakedown() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_srv1) {
     RunnerWidthUnresolved { cause: _ } => false
     RunnerWidthDerived { slots: w } =>
-      w == 3
+      w == 4
         && match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
           RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
           RunnerHostDeployAdmitted { deploy: d } =>
-            d.runner_count == 3
-              && list_length(items: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 3
+            d.runner_count == 4
+              && list_length(items: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 4
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-01.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-02.service")
               && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-13.service")
+              && any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-14.service")
               && !any(committed_unit_names_at(host: operator_host_srv1, committed: d.runner_count), u => u == "actions-runner@srv1-03.service")
         }
   }
@@ -1226,14 +1229,15 @@ test fn srv1_at_width_3_owes_the_open_fifty_twelve_seven_and_five_deltas() -> Bo
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
     RetireesKnown { units: units } =>
-      list_length(items: units) == 47
+      list_length(items: units) == 46
         && any(units, u => (u as String) == "actions-runner@srv1-03.service")
         && any(units, u => (u as String) == "actions-runner@srv1-04.service")
         && any(units, u => (u as String) == "actions-runner@srv1-05.service")
         && any(units, u => (u as String) == "actions-runner@srv1-06.service")
         && any(units, u => (u as String) == "actions-runner@srv1-07.service")
         && any(units, u => (u as String) == "actions-runner@srv1-12.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-14.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-14.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-15.service")
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-02.service")
@@ -1265,7 +1269,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
 // production read yields the same derived obligation the decision produces for that width.
 test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: units } => list_length(items: units) == 47
+    RetireesKnown { units: units } => list_length(items: units) == 46
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }

@@ -559,7 +559,7 @@ fn analyze_postfix_projection_call(
 fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 0) {
+      match list_at_optional(xs: v2.std.node.positional_child_target_nodes(node: node), index: 0) {
         Absent => Absent
         Present { value: head } =>
           match v2.std.grammar.node_atom_identity_optional(node: head) {

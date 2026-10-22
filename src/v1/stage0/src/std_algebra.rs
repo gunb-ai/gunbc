@@ -10,12 +10,10 @@ use self::ContainerSource::*;
 use self::CostShape::*;
 use self::ListAtLookup::*;
 use self::Ordering::*;
-pub use crate::std_error_primitives::pure_dag_seam_unreachable_string;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
-pub use crate::std_error_primitives::{DivError, Result};
-pub use crate::std_optional::Optional;
-pub use crate::std_optional::{optional_absent, optional_present};
+pub use crate::std_error_primitives::{pure_dag_seam_unreachable_string, DivError, Result};
+pub use crate::std_optional::{optional_absent, optional_present, Optional};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -1093,12 +1091,12 @@ pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
                     |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.method_surface.clone()) {
                             v1_rt::rc_map_insert(
-                                inner.clone(),
+                                inner,
                                 spelling.text.clone(),
                                 carrier.profile.clone(),
                             )
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1117,13 +1115,9 @@ pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
                     acc,
                     |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
-                            v1_rt::rc_map_insert(
-                                inner.clone(),
-                                spelling.text.clone(),
-                                carrier.name.clone(),
-                            )
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1142,13 +1136,9 @@ pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
                     acc,
                     |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
-                            v1_rt::rc_map_insert(
-                                inner.clone(),
-                                spelling.text.clone(),
-                                carrier.name.clone(),
-                            )
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1167,9 +1157,9 @@ pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
                     acc,
                     |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
-                            v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), true)
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1189,14 +1179,14 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
                     |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
                             v1_rt::rc_map_insert(
-                                inner.clone(),
+                                inner,
                                 spelling.text.clone(),
                                 algebra_type_param_names(carrier.profile.clone())
                                     .iter()
                                     .fold(0, |n: i64, _| v1_rt::int_add(n, 1)),
                             )
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1286,12 +1276,12 @@ pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
                     |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                             v1_rt::rc_map_insert(
-                                inner.clone(),
+                                inner,
                                 spelling.text.clone(),
                                 algebra_profile_equality_extensional(carrier.profile.clone()),
                             )
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -2315,7 +2305,7 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
     }
 }
 
-pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
+pub fn all_algebra_profiles() -> Rc<FreeMonoid<AlgebraProfile>> {
     Rc::new(vec![
         AlgebraProfile::OrderedRingProfile,
         AlgebraProfile::OrderedSemiringProfile,
@@ -2394,7 +2384,7 @@ pub fn fold_list<T: Clone, A: Clone>(
     mut __tco_loop_cons: impl Fn(A, T) -> A + Clone,
 ) -> A {
     {
-        let mut __tco_cursor: usize = 0;
+        let mut __tco_cursor_xs: usize = 0;
         loop {
             #[allow(unused_mut)]
             let mut empty = __tco_loop_empty;
@@ -2404,17 +2394,17 @@ pub fn fold_list<T: Clone, A: Clone>(
             let mut xs = __tco_loop_xs.clone();
             {
                 let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
+                if (__fm.len() - __tco_cursor_xs) == 0 {
                     break empty.clone();
                 } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
                     {
-                        let __tco_0 = cons(empty, h.clone());
-                        let __tco_1 = cons;
-                        let __tco_2 = __tco_cursor + 1;
-                        __tco_loop_empty = __tco_0;
-                        __tco_loop_cons = __tco_1;
-                        __tco_cursor = __tco_2;
+                        let __tco_0 = __tco_cursor_xs + 1;
+                        let __tco_1 = cons(empty, h.clone());
+                        let __tco_2 = cons;
+                        __tco_cursor_xs = __tco_0;
+                        __tco_loop_empty = __tco_1;
+                        __tco_loop_cons = __tco_2;
                         continue;
                     }
                 }
@@ -2915,7 +2905,7 @@ pub fn list_find_first<T: Clone>(
     mut __tco_loop_predicate: impl Fn(T) -> bool + Clone,
 ) -> Option<T> {
     {
-        let mut __tco_cursor: usize = 0;
+        let mut __tco_cursor_xs: usize = 0;
         loop {
             #[allow(unused_mut)]
             let mut predicate = __tco_loop_predicate;
@@ -2923,18 +2913,18 @@ pub fn list_find_first<T: Clone>(
             let mut xs = __tco_loop_xs.clone();
             {
                 let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
+                if (__fm.len() - __tco_cursor_xs) == 0 {
                     break crate::std_optional::optional_absent();
                 } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
                     if predicate(h.clone()) {
                         break crate::std_optional::optional_present(h.clone());
                     } else {
                         {
-                            let __tco_0 = predicate;
-                            let __tco_1 = __tco_cursor + 1;
-                            __tco_loop_predicate = __tco_0;
-                            __tco_cursor = __tco_1;
+                            let __tco_0 = __tco_cursor_xs + 1;
+                            let __tco_1 = predicate;
+                            __tco_cursor_xs = __tco_0;
+                            __tco_loop_predicate = __tco_1;
                             continue;
                         }
                     }

@@ -1111,6 +1111,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "to_string",
   "string_contains",
   "chars",
+  "machine_word_native_operate",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {

@@ -95,7 +95,7 @@ fn serving_provision_derive(recipe: ServingRecipe) -> ServingProvisionDerivation
 
 data serving_provision_derivation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "serving_provision_derive"),
+    ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "ServingProvisionDerivation"),
     reason: "an EngineVllm recipe refuses typed: no vllm launch argv is modeled, so the provision phase can neither verify, install nor start the lab vLLM build (extdeps.vllm.local_inference_lab_build local_inference_lab_vllm_release), and it never falls back to the ninfer arm",
     dissolution: unbound_dissolution(description: "a vllm launch argv is modeled — sufficient for serving_provision_derive to yield vllm inputs for the lab release row and for ServingProvisionRefusedEngineVllm to be deleted"),
   ),

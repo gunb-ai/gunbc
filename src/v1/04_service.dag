@@ -331,10 +331,14 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
               UnresolvedCallee { spelling: _, call_site: _ } => []
             }
           )
-          let merged = extra |> fold(init: info.service_names, f: (svc_list, svc) =>
-            if svc_list |> any(s => s == svc) { svc_list }
-            else { list_push(svc_list, svc) }
-          )
+          let seeded = UniqueAccum {
+            seen: info.service_names |> fold(init: empty_map(), f: (seen, svc) => map_insert(seen, svc, true)),
+            result: info.service_names
+          }
+          let merged = (extra |> fold(init: seeded, f: (acc, svc) =>
+            if emit_map_has(m: acc.seen, key: svc) { acc }
+            else { UniqueAccum { seen: map_insert(acc.seen, svc, true), result: list_push(acc.result, svc) } }
+          )).result
           let same_count = merged |> count == info.service_names |> count
           if same_count { reg2 }
           else {
@@ -476,8 +480,7 @@ fn unjoinable_callee_edges(module_callees: List<ModuleCallees>, registry: Map<St
   )
 }
 
-fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> ServiceEffectAnalysis {
-  let before = total_service_count(registry: registry)
+fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>, remaining_passes: Int, before: Int) -> ServiceEffectAnalysis {
   let next = expand_transitive_services_once(module_callees: module_callees, registry: registry)
   let after = total_service_count(registry: next)
   if before == after {
@@ -488,7 +491,7 @@ fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry
       causes: [ExpansionBudgetExhausted { remaining_delta: after - before }]
     }
   } else {
-    expand_transitive_services_loop(module_callees: module_callees, registry: next, remaining_passes: remaining_passes - 1)
+    expand_transitive_services_loop(module_callees: module_callees, registry: next, remaining_passes: remaining_passes - 1, before: after)
   }
 }
 
@@ -538,7 +541,7 @@ fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, 
     unresolved_callee_edges(module_callees: module_callees),
     unjoinable_callee_edges(module_callees: module_callees, registry: registry)
   )
-  let closed = expand_transitive_services_loop(module_callees: module_callees, registry: registry, remaining_passes: expansion_pass_bound(registry: registry))
+  let closed = expand_transitive_services_loop(module_callees: module_callees, registry: registry, remaining_passes: expansion_pass_bound(registry: registry), before: total_service_count(registry: registry))
   match closed {
     EffectsComplete { registry: closed_registry } =>
       if unresolved |> count == 0 { EffectsComplete { registry: closed_registry } }

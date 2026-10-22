@@ -2,6 +2,7 @@ module test.claim.live_deploy.user_work_slice_witness
 
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
 import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.algebra { non_empty_to_list }
 import std.optional { Present, Absent }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -110,7 +111,7 @@ test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
     UserWorkPoolSlotsDerived { slots } =>
       slots == user_work_charged_slots
         && byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
-          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 4
+          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
         && byte_size_count(b: user_work_charged_in_served_allowance())
           == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
   }
@@ -935,9 +936,9 @@ test fn slice_control_caps_include_sessions_and_broker_on_srv1_only() -> Bool {
     SliceControlNotOwed => false
     SliceControlRefused { cause: _ } => false
     SliceControlDerived { caps } =>
-      caps.length() == 2
-        && any(caps, c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
-        && any(caps, c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
+      non_empty_to_list(xs: caps).length() == 2
+        && any(non_empty_to_list(xs: caps), c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
+        && any(non_empty_to_list(xs: caps), c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
         && match slice_control_caps_for(host: operator_host_srv3) {
           SliceControlNotOwed => true
           SliceControlDerived { caps: _ } => false

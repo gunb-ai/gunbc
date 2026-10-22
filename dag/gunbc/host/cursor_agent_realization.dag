@@ -8,9 +8,12 @@ import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal }
 import std.types { path_segment_is_safe }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.exec.command { ArgvCommand }
+import gunbc.dispatch_credential_acquisition { CursorAttemptRuntimeRoot }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEntryPresence, filesystem_entry_presence, filesystem_listing_observation }
 import gunbc.cursor_harness_credential {
   CursorSandboxPreflightReading,
   CursorSandboxReady,
+  CursorSandboxRefused,
   CursorSandboxUnavailable,
   CursorSandboxNotEntered,
   CursorSandboxPreflightUnreadable,
@@ -47,7 +50,8 @@ import extdeps.llm.cursor_sandbox_apparmor {
 // sandbox preflight: the command and typed reading are gunbc.cursor_harness_credential's, and this module
 // only supplies the pinned identity and folds the reading in as the readback's preflight leg. (3) Nothing
 // but the witness reads the readback yet: its consumer is that converge, which runs the commands and
-// supplies the observations; status and the worker turn also still name the PATH program.
+// supplies the observations. The sandbox preflight, the key probe and the worker turn all run cursor_agent_pinned_program
+// (gunbc.worker_turn_standing, gunbc.roadmap.roadmap_dispatch_actuator).
 //
 // RULE SET: the vendor's 0.6.2 cursor_sandbox_agent_cli rules VERBATIM, with exactly two changes: the
 // attachment is the exact root-owned helper path, never versions/* or /home/*, and `userns,` is explicit
@@ -344,8 +348,8 @@ fn cursor_agent_pinned_program() -> ProgramIdentity {
 // THE FREE PREFLIGHT, RUN WITH THE PINNED IDENTITY. This is warm-crane-219's discriminating command
 // (gunbc.cursor_harness_credential), not a second preflight: it sets the outer CURSOR_SANDBOX sentinel
 // so an inherited `native` cannot read Ready over an unsandboxed run.
-fn cursor_agent_preflight_command() -> ArgvCommand {
-  cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program())
+fn cursor_agent_preflight_command(root: CursorAttemptRuntimeRoot) -> ArgvCommand {
+  cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: root)
 }
 
 type PreflightObservation
@@ -356,11 +360,11 @@ fn readback_preflight(observed: PreflightObservation) -> CursorAgentReadback {
   match observed {
     PreflightUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
     PreflightObserved { reading: CursorSandboxReady } => CursorAgentReadbackHolds
-    PreflightObserved { reading: CursorSandboxUnavailable { detail: _ } } =>
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } } =>
       CursorAgentReadbackFails { cause: PreflightSandboxUnavailable }
-    PreflightObserved { reading: CursorSandboxNotEntered { detail: _ } } =>
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail: _ } } } =>
       CursorAgentReadbackFails { cause: PreflightSandboxNotEntered }
-    PreflightObserved { reading: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } =>
+    PreflightObserved { reading: CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } } =>
       CursorAgentReadbackFails { cause: PreflightUnreadable }
   }
 }
@@ -375,5 +379,19 @@ fn cursor_agent_full_readback(
   combine_cursor_agent_readbacks(
     a: cursor_agent_realization_readback(profile_file: profile_file, loaded: loaded, tree: tree),
     b: readback_preflight(observed: preflight),
+  )
+}
+
+// THE PINNED PATH IS OBSERVED, NOT INFERRED FROM AN EXIT CODE. A shell reports a missing executable as 127,
+// which is a bare number another failure can also produce (gunbc.recurring_failure_mode
+// bare_exit_124_read_as_an_observed_timeout_event). The version directory is listed and the executable's
+// name looked up in that listing, so absence is an established fact, an unlistable directory is
+// indeterminate, and the standing (gunbc.worker_turn_standing) invokes nothing until the entry is listed.
+fn cursor_agent_pinned_executable_presence() -> FilesystemEntryPresence {
+  let directory = cursor_agent_version_directory(version: cursor_agent_pinned_version)
+  let listed = Filesystem.List(path: directory)
+  filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: directory, success: listed.success, entries: listed.entries, error: listed.error),
+    name: cursor_agent_executable_name as String,
   )
 }

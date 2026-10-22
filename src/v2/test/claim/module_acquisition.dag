@@ -8,7 +8,7 @@ import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, module_file_key, ReferenceCrossTreeDenied, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, reference_next_read, reference_prefixes }
-import std.algebra { length, list_head, list_map, empty_map, map_insert }
+import std.algebra { length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
 import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeFundamentalityUnknownFailClosed, CrossTreeToTreeLessFundamental, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -383,12 +383,53 @@ test fn qualified_module_reference_does_read_named_module() -> Bool {
 
 // `T?` is sugar declared by std.optional: a member that writes it mentions that declaration, so acquisition
 // requests it exactly as for an authored qualified reference. The paired negative differs in the `?` alone.
+// THE ACQUISITION HALF OF THE SAME POSITION FACT. A head the collector reads as NOT A VALUE POSITION is still a
+// candidate module, and here still the only thing that can own it: `x.T` sits in a sibling parameter's binder
+// type, names a module, and is requested -- exactly as the same spelling would if the classifier had called it
+// unbound. So the classifier's new arm costs the acquirer no read (it lost none: this claim is green with the
+// fix reverted too) while the roster stops treating the name as free. The two consumers ask different questions
+// of one position fact; neither re-decides it (DESIGN 3).
+test fn a_binder_type_head_still_requests_its_module() -> Bool {
+  request_verdict_of(
+    content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n",
+    spelling: "x.T"
+  ) == "requested"
+}
+
+// The paired positive for a type annotation, whose collector reading also changed: the acquirer's request set
+// is unchanged, which is what makes the classifier change safe on this side.
+test fn an_annotated_head_still_requests_its_module() -> Bool {
+  request_verdict_of(
+    content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n",
+    spelling: "x.T"
+  ) == "requested"
+}
+
 test fn an_optional_sugar_type_requests_the_std_optional_declaration() -> Bool {
   request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool?) -> Bool {\n  true\n}\n", spelling: "std.optional.Optional") == "requested"
 }
 
 test fn a_type_without_optional_sugar_does_not_request_the_std_optional_declaration() -> Bool {
   request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  true\n}\n", spelling: "std.optional.Optional") == "not-requested"
+}
+
+// A DECLARED SIGNATURE'S ORDER EDGE IS COMPILER ENCODING, NOT A MENTION. Every Arrow carries the parameter
+// labels as a FreeMonoid introduction under ^arrow_signature_order_edge, which resolve carries through
+// unchanged (v2.compiler.lexical_scope arrow_slot ArrowCarriedSlot), so a member that writes no list owes
+// no read of std.algebra. RED before the collector skipped that edge: every fn or data member requested
+// std.algebra.FreeMonoid, an ambient closure edge (gunbc.recurring_failure_mode
+// an_ambient_closure_edge_from_compiler_encoding_references). The paired positive differs in an authored
+// list literal alone, whose head resolve answers by declaring path and so still needs the module.
+test fn a_fn_signature_requests_no_free_monoid_declaration() -> Bool {
+  request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  true\n}\n", spelling: "std.algebra.FreeMonoid") == "not-requested"
+}
+
+test fn a_data_declaration_requests_no_free_monoid_declaration() -> Bool {
+  request_verdict_of(content: "module v2.test.subject\n\ndata k: Bool = true\n", spelling: "std.algebra.FreeMonoid") == "not-requested"
+}
+
+test fn an_authored_list_literal_requests_the_free_monoid_declaration() -> Bool {
+  request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let ys = [x, x]\n  x\n}\n", spelling: "std.algebra.FreeMonoid") == "requested"
 }
 
 fn owed_as_member(read: AcquisitionMemberRead, spelling: String) -> Bool {

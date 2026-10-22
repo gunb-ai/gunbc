@@ -3,6 +3,7 @@ module test.claim.serving.rented_release_witness
 import std.types { String, Bool, NonEmptyStr, Int }
 import std.optional { Present, Absent }
 import std.measure { MoneyRate, money_amount_micro }
+import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import extdeps.currency.currency { Usd }
@@ -10,13 +11,15 @@ import std.decimal { ExactDecimal }
 import extdeps.cloud.vast_ai { VastAiInstance }
 import product.supplier.vast_ai { VastAiAskReceipt }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
-import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire, rented_engine_served_name }
 import gunbc.serving.rented_release {
   RentedDrainNotListening, RentedDrainUnreadable, RentedAnchorAbsent, RentedAnchorPresent, RentedLegOutcomeNotReached, RentedStoreNoPartials, RentedStorePartials,
+  RentedHostAnswered, RentedHostSilent, RentedHostReading, RentedVantageReached, RentedVantageNotReached, RentedVantageUnread,
+  RentedLegOutcomeNotPerformedHostSilent, RentedDrainListening,
   RentedInstanceObserved, RentedInstanceAbsent, RentedInstanceReading, RentedDestroyDecision, RentedReleaseReadings,
   RentedLegNothingToUndo, RentedLegRefused, RentedLegOutcomeNothingToUndo,
   RentedDestroyPlanned, RentedDestroyAuthorized, RentedDestroyRefusedIdMismatch, RentedDestroyRefusedLabel,
-  RentedReleaseHeld, RentedLegDrain, RentedReleaseGone, RentedReleasePlanned, RentedReleasePending,
+  RentedReleaseHeld, RentedLegDrain, RentedLegOutcomeToUndo, RentedReleaseDestroyRefused, RentedReleaseGone, RentedReleasePlanned, RentedReleasePending,
   rented_destroy_decision, rented_clean_decision, rented_release_receipt, rented_bound_instance_id,
 }
 import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
@@ -28,6 +31,7 @@ data w_label: NonEmptyStr = "gunbc-flex"
 data w_roots: ServingStoreRoots = ServingStoreRoots {
   root: "/root/serve/store" as NonEmptyStr,
   model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+  serve_log: "/root/serve/serve.log" as NonEmptyStr,
 }
 
 data w_protected: ServingProtectedPaths = ServingProtectedPaths {
@@ -72,8 +76,8 @@ fn w_acquired() -> RentedServingAllocation {
 
 fn w_readings(before: RentedInstanceReading, after: RentedInstanceReading) -> RentedReleaseReadings {
   RentedReleaseReadings {
-    drain: RentedDrainNotListening, authorizations: [], anchor: RentedAnchorAbsent,
-    store: RentedStoreNoPartials, before: before, after: after,
+    host: RentedHostAnswered { drain: RentedDrainNotListening, store: RentedStoreNoPartials },
+    authorizations: [], anchor: RentedAnchorAbsent, before: before, after: after,
   }
 }
 
@@ -205,9 +209,10 @@ test fn the_receipt_is_bound_to_the_real_carriers_identity_and_instance_id() -> 
 test fn a_refused_drain_leaves_the_later_legs_not_reached() -> Bool {
   let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
   let readings = RentedReleaseReadings {
-    drain: RentedDrainUnreadable { cause: "ssh timed out" as NonEmptyStr }, authorizations: [],
+    host: RentedHostAnswered { drain: RentedDrainUnreadable { cause: "ssh timed out" as NonEmptyStr }, store: RentedStorePartials { entries: ["/root/serve/store/partial/abc.1"] } },
+    authorizations: [],
     anchor: RentedAnchorPresent { path: "target/fleet-ssh-attempt-1-known-hosts-x" as NonEmptyStr },
-    store: RentedStorePartials { entries: ["/root/serve/store/partial/abc.1"] }, before: listed, after: listed,
+    before: listed, after: listed,
   }
   let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: readings)
   match r.outcome {
@@ -220,6 +225,81 @@ test fn a_refused_drain_leaves_the_later_legs_not_reached() -> Bool {
           }
         _ => false
       }
+    _ => false
+  }
+}
+
+fn w_silent_readings(host: RentedHostReading, listed: RentedInstanceReading) -> RentedReleaseReadings {
+  RentedReleaseReadings {
+    host: host, authorizations: [],
+    anchor: RentedAnchorPresent { path: "target/fleet-ssh-attempt-1-known-hosts-x" as NonEmptyStr },
+    before: listed, after: RentedInstanceAbsent,
+  }
+}
+
+// A never-started card: ssh never answered and the vantage control reached, so silence is read as the host
+// being down. Drain and clean are NOT PERFORMED (never nothing-to-undo), the lab-side anchor still runs, and
+// the id-guarded destroy proceeds to gone.
+test fn a_silent_host_with_a_reached_control_reaches_destroy_with_not_performed_legs() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageReached }, listed: listed))
+  match r.drain {
+    RentedLegOutcomeNotPerformedHostSilent =>
+      match r.clean {
+        RentedLegOutcomeNotPerformedHostSilent =>
+          match r.anchor {
+            RentedLegOutcomeToUndo { actions: _ } =>
+              match r.outcome {
+                RentedReleaseGone => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The id guard still holds for a silent host: another instance's id is never destroyed.
+test fn a_silent_host_does_not_bypass_the_id_guard() -> Bool {
+  let other = RentedInstanceObserved { instance: w_instance(id: 2002, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageReached }, listed: other))
+  match r.outcome {
+    RentedReleaseDestroyRefused { decision: _ } => true
+    _ => false
+  }
+}
+
+// Ambiguous reachability refuses: silence with a control that did not reach, or was unread, may be our own network.
+test fn a_silent_host_with_an_unreached_control_refuses() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageNotReached }, listed: listed))
+  match r.outcome {
+    RentedReleaseHeld { leg: RentedLegDrain, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_silent_host_with_an_unread_control_refuses() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: w_silent_readings(host: RentedHostSilent { control: RentedVantageUnread { cause: "dns failed" as NonEmptyStr } }, listed: listed))
+  match r.outcome {
+    RentedReleaseHeld { leg: RentedLegDrain, reason: _ } => true
+    _ => false
+  }
+}
+
+// A reachable host still drains: a listener serving this allocation's model id yields a drain action.
+test fn a_reachable_host_still_drains() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let a = w_imported()
+  let readings = RentedReleaseReadings {
+    host: RentedHostAnswered { drain: RentedDrainListening { process_group: 4242, healthy: true, models: NinferModelsAdvertised { ids: [rented_engine_served_name(engine: a.engine) as String] } }, store: RentedStoreNoPartials },
+    authorizations: [], anchor: RentedAnchorAbsent, before: listed, after: RentedInstanceAbsent,
+  }
+  match rented_release_receipt(allocation: a, roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: readings).drain {
+    RentedLegOutcomeToUndo { actions: _ } => true
     _ => false
   }
 }

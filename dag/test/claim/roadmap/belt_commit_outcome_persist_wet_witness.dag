@@ -1,0 +1,48 @@
+module test.claim.roadmap.belt_commit_outcome_persist_wet_witness
+
+// THE COMMIT STEP'S OUTCOME WRITE IS CHECKED. The step's settlement is the durable fact the worktree release reads
+// (gunbc.roadmap.roadmap_attempt_worktree_claim), so a write that fails must not return the outcome as if it had
+// settled. Run for real over an instance whose attempt state directory does not exist, so the write cannot succeed.
+// On the local-repo wet lane with the exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_belt_actuate { belt_commit_outcome_persist, BeltCommitOutcome, CandidateCaptured, CommitFailed }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fresh(tag: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_persist_wet_", tag, ".XXXXXX"], "")).path
+}
+
+fn instance_at(dir: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "persist-wet" as NonEmptyStr),
+    instance_id: "persist-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18102,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn is_failed(o: BeltCommitOutcome) -> Bool {
+  match o { CommitFailed { node_id: _, detail: _ } => true  _ => false }
+}
+
+test fn a_failed_outcome_write_is_not_returned_as_settled() -> Bool {
+  let dir = fresh(tag: "p1")
+  let out = belt_commit_outcome_persist(
+    instance: instance_at(dir: dir), node_id: "persist-wet-n", attempt_key: "k1",
+    outcome: CandidateCaptured { node_id: "persist-wet-n", head_sha: "abc", message: "m" })
+  let removed = shell.Remove.RecursiveForce(path: dir).success
+  is_failed(o: out) && removed
+}

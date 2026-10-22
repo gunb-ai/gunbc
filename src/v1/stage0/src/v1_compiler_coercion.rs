@@ -10,10 +10,9 @@ pub use crate::extdeps_languages_python_types::{
     python_algebra_inhabitants, python_callable, python_cast_syntax, python_optional_template,
     python_type_checkpoints,
 };
-pub use crate::extdeps_languages_rust_representation::RustRepresentation;
 use crate::extdeps_languages_rust_representation::RustRepresentation::*;
 pub use crate::extdeps_languages_rust_representation::{
-    rust_exact_type_checkpoint, rust_representation_eq,
+    rust_exact_type_checkpoint, rust_representation_eq, RustRepresentation,
 };
 pub use crate::extdeps_languages_rust_types::{
     rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
@@ -46,22 +45,19 @@ use crate::std_target_representation::VariantParentIdentity::*;
 use crate::std_target_representation::VariantValueRealization::*;
 pub use crate::std_target_representation::{
     checkpoint_row_disposition_keeps_bare_row, checkpoint_row_migration_for, resolve_exact_binding,
-    variant_value_realization,
+    variant_value_realization, ExactBindingResolution, VariantParentIdentity,
+    VariantValueRealization,
 };
-pub use crate::std_target_representation::{
-    ExactBindingResolution, VariantParentIdentity, VariantValueRealization,
-};
-pub use crate::std_types::NonEmptyStr;
-pub use crate::std_types::{canonical_container_names, container_template_algebra};
+pub use crate::std_types::{canonical_container_names, container_template_algebra, NonEmptyStr};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
-    declaration_provenance_of, qualified_last_segment, type_reference_provenance,
+    declaration_provenance_of, qualified_last_segment, type_reference_provenance, InferredNode,
+    Node,
 };
-pub use crate::v1_std_core::{InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -423,7 +419,7 @@ pub fn rust_exact_realization_decision(
                 std::option::Option::None => Rc::new(TypeRealizationDecision::RealizationRefused {
                     cause: Rc::new(
                         RealizationRefusalCause::BoundRepresentationHasNoRealizationRow {
-                            decl_name: b.source.clone().decl_name.clone(),
+                            decl_name: b.source.decl_name.clone(),
                         },
                     ),
                 }),

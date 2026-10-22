@@ -8,11 +8,10 @@ use self::TopologyNodeKind::*;
 use self::WherePredicateMarker::*;
 pub use crate::std_algebra::{
     algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
-    carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
+    carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape,
+    kernel_algebra_profile, FinitePowerSet, FinitelySupportedFunction, FreeMonoid,
 };
-pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
-pub use crate::std_optional::Optional;
-pub use crate::std_optional::{optional_absent, optional_present};
+pub use crate::std_optional::{optional_absent, optional_present, Optional};
 pub use crate::std_unicode_types::unicode_scalar;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

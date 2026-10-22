@@ -22,6 +22,7 @@ use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
+pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
@@ -35,15 +36,13 @@ use crate::std_compiler_entry::NativeEffectScope::{NativeAdmitAllExcept, NativeA
 pub use crate::std_compiler_entry::{
     CompilerEntryDriver, NativeEffectClass, NativeEffectDenominator, NativeEffectScope,
 };
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_occurrence_identity::occurrence_id_eq;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
-pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
+pub use crate::std_occurrence_identity::{occurrence_id_eq, NodeOccurrenceIdentity, OccurrenceId};
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -64,14 +63,13 @@ pub use crate::v1_compiler_emit_core_support::{
     apply_type_template3, capitalize_first, escape_json_string, escape_string_literal_body,
     extract_test_projections, has_mock_prefix, is_leaf_type_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
-    make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
-    to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, unique_strings,
+    make_indent, sanitize_service_name, service_var_name, test_function_name, to_pascal,
+    to_screaming_snake, to_snake, to_string, to_string_helper, unique_strings, EmitResult,
+    TestProjection,
 };
-pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
-pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
-    resolved_type_name,
+    resolved_type_name, InferScope,
 };
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
     DataVariantBareString, DataVariantInternalTagged, DataVariantSpellingRefused,
@@ -83,20 +81,19 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReference
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
-};
-pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
 };
-pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
-pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_items::{
+    item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
+};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
-    extract_typed_service_name, is_typed_service_call_receiver,
+    extract_typed_service_name, is_typed_service_call_receiver, OpEntry, UniqueAccum,
 };
-pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::func_sig_for_derivation;
 use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
-pub use crate::v1_compiler_infer_sigs::{DerivedCalleeSig, ResolvedFuncEnv, ResolvedFuncSig};
+pub use crate::v1_compiler_infer_sigs::{
+    func_sig_for_derivation, DerivedCalleeSig, ResolvedFuncEnv, ResolvedFuncSig,
+};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
     is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
@@ -118,13 +115,11 @@ use crate::v1_compiler_languages::VisibilitySpec::{CaseVisibility, KeywordVisibi
 pub use crate::v1_compiler_languages::{
     binop_symbol, canonical_emoji_char_escape, is_string_like, language_spec_for_target,
     service_method_depth, service_methods_inside_class, service_receiver_str, service_return_str,
-    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type,
-};
-pub use crate::v1_compiler_languages::{
-    BlockSyntax, CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule,
-    ImportTrigger, InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax,
-    ReservedWordStrategy, ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions,
-    TestNameStyle, VariantPatternSyntax, VisibilitySpec,
+    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type, BlockSyntax,
+    CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger,
+    InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy,
+    ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle,
+    VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -173,13 +168,11 @@ pub use crate::v1_std_core::{
     module_items, operation_modifier_name, param_node_default_value, param_node_name_at,
     param_node_type_expr, qualified_last_segment, record_lit_type_name_at, return_value,
     slice_base, slice_end, slice_start, transport_base_path, transport_has_auth, transport_verb,
-    tuple_type_name, unaryop_operand, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
-    DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
+    tuple_type_name, unaryop_operand, with_required_cardinality, CallSemantics, CallTargetIdentity,
+    Cardinality, CompilerDiagnostic, Connective, DeclaredCallableIdentity, DeclaredFuncSig,
+    ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -211,97 +204,6 @@ pub struct TcoReassignInput {
     pub args: Rc<Vec<Rc<Node>>>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
-}
-
-pub fn derive_module_imports(
-    items: Rc<Vec<Rc<Node>>>,
-    import_rules: Rc<Vec<Rc<ImportRule>>>,
-    target: RenderTarget,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    {
-        let has_async = {
-            let mut __found = false;
-            for item in items.iter().cloned() {
-                if ((item.uses.clone().len() as i64) > 0) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let type_names = collect_type_names_from_items(items.clone(), source_indices.clone());
-        Rc::new({
-            let mut __result = Vec::new();
-            for path in Rc::new({
-                let mut __result = Vec::new();
-                for rule in Rc::new({
-                    let mut __result = Vec::new();
-                    for rule in import_rules.iter().cloned() {
-                        if match (*rule.trigger.clone()).clone() {
-                            ImportTrigger::TypeUsageTrigger { type_name: t, .. } => {
-                                let mut __found = false;
-                                for n in type_names.iter().cloned() {
-                                    if (n.clone() == t.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            }
-                            ImportTrigger::TraitImplTrigger { trait_name: _, .. } => false,
-                            ImportTrigger::DeriveMacroTrigger { macro_name: _, .. } => false,
-                            ImportTrigger::ContainerUsageTrigger { container: c, .. } => {
-                                let mut __found = false;
-                                for n in type_names.iter().cloned() {
-                                    if (n.clone() == c.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            }
-                            ImportTrigger::AsyncUsageTrigger => has_async.clone(),
-                        } {
-                            __result.push(rule);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(rule.import_path.clone());
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                if (path.clone() != "".to_string()) {
-                    __result.push(path);
-                }
-            }
-            __result
-        })
-    }
-}
-
-pub fn collect_type_names_from_items(
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for item in items.iter().cloned() {
-            __result.extend(
-                (*collect_type_names_from_node(item.clone(), source_indices.clone()))
-                    .iter()
-                    .cloned(),
-            );
-        }
-        __result
-    })
 }
 
 pub fn collect_type_names_from_node(
@@ -656,7 +558,7 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: crate::v1_std_core::authored_name_at(
-            typed_module.type_env.clone().source_indices.clone(),
+            typed_module.type_env.source_indices.clone(),
             typed_module.module.clone(),
         ),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
@@ -680,7 +582,7 @@ pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope
                         scope.clone(),
                         crate::v1_std_core::let_binding_name_at(
                             texpr.clone(),
-                            scope.type_env.clone().source_indices.clone(),
+                            scope.type_env.source_indices.clone(),
                         ),
                         crate::v1_compiler_infer_types::resolved_type(value.clone()),
                         Rc::new(SubValueRelation::SubValueUnknown),
@@ -730,7 +632,7 @@ pub fn order_typed_call_args(
             for arg in args.iter().cloned() {
                 if (crate::v1_std_core::arg_name_at(
                     arg.clone(),
-                    scope.type_env.clone().source_indices.clone(),
+                    scope.type_env.source_indices.clone(),
                 ) == std::option::Option::None)
                 {
                     __found = true;
@@ -750,7 +652,7 @@ pub fn order_typed_call_args(
                         |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
                             let n = crate::v1_std_core::arg_name_at(
                                 arg.clone(),
-                                scope.type_env.clone().source_indices.clone(),
+                                scope.type_env.source_indices.clone(),
                             );
                             if (n.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
@@ -765,7 +667,7 @@ pub fn order_typed_call_args(
                             crate::v1_compiler_infer::call_param_caller_labels(
                                 crate::v1_std_core::param_node_name_at(
                                     param.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
+                                    scope.type_env.source_indices.clone(),
                                 ),
                             )
                             .iter()
@@ -785,7 +687,7 @@ pub fn order_typed_call_args(
                                 (*{
                                     let param_name = crate::v1_std_core::param_node_name_at(
                                         param.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
+                                        scope.type_env.source_indices.clone(),
                                     );
                                     let matching = Rc::new({
                                         let mut __result = Vec::new();
@@ -824,7 +726,7 @@ pub fn order_typed_call_args(
                             if {
                                 let n = crate::v1_std_core::arg_name_at(
                                     arg.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
+                                    scope.type_env.source_indices.clone(),
                                 );
                                 if (n.clone() == std::option::Option::None) {
                                     true
@@ -1411,36 +1313,9 @@ pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
             ),
             crate::v1_compiler_emit_core_support::language_spec(target.clone())
                 .scaffold
-                .clone()
                 .source_file_extension
                 .clone(),
         )
-    }
-}
-
-pub fn reserved_prefix(target: RenderTarget) -> String {
-    match (*crate::v1_compiler_emit_core_support::language_spec(target.clone())
-        .reserved_words
-        .clone()
-        .strategy
-        .clone())
-    .clone()
-    {
-        ReservedWordStrategy::PrefixEscape { prefix: prefix, .. } => prefix.clone(),
-        _ => "".to_string(),
-    }
-}
-
-pub fn reserved_suffix(target: RenderTarget) -> String {
-    match (*crate::v1_compiler_emit_core_support::language_spec(target.clone())
-        .reserved_words
-        .clone()
-        .strategy
-        .clone())
-    .clone()
-    {
-        ReservedWordStrategy::SuffixEscape { suffix: suffix, .. } => suffix.clone(),
-        _ => "".to_string(),
     }
 }
 
@@ -3536,7 +3411,7 @@ pub fn admit_native_resource_effect(
                 binding: binding.clone(),
                 declaration: declaration.clone(),
             });
-            let capability_count = (site.item.clone().children.clone().len() as i64);
+            let capability_count = (site.item.children.clone().len() as i64);
             if native_effect_outside_denominator(
                 denominator.clone(),
                 declaration.clone(),
@@ -3797,8 +3672,8 @@ pub fn emit_unified_operation_method(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        spec.items.clone().async_prefix.clone(),
-                                        spec.items.clone().func_keyword.clone(),
+                                        spec.items.async_prefix.clone(),
+                                        spec.items.func_keyword.clone(),
                                     ),
                                     " ".to_string(),
                                 ),
@@ -3814,10 +3689,10 @@ pub fn emit_unified_operation_method(
             ),
             ret_str.clone(),
         );
-        if spec.block_syntax.clone().significant_whitespace.clone() {
+        if spec.block_syntax.significant_whitespace.clone() {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(sig.clone(), spec.block_syntax.clone().block_open.clone()),
+                    v1_rt::concat(sig.clone(), spec.block_syntax.block_open.clone()),
                     crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
                         method_depth.clone(),
                         1,
@@ -3830,17 +3705,14 @@ pub fn emit_unified_operation_method(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(
-                                sig.clone(),
-                                spec.block_syntax.clone().block_open.clone(),
-                            ),
+                            v1_rt::concat(sig.clone(), spec.block_syntax.block_open.clone()),
                             body.clone(),
                         ),
                         "\n".to_string(),
                     ),
                     crate::v1_compiler_emit_core_support::make_indent(method_depth.clone()),
                 ),
-                spec.block_syntax.clone().block_close.clone(),
+                spec.block_syntax.block_close.clone(),
             )
         }
     }
@@ -3894,7 +3766,7 @@ pub fn emit_unified_service_def(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            spec.items.clone().struct_keyword.clone(),
+                                            spec.items.struct_keyword.clone(),
                                             " ".to_string(),
                                         ),
                                         safe_name.clone(),
@@ -3982,28 +3854,6 @@ pub enum FuncBodyShape {
     },
 }
 
-pub fn classify_func_body(
-    body: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FuncBodyShape> {
-    match (*body.expr_data.clone()).clone() {
-        ExprData::ExprLet => {
-            let n = crate::v1_std_core::let_binding_name_at(body.clone(), source_indices.clone());
-            let v = crate::v1_std_core::let_value(body.clone());
-            let rest = crate::v1_std_core::let_body(body.clone());
-            Rc::new(FuncBodyShape::FuncBodyLet {
-                name: n.clone(),
-                value: v.clone(),
-                rest: rest.clone(),
-            })
-        }
-        ExprData::ExprBlock => Rc::new(FuncBodyShape::FuncBodyBlock {
-            stmts: body.children.clone(),
-        }),
-        _ => Rc::new(FuncBodyShape::FuncBodyExpr { expr: body.clone() }),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TcoExprShape {
@@ -4031,63 +3881,6 @@ pub enum TcoExprShape {
     TcoOther {
         expr: Rc<Node>,
     },
-}
-
-pub fn classify_tco_expr(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TcoExprShape> {
-    match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => Rc::new(TcoExprShape::TcoCall {
-            func: crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
-            args: texpr.children.clone(),
-        }),
-        ExprData::ExprIf => {
-            let c = crate::v1_std_core::if_condition(texpr.clone());
-            let t = crate::v1_std_core::if_then_branch(texpr.clone());
-            let e = crate::v1_std_core::if_else_branch(texpr.clone());
-            Rc::new(TcoExprShape::TcoIf {
-                condition: c.clone(),
-                then_branch: t.clone(),
-                else_branch: e.clone(),
-            })
-        }
-        ExprData::ExprMatch => {
-            let scrut = crate::v1_std_core::match_scrutinee(texpr.clone());
-            let arm_list = crate::v1_std_core::match_arm_nodes(texpr.clone());
-            Rc::new(TcoExprShape::TcoMatch {
-                scrutinee: scrut.clone(),
-                arms: arm_list.clone(),
-            })
-        }
-        ExprData::ExprLet => {
-            let n = crate::v1_std_core::let_binding_name_at(texpr.clone(), source_indices.clone());
-            let v = crate::v1_std_core::let_value(texpr.clone());
-            let bd = crate::v1_std_core::let_body(texpr.clone());
-            Rc::new(TcoExprShape::TcoLet {
-                name: n.clone(),
-                value: v.clone(),
-                body: bd.clone(),
-            })
-        }
-        ExprData::ExprBlock => Rc::new(TcoExprShape::TcoBlock {
-            stmts: texpr.children.clone(),
-        }),
-        _ => Rc::new(TcoExprShape::TcoOther {
-            expr: texpr.clone(),
-        }),
-    }
-}
-
-pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
-    if ((stmts.clone().len() as i64) <= 1) {
-        Rc::new(vec![])
-    } else {
-        Rc::new(v1_rt::list_take(
-            &stmts.clone(),
-            v1_rt::int_sub((stmts.clone().len() as i64), 1),
-        ))
-    }
 }
 
 pub fn is_tco_eligible(
@@ -4294,14 +4087,14 @@ pub fn emit_shared_tco_expr(
         let mut emit_block = __tco_loop_emit_block;
         #[allow(unused_mut)]
         let mut emit_default_return = __tco_loop_emit_default_return;
-        let si = frame.scope.clone().type_env.clone().source_indices.clone();
-        match (*frame.expr.clone().expr_data.clone()).clone() {
+        let si = frame.scope.type_env.source_indices.clone();
+        match (*frame.expr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
                 if (crate::v1_std_core::expr_call_func_at(frame.expr.clone(), si.clone())
                     == fn_name.clone())
                 {
                     break emit_self_call_reassign(Rc::new(TcoReassignInput {
-                        args: frame.expr.clone().children.clone(),
+                        args: frame.expr.children.clone(),
                         scope: frame.scope.clone(),
                         depth: frame.depth.clone(),
                     }));
@@ -4400,7 +4193,7 @@ pub fn shared_tco_default_return(
     {
         let val_str = recurse_expr(frame.expr.clone(), frame.scope.clone(), frame.depth.clone());
         v1_rt::concat(
-            v1_rt::concat(spec.tco.clone().break_return.clone(), " ".to_string()),
+            v1_rt::concat(spec.tco.break_return.clone(), " ".to_string()),
             val_str.clone(),
         )
     }
@@ -4412,20 +4205,20 @@ pub fn shared_tco_non_self_call(
     spec: Rc<LanguageSpec>,
     recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*frame.expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let f = crate::v1_std_core::expr_call_func_at(
                 frame.expr.clone(),
-                frame.scope.clone().type_env.clone().source_indices.clone(),
+                frame.scope.type_env.source_indices.clone(),
             );
             let call_str = recurse_call(
                 f.clone(),
-                frame.expr.clone().children.clone(),
+                frame.expr.children.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
             );
             v1_rt::concat(
-                v1_rt::concat(spec.tco.clone().break_return.clone(), " ".to_string()),
+                v1_rt::concat(spec.tco.break_return.clone(), " ".to_string()),
                 call_str.clone(),
             )
         }
@@ -4447,7 +4240,7 @@ pub fn shared_tco_if(
 ) -> String {
     {
         let syntax = spec.block_syntax.clone();
-        match (*frame.expr.clone().expr_data.clone()).clone() {
+        match (*frame.expr.expr_data.clone()).clone() {
             ExprData::ExprIf => {
                 let c = crate::v1_std_core::if_condition(frame.expr.clone());
                 let t = crate::v1_std_core::if_then_branch(frame.expr.clone());
@@ -4526,11 +4319,11 @@ pub fn shared_tco_let(
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*frame.expr.expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let n = crate::v1_std_core::let_binding_name_at(
                 frame.expr.clone(),
-                frame.scope.clone().type_env.clone().source_indices.clone(),
+                frame.scope.type_env.source_indices.clone(),
             );
             let v = crate::v1_std_core::let_value(frame.expr.clone());
             let bd = crate::v1_std_core::let_body(frame.expr.clone());
@@ -4566,11 +4359,11 @@ pub fn shared_tco_block(
     emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
     recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*frame.expr.expr_data.clone()).clone() {
         ExprData::ExprBlock => {
-            let ss = frame.expr.clone().children.clone();
+            let ss = frame.expr.children.clone();
             if ((ss.clone().len() as i64) == 0) {
-                spec.tco.clone().break_return.clone()
+                spec.tco.break_return.clone()
             } else {
                 {
                     let init_state =
@@ -4581,7 +4374,7 @@ pub fn shared_tco_block(
                             init_state.scope.clone(),
                             frame.depth.clone(),
                         ),
-                        std::option::Option::None => spec.tco.clone().break_return.clone(),
+                        std::option::Option::None => spec.tco.break_return.clone(),
                     };
                     if ((init_state.text.clone().len() as i64) == 0) {
                         last_str.clone()
@@ -4613,11 +4406,11 @@ pub fn shared_tco_reassign(
         let all_lines = tco_reassign_core(
             ordered_args.clone(),
             param_names.clone(),
-            spec.tco.clone().temp_var_prefix.clone(),
-            spec.tco.clone().temp_decl_prefix.clone(),
-            spec.tco.clone().temp_assign_op.clone(),
-            spec.block_syntax.clone().stmt_terminator.clone(),
-            spec.tco.clone().continue_str.clone(),
+            spec.tco.temp_var_prefix.clone(),
+            spec.tco.temp_decl_prefix.clone(),
+            spec.tco.temp_assign_op.clone(),
+            spec.block_syntax.stmt_terminator.clone(),
+            spec.tco.continue_str.clone(),
             "".to_string(),
         );
         all_lines.clone().join(&"\n".to_string())
@@ -4673,7 +4466,7 @@ pub fn emit_unified_tco_expr(
                     params.clone(),
                     target.clone(),
                     |child| recurse_expr(child.clone(), input.scope.clone(), input.depth.clone()),
-                    input.scope.clone().type_env.clone().source_indices.clone(),
+                    input.scope.type_env.source_indices.clone(),
                 )
             },
             |frame| {
@@ -4815,7 +4608,6 @@ pub fn emit_unified_init_block_stmts(
     {
         let prepend = if crate::v1_compiler_emit_core_support::language_spec(target.clone())
             .block_syntax
-            .clone()
             .significant_whitespace
             .clone()
         {
@@ -4856,7 +4648,7 @@ pub fn emit_tco_match_go(
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = scope.type_env.source_indices.clone();
         let bs = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
             .block_syntax
             .clone();
@@ -4961,7 +4753,7 @@ pub fn emit_unified_tco_match(
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*frame.expr.expr_data.clone()).clone() {
         ExprData::ExprMatch => {
             let s = crate::v1_std_core::match_scrutinee(frame.expr.clone());
             let arm_list = crate::v1_std_core::match_arm_nodes(frame.expr.clone());
@@ -5200,7 +4992,7 @@ pub fn emit_unified_typed_func_body(
         let bs = crate::v1_compiler_emit_core_support::language_spec(target.clone())
             .block_syntax
             .clone();
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = scope.type_env.source_indices.clone();
         let prefix = if bs.significant_whitespace.clone() {
             "".to_string()
         } else {
@@ -5642,7 +5434,7 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
         let sanitized = apply_char_sanitization(converted.clone(), spec.char_sanitization.clone());
         let is_reserved = {
             let mut __found = false;
-            for r in spec.reserved_words.clone().keywords.clone().iter().cloned() {
+            for r in spec.reserved_words.keywords.clone().iter().cloned() {
                 if (r.clone() == sanitized.clone()) {
                     __found = true;
                     break;
@@ -5651,23 +5443,23 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
             __found
         };
         if is_reserved.clone() {
-            match (*spec.reserved_words.clone().strategy.clone()).clone() {
+            match (*spec.reserved_words.strategy.clone()).clone() {
                 ReservedWordStrategy::PrefixEscape { prefix: p, .. } => {
                     v1_rt::concat(p.clone(), sanitized.clone())
                 }
                 ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
                     sanitized.clone(),
                     s.clone(),
-                    spec.reserved_words.clone().keywords.clone(),
+                    spec.reserved_words.keywords.clone(),
                 ),
                 ReservedWordStrategy::NoEscape => sanitized.clone(),
             }
         } else {
-            match (*spec.reserved_words.clone().strategy.clone()).clone() {
+            match (*spec.reserved_words.strategy.clone()).clone() {
                 ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
                     sanitized.clone(),
                     s.clone(),
-                    spec.reserved_words.clone().keywords.clone(),
+                    spec.reserved_words.keywords.clone(),
                 ),
                 _ => sanitized.clone(),
             }
@@ -5685,7 +5477,7 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                 let result = apply_naming_case(name.clone(), ec.clone());
                 let is_reserved = {
                     let mut __found = false;
-                    for r in spec.reserved_words.clone().keywords.clone().iter().cloned() {
+                    for r in spec.reserved_words.keywords.clone().iter().cloned() {
                         if (r.clone() == result.clone()) {
                             __found = true;
                             break;
@@ -5694,12 +5486,12 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                     __found
                 };
                 if is_reserved.clone() {
-                    match (*spec.reserved_words.clone().strategy.clone()).clone() {
+                    match (*spec.reserved_words.strategy.clone()).clone() {
                         ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
                             emit_suffix_escape_ident(
                                 result.clone(),
                                 s.clone(),
-                                spec.reserved_words.clone().keywords.clone(),
+                                spec.reserved_words.keywords.clone(),
                             )
                         }
                         ReservedWordStrategy::PrefixEscape { prefix: p, .. } => {
@@ -5708,12 +5500,12 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                         ReservedWordStrategy::NoEscape => result.clone(),
                     }
                 } else {
-                    match (*spec.reserved_words.clone().strategy.clone()).clone() {
+                    match (*spec.reserved_words.strategy.clone()).clone() {
                         ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
                             emit_suffix_escape_ident(
                                 result.clone(),
                                 s.clone(),
-                                spec.reserved_words.clone().keywords.clone(),
+                                spec.reserved_words.keywords.clone(),
                             )
                         }
                         _ => result.clone(),
@@ -5741,7 +5533,7 @@ pub fn emit_let_binding(name: String, value: String, target: RenderTarget) -> St
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         crate::v1_compiler_emit_core_support::apply_type_template2(
-            spec.annotations.clone().let_binding_inferred.clone(),
+            spec.annotations.let_binding_inferred.clone(),
             emit_ident(name.clone(), target.clone()),
             value.clone(),
         )
@@ -5757,7 +5549,7 @@ pub fn emit_let_binding_annotated(
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         crate::v1_compiler_emit_core_support::apply_type_template3(
-            spec.annotations.clone().let_binding_annotated.clone(),
+            spec.annotations.let_binding_annotated.clone(),
             emit_ident(name.clone(), target.clone()),
             type_str.clone(),
             value.clone(),
@@ -5861,24 +5653,6 @@ pub fn child_from_key(
             _ => std::option::Option::None,
         },
         std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    {
-        let is_product = crate::v1_compiler_infer_types::is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == std::option::Option::None))
-            && ((n.children.clone().len() as i64) == 1))
-        {
-            match n.children.clone().first().cloned() {
-                Some(field_node) => {
-                    crate::v1_compiler_infer_types::resolved_type(field_node.clone())
-                }
-                std::option::Option::None => n.clone(),
-            }
-        } else {
-            n.clone()
-        }
     }
 }
 
@@ -6743,7 +6517,7 @@ pub fn emit_lambda_params(param_names: Rc<Vec<String>>, target: RenderTarget) ->
             let mut __result = Vec::new();
             for p in param_names.iter().cloned() {
                 __result.push(crate::v1_compiler_emit_core_support::apply_type_template1(
-                    spec.annotations.clone().lambda_param_untyped.clone(),
+                    spec.annotations.lambda_param_untyped.clone(),
                     emit_ident(p.clone(), target.clone()),
                 ));
             }
@@ -7243,20 +7017,20 @@ pub fn emit_typed_index_shared(
             crate::v1_std_core::authored_name_at(source_indices.clone(), base_node.clone()),
         ) {
             crate::v1_compiler_emit_core_support::apply_type_template2(
-                spec.indexing.clone().string_index.clone(),
+                spec.indexing.string_index.clone(),
                 base_str.clone(),
                 index_str.clone(),
             )
         } else {
             if is_map.clone() {
                 crate::v1_compiler_emit_core_support::apply_type_template2(
-                    spec.indexing.clone().map_index.clone(),
+                    spec.indexing.map_index.clone(),
                     base_str.clone(),
                     index_str.clone(),
                 )
             } else {
                 crate::v1_compiler_emit_core_support::apply_type_template2(
-                    spec.indexing.clone().list_index.clone(),
+                    spec.indexing.list_index.clone(),
                     base_str.clone(),
                     index_str.clone(),
                 )
@@ -7285,7 +7059,7 @@ pub fn emit_typed_slice_shared(
             target.clone(),
             crate::v1_std_core::authored_name_at(source_indices.clone(), base_node.clone()),
         ) {
-            match spec.indexing.clone().string_slice.clone() {
+            match spec.indexing.string_slice.clone() {
                 Some(tmpl) => crate::v1_compiler_emit_core_support::apply_type_template3(
                     tmpl.clone(),
                     base_str.clone(),
@@ -7298,7 +7072,7 @@ pub fn emit_typed_slice_shared(
                 ),
             }
         } else {
-            match spec.indexing.clone().list_slice.clone() {
+            match spec.indexing.list_slice.clone() {
                 Some(tmpl) => crate::v1_compiler_emit_core_support::apply_type_template3(
                     tmpl.clone(),
                     base_str.clone(),
@@ -7757,7 +7531,6 @@ pub fn emit_param_shared(
                 ),
                 crate::v1_compiler_emit_core_support::language_spec(target.clone())
                     .items
-                    .clone()
                     .param_type_sep
                     .clone(),
             ),
@@ -7786,7 +7559,6 @@ pub fn emit_params_shared(
         strs.clone().join(
             &crate::v1_compiler_emit_core_support::language_spec(target.clone())
                 .items
-                .clone()
                 .param_separator
                 .clone(),
         )
@@ -7800,7 +7572,6 @@ pub fn emit_inferred_shared(
 ) -> String {
     if crate::v1_compiler_emit_core_support::language_spec(target.clone())
         .expression_semantics
-        .clone()
         .suppress_unit_return
         .clone()
     {
@@ -7810,7 +7581,6 @@ pub fn emit_inferred_shared(
             v1_rt::concat(
                 crate::v1_compiler_emit_core_support::language_spec(target.clone())
                     .items
-                    .clone()
                     .return_arrow
                     .clone(),
                 emit_node_type(inferred.clone(), target.clone(), source_indices.clone()),
@@ -7820,7 +7590,6 @@ pub fn emit_inferred_shared(
         v1_rt::concat(
             crate::v1_compiler_emit_core_support::language_spec(target.clone())
                 .items
-                .clone()
                 .return_arrow
                 .clone(),
             emit_node_type(inferred.clone(), target.clone(), source_indices.clone()),
@@ -8336,7 +8105,7 @@ pub fn emit_typed_method_call_unified(
 ) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
-        let source_indices = scope.type_env.clone().source_indices.clone();
+        let source_indices = scope.type_env.source_indices.clone();
         if (method_semantics.clone() != std::option::Option::None) {
             match (*method_semantics.clone().unwrap()).clone() {
                 MethodSemantics::ServiceMethodSemantics {
@@ -8559,7 +8328,6 @@ pub fn emit_unified_variant_pattern(
 pub fn emit_match_arm_body_stmt(target: RenderTarget, body_str: String) -> String {
     match crate::v1_compiler_emit_core_support::language_spec(target.clone())
         .expression_semantics
-        .clone()
         .match_value_form
         .clone()
     {
@@ -8885,7 +8653,7 @@ pub fn emit_unified_typed_expr(
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = scope.type_env.source_indices.clone();
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         emit_shared_expr(
             texpr.clone(),
@@ -8905,7 +8673,7 @@ pub fn emit_unified_typed_expr(
             },
             |expr| emit_expr_var_shared(expr.clone(), target.clone(), si.clone()),
             |expr| {
-                let fa_si = scope.type_env.clone().source_indices.clone();
+                let fa_si = scope.type_env.source_indices.clone();
                 if crate::v1_compiler_infer_service::is_typed_service_call_receiver(
                     expr.clone(),
                     fa_si.clone(),
@@ -9047,7 +8815,7 @@ pub fn emit_unified_typed_expr(
                     1024,
                     render_pattern.clone(),
                 );
-                let if_result_type = match spec.expression_semantics.clone().if_value_form.clone() {
+                let if_result_type = match spec.expression_semantics.if_value_form.clone() {
                     IfValueForm::IfStatement => {
                         Some(crate::v1_compiler_infer_types::resolved_type(expr.clone()))
                     }
@@ -9146,7 +8914,7 @@ pub fn emit_unified_typed_expr(
                     scope.clone(),
                     depth.clone(),
                     |remaining, sc, d| {
-                        let prepend = if spec.block_syntax.clone().significant_whitespace.clone() {
+                        let prepend = if spec.block_syntax.significant_whitespace.clone() {
                             false
                         } else {
                             true

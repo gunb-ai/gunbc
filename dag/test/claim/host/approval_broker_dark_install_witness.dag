@@ -26,13 +26,20 @@ import gunbc.host.host_effect_realize {
   DarkLegExpectEmpty,
   DarkLegSameHash,
   dark_run_legs,
+  dark_run_leg,
+  dark_expect_empty_state,
+  dark_same_hash_state,
   dark_sudoers_legs,
   dark_unit_legs,
   dark_slice_control_legs,
   dark_snapshot_readback_legs,
   approval_broker_dark_install,
 }
+import gunbc.host.host_effect_realize { Sha256Agreement, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved, Sha256Agrees, Sha256SideUnobserved, SourceSide, Sha256RunFailed }
+import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
+import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
+import std.algebra { list_map, non_empty_to_list }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
@@ -108,32 +115,89 @@ test fn the_snapshot_readback_runs_two_bare_finds() -> Bool {
   count(dark_snapshot_readback_legs(dir: "/opt/gunbc/approval-broker-helpers/x")) == 2
 }
 
-// THE RED: the first leg fails (find on a root that does not exist), so the line stops there. The
-// later leg would itself fail at a DIFFERENT step, so the verdict naming the first step is the proof
-// that no later leg decided it.
+// SUPPLIED OUTCOMES: the pure steps dark_run_leg delegates to are driven with supplied outcomes, so no
+// transport runs. A failed state is absorbing (dark_run_leg returns it before any leg runs), so a later
+// leg cannot decide the verdict: the first failing step is the one named.
+fn failed_exit(code: Int) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { success: false, exit_code: code, stdout: "", stderr: "boom" } }
+}
+
 test fn a_failing_leg_stops_the_line_at_its_step() -> Bool {
-  let legs = [
-    DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root") },
-    DarkLegSameHash { step: DarkStepSudoersCompare, left: "/nonexistent-w6b/a", right: "/nonexistent-w6b/b" },
-  ]
-  step_of(s: dark_run_legs(legs: legs, transport: LocalShell)) == Present { value: DarkStepSnapshotReadback }
+  let first = dark_expect_empty_state(step: DarkStepSnapshotReadback, outcome: failed_exit(code: 1))
+  let after = dark_run_leg(state: first, leg: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }, transport: LocalShell)
+  step_of(s: first) == Present { value: DarkStepSnapshotReadback } && after == first
 }
 
 test fn an_unhashable_pair_fails_the_compare() -> Bool {
-  step_of(s: dark_run_legs(legs: [DarkLegSameHash { step: DarkStepSudoersCompare, left: "/nonexistent-w6b/a", right: "/nonexistent-w6b/b" }], transport: LocalShell))
+  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b",
+    agreement: Sha256SideUnobserved { side: SourceSide, cause: Sha256RunFailed { stderr: "no such file" } }))
     == Present { value: DarkStepSudoersCompare }
+}
+
+test fn an_agreeing_pair_and_an_empty_clean_run_are_ok() -> Bool {
+  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b", agreement: Sha256Agrees)) == none
+    && step_of(s: dark_expect_empty_state(step: DarkStepSnapshotReadback,
+      outcome: RunArgvTransportObserved { observed: ShellExecObserved { success: true, exit_code: 0, stdout: "", stderr: "" } })) == none
+}
+
+// INHABITANCE ON THE REAL ROUTE (pairs the supplied-outcome controls above): from DarkOk, dark_run_leg
+// takes each leg through its real arm and the real transport dispatch. EmitArtifactThenThinRun refuses
+// typed argv without invoking a shell, so the route runs hermetically and the refusal must surface at
+// the leg's own step. Rewiring an arm (DarkOk unconditionally, wrong helper, dropped outcome) fails here.
+data refusing_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+fn refused_step(l: DarkLeg) -> DarkInstallStep? {
+  step_of(s: dark_run_leg(state: DarkOk, leg: l, transport: refusing_transport))
+}
+
+test fn dark_run_leg_routes_each_leg_through_the_transport_to_its_own_step() -> Bool {
+  let cmd = find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root")
+  refused_step(l: DarkLegArgv { step: DarkStepEnable, command: cmd }) == Present { value: DarkStepEnable }
+    && refused_step(l: DarkLegStdin { step: DarkStepSudoersStage, command: cmd, payload: "x" }) == Present { value: DarkStepSudoersStage }
+    && refused_step(l: DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: cmd }) == Present { value: DarkStepSnapshotReadback }
+    && refused_step(l: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }) == Present { value: DarkStepSudoersCompare }
 }
 
 test fn an_empty_leg_list_is_ok() -> Bool {
   step_of(s: dark_run_legs(legs: [], transport: LocalShell)) == none
 }
 
+// THE ROSTER IS A FreeSemigroup, SO THERE IS NO EMPTY-ROSTER ARM TO TEST ANY MORE -- `units: []`
+// does not type-check. This claim used to have one (`SliceControlPlanNotOwed => count(legs(units:
+// [])) == 0`), which was worse than useless: it asserted the shape of a value that cannot be built,
+// and it turned srv1 losing its slice reservation into a PASSING arm. srv1 owns both the sessions
+// slice and the broker slice, so a plan that is not Derived here means the fixture moved, and the
+// claim must FAIL rather than wave it through.
+//
+// THE BOUND, AND WHY IT IS NOT JUST A COUNT. >= count(units) is the floor the projection must clear
+// (each unit fans out to three argv legs -- revert, MemoryMax, MemoryHigh -- plus CPUQuota for the
+// sessions unit), but a count alone is satisfiable by a projection that emits ALL of unit 1's legs and
+// NONE of unit 2's, and by one that emits one leg per unit while dropping two per unit. So the total is
+// pinned to the upstream producer the real fold enumerates over -- host_axis_caps
+// .slice_control_converge_argvs_for_unit, the same leaf test.claim.host.sessions_slice_cpu_witness reads
+// rather than re-deriving -- and every argv that producer derives for EVERY unit must appear among the
+// emitted legs. Consequences: dropping the last leg fails the total; collapsing the roster to its first
+// unit fails the per-unit coverage; and both fail whatever the fixture's roster size happens to be, so
+// the claim does not silently weaken if srv1 gains or loses a slice.
 test fn slice_control_legs_follow_the_derived_plan() -> Bool {
   match slice_control_plan_for(host: deployment_spec_srv1().target.host.identity) {
     SliceControlPlanDerived { units: us } =>
-      count(dark_slice_control_legs(units: us)) >= count(us)
-        && all(dark_slice_control_legs(units: us), l => leg_step(l: l) == DarkStepSliceControl)
-    SliceControlPlanNotOwed => count(dark_slice_control_legs(units: [])) == 0
+      let legs = dark_slice_control_legs(units: us)
+      let roster = non_empty_to_list(xs: us)
+      // Built the same way the sibling claim above builds its expected legs: take the argvs from the
+      // upstream producer and wrap each with sudo_elevate_command. Comparing bare argvs would fail on
+      // unmutated code, because the projection elevates every slice-control leg.
+      let expected = flat_map(roster, u =>
+        list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
+          DarkLegArgv { step: DarkStepSliceControl, command: sudo_elevate_command(command: argv) }))
+      count(legs) >= count(roster)
+        && count(legs) == count(expected)
+        && all(legs, l => leg_step(l: l) == DarkStepSliceControl)
+        && all(expected, e => any(legs, l => l == e))
+    SliceControlPlanNotOwed => false
     SliceControlPlanRefused { cause: _ } => false
   }
 }

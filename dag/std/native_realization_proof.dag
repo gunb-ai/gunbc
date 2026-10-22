@@ -1,0 +1,26 @@
+module std.native_realization_proof
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// THE RECORD THAT A CONSUMER ADMITTED A NATIVE REALIZATION OF A DECLARED FOLD. Which realization of an upstream's fold a
+// consumer admits is the consumer's policy, never the upstream's, so an upstream interface module that mints its
+// sole-constructed evidence from a realized answer takes THIS value and imports nothing of the consumer. `fold` is
+// the declaration the consumer states it admitted; the mint's roster limits who may state it. The handler identity and
+// exact revision record what the consumer's admission named; they are not a check on the answerer, which stays a
+// declared boundary obligation (the endpoint's deployment binds it), not a modeled guarantee: an answerer that
+// can forge a verdict can forge an echoed identity.
+//
+type NativeRealizationProof sole_constructor {
+  fold: DeclarationRef
+  handler_identity: NonEmptyStr
+  exact_revision: NonEmptyStr
+}
+
+fn native_realization_proof(fold: DeclarationRef, handler_identity: NonEmptyStr, exact_revision: NonEmptyStr) -> NativeRealizationProof
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_crypto_realization", decl_name: "device_crypto_proof_of"),
+  ]
+{
+  NativeRealizationProof { fold: fold, handler_identity: handler_identity, exact_revision: exact_revision }
+}

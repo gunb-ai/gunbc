@@ -70,6 +70,7 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
 import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -104,7 +105,7 @@ import gunbc.live_deploy.emit {
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.findutils { find_regular_files_sha256_command }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_releases_dir, approval_broker_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
@@ -524,6 +525,16 @@ import gunbc.runner.microvm_guest_artifacts {
   ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
 }
 import gunbc.runner.workspace_guest_image { workspace_installed_image_root, workspace_image_path }
+import gunbc.runner.runner_revision_job_image { revision_job_image_path, revision_job_toolchain_receipt_path }
+import gunbc.runner.runner_revision_job_unit {
+  revision_job_image_pinned_sha256, revision_job_image_staging_root, revision_job_installed_image_root,
+  revision_job_installed_kernel, revision_job_installed_rootfs, revision_job_installed_toolchain,
+  revision_job_state_root, revision_job_spec_dir, revision_job_receipt_store, revision_job_instance_dir,
+  revision_job_cache_dir, revision_job_work_dir, revision_job_runner_unit_path, revision_job_runner_unit_file,
+}
+import gunbc.runner.runner_slot_allocation { revision_job_slots }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.workspace_image_delivery { workspace_image_staging_root }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import extdeps.crypto.hash { sha256_digest, sha256sum_file_command, sha256sum_line_digest }
@@ -4853,8 +4864,8 @@ fn approval_broker_tree_install(
 ) -> ApprovalBrokerTreeInstallVerdict {
   approval_broker_tree_install_at(
     owner: owner,
-    spine: [base_root, approval_broker_releases_dir(root: base_root)],
-    locus: approval_broker_release_dir(root: base_root, revision: revision),
+    spine: [base_root, release_locus_releases_dir(root: base_root)],
+    locus: release_locus_dir(root: base_root, revision: revision),
     source_root: source_root,
     revision: revision,
     transport: transport,
@@ -4875,11 +4886,11 @@ fn approval_broker_tree_install_at(
     RevisionNotInstalled =>
       TreeInstallRefused { step: TreeStepRevision, reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
     RevisionBoundAtEmission { revision: r } => {
-      match observe_tree_hashes(root: source_root, subs: approval_broker_tree_subdirs, transport: transport) {
+      match observe_tree_hashes(root: source_root, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepSourceObserve, reason: why }
         TreeObserved { entries: source } =>
           if count(source) == 0 {
-            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(approval_broker_tree_subdirs, ", ")], "") }
+            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(release_locus_tree_subdirs, ", ")], "") }
           } else {
             approval_broker_tree_install_observed(
               owner: owner, spine: spine, source_root: source_root, locus: locus,
@@ -4896,22 +4907,83 @@ fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, 
     command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
 }
 
-// The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both hashes are
-// observed through the transport and must be equal; an unreadable hash is a disagreement.
-fn tree_binary_hex(path: String, transport: HostEffectTransport) -> String {
-  match run_argv_over_host_effect_transport(command: sha256sum_file_command(path: path), transport: transport) {
-    RunArgvTransportRefused { reason: _ } => ""
+// ONE READER FOR "the sha256 of a path, observed over a HostEffectTransport". The three ways it can
+// be unobserved stay distinct: a refused transport, a run that failed, and a line carrying no digest.
+type Sha256UnobservedCause
+  = Sha256TransportRefused { reason: String }
+  | Sha256RunFailed { stderr: String }
+  | Sha256LineUnparsed { stdout: String }
+
+type Sha256Observation
+  = Sha256Observed { digest: Digest }
+  | Sha256Unobserved { cause: Sha256UnobservedCause }
+
+type Sha256Side = SourceSide | InstalledSide
+
+type Sha256Agreement
+  = Sha256Agrees
+  | Sha256Differs
+  | Sha256SideUnobserved { side: Sha256Side, cause: Sha256UnobservedCause }
+
+fn sha256_observation_of_outcome(outcome: RunArgvTransportOutcome) -> Sha256Observation {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => Sha256Unobserved { cause: Sha256TransportRefused { reason: r } }
     RunArgvTransportObserved { observed: o } =>
-      match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
-        Absent => ""
-        Present { value: d } => d.hex as String
+      if o.success == false {
+        Sha256Unobserved { cause: Sha256RunFailed { stderr: o.stderr } }
+      } else {
+        match sha256sum_line_digest(line: o.stdout) {
+          Absent => Sha256Unobserved { cause: Sha256LineUnparsed { stdout: o.stdout } }
+          Present { value: d } => Sha256Observed { digest: d }
+        }
       }
   }
 }
 
-fn tree_binary_agrees(source_path: String, installed_path: String, transport: HostEffectTransport) -> Bool {
-  let a = tree_binary_hex(path: source_path, transport: transport)
-  string_length(s: a) > 0 && a == tree_binary_hex(path: installed_path, transport: transport)
+fn observe_sha256_over_transport(path: String, transport: HostEffectTransport) -> Sha256Observation {
+  sha256_observation_of_outcome(outcome: run_argv_over_host_effect_transport(command: sha256sum_file_command(path: path), transport: transport))
+}
+
+fn sha256_unobserved_cause_text(cause: Sha256UnobservedCause) -> String {
+  match cause {
+    Sha256TransportRefused { reason: r } => r
+    Sha256RunFailed { stderr: e } => e
+    Sha256LineUnparsed { stdout: _ } => "sha256sum printed no 64-hex digest field"
+  }
+}
+
+fn sha256_observations_agreement(source: Sha256Observation, installed: Sha256Observation) -> Sha256Agreement {
+  match source {
+    Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: SourceSide, cause: c }
+    Sha256Observed { digest: a } =>
+      match installed {
+        Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: InstalledSide, cause: c }
+        Sha256Observed { digest: b } => if (a.hex as String) == (b.hex as String) { Sha256Agrees } else { Sha256Differs }
+      }
+  }
+}
+
+// The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both sums are
+// observed through the transport and must be equal; an unobserved side is a disagreement naming its cause.
+fn tree_binary_agreement(source_path: String, installed_path: String, transport: HostEffectTransport) -> Sha256Agreement {
+  sha256_observations_agreement(
+    source: observe_sha256_over_transport(path: source_path, transport: transport),
+    installed: observe_sha256_over_transport(path: installed_path, transport: transport))
+}
+
+fn sha256_side_text(side: Sha256Side) -> String {
+  match side {
+    SourceSide => "source"
+    InstalledSide => "installed"
+  }
+}
+
+fn sha256_disagreement_text(agreement: Sha256Agreement) -> String? {
+  match agreement {
+    Sha256Agrees => none
+    Sha256Differs => Present { value: "the two sums differ" }
+    Sha256SideUnobserved { side: s, cause: c } => Present { value: join([sha256_side_text(side: s), " sum unobserved: ", sha256_unobserved_cause_text(cause: c)], "") }
+  }
 }
 
 fn approval_broker_tree_install_observed(
@@ -4939,19 +5011,22 @@ fn approval_broker_tree_install_observed(
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
-      match observe_tree_hashes(root: locus, subs: approval_broker_tree_subdirs, transport: transport) {
+      match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
         TreeObserved { entries: installed } =>
-          if !tree_binary_agrees(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport) {
-            TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (or could not be hashed); no receipt was written"], "") }
-          } else if !tree_entries_agree(source: source, installed: installed) {
-            TreeInstallRefused { step: TreeStepReadback, reason: join([
-              "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
-              " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
-          } else {
-            approval_broker_tree_receipt_write(
-              owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-              files: count(installed), transport: transport)
+          match sha256_disagreement_text(agreement: tree_binary_agreement(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport)) {
+            Present { value: why } =>
+              TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (", why, "); no receipt was written"], "") }
+            Absent =>
+              if !tree_entries_agree(source: source, installed: installed) {
+                TreeInstallRefused { step: TreeStepReadback, reason: join([
+                  "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
+                  " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
+              } else {
+                approval_broker_tree_receipt_write(
+                  owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+                  files: count(installed), transport: transport)
+              }
           }
       }
   }
@@ -5072,6 +5147,25 @@ fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcom
   }
 }
 
+// PURE STEPS OF dark_run_leg: what a leg's observed outcome becomes, separated from observing it so a
+// claim can supply the outcome (dark_run_leg calls exactly these).
+fn dark_expect_empty_state(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => DarkFailed { step: step, reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if !o.success { DarkFailed { step: step, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+      else if string_length(s: trim(s: o.stdout)) > 0 { DarkFailed { step: step, reason: join(["expected no output, got: ", o.stdout], "") } }
+      else { DarkOk }
+  }
+}
+
+fn dark_same_hash_state(step: DarkInstallStep, left: String, right: String, agreement: Sha256Agreement) -> DarkState {
+  match sha256_disagreement_text(agreement: agreement) {
+    Absent => DarkOk
+    Present { value: why } => DarkFailed { step: step, reason: join([left, " and ", right, " differ (", why, ")"], "") }
+  }
+}
+
 fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) -> DarkState {
   match state {
     DarkFailed { step: _, reason: _ } => state
@@ -5082,16 +5176,9 @@ fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) 
         DarkLegStdin { step: s, command: c, payload: p } =>
           dark_failed_of_outcome(step: s, outcome: run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport))
         DarkLegExpectEmpty { step: s, command: c } =>
-          match run_argv_over_host_effect_transport(command: c, transport: transport) {
-            RunArgvTransportRefused { reason: r } => DarkFailed { step: s, reason: r }
-            RunArgvTransportObserved { observed: o } =>
-              if !o.success { DarkFailed { step: s, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
-              else if string_length(s: trim(s: o.stdout)) > 0 { DarkFailed { step: s, reason: join(["expected no output, got: ", o.stdout], "") } }
-              else { DarkOk }
-          }
+          dark_expect_empty_state(step: s, outcome: run_argv_over_host_effect_transport(command: c, transport: transport))
         DarkLegSameHash { step: s, left: l, right: r } =>
-          if tree_binary_agrees(source_path: l, installed_path: r, transport: transport) { DarkOk }
-          else { DarkFailed { step: s, reason: join([l, " and ", r, " differ (or one could not be hashed)"], "") } }
+          dark_same_hash_state(step: s, left: l, right: r, agreement: tree_binary_agreement(source_path: l, installed_path: r, transport: transport))
       }
   }
 }
@@ -5190,8 +5277,8 @@ fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Lis
   ]
 }
 
-fn dark_slice_control_legs(units: List<SliceControlUnit>) -> List<DarkLeg> {
-  flat_map(units, u =>
+fn dark_slice_control_legs(units: FreeSemigroup<SliceControlUnit>) -> List<DarkLeg> {
+  flat_map(non_empty_to_list(xs: units), u =>
     list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
       DarkLegArgv { step: DarkStepSliceControl, command: sudo_elevate_command(command: argv) }))
 }
@@ -7758,6 +7845,77 @@ fn microvm_controller_install_staging(revision: ReleaseRevisionBinding) -> Micro
   }
 }
 
+fn revision_job_install_file_step(name: String, source: String, dest: String) -> MicrovmControllerInstallStep {
+  microvm_controller_argv_step(
+    name: name,
+    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: install_file_shared_mode, owner: microvm_controller_owner, group: microvm_controller_owner, source: source, dest: dest)),
+  )
+}
+
+fn revision_job_owned_dir_step(name: String, path: String) -> MicrovmControllerInstallStep {
+  microvm_controller_argv_step(name: name, command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: path)))
+}
+
+// THE REVISION JOB'S LEG: its image installed root-owned and verified against the pin, its state
+// directories, and its templated unit. Present exactly when the authority declares a revision-job
+// slot (gunbc.runner.runner_slot_allocation revision_job_slots). Like every leg here it starts
+// nothing: the job unit is started by the granted request, never by the install.
+fn microvm_controller_revision_job_steps(release_dir: String, guest_kernel_pinned_digest: Digest) -> List<MicrovmControllerInstallStep> {
+  if count(revision_job_slots) == 0 {
+    []
+  } else {
+    let root = revision_job_installed_image_root(release_dir: release_dir)
+    let kernel = revision_job_installed_kernel(release_dir: release_dir)
+    let rootfs = revision_job_installed_rootfs(release_dir: release_dir)
+    let toolchain = revision_job_installed_toolchain(release_dir: release_dir)
+    let staging = revision_job_image_staging_root
+    let operator = fleet_posix_operator_user.name
+    let instances = map(revision_job_slots, slot => runner_slot_instance_name(slot: slot))
+    concat(
+      [
+        revision_job_owned_dir_step(name: "revision-job image dir", path: root),
+        revision_job_install_file_step(name: "revision-job kernel install", source: runner_guest_base_artifact_path(root: staging, artifact: runner_guest_kernel_artifact), dest: kernel),
+        MicrovmControllerVerifyStep {
+          name: "revision-job guest kernel digest",
+          command: sha256sum_file_command(path: kernel),
+          expected: guest_kernel_pinned_digest,
+          subject: kernel,
+        },
+        revision_job_install_file_step(name: "revision-job rootfs install", source: revision_job_image_path(root: staging), dest: rootfs),
+        MicrovmControllerVerifyStep {
+          name: "revision-job rootfs digest",
+          command: sha256sum_file_command(path: rootfs),
+          expected: sha256_digest(hex: revision_job_image_pinned_sha256 as String),
+          subject: rootfs,
+        },
+        revision_job_install_file_step(name: "revision-job toolchain receipt install", source: revision_job_toolchain_receipt_path(root: staging), dest: toolchain),
+        revision_job_owned_dir_step(name: "revision-job state dir", path: revision_job_state_root),
+        revision_job_owned_dir_step(name: "revision-job receipt store", path: revision_job_receipt_store),
+        microvm_controller_argv_step(
+          name: "revision-job spec dir",
+          command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+            mode: install_d_shared_mode, owner: operator, group: operator, path: revision_job_spec_dir)),
+        ),
+      ],
+      concat(
+        flat_map(instances, i => [
+          revision_job_owned_dir_step(name: concat("revision-job instance dir ", i), path: revision_job_instance_dir(instance: i)),
+          revision_job_owned_dir_step(name: concat("revision-job cache dir ", i), path: revision_job_cache_dir(instance: i)),
+          revision_job_owned_dir_step(name: concat("revision-job work dir ", i), path: revision_job_work_dir(instance: i)),
+        ]),
+        microvm_controller_staged_write_steps(
+          name: "revision-job runner unit",
+          dest: revision_job_runner_unit_path() as String,
+          mode: microvm_controller_unit_mode,
+          content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
+            file: revision_job_runner_unit_file(release_dir: release_dir), release_dir: release_dir)),
+        ),
+      ),
+    )
+  }
+}
+
 // THE STEP LIST, exactly the retired intent's order. The tree-copy leg is
 // W6's vertical and is named here as ONE step (the fold calls the real
 // function; see microvm_controller_run_tree_install).
@@ -8022,10 +8180,10 @@ fn microvm_controller_install_steps(
             ],
             // systemctl daemon-reload, LAST: the units above are templates; the
             // reload makes them known and starts nothing.
-            [microvm_controller_argv_step(
+            concat(microvm_controller_revision_job_steps(release_dir: release_dir, guest_kernel_pinned_digest: guest_kernel_pinned_digest), [microvm_controller_argv_step(
               name: "systemd daemon-reload",
               command: extdeps.systemd.systemctl.systemctl_daemon_reload_command(),
-            )],
+            )]),
           ),
         ),
       ),

@@ -1,7 +1,7 @@
 module v2.cli.if_arm_reader_differential
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, collection_concat_shape }
 import std.occurrence_identity { occurrence_id_eq }
 import v2.compiler.body_lowering_fold {
   IfRowArms,

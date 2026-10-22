@@ -5,9 +5,9 @@ import std.types { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Edge, Authored, StructuralLabel, Positional, Node, Symbol, symbol_lexeme, node_subtree_nodes,
-  TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Occupancy, Instantiation,
+  TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Instantiation,
   Transform, Value, Branch, Loop, Bind, Match
 }
 import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, TypeAlias, refinement_declaration_of_node, type_decl_view, type_param_names }
@@ -21,7 +21,7 @@ import v2.compiler.infer { infer_branch_operand_resolved_type_in_tree, infer_tra
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.type_binder { cast_target_optional }
 import v2.std.symbol_index { SymbolIndex, symbol_index_lookup }
-import v2.std.node_query { node_positional_child_targets, find_arrow_body_child }
+import v2.std.node_query { find_arrow_body_child }
 
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -189,7 +189,6 @@ fn tdc_generic_form(name: Symbol, target: Node, kinds: FreeMonoid<DeclaredTypeKi
             Conj => tdc_member_form(name: name, member: m, kinds: kinds)
             Atom { identity: _ } => FormUndecided
             Arrow => FormUndecided
-            Occupancy => FormUndecided
             Instantiation => FormUndecided
           }
         ComputationNode { behavior: _ } => FormUndecided
@@ -388,7 +387,7 @@ fn as_callee_param_type(index: SymbolIndex, callee: Node, param: Symbol) -> Type
 }
 
 fn as_parent_of_transform(index: SymbolIndex, parent: Node, edge: Edge) -> AsParentRead {
-  match first(node_positional_child_targets(node: parent)) {
+  match first(positional_child_target_nodes(node: parent)) {
     Absent => ParentOther
     Present { value: op } =>
       if canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_eq())
@@ -426,7 +425,7 @@ fn as_walk(
     match cast_target_optional(n: n) {
       Absent => acc
       Present { value: target } =>
-        match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+        match list_at_optional(xs: positional_child_target_nodes(node: n), index: 1) {
           Absent => acc
           Present { value: operand } =>
             list_snoc_item(xs: acc, item: AsSiteRow {
@@ -487,7 +486,7 @@ fn as_site_rows(module: String, root: Node, typing: AsTyping, index: SymbolIndex
 
 // An Arrow's declared return: its second positional child (domain, return, return, order, body).
 fn as_arrow_return(arrow: Node) -> TypeRefText {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
     Present { value: r } => type_ref_text(n: r)
     Absent => NoBase
   }

@@ -4,18 +4,19 @@
 use self::ItemKind::*;
 use self::ItemLookup::*;
 use self::ModuleTypecheckProgress::*;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+pub use crate::std_dissolution::{
+    dissolution_description, unbound_dissolution, DissolutionCondition,
+};
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
-pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+pub use crate::std_interface_summary::{
+    interface_summary_rollup, signature_contract, ExportEntry, ExportKind, InterfaceSummary,
+};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceTransport};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-pub use crate::v1_compiler_infer_env::empty_type_env_cache;
-pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
+pub use crate::v1_compiler_infer_env::{empty_type_env_cache, TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
@@ -27,10 +28,8 @@ use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
-    resource_use_name_at, resource_use_resource,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, ErrorNode, InferredNode, LeafOwner, NewlineIndex, Node,
+    resource_use_name_at, resource_use_resource, Cardinality, Connective, ErrorNode, InferredNode,
+    LeafOwner, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

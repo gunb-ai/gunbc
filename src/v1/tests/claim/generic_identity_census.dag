@@ -696,7 +696,7 @@ type GenericIdentityContextItem {
 // conformance_keeps_the_parameter_mark is the copy law (L1) at one stored carrier. The fixture's
 // same_spelling_as_a_record_parameter<Q> declares a parameter spelled like the record Box<Q>'s, and
 // its formal q: Q must carry ITS OWN mark in declaration_bound_conformance. Before
-// v1.compiler.infer_resolve peel_nominal_alias_identity read the mark, the name lookup replaced that
+// v1.compiler.infer_resolve expand_nominal_alias_rhs read the mark, the name lookup replaced that
 // leaf with whatever the module bound to the spelling Q, and this control was UNMET.
 fn gi_control_line(name: String, held: Bool) -> String {
   concat(concat(concat("control ", name), ": "), if held { "held" } else { "UNMET" })

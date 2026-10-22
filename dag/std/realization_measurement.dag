@@ -34,6 +34,7 @@ import std.realization_schedule {
   cost_account_time_count,
 }
 import std.optional { Absent, Present }
+import std.checked_arithmetic { checked_int_to_nat }
 
 // PEAK AND CURRENT ARE DIFFERENT QUESTIONS AND ONLY ONE OF THEM CAN SEE A RELEASE.
 //
@@ -75,6 +76,10 @@ type RealizationMeasureEffect
       subject: ContentHash
       work_shape: String
     }
+  | ObserveAllocationAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
 
 // THE OBSERVATION, TYPED SO ABSENCE CANNOT READ AS A QUANTITY. A residency reading either holds a
 // byte count or names why it could not be taken; there is no arm carrying a number the realization
@@ -82,6 +87,61 @@ type RealizationMeasureEffect
 type ResidencyObservation
   = ResidencyObserved { bytes: ByteSize }
   | ResidencyUnobservable { axis: String, reason: String }
+
+// THE ALLOCATION COUNTERS ARE A FOURTH FACT, and the one residency cannot stand in for. Residency
+// answers what the process HOLDS at a boundary; a record rebuilt per step frees the old record as it
+// allocates the new one, so residency stays flat while the allocator is called once per step. The
+// cost of that pattern is the CALLS, so the observation is the monotone count of allocator
+// operations (alloc, alloc_zeroed and realloc each count once) and the monotone sum of bytes those
+// operations requested (a realloc counts its new size). Both only grow, so a span is the difference
+// of two readings; neither is a live size.
+//
+// WHAT IS NOT OBSERVED, stated rather than defaulted: a global allocator sees neither Rc retain
+// counts nor whether a persistent collection copied a shared chunk or mutated a unique one. A
+// copy-on-write is visible only as the allocation it causes, so no field here claims it; a reading
+// of it needs a hook inside the collection, and until one exists that axis is unobserved, not zero.
+//
+// The demand is a resource, not a flag: an entry that `uses` AllocationCounter is the entry whose
+// emitted binary carries the counting allocator, and no other binary does (v1.compiler.emit_rust
+// NativeEffectRealizationAdmission, the claim route's denominator). A binary without it reads
+// AllocationProviderNotSelected -- the process refuses rather than report zero.
+resource AllocationCounter {
+  kind: Observation
+  mode: Read
+  acquire { hermetic }
+  release {}
+}
+
+// AllocationObserved IS A SPAN: the operations and requested bytes between two readings of the monotone
+// counters. Every other arm is one closed CAUSE a span could not be taken, carries no number, and is
+// matched on rather than read as prose: a counter that ran backwards names its axis in the arm, and a
+// process that selected no counting allocator can produce only AllocationProviderNotSelected.
+type AllocationObservation
+  = AllocationObserved { operations: Nat, bytes_requested: ByteSize }
+  | AllocationOperationsRanBackwards
+  | AllocationBytesRequestedRanBackwards
+  | AllocationProviderNotSelected
+
+// THE ONE FOLD FROM RAW READINGS TO THE TYPED OBSERVATION. A caller reads the counters only after
+// observed_allocation_available answered true -- the realization's own statement that the selected main
+// registered the counting allocator before any read, never an inference from a count -- so an empty span in
+// a selecting process is AllocationObserved with zero operations. A counter that went backwards has no
+// Nat span and is unobservable on that axis, never a fabricated zero.
+fn allocation_span_observation(operations_before: Int, operations_after: Int, bytes_before: Int, bytes_after: Int) -> AllocationObservation {
+  match checked_int_to_nat(n: operations_after - operations_before) {
+    Present { value: ops } => match checked_int_to_nat(n: bytes_after - bytes_before) {
+      Present { value: n } => AllocationObserved { operations: ops, bytes_requested: byte_size(count: n) }
+      Absent => AllocationBytesRequestedRanBackwards
+    }
+    Absent => AllocationOperationsRanBackwards
+  }
+}
+
+// The answer for a process whose selection did not register the counting allocator. It carries no number,
+// so a process that still allocates reads unobservable, not zero.
+fn allocation_provider_not_selected() -> AllocationObservation {
+  AllocationProviderNotSelected
+}
 
 fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
   match o {
@@ -142,6 +202,21 @@ type NativeResidencySample {
 // driver's std.compiler_entry native_driver_cost_account) is judged on CPU, and elapsed stays an
 // observation beside it. A host without the clock REFUSES; substituting the monotonic reading would
 // hand the verdict back to host load.
+
+// ObserveAllocationAtSubject realization seam: observed_allocation_operations(boundary) and
+// observed_allocation_bytes(boundary) read the monotone counters of the counting global allocator an
+// AllocationCounter-demanding native entry is built with (see AllocationCounter). The label plays
+// observed_monotonic_nanos's anti-memoization role and is never identity material. A process whose
+// allocator is not the counting one REFUSES; zero is a reading and absence is not.
+
+// HAND-RUST GATE explicit deferral for the allocation seam. The interpreter arms free_call.observed_allocation_available
+// (answers false), free_call.observed_allocation_operations and free_call.observed_allocation_bytes (refuse) in
+// v1_interpreter.rs are bounded seed-retained arms of the modeled ObserveAllocationAtSubject effect, not a
+// decision authority: the interpreter has no counting allocator to read. Lane: v1-hand-queue-drain. Concrete
+// ROADMAP row: 'Get hand-written Rust in this repository down to zero' (authority
+// dag/gunbc/v1/v1_deletion_plan.dag). Dissolve-on: v1-interpreter-delete removes the seed arms. The
+// CountingAllocator itself is emitted-runtime text (src/v1/runtime_rust.dag), not hand Rust: v1_rt.rs is its
+// generated mirror, and its per-method calibration is the generated counting_allocator_tests module.
 
 // HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in
 // v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject

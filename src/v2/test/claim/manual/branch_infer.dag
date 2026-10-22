@@ -69,7 +69,7 @@ fn branch_infer_resolved_tree(root: Node) -> ResolvedTree {
 }
 
 fn branch_infer_positional_target(body: Node, index: Int) -> Node {
-  match list_at_optional(xs: node_positional_child_targets(node: body), index: index) {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: index) {
     Present { value: target } => target
     Absent => branch_infer_atom(s: ^branch_infer_missing_child)
   }

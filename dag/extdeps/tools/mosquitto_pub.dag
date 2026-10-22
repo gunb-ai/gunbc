@@ -70,7 +70,6 @@ fn mosquitto_pub_program() -> ProgramIdentity = cataloged_program(invocation: "m
 // private thing that must be created, sealed and destroyed is a DIRECTORY containing a file at this
 // exact name, so gunbc.auth.mosquitto_options_binding seals a directory and not a path.
 data mosquitto_pub_options_file_name: NonEmptyStr = "mosquitto_pub"
-data mosquitto_pub_options_dir_env: NonEmptyStr = "XDG_CONFIG_HOME"
 
 // --insecure DISABLES HOSTNAME CHECKING ONLY, AND READING IT AS "SKIP TLS VERIFICATION" IS THE
 // ERROR THIS NOTE EXISTS TO PREVENT. It was measured here, not assumed: a publish to a Bambu

@@ -1,8 +1,8 @@
 module gunbc.runner.runner_microvm_shakedown
 
-import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, DeclarationRef }
 import std.measure { second, money_amount_micro, MoneyPerSecond, MoneyAmountMicro }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey, ExecutionAttemptKey }
@@ -85,39 +85,82 @@ fn microvm_shakedown_work() -> Work<NonEmptyStr> {
   )
 }
 
-fn microvm_shakedown_demand_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, DemandKey> {
-  FabricIdentity {
-    principal: microvm_shakedown_principal,
-    key: join(["microvm-shakedown-demand-", runner_slot_instance_name(slot: slot)], "") as DemandKey,
+// ONE AUTHORITY FOR EVERY JOB A MICROVM CELL IS OFFERED FOR. The shakedown was the first such job and
+// its demand, offer and attempt builders were written for it alone; a revision job
+// (gunbc.runner.runner_revision_job_main) is the same kind of cell offer for another Work, so the
+// builders take the job and the shakedown is one instance of it. The shakedown's identities are
+// byte-identical to what they were: its name is "microvm-shakedown", its region the shakedown slot.
+type MicroVmCellJob {
+  name: NonEmptyStr
+  work: Work<NonEmptyStr>
+  origin: NonEmptyStr
+  submitted_at: Timestamp
+  region: DeclarationRef
+}
+
+fn microvm_shakedown_job() -> MicroVmCellJob {
+  MicroVmCellJob {
+    name: "microvm-shakedown",
+    work: microvm_shakedown_work(),
+    origin: "gunbc.observation.microvm-shakedown",
+    submitted_at: "2026-09-21T00:00:00Z",
+    region: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_shakedown_slot"),
   }
 }
 
-fn microvm_shakedown_offer_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, OfferKey> {
-  FabricIdentity {
-    principal: microvm_shakedown_principal,
-    key: join(["microvm-shakedown-offer-", runner_slot_instance_name(slot: slot)], "") as OfferKey,
-  }
+fn microvm_job_demand_id(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: microvm_shakedown_principal, key: join([job.name as String, "-demand-", runner_slot_instance_name(slot: slot)], "") as DemandKey }
+}
+
+fn microvm_job_offer_id(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: microvm_shakedown_principal, key: join([job.name as String, "-offer-", runner_slot_instance_name(slot: slot)], "") as OfferKey }
 }
 
 // THE ATTEMPT THE CELL IS GRANTED TO, derived like the demand and the offer so the broker that
 // issues the grant and the controller that re-reads it name the same attempt without passing it.
-// One attempt per slot: a later grant on the same slot is a different grant because its lease
-// generation differs (product.fabric.grant_issue derive_grant_key), not because the attempt does.
-fn microvm_shakedown_attempt_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
-  FabricIdentity {
-    principal: microvm_shakedown_principal,
-    key: join(["microvm-shakedown-attempt-", runner_slot_instance_name(slot: slot)], "") as ExecutionAttemptKey,
-  }
+// One attempt per slot and job: a later grant on the same slot is a different grant because its
+// lease generation differs (product.fabric.grant_issue derive_grant_key), not because the attempt does.
+fn microvm_job_attempt_id(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: microvm_shakedown_principal, key: join([job.name as String, "-attempt-", runner_slot_instance_name(slot: slot)], "") as ExecutionAttemptKey }
 }
 
-fn microvm_shakedown_attempt(slot: RunnerSlotIdentity) -> Attempt<NonEmptyStr> {
-  let demand = microvm_shakedown_demand(slot: slot)
+fn microvm_job_demand(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> Demand<NonEmptyStr> {
+  floor_demand(
+    id: microvm_job_demand_id(slot: slot, job: job),
+    work: job.work.id,
+    origin: job.origin,
+    submitted_at: job.submitted_at,
+    account: microvm_shakedown_budget_account,
+    reservation_price: money_amount_micro(count: 500000),
+    maximum_buy_order: microvm_shakedown_maximum_buy_order(),
+    deadline: none,
+  )
+}
+
+fn microvm_job_attempt(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> Attempt<NonEmptyStr> {
+  let demand = microvm_job_demand(slot: slot, job: job)
   Attempt {
-    id: microvm_shakedown_attempt_id(slot: slot),
+    id: microvm_job_attempt_id(slot: slot, job: job),
     work: demand.work,
     lineage: InitialAttempt { initiating_demand: demand.id },
     created_at: demand.submitted_at,
   }
+}
+
+fn microvm_shakedown_demand_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  microvm_job_demand_id(slot: slot, job: microvm_shakedown_job())
+}
+
+fn microvm_shakedown_offer_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  microvm_job_offer_id(slot: slot, job: microvm_shakedown_job())
+}
+
+fn microvm_shakedown_attempt_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  microvm_job_attempt_id(slot: slot, job: microvm_shakedown_job())
+}
+
+fn microvm_shakedown_attempt(slot: RunnerSlotIdentity) -> Attempt<NonEmptyStr> {
+  microvm_job_attempt(slot: slot, job: microvm_shakedown_job())
 }
 
 // THE MONEY TERMS ARE THE FCI-1 PROBE'S, because the fleet prices its own cells at nothing and the
@@ -130,16 +173,7 @@ fn microvm_shakedown_maximum_buy_order() -> MoneyAmountMicro {
 }
 
 fn microvm_shakedown_demand(slot: RunnerSlotIdentity) -> Demand<NonEmptyStr> {
-  floor_demand(
-    id: microvm_shakedown_demand_id(slot: slot),
-    work: microvm_shakedown_work().id,
-    origin: "gunbc.observation.microvm-shakedown",
-    submitted_at: "2026-09-21T00:00:00Z",
-    account: microvm_shakedown_budget_account,
-    reservation_price: money_amount_micro(count: 500000),
-    maximum_buy_order: microvm_shakedown_maximum_buy_order(),
-    deadline: none,
-  )
+  microvm_job_demand(slot: slot, job: microvm_shakedown_job())
 }
 
 // THE ACCOUNT THE BROKER ENCUMBERS IS THE DEMAND'S OWN, appropriated at exactly the demand's maximum
@@ -162,32 +196,39 @@ fn microvm_shakedown_account() -> MoneyAccount {
 
 // THE ROUTE IS THE FLEET'S OWN SLOT, CITED BY DECLARATION: the provider is the fabric slot roster
 // that admits the shakedown slot, the service is the unit that serves it, the region is the slot.
-fn microvm_shakedown_route() -> ProviderRoute {
+fn microvm_job_route(job: MicroVmCellJob) -> ProviderRoute {
   ProviderRoute {
     provider: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "fabric_execution_slot_identities"),
     service: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_slot_unit_template_name"),
-    region: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "srv1_microvm_shakedown_slot"),
+    region: job.region,
+  }
+}
+
+fn microvm_shakedown_route() -> ProviderRoute {
+  microvm_job_route(job: microvm_shakedown_job())
+}
+
+fn microvm_job_offer(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: microvm_job_offer_id(slot: slot, job: job),
+    executor: fabric_cell_allocation_key(slot: slot),
+    route: microvm_job_route(job: job),
+    shape: job.work.requirements.shape,
+    capabilities: job.work.requirements.capabilities,
+    trust_domain: job.work.requirements.trust_domain,
+    isolation: runner_microvm_isolation_profile(),
+    quantity_bound: 1,
+    ready_at: job.submitted_at,
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
+      observed_at: job.submitted_at,
+      receipt: join([job.origin as String, "-slot"], "") as NonEmptyStr,
+    },
   }
 }
 
 fn microvm_shakedown_offer(slot: RunnerSlotIdentity) -> SupplierOffer<NonEmptyStr> {
-  let work = microvm_shakedown_work()
-  SupplierOffer {
-    id: microvm_shakedown_offer_id(slot: slot),
-    executor: fabric_cell_allocation_key(slot: slot),
-    route: microvm_shakedown_route(),
-    shape: work.requirements.shape,
-    capabilities: work.requirements.capabilities,
-    trust_domain: work.requirements.trust_domain,
-    isolation: runner_microvm_isolation_profile(),
-    quantity_bound: 1,
-    ready_at: "2026-09-21T00:00:00Z",
-    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
-    billing_quantum: second(count: 0),
-    evidence: ObservedSupply {
-      observed_at: "2026-09-21T00:00:00Z",
-      receipt: "gunbc.observation.microvm-shakedown-slot",
-    },
-  }
+  microvm_job_offer(slot: slot, job: microvm_shakedown_job())
 }
 

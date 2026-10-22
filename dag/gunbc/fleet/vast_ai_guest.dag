@@ -1,0 +1,119 @@
+module gunbc.fleet.vast_ai_guest
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef }
+import std.decimal { decimal_pow10 }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { ByteSize, byte_size, hardware_thread_count }
+import extdeps.toolchain.types { X86_64 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.pricing.object_storage { ByteBasis, BinaryGibibyte, DecimalGigabyte, ByteBasisUnstated }
+import extdeps.cloud.vast_ai { VastAiOfferHostResources }
+import gunbc.fleet.fleet_host_backing { GuestEntitlement }
+
+// VAST'S ADAPTER ONTO THE GENERIC GUEST ENTITLEMENT, in the shape of gunbc.fleet.hetzner_cloud_guest. Four
+// of the seven entitlement facts have a Vast source, and three do not. Read 2026-10-17 from
+// docs.vast.ai/api-reference/search/search-offers (the offer page; show-instances gives these names with no
+// units, so it is not a source):
+//  - architecture  <- cpu_arch, "Host machine CPU architecture (Default is amd64)"; only amd64 is stated, so
+//    only amd64 reads (X86_64) and every other string refuses by name;
+//  - vcpus         <- cpu_cores, "Number of virtual CPUs";
+//  - memory        <- cpu_ram, "CPU RAM in MB";
+//  - disk          <- disk_space, "Disk storage space in GB".
+// memory and disk are stated in MB and GB without saying decimal or binary, which is a 4.8 percent and
+// 7.4 percent difference, so the basis is a standing the caller supplies and ByteBasisUnstated refuses (the
+// precedent is extdeps.pricing.object_storage ByteBasisUnstated). A fractional byte floors, the only rounding
+// a capacity may take.
+// UNDOCUMENTED, so each is a standing that refuses until a cited page grounds it, never a guessed value
+// (DESIGN 4d): nested virtualization (search-offers lists only vms_enabled, "Whether the machine is a VM
+// instance", which is a different fact), and the self-identity URL (neither page names a metadata endpoint
+// or an in-container instance id). The standings come in as a record so the real path passes
+// vast_ai_guest_standings and a fixture passes Documented arms; the real path is paired with a claim that it
+// refuses on every undocumented fact.
+
+type VastNestedVirtualizationStanding
+  = VastNestedVirtualizationDocumented { available: Bool, citation: ExternalAuthority }
+  | VastNestedVirtualizationUndocumented
+
+type VastIdentityUrlStanding
+  = VastIdentityUrlDocumented { url: String, citation: ExternalAuthority }
+  | VastIdentityUrlUndocumented
+
+type VastGuestStandings {
+  byte_basis: ByteBasis
+  nested_virtualization: VastNestedVirtualizationStanding
+  identity_url: VastIdentityUrlStanding
+}
+
+type VastGuestEntitlementReading
+  = VastGuestEntitlementRead { entitlement: GuestEntitlement }
+  | VastGuestEntitlementUnread { obligation: NonEmptyStr }
+
+data vast_ai_guest_standings: VastGuestStandings = VastGuestStandings {
+  byte_basis: ByteBasisUnstated,
+  nested_virtualization: VastNestedVirtualizationUndocumented,
+  identity_url: VastIdentityUrlUndocumented,
+}
+
+data vast_ai_guest_architecture_obligation: NonEmptyStr = "docs.vast.ai search-offers states cpu_arch only as Host machine CPU architecture (Default is amd64), so an offer whose cpu_arch is not amd64 names no architecture this adapter can read" as NonEmptyStr
+data vast_ai_guest_cpu_cores_obligation: NonEmptyStr = "docs.vast.ai search-offers cpu_cores (Number of virtual CPUs) is not a positive count on this offer" as NonEmptyStr
+data vast_ai_guest_byte_basis_obligation: NonEmptyStr = "docs.vast.ai search-offers states cpu_ram in MB and disk_space in GB without saying decimal or binary (extdeps.pricing.object_storage ByteBasisUnstated), so memory and disk have no byte reading until a page states the basis" as NonEmptyStr
+data vast_ai_guest_size_obligation: NonEmptyStr = "docs.vast.ai search-offers cpu_ram or disk_space is negative on this offer, so it names no byte size" as NonEmptyStr
+data vast_ai_guest_nested_virtualization_obligation: NonEmptyStr = "docs.vast.ai search-offers and show-instances document no nested virtualization field (vms_enabled is Whether the machine is a VM instance, not nested virtualization), so the guest's nested virtualization is unread" as NonEmptyStr
+data vast_ai_guest_identity_url_obligation: NonEmptyStr = "docs.vast.ai search-offers and show-instances document no endpoint from which a Vast container reads its own instance id, so the self-identity URL is unread" as NonEmptyStr
+
+fn vast_ai_guest_bytes(count: Int, factor: Int, per: Int) -> ByteSize? {
+  match checked_int_to_nat(n: (count * factor) / per) {
+    Absent => Absent
+    Present { value: n } => Present { value: byte_size(count: n) }
+  }
+}
+
+fn vast_ai_guest_entitlement(host: VastAiOfferHostResources, offer: DeclarationRef, standings: VastGuestStandings) -> VastGuestEntitlementReading {
+  if host.cpu_arch != "amd64" {
+    VastGuestEntitlementUnread { obligation: vast_ai_guest_architecture_obligation }
+  } else if host.cpu_cores < 1 {
+    VastGuestEntitlementUnread { obligation: vast_ai_guest_cpu_cores_obligation }
+  } else {
+    match standings.byte_basis {
+      ByteBasisUnstated => VastGuestEntitlementUnread { obligation: vast_ai_guest_byte_basis_obligation }
+      BinaryGibibyte => vast_ai_guest_with_sizes(host: host, offer: offer, standings: standings, mem_factor: 1048576, disk_factor: 1073741824)
+      DecimalGigabyte => vast_ai_guest_with_sizes(host: host, offer: offer, standings: standings, mem_factor: 1000000, disk_factor: 1000000000)
+    }
+  }
+}
+
+fn vast_ai_guest_with_sizes(host: VastAiOfferHostResources, offer: DeclarationRef, standings: VastGuestStandings, mem_factor: Int, disk_factor: Int) -> VastGuestEntitlementReading {
+  match vast_ai_guest_bytes(count: host.cpu_ram, factor: mem_factor, per: 1) {
+    Absent => VastGuestEntitlementUnread { obligation: vast_ai_guest_size_obligation }
+    Present { value: memory } =>
+      match vast_ai_guest_bytes(count: host.disk_space.units, factor: disk_factor, per: decimal_pow10(exponent: host.disk_space.fraction_digits)) {
+        Absent => VastGuestEntitlementUnread { obligation: vast_ai_guest_size_obligation }
+        Present { value: disk } =>
+          match standings.nested_virtualization {
+            VastNestedVirtualizationUndocumented => VastGuestEntitlementUnread { obligation: vast_ai_guest_nested_virtualization_obligation }
+            VastNestedVirtualizationDocumented { available: nested, citation: _ } =>
+              match standings.identity_url {
+                VastIdentityUrlUndocumented => VastGuestEntitlementUnread { obligation: vast_ai_guest_identity_url_obligation }
+                VastIdentityUrlDocumented { url: url, citation: _ } =>
+                  match checked_int_to_nat(n: host.cpu_cores) {
+                    Absent => VastGuestEntitlementUnread { obligation: vast_ai_guest_cpu_cores_obligation }
+                    Present { value: cores } =>
+                      VastGuestEntitlementRead {
+                        entitlement: GuestEntitlement {
+                          offer: offer,
+                          architecture: X86_64,
+                          vcpus: hardware_thread_count(count: cores),
+                          memory: memory,
+                          disk: disk,
+                          nested_virtualization: nested,
+                          self_identity_url: url,
+                        },
+                      }
+                  }
+              }
+          }
+      }
+  }
+}

@@ -10,8 +10,8 @@ import std.algebra { Cons, Empty, fold_list, skip, list_at_optional, list_tail }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, outcome_accepted }
 import v2.std.text { String }
-import v2.std.node { Atom, ComputationNode, Edge, Match, Node, NodeFoldTopDown, Symbol, TypeNode, fold_node_topdown, MatchArmBodyEdge, MatchArmPatternEdge }
-import v2.std.node_query { node_positional_child_targets, find_core_child }
+import v2.std.node { positional_child_target_nodes, Atom, ComputationNode, Edge, Match, Node, NodeFoldTopDown, Symbol, TypeNode, fold_node_topdown, MatchArmBodyEdge, MatchArmPatternEdge }
+import v2.std.node_query { find_core_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 
 
@@ -64,7 +64,7 @@ fn pattern_head_identity_optional(pattern: Node) -> Optional<Symbol> {
   match node_atom_identity_optional(node: pattern) {
     Present { value: id } => optional_present(value: id)
     Absent =>
-      match list_at_optional(xs: node_positional_child_targets(node: pattern), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: pattern), index: 0) {
         Present { value: head } =>
           match node_atom_identity_optional(node: head) {
             Present { value: id } => optional_present(value: id)
@@ -149,7 +149,7 @@ fn undecidable_verdict_collapse_diagnostic(n: Node) -> Diagnostic {
 fn match_positional_arms(match_node: Node) -> List<Node> {
   match match_node.kind {
     ComputationNode { behavior: Match } =>
-      skip(xs: node_positional_child_targets(node: match_node), n: 1)
+      skip(xs: positional_child_target_nodes(node: match_node), n: 1)
     TypeNode { connective: _ } => Empty
     ComputationNode { behavior: _ } => Empty
   }

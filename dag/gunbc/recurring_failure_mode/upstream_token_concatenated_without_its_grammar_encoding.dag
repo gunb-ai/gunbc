@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.upstream_token_concatenated_without_its_gram
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data upstream_token_concatenated_without_its_grammar_encoding: RecurringFailureMode = RecurringFailureMode {
   identity: "upstream_token_concatenated_without_its_grammar_encoding" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an upstream grammar's token is built by concatenating a raw value, and read back by splitting on a delimiter the raw value may contain** (invalid state: a wire string that the upstream grammar parses differently from what the writer meant, or refuses outright; harm: the first live write hits the wrong range or is rejected, and the reader refuses the spelling the upstream actually returns, so the lane cannot converge at all).",
@@ -17,10 +19,17 @@ data upstream_token_concatenated_without_its_grammar_encoding: RecurringFailureM
     "A SECOND INSTANCE OF THE SAME CLASS, ONE LEVEL UP: the first repair asserted that an embedded `'` is doubled as `''`, and its witnesses pinned the guide's own undoubled specimen `'Jon's_Data'!A1:D5` as a refusal. Those witnesses proved the codec's internal consistency, not its fidelity to the upstream it cites. The escape was a guess standing where the grammar was unobserved, so the encoder now refuses an apostrophe title (`A1TitleApostropheUnsupported`), the decoder reads only what both spellings agree on and refuses `''` as ambiguous, and the open question is carried as `extdeps.google.sheets` `a1_title_apostrophe_spelling_standing` with its discriminator. A codec's fixtures must include the upstream document's own specimens verbatim.",
 
     "Found at rung 1, mitigatable: only a review caught it. Now rung 2, mechanically preventable, for this grammar: one codec, `extdeps.google.sheets` `a1_range_encode` and `a1_range_title_decode`, which every A1 writer and reader in the lane consumes, and whose claims each go red under a named mutation (skip quoting, admit an apostrophe, refuse the guide's specimen, split on `!` before decoding). The ceiling is structural (rung 3/4): a qualified-range carrier whose only constructor is the codec, so a raw `String` range is unwritable. The next trigger is `ValueRange.range` typed as that carrier rather than `String`, and it is open.",
+
+    "SCOPE GENERALIZED, THIRD INSTANCE: the delimiter need not belong to an EXTERNAL grammar. Our own plan-artifact format is a grammar too: plan.txt joins observed free text (a cap drop-in's content) and reserved section markers in one channel, and a reader that recovers a section by splitting on a marker the free text can spell has the same defect. Specimen (found 2026-10-18 in side-chat review of #14329, landed): the plan reader `fleet_converge_planned_section_rows` in `gunbc.fleet.fleet_converge_plan` took the text before the FIRST end marker and after the LAST start marker while `CapMember.content` entered the earlier block unescaped, so a cap carrying a forged monotone section saying a runner unit was pending was selected over the genuine later section saying complete, and a complete-to-pending drift admitted at the gate in front of `RemoveDirectoryTree`. A second leg: the row decoder discarded extra `=` fields, so `complete=bogus` decoded as complete.",
+
+    "RUNG HONESTY FOR THAT SPECIMEN, three separate facts. (1) The reader as proposed was BELOW THE LADDER (section 4b): it silently admitted a wrong answer on a destructive gate, which is not mitigation. (2) It was detected by review, not by any check. (3) After #14329 it is mechanically preventable: exactly-once boundaries counted with the same matching as the extraction, typed refusal on missing, duplicated, embedded or misordered boundaries, a decoder that consumes the whole row, and REDs through the real plan producer including a marker embedded mid-line in cap content.",
+
+    "CEILING AND TRIGGER FOR THE PLAN-ARTIFACT SPECIMEN: structurally impossible, and the trigger names the construction: every producer of plan.txt writes through ONE total encoder, the reader uses its unambiguous inverse, and no raw-framing path bypasses it. The alternative construction is apply consuming action-bound typed premises, derived from the authorized `RemoveDirectoryTree` actions rather than recovered from text.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "extdeps.google.sheets", decl_name: "a1_range_title_decode", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.google.sheets", decl_name: "a1_range_encode", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_plan", decl_name: "fleet_converge_planned_section_rows", field: WholeDeclaration },
   ],
 }

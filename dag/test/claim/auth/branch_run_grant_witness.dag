@@ -19,7 +19,7 @@ import gunbc.auth.branch_dispatch_federation {
   mtcollins1_boot_run_scoped_federation, mtcollins1_boot_run_scoped_service_account_id, select_boot_credential_source,
   boot_credential_effect, boot_credential_source_from_selection, boot_credential_source_from_pattern,
   ReviewedMainDedicatedFederation, RunScopedApprovedGrant, BootCredentialSourceSelected, BootCredentialSourceRefused,
-  BootCredentialStanding, run_scoped_federation_named,
+  BootCredentialStanding, run_scoped_federation_named, run_scoped_modes, run_scoped_account_id,
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
@@ -193,19 +193,47 @@ test fn a_present_cell_holds_and_an_unjudgeable_owned_cell_refuses() -> Bool {
 // non-main boot run maps to mtcollins1-boot-run; the hetzner read mode is eligible on any ref.
 test fn boot_mode_eligibility_follows_the_credential_selection_by_ref() -> Bool {
   match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "main") { Present { value: _ } => false  Absent => true }
-    && match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "integration/mtcollins-boot") { Present { value: m } => (m.account_id as String) == "mtcollins1-boot-run"  Absent => false }
-    && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "main") { Present { value: m } => (m.account_id as String) == "hetzner-cloud-control"  Absent => false }
+    && match run_scoped_mode_eligible(mode: "mtcollins1_boot", branch: "integration/mtcollins-boot") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "mtcollins1-boot-run"  Absent => false }
+    && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "main") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "hetzner-cloud-control"  Absent => false }
     && match run_scoped_mode_eligible(mode: "hetzner_cloud_server_read", branch: "work/x") { Present { value: _ } => true  Absent => false }
-    && match run_scoped_mode_eligible(mode: "apply", branch: "work/x") { Present { value: _ } => false  Absent => true }
+    && match run_scoped_mode_eligible(mode: "microvm_network_apply", branch: "work/x") { Present { value: _ } => false  Absent => true }
+}
+
+// THE FLEET-IDENTITY ROWS ARE GRANTED ONLY OFF MAIN (main signs in through the main-only pool), each to
+// its own account; plan reuses the standing fleet account, apply gets its own.
+test fn fleet_identity_modes_are_granted_off_main_only() -> Bool {
+  all(["plan", "apply"], mode =>
+    match run_scoped_mode_eligible(mode: mode, branch: "main") { Present { value: _ } => false  Absent => true }
+      && match run_scoped_mode_eligible(mode: mode, branch: "work/x") { Present { value: _ } => true  Absent => false })
+    && match run_scoped_mode_named(mode: "plan") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "fleet-cloud-convergence"  Absent => false }
+    && match run_scoped_mode_named(mode: "apply") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "fleet-apply-run"  Absent => false }
+    // dashboard_deploy is deliberately not a row (its job holds no credential, so a grant would gate nothing IAM enforces).
+    && match run_scoped_mode_named(mode: "dashboard_deploy") { Present { value: _ } => false  Absent => true }
+    && match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "work/x") { Present { value: _ } => false  Absent => true }
+}
+
+// RED: every row resolves to a federation (a row without one would be a grant nothing can plan), the
+// new accounts hold no standing impersonation and are converge targets, and the plan row's account is
+// not a second converge target.
+test fn every_row_resolves_and_the_new_accounts_have_no_standing_way_in() -> Bool {
+  all(run_scoped_modes(), r => match run_scoped_federation_named(account_id: run_scoped_account_id(m: r) as String) { Present { value: _ } => true  Absent => false })
+    && all(["fleet-apply-run"], id =>
+      match run_scoped_federation_named(account_id: id) {
+        Absent => false
+        Present { value: f } => impersonation_cells(f: f).length() == 0
+          && match standing_principal_set(f: f) { Present { value: _ } => false  Absent => true }
+          && any(gcp_iam_converge_targets, t => (t.service_account as String) == (f.service_account as String))
+          && all(f.secret_grants, g => (g.target.secret as String) == "fleet-automation-ssh-key")
+      })
+    && count(filter(gcp_iam_converge_targets, t => (t.service_account_id as String) == "fleet-cloud-convergence")) == 1
 }
 
 // MAIN'S TABLE DECIDES THE ACCOUNT: the read mode maps to hetzner-cloud-control, anything else to nothing.
 test fn only_a_declared_mode_reaches_a_declared_account() -> Bool {
   mode_of_run_title(title: title) == "hetzner_cloud_server_read"
-    && match run_scoped_mode_named(mode: "hetzner_cloud_server_read") { Present { value: m } => (m.account_id as String) == "hetzner-cloud-control"  Absent => false }
-    && match run_scoped_mode_named(mode: "mtcollins1_boot") { Present { value: m } => (m.account_id as String) == (mtcollins1_boot_run_scoped_service_account_id as String)  Absent => false }
-    && match run_scoped_mode_named(mode: "apply") { Present { value: _ } => false  Absent => true }
-    && match run_scoped_federation_named(account_id: "fleet-cloud-convergence") { Present { value: _ } => false  Absent => true }
+    && match run_scoped_mode_named(mode: "hetzner_cloud_server_read") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "hetzner-cloud-control"  Absent => false }
+    && match run_scoped_mode_named(mode: "mtcollins1_boot") { Present { value: m } => (run_scoped_account_id(m: m) as String) == (mtcollins1_boot_run_scoped_service_account_id as String)  Absent => false }
+    && match run_scoped_mode_named(mode: "microvm_network_apply") { Present { value: _ } => false  Absent => true }
 }
 
 fn grant_secret_versions(grants: List<SecretAccessGrant>) -> List<String> {

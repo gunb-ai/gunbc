@@ -7,7 +7,9 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
-import std.algebra { trim }
+import std.algebra { trim, skip }
+import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
+import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
@@ -33,12 +35,11 @@ import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_au
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
-  dispatch_credential_snapshot_discard,
   CredentialSnapshotTombstoned,
   CredentialSnapshotTombstoneFailed,
 }
 import gunbc.dispatch_credential_acquisition {
-  credential_admit_reader_or_discard,
+  credential_admit_reader_or_discard, credential_discard_taken_attempt,
   CredentialLaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
@@ -67,7 +68,7 @@ import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
 }
-import extdeps.git { shape_git_merge_base_args }
+import extdeps.git { shape_git_merge_base_args, shape_git_worktree_remove_argv, shape_git_branch_remote_contains_head_args }
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -256,7 +257,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
-import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
+import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
@@ -673,6 +674,14 @@ import gunbc.roadmap.roadmap_session_placement {
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
+import gunbc.roadmap.roadmap_attempt_worktree_claim {
+  WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add,
+  ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
+  ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
+  ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
+  WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
+}
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
@@ -726,6 +735,9 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused,
   FilesystemReadSucceeded,
   filesystem_read_outcome,
+  filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
+  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
   filesystem_file_observation,
   FilesystemFileObservation,
   FilesystemEntryPresence,
@@ -1653,7 +1665,127 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
     SessionStoresResolved { stores } =>
       match belt_session_slots_ensure(instance: instance, stores: stores) {
         Present { value: why } => SessionSettlePassRefused { detail: why }
-        Absent => session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores))
+        Absent => belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
+      }
+  }
+}
+
+// THE WORKTREE CLAIM IS RECORDED BEFORE `git worktree add` (gunbc.roadmap.roadmap_attempt_worktree_claim): the
+// attempt's identity, derived path and launch deadline, written create-only and read back. Any other
+// standing refuses the spawn step, so no tree is created that a record does not name.
+fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> WorktreeClaimWritten {
+  match now_epoch_seconds() {
+    Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the worktree claim has no launch deadline" }
+    Present { value: now } =>
+      worktree_claim_record_before_add(
+        root: worktree_claim_slots_root_of(instance: instance),
+        claim: worktree_claim_new(
+          node_id: node_id, attempt_key: attempt_key,
+          worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
+          opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+  }
+}
+
+// HOST ADAPTERS for the claim ensure. The tree is read through the existing listing-based observation; content
+// and removal go through the trusted git route (belt_commit_git), so no other git invocation is introduced.
+// The tree is observed at the path the claim DERIVES, through the same listing-and-gitfile observation the spawn
+// readback uses: its directory name is read back out of the derived path, never taken from the record.
+fn belt_claim_tree_at(instance: HostDashboardInstance, path: String) -> ClaimTree {
+  let root = dashboard_instance_dispatch_worktree_root(instance: instance) as String
+  let name = replace(path, join([root, "/"], ""), "")
+  let listing = Filesystem.List(path: root)
+  let read = Filesystem.Read(path: join([path, "/.git"], ""))
+  match attempt_worktree_observation_of(
+    path: path,
+    marker: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error),
+      name: name,
+      path: join([path, "/.git"], ""),
+      read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+    ),
+  ) {
+    AttemptWorktreePresent { path: _ } => ClaimTreePresent
+    AttemptWorktreeAbsent { path: _ } => ClaimTreeAbsent
+    AttemptWorktreeUnobserved { path: _, cause } => ClaimTreeUnobserved { detail: cause }
+  }
+}
+
+fn belt_claim_content_of(instance: HostDashboardInstance, worktree: String) -> ClaimContent {
+  match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_status_porcelain_nul_args()) {
+    ExecOk { stdout } =>
+      if trim(stdout) != "" {
+        ClaimContentDirty { detail: "git status lists changes" }
+      } else {
+        match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_branch_remote_contains_head_args()) {
+          ExecOk { stdout: remotes } =>
+            if trim(remotes) != "" { ClaimContentPushed } else { ClaimContentUnpushedCommits { detail: "no remote-tracking branch contains HEAD" } }
+          ExecFailed { program: _, exit_code: _, stderr } => ClaimContentUnobserved { detail: stderr }
+          ExecRefused { program: _, reason } => ClaimContentUnobserved { detail: reason }
+        }
+      }
+    ExecFailed { program: _, exit_code: _, stderr } => ClaimContentUnobserved { detail: stderr }
+    ExecRefused { program: _, reason } => ClaimContentUnobserved { detail: reason }
+  }
+}
+
+fn belt_claim_remove_tree(instance: HostDashboardInstance, repo_workdir: String, path: String) -> ClaimRemoval {
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+      args: shape_git_worktree_remove_argv(path: path as FilePath)),
+    workdir: repo_workdir,
+  ) {
+    ExecOk { stdout: _ } => ClaimRemoved
+    ExecFailed { program: _, exit_code: _, stderr } => ClaimRemoveDeclined { detail: stderr }
+    ExecRefused { program: _, reason } => ClaimRemoveUnexecuted { detail: reason }
+  }
+}
+
+// CAPTURE IS SETTLED AT THE COMMIT STEP: the head-bound commit-step record (belt_commit_outcome_persist), never
+// the absence of a capture file. An unobservable head or unreadable record is unknown, which keeps the tree.
+fn belt_claim_capture_of(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ClaimCapture {
+  match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key)) {
+    WorktreeHeadUnobserved { reason } => ClaimCaptureUnknown { detail: reason }
+    WorktreeHeadObserved { revision } =>
+      match belt_capture_absence_for_attempt(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, head_sha: revision as String) {
+        CaptureAbsent => ClaimCaptureSettled
+        CaptureForHead { capture: _ } => ClaimCaptureSettled
+        CaptureNotAttempted { reason } => ClaimCaptureOwed { detail: reason }
+        CaptureUnreadable { reason } => ClaimCaptureUnknown { detail: reason }
+      }
+  }
+}
+
+// THE BELT'S ONE CLAIM-ENSURE CALL, run after the activation ensure so the worker's standing is read after any
+// rollback. A refused store or clock is a refused pass, not a skipped one.
+fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores, settled: SessionSettlePass) -> SessionSettlePass {
+  match settled {
+    SessionSettlePassRefused { detail: _ } => settled
+    SessionSettlePassRan { settlements } =>
+      match now_epoch_seconds() {
+        Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
+        Present { value: now } =>
+          match worktree_claim_ensure_pass_at(
+            stores: stores,
+            claims_root: worktree_claim_slots_root_of(instance: instance),
+            host: instance.host_identity as String,
+            path_of: (n, k) => dispatch_worktree_path_for_instance(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
+            loaded_of: u => attempt_unit_observation(unit: u),
+            lifecycle_of: u => session_worker_unit_lifecycle_for_instance(instance: instance, unit: u),
+            now: now,
+            tree_of: p => belt_claim_tree_at(instance: instance, path: p),
+            content_of: p => belt_claim_content_of(instance: instance, worktree: p),
+            remove_tree: p => belt_claim_remove_tree(instance: instance, repo_workdir: instance.repo_root as String, path: p),
+            capture_of: (n, k) => belt_claim_capture_of(instance: instance, node_id: n, attempt_key: k),
+          ) {
+            WorktreeClaimPassRan { outcomes } =>
+              if any(outcomes, o => worktree_claim_outcome_is_red(o: o)) {
+                SessionSettlePassRefused { detail: worktree_claim_pass_wire(p: WorktreeClaimPassRan { outcomes: outcomes }) }
+              } else {
+                SessionSettlePassRan { settlements: settlements }
+              }
+            WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
+          }
       }
   }
 }
@@ -2312,7 +2444,7 @@ fn belt_snapshot_discarded_unless_consumed(
   match belt_snapshot_disposition(outcome: outcome) {
     SnapshotConsumedByChild => outcome
     SnapshotDiscardRequired =>
-      match dispatch_credential_snapshot_discard(snapshot: snapshot) {
+      match credential_discard_taken_attempt(snapshot: snapshot) {
         CredentialSnapshotTombstoned => outcome
         CredentialSnapshotTombstoneFailed { reason } =>
           SpawnFailed {
@@ -3255,6 +3387,16 @@ fn belt_spawn_admitted(
   let node = addressing.node
   let attempt_key = addressing.attempt_key
   let session_name = addressing.session_name
+  match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
+    WorktreeClaimNotRecorded { detail } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "worktree-claim",
+        detail: detail,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    WorktreeClaimRecorded =>
   match belt_exec_steps(
     steps: [
       BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
@@ -3403,6 +3545,7 @@ fn belt_spawn_admitted(
           }
       }
       }
+  }
   }
 }
 
@@ -8154,15 +8297,147 @@ fn belt_scm_persist_capture(mint: BeltScmMint) -> BeltScmCapture {
   }
 }
 
-// THE CANDIDATE CAPTURE SEQUENCE. The SCM capture comes FIRST: the candidate's authoritative
-// identity is minted into the project's envelope from the tree as it stands THEN, descending from
-// the seeded intake base, and only after that binding exists does the belt create the git commit
-// that realizes the same tree at the edge (verification checkout and, later, the publication
-// push). A failure anywhere is not swallowed into a checkpoint -- a git commit with no SCM
-// binding, or an SCM commit with no capture record, is a defect to stop on, typed, never a silent
-// unbound candidate. Because the SCM capture precedes the git commit and nothing is persisted
-// mid-sequence until the final save, a failure leaves the tree dirty and the envelope without the
-// candidate, so the next tick re-attempts the whole sequence cleanly.
+// THE CAPTURE INTENT. The candidate capture is two durable writes around one git commit (the SCM envelope
+// save, and the head-addressed capture record), so a kill between any two leaves a half: after the SCM save
+// the rerun mints a SECOND commit (double capture); after the git commit the tree is clean, the decision sees
+// nothing owed, and the capture record is never written (lost capture). The intent is written BEFORE the SCM
+// save, carries the minted ordinal and root locator plus the pre-commit head, and lives beside the capture
+// directory (not in it: the roster reads every file there as a capture of its own head). A rerun reads it:
+// head still at the recorded base means the commit has not happened (resume: reuse the persisted SCM commit if
+// the envelope already advanced past the intent's ordinal, else persist it); head moved means the commit
+// happened and the capture record is owed (complete it at the new head). The intent is cleared after the
+// capture record is written. This is part of the capture protocol, not a scaffold: it is the durable record
+// that makes the three-step capture resumable.
+type BeltCaptureIntent
+  = IntentAbsent
+  | IntentRead { capture: SubmissionCapture }
+  | IntentUnreadable { reason: String }
+
+type BeltIntentCompletion
+  = IntentNothingOwed
+  | IntentCompleted { head_sha: String }
+  | IntentCompletionFailed { detail: String }
+
+fn belt_capture_intent_dir(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "-intent"], "")
+}
+
+fn belt_capture_intent_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key), "/intent.json"], "")
+}
+
+fn belt_capture_intent_read(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltCaptureIntent {
+  let dir = belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
+    ExecFailed { program, exit_code, stderr } =>
+      IntentUnreadable { reason: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      IntentUnreadable { reason: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout: _ } => {
+      let listing = Filesystem.List(path: dir)
+      if !listing.success {
+        IntentUnreadable { reason: join(["the capture intent directory could not be listed: ", dir, " (", listing.error, ")"], "") }
+      } else if !filesystem_listing_names_entry(listing: listing.entries, name: "intent.json") {
+        IntentAbsent
+      } else {
+        let read = Filesystem.Read(path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key))
+        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+          FilesystemReadRefused { error } => IntentUnreadable { reason: join(["the capture intent was listed and then could not be read: ", error], "") }
+          FilesystemReadSucceeded { content } =>
+            match submission_capture_decode(text: content) {
+              CaptureNotDecodable { reason } => IntentUnreadable { reason: join(["the capture intent does not decode: ", reason], "") }
+              CaptureDecoded { capture } => IntentRead { capture: capture }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn belt_capture_intent_write(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String, capture: SubmissionCapture) -> String? {
+  let dir = belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
+      args: ["-d", "-m", "0700", dir],
+    ),
+    workdir: worktree,
+  ) {
+    ExecFailed { program: _, exit_code: _, stderr } => Present { value: join(["intent directory: ", stderr], "") }
+    ExecRefused { program: _, reason } => Present { value: join(["intent directory refused: ", reason], "") }
+    ExecOk { stdout: _ } => {
+      let write = Filesystem.Write(
+        path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        content: submission_capture_text(capture: capture),
+      )
+      if write.success { none } else { Present { value: write.error } }
+    }
+  }
+}
+
+fn belt_capture_intent_clear(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
+  let gone = Filesystem.Delete(path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key))
+  if gone.success { none } else { Present { value: gone.error } }
+}
+
+fn belt_capture_record_write(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String, intent: SubmissionCapture) -> String? {
+  let write = Filesystem.Write(
+    path: join([
+      belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      "/",
+      submission_capture_basename(head_sha: head),
+    ], ""),
+    content: submission_capture_text(capture: SubmissionCapture {
+      head_sha: head,
+      scm_repository: intent.scm_repository,
+      scm_commit_ordinal: intent.scm_commit_ordinal,
+      scm_root_locator: intent.scm_root_locator,
+      digest: intent.digest,
+      submission: intent.submission,
+    }),
+  )
+  if write.success { none } else { Present { value: write.error } }
+}
+
+// A rerun's first move: if an intent names a base head the worktree has moved past, the git commit happened
+// and the capture record is owed at the new head (or already written, then only the intent is stale).
+fn belt_capture_intent_complete(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltIntentCompletion {
+  match belt_capture_intent_read(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key) {
+    IntentAbsent => IntentNothingOwed
+    IntentUnreadable { reason } => IntentCompletionFailed { detail: reason }
+    IntentRead { capture } =>
+      match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+        WorktreeHeadUnobserved { reason } =>
+          IntentCompletionFailed { detail: join(["a capture intent is owed but the head could not be observed: ", reason], "") }
+        WorktreeHeadObserved { revision } =>
+          if (revision as String) == capture.head_sha {
+            IntentNothingOwed
+          } else {
+            match belt_submission_capture_for_head(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, head_sha: revision as String) {
+              CaptureUnreadable { reason } => IntentCompletionFailed { detail: reason }
+              CaptureForHead { capture: _ } =>
+                match belt_capture_intent_clear(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+                  Present { value: e } => IntentCompletionFailed { detail: join(["the capture is recorded but its intent could not be cleared: ", e], "") }
+                  Absent => IntentNothingOwed
+                }
+              _ =>
+                match belt_capture_record_write(instance: instance, node_id: node_id, attempt_key: attempt_key, head: revision as String, intent: capture) {
+                  Present { value: e } => IntentCompletionFailed { detail: join(["the commit exists at ", revision as String, " but its capture record could not be written: ", e], "") }
+                  Absent =>
+                    match belt_capture_intent_clear(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+                      Present { value: e } => IntentCompletionFailed { detail: join(["the capture is recorded but its intent could not be cleared: ", e], "") }
+                      Absent => IntentCompleted { head_sha: revision as String }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE CANDIDATE CAPTURE SEQUENCE: head observe, mint (pure), intent, SCM save, git commit, head observe,
+// capture record, clear intent. A rerun after a kill at any seam resumes from the intent
+// (belt_capture_intent_complete for the post-commit half; here for the pre-commit half).
 fn belt_commit_capture_candidate(
   instance: HostDashboardInstance,
   worktree: String,
@@ -8172,68 +8447,120 @@ fn belt_commit_capture_candidate(
   submission: WorkerSubmission,
   digest: String,
 ) -> BeltCommitOutcome {
-  match belt_scm_persist_capture(
-    mint: belt_scm_capture_candidate_tree(
-      instance: instance,
-      worktree: worktree,
-      node_id: node_id as RoadmapNodeId,
-      attempt_key: attempt_key,
-      message: message as String,
-      committed_revision: none,
-    ),
+  let nid = node_id as RoadmapNodeId
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadUnobserved { reason } =>
+      CommitFailed { node_id: node_id, detail: join(["the pre-commit head could not be observed, so no capture intent can name its base: ", reason], "") }
+    WorktreeHeadObserved { revision: base } =>
+      match belt_capture_intent_read(instance: instance, worktree: worktree, node_id: nid, attempt_key: attempt_key) {
+        IntentUnreadable { reason } => CommitFailed { node_id: node_id, detail: reason }
+        IntentAbsent =>
+          belt_capture_candidate_mint(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, submission: submission, digest: digest, base: base as String, prior: Absent)
+        IntentRead { capture } =>
+          belt_capture_candidate_mint(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, submission: submission, digest: digest, base: base as String, prior: Present { value: capture })
+      }
+  }
+}
+
+fn belt_capture_candidate_mint(
+  instance: HostDashboardInstance,
+  worktree: String,
+  node_id: String,
+  attempt_key: String,
+  message: NonEmptyStr,
+  submission: WorkerSubmission,
+  digest: String,
+  base: String,
+  prior: SubmissionCapture?,
+) -> BeltCommitOutcome {
+  match belt_scm_capture_candidate_tree(
+    instance: instance,
+    worktree: worktree,
+    node_id: node_id as RoadmapNodeId,
+    attempt_key: attempt_key,
+    message: message as String,
+    committed_revision: none,
   ) {
-    ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
-    ScmCapturePoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
-    ScmCandidateCaptured { repository_path, commit_ordinal, commit_root_locator } =>
-      match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
-        StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
-        StagedCommitRecorded =>
-          match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-            WorktreeHeadUnobserved { reason } =>
+    ScmCaptureMintRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
+    ScmCaptureMintPoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
+    ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } => {
+      let minted = SubmissionCapture {
+        head_sha: base,
+        scm_repository: path,
+        scm_commit_ordinal: commit_ordinal,
+        scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
+        digest: digest,
+        submission: submission,
+      }
+      let persisted_before = match prior {
+        Present { value: p } => commit_ordinal > p.scm_commit_ordinal && p.head_sha == base
+        Absent => false
+      }
+      if persisted_before {
+        match prior {
+          Present { value: p } => belt_capture_candidate_commit(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, intent: p)
+          Absent => CommitFailed { node_id: node_id, detail: "unreachable: a persisted capture without an intent" }
+        }
+      } else {
+        match belt_capture_intent_write(instance: instance, worktree: worktree, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, capture: minted) {
+          Present { value: e } =>
+            CommitFailed { node_id: node_id, detail: join(["the capture intent could not be written, so the SCM capture was not taken: ", e], "") }
+          Absent =>
+            match belt_scm_persist_capture(mint: ScmCandidateMinted {
+              repository: repository,
+              generation: generation,
+              path: path,
+              commit_ordinal: commit_ordinal,
+              commit_root_locator: commit_root_locator,
+            }) {
+              ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
+              ScmCapturePoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
+              ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } =>
+                belt_capture_candidate_commit(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, intent: minted)
+            }
+        }
+      }
+    }
+  }
+}
+
+fn belt_capture_candidate_commit(
+  instance: HostDashboardInstance,
+  worktree: String,
+  node_id: String,
+  attempt_key: String,
+  message: NonEmptyStr,
+  intent: SubmissionCapture,
+) -> BeltCommitOutcome {
+  match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
+    StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
+    StagedCommitRecorded =>
+      match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+        WorktreeHeadUnobserved { reason } =>
+          CommitFailed {
+            node_id: node_id,
+            detail: join([
+              "the candidate commit was created but its head could not be observed; the capture intent is kept and the next pass completes it: ",
+              reason,
+            ], ""),
+          }
+        WorktreeHeadObserved { revision } =>
+          match belt_capture_record_write(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, head: revision as String, intent: intent) {
+            Present { value: e } =>
               CommitFailed {
                 node_id: node_id,
                 detail: join([
-                  "the candidate commit was created but its head could not be observed, so no capture record binds it and it must not advance silently: ",
-                  reason,
+                  "the candidate commit ", revision as String,
+                  " was created but its capture record could not be written (", e,
+                  "); the capture intent is kept and the next pass completes it",
                 ], ""),
               }
-            WorktreeHeadObserved { revision } => {
-              let write = Filesystem.Write(
-                path: join([
-                  belt_attempt_submission_dir_for_instance(
-                    instance: instance,
-                    node_id: node_id,
-                    attempt_key: attempt_key,
-                  ),
-                  "/",
-                  submission_capture_basename(head_sha: revision as String),
-                ], ""),
-                content: submission_capture_text(capture: SubmissionCapture {
-                  head_sha: revision as String,
-                  scm_repository: repository_path,
-                  scm_commit_ordinal: commit_ordinal,
-                  scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
-                  digest: digest,
-                  submission: submission,
-                }),
-              )
-              if write.success {
-                CandidateCaptured {
-                  node_id: node_id,
-                  head_sha: revision as String,
-                  message: message as String,
-                }
-              } else {
-                CommitFailed {
-                  node_id: node_id,
-                  detail: join([
-                    "the candidate commit ", revision as String,
-                    " was created but its capture record could not be written (", write.error,
-                    "): the head is a candidate with no binding, and the belt refuses to let it advance silently",
-                  ], ""),
-                }
+            Absent =>
+              match belt_capture_intent_clear(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key) {
+                Present { value: e } =>
+                  CommitFailed { node_id: node_id, detail: join(["the capture is recorded but its intent could not be cleared: ", e], "") }
+                Absent => CandidateCaptured { node_id: node_id, head_sha: revision as String, message: message as String }
               }
-            }
           }
       }
   }
@@ -8483,7 +8810,17 @@ fn belt_commit_outcome_persist(
         ),
       )),
     )
-    outcome
+    if write.success {
+      outcome
+    } else {
+      CommitFailed {
+        node_id: node_id,
+        detail: join([
+          "the commit step's outcome record could not be written (", write.error,
+          "): the step is unsettled at this head and the worktree release waits on it",
+        ], ""),
+      }
+    }
   }
 }
 
@@ -8583,6 +8920,25 @@ fn belt_commit_attempt_compute_for_instance(
     node_id: node_id,
     attempt_key: progress.attempt_key,
   )
+  match belt_capture_intent_complete(instance: instance, worktree: worktree, node_id: node_id, attempt_key: progress.attempt_key) {
+    IntentCompleted { head_sha } =>
+      CandidateCaptured {
+        node_id: node_id,
+        head_sha: head_sha,
+        message: belt_candidate_commit_message(node_id: node_id as String, attempt_key: progress.attempt_key) as String,
+      }
+    IntentCompletionFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
+    IntentNothingOwed => belt_commit_attempt_decide(instance: instance, progress: progress, worktree: worktree)
+  }
+  }
+}
+
+fn belt_commit_attempt_decide(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+  worktree: String,
+) -> BeltCommitOutcome {
+  let node_id = progress.node_id
   match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_status_porcelain_nul_args()) {
     ExecFailed { program, exit_code, stderr } =>
       CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "status", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
@@ -8638,7 +8994,6 @@ fn belt_commit_attempt_compute_for_instance(
               }
           }
       }
-  }
   }
 }
 
@@ -15122,17 +15477,19 @@ fn belt_attempt_obligation_receipt_read(instance: HostDashboardInstance, node_id
 //
 // A RECORDED EXIT IS HANDED TO ITS ATTEMPT'S OBLIGATION UNIT, and that is all the drain does (dogfood
 // intervention #4: with no timer, a worker's exit is what causes its capture to run). The deployment's
-// exit path unit starts the drain while the inbox is not empty. Each entry leaves the inbox in the
-// same pass: to `queued` once its attempt's unit was started or was already running (the unit owns
-// it now), or to `refused` when it is not a record or its unit could not be started -- a refused
-// entry stays on disk, because the exit it records still happened and the process observer still
-// reads it. An entry is never left in the inbox, so the path unit goes quiet.
+// exit path unit starts the drain while the inbox is not empty. Each entry is CLAIMED in the same pass:
+// to `queued` when it is a record (the sweep then hands its attempt to the unit), or to `refused` when it
+// is not -- a refused entry stays on disk, because the exit it records still happened and the process
+// observer still reads it. An entry the drain cannot move is BeltExitEntryUnmovable: typed, counted,
+// failing the pass, left on disk, and it has handed nothing to anyone.
 //
 // A WORKER'S EXIT ALSO QUEUES LAUNCH: its slot is free, so the ready frontier may admit the next
 // attempt. A reviewer's or auditor's exit does not -- it frees no worker capacity.
 type BeltExitDrainEntry
   = BeltExitEntryHanded { entry: String, enqueue: BeltObligationEnqueue }
+  | BeltExitEntryClaimed { entry: String }
   | BeltExitEntryRefused { entry: String, reason: String }
+  | BeltExitEntryUnmovable { entry: String, step: String, cause: String }
 
 type BeltExitDrain
   = BeltExitDrained { entries: List<BeltExitDrainEntry>, launch: BeltObligationEnqueue? }
@@ -15154,36 +15511,28 @@ fn belt_exit_entry_move_at(root: String, entry: String, from: HostSpoolStage, to
   }
 }
 
-// THE DRAIN OVER A SPOOL ROOT WITH ITS HAND-OFF SUPPLIED. Production passes the instance root and the
-// real enqueue (belt_attempt_obligations_enqueue, belt_instance_obligation_enqueue); the wet witness
-// passes a temp root and a recording hand-off, so the listing, the decode and every move are the real
-// ones and only starting a unit in a user manager is supplied.
-fn belt_exit_entry_drain_at(root: String, entry: String, enqueue: fn(String, String) -> BeltObligationEnqueue) -> BeltExitDrainEntry {
+// THE DRAIN'S ONLY ENTRY OPERATION IS THE CLAIM: inbox -> queued (or inbox -> refused for a name that is
+// not a record). CLAIM FIRST, then hand off: `queued` is the durable record of a pending hand-off and
+// belt_exit_queued_sweep_at, run in the same pass after every claim, is the SOLE hand-off. The earlier
+// shape enqueued the attempt's obligation and only then moved the entry, so a move that failed left an
+// effect the next pass repeated (refusal_decided_after_a_mutation). A claim that fails has no effect to
+// repeat: the entry is BeltExitEntryUnmovable, typed and counted, and stays on disk as evidence.
+//
+// THE MOVE IS SUPPLIED. Production passes belt_exit_entry_move_at; a witness passes a move that refuses a
+// named entry, because an entry the drain's principal cannot rename (a root-owned directory) is not
+// authorable in unprivileged CI.
+fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitDrainEntry {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } =>
-      match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitRefused) {
+      match move(root, entry, AttemptExitInbox, AttemptExitRefused) {
         Absent => BeltExitEntryRefused { entry: entry, reason: join(["not an exit record: ", reason], "") }
-        Present { value: why } => BeltExitEntryRefused { entry: entry, reason: join(["not an exit record (", reason, ") and it could not be moved out of the inbox: ", why], "") }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: "inbox -> refused", cause: why }
       }
-    AttemptExitEntryDecoded { record } => {
-      let handed = enqueue(record.node_id, record.attempt_key)
-      match handed {
-        BeltObligationEnqueueRefused { unit: _, reason } =>
-          match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitRefused) {
-            Absent => BeltExitEntryRefused { entry: entry, reason: reason }
-            Present { value: why } => BeltExitEntryRefused { entry: entry, reason: join([reason, "; and it could not be moved out of the inbox: ", why], "") }
-          }
-        BeltObligationStarted { unit: _ } => belt_exit_entry_handed_at(root: root, entry: entry, enqueue: handed)
-        BeltObligationHeld { unit: _ } => belt_exit_entry_handed_at(root: root, entry: entry, enqueue: handed)
+    AttemptExitEntryDecoded { record: _ } =>
+      match move(root, entry, AttemptExitInbox, AttemptExitQueued) {
+        Absent => BeltExitEntryClaimed { entry: entry }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: "inbox -> queued", cause: why }
       }
-    }
-  }
-}
-
-fn belt_exit_entry_handed_at(root: String, entry: String, enqueue: BeltObligationEnqueue) -> BeltExitDrainEntry {
-  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitQueued) {
-    Absent => BeltExitEntryHanded { entry: entry, enqueue: enqueue }
-    Present { value: why } => BeltExitEntryRefused { entry: entry, reason: join(["its obligation was handed to its unit, but the entry could not be moved to queued: ", why], "") }
   }
 }
 
@@ -15199,7 +15548,7 @@ fn belt_exit_entry_is_worker(entry: String) -> Bool {
 // hook's `obligation` entry (the unit ended while the manager was up) and the drain's own start (boot,
 // where no hook ran) -- so a lone orphaned claim recovers with no exit, answer, launch or operator
 // action. A live unit keeps its claim; an unreadable manager leaves it and says so.
-fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> AttemptUnitObservation) -> List<BeltExitDrainEntry> {
+fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
     AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "running", reason: reason }]
     AttemptExitStageNames { names } =>
@@ -15209,17 +15558,17 @@ fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> A
           match observe(record.node_id, record.attempt_key) {
             AttemptUnitActive => [] as List<BeltExitDrainEntry>
             AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: n, reason: join(["the user manager could not say whether the claiming unit is live: ", reason], "") }]
-            AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n)
-            AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n)
+            AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
+            AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
           }
       })
   }
 }
 
-fn belt_exit_orphan_requeue_at(root: String, entry: String) -> List<BeltExitDrainEntry> {
-  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitRunning, to: AttemptExitQueued) {
+fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+  match move(root, entry, AttemptExitRunning, AttemptExitQueued) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryRefused { entry: entry, reason: join(["an orphaned claim could not be returned to queued: ", why], "") }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: "running -> queued", cause: why }]
   }
 }
 
@@ -15233,42 +15582,50 @@ fn belt_exit_entry_is_obligation(entry: String) -> Bool {
 // THE OBLIGATION ENTRY IS A WAKE-UP, NOT A HAND-OFF. Consumed (inbox -> done) only once its attempt's unit
 // is gone -- the hook writes while the unit is still stopping, and consuming it then would lose the very
 // rescue it exists for; a live unit leaves it in the inbox and the level fires again. It is never enqueued.
-fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation) -> List<BeltExitDrainEntry> {
+fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: entry, reason: reason }]
     AttemptExitEntryDecoded { record } =>
       match observe(record.node_id, record.attempt_key) {
         AttemptUnitActive => [] as List<BeltExitDrainEntry>
         AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
-        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry)
-        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry)
+        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
       }
   }
 }
 
-fn belt_exit_obligation_entry_consume_at(root: String, entry: String) -> List<BeltExitDrainEntry> {
-  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitDone) {
+fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+  match move(root, entry, AttemptExitInbox, AttemptExitDone) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryRefused { entry: entry, reason: join(["the obligation entry could not be moved to done: ", why], "") }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: "inbox -> done", cause: why }]
   }
 }
 
 fn belt_exit_drain_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation) -> BeltExitDrain {
+  belt_exit_drain_moving_at(root: root, enqueue: enqueue, launch: launch, observe: observe, move: (r, e, from, to) => belt_exit_entry_move_at(root: r, entry: e, from: from, to: to))
+}
+
+// The sweep runs after every claim in this pass: the claims are bound first, and the sweep lists `queued`
+// afterwards, so a claimed entry is handed in the pass that claimed it. A worker's launch is owed only for
+// a worker entry whose claim succeeded.
+fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitDrain {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
     AttemptExitStageUnreadable { reason } => BeltExitDrainRefused { reason: reason }
     AttemptExitStageNames { names: inbox } => {
-      let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe)
+      let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe, move: move)
       let rescues = inbox |> filter(n => belt_exit_entry_is_obligation(entry: n))
       let names = inbox |> filter(n => !belt_exit_entry_is_obligation(entry: n))
+      let rescued = rescues |> flat_map(n => belt_exit_obligation_entry_at(root: root, entry: n, observe: observe, move: move))
+      let claims = names |> map(n => belt_exit_entry_drain_at(root: root, entry: n, move: move))
+      let swept = belt_exit_queued_sweep_at(root: root, enqueue: enqueue)
+      let claimed_a_worker = any(claims, c => match c {
+        BeltExitEntryClaimed { entry } => belt_exit_entry_is_worker(entry: entry)
+        _ => false
+      })
       BeltExitDrained {
-        entries: concat(concat(reconciled, rescues |> flat_map(n => belt_exit_obligation_entry_at(root: root, entry: n, observe: observe))), concat(
-          names |> map(n => belt_exit_entry_drain_at(root: root, entry: n, enqueue: enqueue)),
-          belt_exit_queued_sweep_at(root: root, skip: names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
-            AttemptExitEntryDecoded { record } => [join([record.node_id, "/", record.attempt_key], "")]
-            AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<String>
-          }), enqueue: enqueue),
-        )),
-        launch: if any(names, n => belt_exit_entry_is_worker(entry: n)) { Present { value: launch() } } else { none },
+        entries: concat(concat(reconciled, rescued), concat(claims, swept)),
+        launch: if claimed_a_worker { Present { value: launch() } } else { none },
       }
     }
   }
@@ -15286,7 +15643,9 @@ fn belt_exit_drain_for_instance(instance: HostDashboardInstance) -> BeltExitDrai
 fn belt_exit_drain_entry_json(e: BeltExitDrainEntry) -> JsonValue {
   match e {
     BeltExitEntryHanded { entry, enqueue } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "handed", value: belt_obligation_enqueue_json(e: enqueue))])
+    BeltExitEntryClaimed { entry } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "claimed", value: json_string(s: "queued"))])
     BeltExitEntryRefused { entry, reason } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "refused", value: json_string(s: reason))])
+    BeltExitEntryUnmovable { entry, step, cause } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "unmovable", value: json_object(members: [json_kv(key: "step", value: json_string(s: step)), json_kv(key: "cause", value: json_string(s: cause))]))])
   }
 }
 
@@ -15310,6 +15669,8 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
       concat(
         entries |> flat_map(e => match e {
           BeltExitEntryRefused { entry, reason } => [join([entry, ": ", reason], "")]
+          BeltExitEntryUnmovable { entry, step, cause } => [join([entry, ": unmovable at ", step, " (stays on disk): ", cause], "")]
+          BeltExitEntryClaimed { entry: _ } => [] as List<String>
           BeltExitEntryHanded { entry: _, enqueue: _ } => [] as List<String>
         }),
         match launch {
@@ -15320,6 +15681,278 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
         },
       )
   }
+}
+
+// THE EXIT SPOOL'S LINE STOP (DESIGN section 5, the factory model: a refusal that fires stops the line).
+// The belt-exit path unit is a LEVEL on inbox and queued, so a drain that exits leaving an entry it
+// cannot move is started again at once -- a hot loop with no terminal (srv1, 2026-10-21). The terminal is
+// the drain's OWN verdict, not a rate: THIS PASS CLAIMED NOTHING AND AT LEAST ONE ENTRY WAS UNMOVABLE.
+// Then the drain writes the stall record into `stalled/` (create-only) and the belt-exit service is
+// skipped by `ConditionDirectoryNotEmpty=!stalled` until `belt_exit_stall_release_cli` clears it.
+// Entries that arrive while stalled WAIT, unconsumed; the record says so, and the backlog judge
+// (gunbc.roadmap.roadmap_launch_deployment_observe event_backlog_judge) reports them behind the head.
+type BeltExitStallEntry {
+  entry: String
+  step: String
+  cause: String
+}
+
+type BeltExitStallVerdict
+  = BeltExitNotStalled
+  | BeltExitStalled { unmovable: List<BeltExitStallEntry> }
+
+fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
+  match d {
+    BeltExitDrainRefused { reason: _ } => BeltExitNotStalled
+    BeltExitDrained { entries, launch: _ } => {
+      let claimed = entries |> filter(e => match e {
+        BeltExitEntryClaimed { entry: _ } => true
+        _ => false
+      })
+      let unmovable = entries |> flat_map(e => match e {
+        BeltExitEntryUnmovable { entry, step, cause } => [BeltExitStallEntry { entry: entry, step: step, cause: cause }]
+        _ => [] as List<BeltExitStallEntry>
+      })
+      if count(claimed) == 0 && count(unmovable) > 0 { BeltExitStalled { unmovable: unmovable } } else { BeltExitNotStalled }
+    }
+  }
+}
+
+data belt_exit_stall_schema: String = "gunbc.belt_exit_stall.v1"
+
+fn belt_exit_stall_entry_json(u: BeltExitStallEntry) -> JsonValue {
+  json_object(members: [json_kv(key: "entry", value: json_string(s: u.entry)), json_kv(key: "step", value: json_string(s: u.step)), json_kv(key: "cause", value: json_string(s: u.cause))])
+}
+
+fn belt_exit_stall_record_text(unmovable: List<BeltExitStallEntry>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: belt_exit_stall_schema)),
+    json_kv(key: "note", value: json_string(s: "entries that arrive while this record exists wait in the spool and are not consumed; release it with belt_exit_stall_release_cli once every entry below can leave")),
+    json_kv(key: "unmovable", value: json_array(elements: unmovable |> map(u => belt_exit_stall_entry_json(u: u)))),
+  ]))
+}
+
+type BeltExitStallRecord
+  = BeltExitStallRecorded
+  | BeltExitStallUnrecorded { reason: String }
+
+// create-only: a record already on disk is the line already stopped, and is kept as the evidence.
+fn belt_exit_stall_record_at(root: String, unmovable: List<BeltExitStallEntry>) -> BeltExitStallRecord {
+  let made = shell.Mkdir.Parents(path: attempt_exit_stalled_dir(instance_root: root) as FilePath)
+  if !made.success {
+    BeltExitStallUnrecorded { reason: "could not create the stalled directory" }
+  } else {
+    let path = attempt_exit_stall_record_path(instance_root: root)
+    let written = Filesystem.WriteCreateNew(path: path, content: belt_exit_stall_record_text(unmovable: unmovable))
+    match filesystem_create_new(path: path, success: written.success, error: written.error, error_kind: written.error_kind) {
+      FilesystemCreated { path: _ } => BeltExitStallRecorded
+      FilesystemCreateTargetOccupied { path: _ } => BeltExitStallRecorded
+      FilesystemCreateRefused { path: _, kind: _, error } => BeltExitStallUnrecorded { reason: error }
+      FilesystemCreateKindUnrecognized { path: _, observed: _, error } => BeltExitStallUnrecorded { reason: error }
+    }
+  }
+}
+
+type BeltExitStallRead
+  = BeltExitStallNone
+  | BeltExitStallHeld { entries: List<BeltExitStallEntry> }
+  | BeltExitStallUnreadable { reason: String }
+
+fn belt_exit_stall_entry_of_json(doc: JsonValue) -> BeltExitStallEntry? {
+  match json_required_string_member(doc: doc, key: "entry") {
+    JsonStringMemberRefused { reason: _ } => none
+    JsonStringMemberFound { value: entry } =>
+      match json_required_string_member(doc: doc, key: "step") {
+        JsonStringMemberRefused { reason: _ } => none
+        JsonStringMemberFound { value: step } =>
+          match json_required_string_member(doc: doc, key: "cause") {
+            JsonStringMemberRefused { reason: _ } => none
+            JsonStringMemberFound { value: cause } => Present { value: BeltExitStallEntry { entry: entry, step: step, cause: cause } }
+          }
+      }
+  }
+}
+
+// Fail closed: a record whose schema is another, or any of whose entries does not decode, is Unreadable --
+// never a shorter list of the entries that did.
+fn belt_exit_stall_of_json(doc: JsonValue) -> BeltExitStallRead {
+  match json_required_string_member(doc: doc, key: "schema") {
+    JsonStringMemberRefused { reason } => BeltExitStallUnreadable { reason: reason }
+    JsonStringMemberFound { value: schema } =>
+      if schema != belt_exit_stall_schema {
+        BeltExitStallUnreadable { reason: join(["the stall record has schema ", schema, ", not ", belt_exit_stall_schema], "") }
+      } else {
+        match json_object_unique_member(v: doc, key: "unmovable") {
+          JsonMemberFound { value: JsonArray { elements } } => {
+            let decoded: List<BeltExitStallEntry?> = elements |> map(el => belt_exit_stall_entry_of_json(doc: el))
+            let entries: List<BeltExitStallEntry> = decoded |> flat_map(d => match d { Present { value: u } => [u] Absent => [] as List<BeltExitStallEntry> })
+            if count(entries) == count(decoded) { BeltExitStallHeld { entries: entries } } else { BeltExitStallUnreadable { reason: "a stall record entry lacks its entry, step or cause" } }
+          }
+          _ => BeltExitStallUnreadable { reason: "the stall record has no unmovable array" }
+        }
+      }
+  }
+}
+
+fn belt_exit_stall_read_at(root: String) -> BeltExitStallRead {
+  let path = attempt_exit_stall_record_path(instance_root: root)
+  let read = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => BeltExitStallNone
+    FilesystemExactPathUnreadable { path: _, kind: _, error } => BeltExitStallUnreadable { reason: error }
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => BeltExitStallUnreadable { reason: error }
+    FilesystemExactPathRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentParsed { value: doc } => belt_exit_stall_of_json(doc: doc)
+        JsonDocumentUnreadable { gap: g } => BeltExitStallUnreadable { reason: json_document_gap_text(gap: g) }
+      }
+  }
+}
+
+// THE DRAIN'S TAIL: a stall verdict writes the record; a record that cannot be written is its own failure
+// (the line cannot be stopped, so the hot loop is not contained and the operator must be told).
+fn belt_exit_stall_failures(root: String, d: BeltExitDrain) -> List<String> {
+  match belt_exit_stall_verdict(d: d) {
+    BeltExitNotStalled => [] as List<String>
+    BeltExitStalled { unmovable: u } =>
+      match belt_exit_stall_record_at(root: root, unmovable: u) {
+        BeltExitStallRecorded => [join(["exit spool STALLED: ", to_string(value: count(u)), " entries cannot leave the spool; the belt-exit service is held until belt_exit_stall_release_cli (record: ", attempt_exit_stall_record_path(instance_root: root), ")"], "")]
+        BeltExitStallUnrecorded { reason } => [join(["BeltExitStallUnrecorded: the stall record could not be written (", reason, "); the exit drain will re-fire"], "")]
+      }
+  }
+}
+
+// THE MODELED OPERATOR ROUTE OUT OF A STALL. `release` re-attempts the claim of every recorded entry that is
+// still in the spool, with the same move the drain uses, unprivileged. Only when none is still unmovable does it
+// delete the stall record; the re-arm of the path unit is a separate privileged effect (belt_exit_stall_release_cli).
+// An entry that is no longer in the spool (cleared by a privileged operator) counts as left. A hand `rm` of the
+// record is not the route: it would re-arm the loop over an entry that still cannot leave.
+type BeltExitStallRelease
+  = BeltExitStallNotHeld
+  | BeltExitStallReleased { reclaimed: Int }
+  | BeltExitStallStillUnmovable { entries: List<BeltExitStallEntry> }
+  | BeltExitStallReleaseRefused { reason: String }
+
+fn belt_exit_stall_reclaim_entry_at(root: String, e: BeltExitStallEntry, inbox: List<String>, running: List<String>, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+  if any(inbox, n => n == e.entry) && !belt_exit_entry_is_obligation(entry: e.entry) {
+    [belt_exit_entry_drain_at(root: root, entry: e.entry, move: move)]
+  } else if any(running, n => n == e.entry) {
+    belt_exit_orphan_requeue_at(root: root, entry: e.entry, move: move)
+  } else {
+    [] as List<BeltExitDrainEntry>
+  }
+}
+
+fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitStallRelease {
+  match belt_exit_stall_read_at(root: root) {
+    BeltExitStallNone => BeltExitStallNotHeld
+    BeltExitStallUnreadable { reason } => BeltExitStallReleaseRefused { reason: join(["the stall record is unreadable: ", reason], "") }
+    BeltExitStallHeld { entries: recorded } =>
+      match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
+        AttemptExitStageUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
+        AttemptExitStageNames { names: inbox } =>
+          match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
+            AttemptExitStageUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
+            AttemptExitStageNames { names: running } => {
+              let attempts = recorded |> flat_map(e => belt_exit_stall_reclaim_entry_at(root: root, e: e, inbox: inbox, running: running, move: move))
+              let still = attempts |> flat_map(a => match a {
+                BeltExitEntryUnmovable { entry, step, cause } => [BeltExitStallEntry { entry: entry, step: step, cause: replace(cause, "\n", " ") }]
+                _ => [] as List<BeltExitStallEntry>
+              })
+              if count(still) > 0 {
+                BeltExitStallStillUnmovable { entries: still }
+              } else {
+                let path = attempt_exit_stall_record_path(instance_root: root)
+                let removed = Filesystem.Delete(path: path)
+                match filesystem_delete(path: path, success: removed.success, error: removed.error, error_kind: removed.error_kind) {
+                  FilesystemDeleted { path: _ } => BeltExitStallReleased { reclaimed: count(attempts) }
+                  FilesystemDeleteTargetAbsent { path: _ } => BeltExitStallReleased { reclaimed: count(attempts) }
+                  FilesystemDeleteRefused { path: _, kind: _, error } => BeltExitStallReleaseRefused { reason: error }
+                  FilesystemDeleteKindUnrecognized { path: _, observed: _, error } => BeltExitStallReleaseRefused { reason: error }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// ANALYZE IS READ-ONLY: for each recorded entry it reports the recorded cause and the entry's own owner, mode
+// and type (stat), and for an entry owned by another principal it names the follow-up -- a privileged clear
+// through the approval-broker route (gunbc.auth.approval_broker redeem_capability). Nothing is moved.
+// An observation either happened or it did not; a failed reading is never folded into a value, so ownership
+// is classified only from two readings that both succeeded.
+type BeltExitStallObservation
+  = BeltExitStallObserved { value: String }
+  | BeltExitStallUnobserved { reason: String }
+
+fn belt_exit_stall_observation_of(out: BeltExecOutcome, what: String) -> BeltExitStallObservation {
+  match out {
+    ExecOk { stdout } => BeltExitStallObserved { value: trim(stdout) }
+    ExecFailed { program: _, exit_code, stderr } => BeltExitStallUnobserved { reason: join([what, " exited ", to_string(exit_code), ": ", trim(stderr)], "") }
+    ExecRefused { program: _, reason } => BeltExitStallUnobserved { reason: join([what, " refused: ", reason], "") }
+  }
+}
+
+fn belt_exit_stall_entry_stat_at(root: String, entry: String) -> BeltExitStallObservation {
+  let path = join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox), "/", entry], "")
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%U %a %F", path]), workdir: belt_observe_workdir as String), what: "stat")
+}
+
+fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) -> List<String> {
+  match belt_exit_stall_read_at(root: root) {
+    BeltExitStallNone => ["no stall record: the exit drain is not stalled"]
+    BeltExitStallUnreadable { reason } => [join(["the stall record is unreadable: ", reason], "")]
+    BeltExitStallHeld { entries } =>
+      entries |> map(e => {
+        let head = join([e.entry, ": ", e.step, " failed (", e.cause, "); "], "")
+        match belt_exit_stall_entry_stat_at(root: root, entry: e.entry) {
+          BeltExitStallUnobserved { reason: sr } => join([head, "owner unknown (", sr, "); the entry may no longer be in the inbox"], "")
+          BeltExitStallObserved { value: stat } =>
+            match whoami {
+              BeltExitStallUnobserved { reason: wr } => join([head, "stat owner/mode/type: ", stat, "; owner unknown (the drain's principal is unread: ", wr, ")"], "")
+              BeltExitStallObserved { value: me } =>
+                if starts_with(s: stat, prefix: join([me, " "], "")) {
+                  join([head, "stat owner/mode/type: ", stat, "; owned by the drain's principal: release re-attempts the claim"], "")
+                } else {
+                  join([head, "stat owner/mode/type: ", stat, "; foreign-owned: the drain's principal cannot move it -- a privileged clear through the approval-broker route is the follow-up, then release"], "")
+                }
+            }
+        }
+      })
+  }
+}
+
+// THE PRIVILEGED HALF OF A RELEASE: the .path unit sits failed (trigger-limit-hit) after a stall, and re-arming
+// a SYSTEM unit is root's. Its argv is elevated through extdeps.sudo.elevation sudo_elevate_argv, and the
+// authorization it needs is whatever select_authorization_pattern selects for it
+// (gunbc.auth.privileged_effect_census, site belt_exit_stall_rearm_at) -- no sudoers line is coined here. A
+// refusal by the host is TYPED and carries the exact argv, so a privileged operator can run it.
+type BeltExitStallRearm
+  = BeltExitStallRearmed
+  | BeltExitStallRearmRefused { argv: List<String>, reason: String }
+
+fn belt_exit_stall_rearm_commands(path_unit: NonEmptyStr) -> List<ElevatedInvocation> {
+  [
+    sudo_elevate(command: systemctl_reset_failed_argv(unit: path_unit)),
+    sudo_elevate(command: systemctl_start_argv(unit: path_unit)),
+  ]
+}
+
+fn belt_exit_stall_rearm_at(path_unit: NonEmptyStr) -> BeltExitStallRearm {
+  let refusals = belt_exit_stall_rearm_commands(path_unit: path_unit) |> flat_map(c => match belt_exec(cmd: host_exec_argv(program: c.bin_path, args: c.args), workdir: belt_observe_workdir as String) {
+    ExecOk { stdout: _ } => [] as List<BeltExitStallRearm>
+    ExecFailed { program: _, exit_code, stderr } => [BeltExitStallRearmRefused { argv: list_append(left: [c.bin_path], right: c.args), reason: join(["exit ", to_string(exit_code), ": ", trim(stderr)], "") }]
+    ExecRefused { program: _, reason } => [BeltExitStallRearmRefused { argv: list_append(left: [c.bin_path], right: c.args), reason: reason }]
+  })
+  match refusals.first() {
+    Present { value: r } => r
+    Absent => BeltExitStallRearmed
+  }
+}
+
+fn belt_exit_stall_whoami() -> BeltExitStallObservation {
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/id", args: ["-un"]), workdir: belt_observe_workdir as String), what: "id -un")
 }
 
 // THE RUN CLAIMS A BOUNDED POPULATION BEFORE ITS FIRST OBSERVATION, AND ONLY WHAT IT CLAIMED IS SETTLED
@@ -15394,10 +16027,10 @@ fn belt_exit_entries_pending_at(root: String, node_id: String, attempt_key: Stri
 }
 
 // THE QUEUED SWEEP: the level-triggered half of the hand-off. Every attempt with an entry in `queued`
-// that this drain did not just hand off is enqueued again -- a held unit is a no-op (its own re-check or
+// is enqueued -- the sole hand-off, run in the pass that claimed the entry -- a held unit is a no-op (its own re-check or
 // the next drain picks the entry up), a gone unit is started and its run claims the entry. One enqueue
 // per attempt, whatever its entry count.
-fn belt_exit_queued_sweep_at(root: String, skip: List<String>, enqueue: fn(String, String) -> BeltObligationEnqueue) -> List<BeltExitDrainEntry> {
+fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue) -> List<BeltExitDrainEntry> {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
     AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "queued", reason: reason }]
     AttemptExitStageNames { names } =>
@@ -15405,7 +16038,7 @@ fn belt_exit_queued_sweep_at(root: String, skip: List<String>, enqueue: fn(Strin
         AttemptExitEntryMalformed { entry_name: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["queued entry is not an exit record: ", reason], "") }])
         AttemptExitEntryDecoded { record } => {
           let key = join([record.node_id, "/", record.attempt_key], "")
-          if any(skip, k => k == key) || any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: record.node_id, attempt_key: record.attempt_key) _ => false }) {
+          if any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: record.node_id, attempt_key: record.attempt_key) _ => false }) {
             acc
           } else {
             let handed = enqueue(record.node_id, record.attempt_key)

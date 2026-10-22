@@ -1,4 +1,5 @@
 module gunbc.language_source_scaffold_index
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import std.disposition { Disposition }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

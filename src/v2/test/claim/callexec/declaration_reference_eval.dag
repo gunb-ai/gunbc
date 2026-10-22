@@ -28,7 +28,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   ParameterReferenceBody,
   DeclarationReferenceKind,
   Symbol,
@@ -44,7 +44,6 @@ import v2.std.node {
   Transform,
   fold_node
 }
-import v2.std.node_query { node_positional_child_targets }
 import v2.test.lens_common.infer_fixture {
   ClaimParam,
   claim_int_literal,

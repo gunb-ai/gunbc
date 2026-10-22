@@ -33,7 +33,7 @@ import gunbc.runner.runner_host_file_converge {
   ActuationAdmitted,
 }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
-import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 
 // Every claim is a function of supplied readings and declared rows; nothing reads the live tree. The
 // SSH legs are not executed hermetically (gunbc.rung_drop runner_host_file_apply_route_hermetic); the
@@ -154,7 +154,7 @@ test fn every_actuation_argv_crosses_the_ssh_edge() -> Bool {
 // ── Sequencing: no width-21 quota over a 17-runner host ─────────────────────────────────────────
 
 fn cpu_file() -> RunnerHostFileDesired {
-  RunnerHostFileDesired { subject: "runner-cpu-dropin" as NonEmptyStr, path: gunbc_runner_per_slot_cpu_dropin_path as FilePath, content: "[Service]\nCPUQuota=500%\n", mode: RemoteFileModeOwnerReadWriteWorldRead }
+  RunnerHostFileDesired { subject: "runner-cpu-dropin" as NonEmptyStr, path: gunbc_runner_per_slot_cpu_dropin_path as FilePath, content: "[Service]\nCPUQuota=500%\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
 }
 
 // RED: one unsettled actuation withholds the CPU drop-in (and a withheld file refuses apply);

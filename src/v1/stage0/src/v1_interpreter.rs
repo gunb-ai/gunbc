@@ -9940,7 +9940,7 @@ fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
     })
 }
 
-/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// The BoundOperationInvocation (`std.operation_argv`) of one dispatched operation: its resolved
 /// identity -- declaring file, service, operation -- and each declared input by name.
 fn bound_operation_invocation_value(
     service_name: &str,
@@ -10880,10 +10880,6 @@ fn match_pattern(
                         }
                         _ => None,
                     },
-                    // GroupCompletion{pos,neg} destructuring against a native Value::Int is
-                    // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
-                    // unmatched pattern name falls through to `_ => None` below, refusing rather
-                    // than fabricating a (pos, neg) pair.
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -11003,6 +10999,14 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.host_text_chars" { "chars" } =>
                     eval_host_text_chars(&$args),
             }
+            // std.machine_word machine_word_native_operate: a HostRealizedSeam reached by DECLARATION
+            // (same admission as std.host_text above). The operator rows are v1_rt's, the same table the
+            // emitted Rust runtime carries, so the seed and the emitted binary cannot disagree on a row.
+            family STD_MACHINE_WORD_BRIDGE_FNS "std.machine_word"
+                lookup_eval_call_bridge_std_machine_word eval_call_bridge__std_machine_word_arm {
+                arm "v4_bridge.machine_word_native_operate" { "machine_word_native_operate" } =>
+                    eval_machine_word_native_operate(&$args),
+            }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
@@ -11048,6 +11052,24 @@ fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value>
     let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
     let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
     Ok(list_value(items))
+}
+
+/// std.machine_word machine_word_native_operate: one operator row applied to residues; an operand or
+/// amount outside its range refuses (the runtime's panic is a typed InterpError here).
+fn eval_machine_word_native_operate(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
+    let op = expect_str_free_monoid(
+        args.first().map(|(_, v)| v),
+        "machine_word_native_operate op",
+    )?;
+    let bits = expect_int(
+        args.get(1).map(|(_, v)| v),
+        "machine_word_native_operate bits",
+    )?;
+    let a = expect_int(args.get(2).map(|(_, v)| v), "machine_word_native_operate a")?;
+    let b = expect_int(args.get(3).map(|(_, v)| v), "machine_word_native_operate b")?;
+    v1_rt::machine_word_native_operate_checked(&op, bits, a, b)
+        .map(Value::Int)
+        .map_err(|msg| InterpError::TypeError { msg })
 }
 
 /// One guard for every bridge family.
@@ -13310,14 +13332,9 @@ fn eval_record_lit(
             fields: Rc::new(fields),
         })
     } else {
-        if type_name == "GroupCompletion" {
-            if let (Some(Value::Int(pos)), Some(Value::Int(neg))) = (
-                fields_get(&fields, ctx.sym("pos")),
-                fields_get(&fields, ctx.sym("neg")),
-            ) {
-                return Ok(Value::Int(pos - neg));
-            }
-        }
+        // No record is collapsed into an integer by its spelling. A GroupCompletion<Nat> is a pair --
+        // std.integer int_of_group_completion is the declared mapping onto the integers -- and the
+        // emitted Rust keeps it a record, so the interpreter must too.
         Ok(Value::Record {
             type_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
@@ -15408,7 +15425,7 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
-/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
+/// `dag/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
 /// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
 /// (DESIGN §5).
 #[derive(Debug, Clone)]
@@ -21275,6 +21292,9 @@ pub enum RestResponseDecodeCause {
     /// Both the wire key and the authored name of one renamed field are present; which one
     /// populates the field would be decided by iteration order.
     AmbiguousWireSpelling { authored: String, wire: String },
+    /// A field declared `std.decimal` `ExactDecimal` was answered by a JSON value that is not a
+    /// finite decimal number whose digits fit the record's Int units.
+    NotAnExactDecimal { json_text: String },
 }
 
 impl fmt::Display for RestResponseDecodeRefusal {
@@ -21318,6 +21338,11 @@ impl fmt::Display for RestResponseDecodeRefusal {
             RestResponseDecodeCause::UnknownSpelling { spelling } => {
                 write!(f, "\"{}\" names no arm under the declared wire contract", spelling)
             }
+            RestResponseDecodeCause::NotAnExactDecimal { json_text } => write!(
+                f,
+                "declared ExactDecimal, answered `{}`, which is not a finite decimal whose digits fit Int units",
+                json_text
+            ),
         }
     }
 }
@@ -21535,6 +21560,49 @@ fn decode_json_by_declared_type(
             }
             _ => Ok(json_to_value(json)),
         };
+    }
+    // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
+    // as a JSON number (extdeps.cloud.vast_ai money fields). serde_json's arbitrary_precision keeps the
+    // number's wire text, so it is decoded from the wire's own digits and scale; a number that is not a
+    // finite decimal whose digits fit Int units refuses. Without this arm the number fell through to `json_to_value` and
+    // the declared ExactDecimal arrived as a Float (gunbc.recurring_failure_mode
+    // rest_response_declared_exact_decimal_decoded_as_float).
+    // `T?` on the wire is T or null; null returned above, so a present value decodes as the declared T
+    // (a present value is carried raw, as `json_to_value` carries it). Without this the declared type
+    // under the optional layer was never consulted.
+    if name.rsplit('.').next() == Some("Optional") {
+        if let Some(inner) = ty.children.first() {
+            return decode_json_by_declared_type(json, inner, path, ctx);
+        }
+    }
+    if name.rsplit('.').next() == Some("ExactDecimal") {
+        if let serde_json::Value::Number(n) = json {
+            let text = n.to_string();
+            return match exact_decimal_from_json_number_text(&text) {
+                Some((units, fraction_digits)) => {
+                    let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+                    if let Some(ck) = CanonKey::new(str_value("units")) {
+                        fields.insert(ck, Value::Int(units));
+                    }
+                    if let Some(ck) = CanonKey::new(str_value("fraction_digits")) {
+                        fields.insert(ck, Value::Int(fraction_digits));
+                    }
+                    Ok(map_value(fields))
+                }
+                None => Err(RestResponseDecodeRefusal {
+                    field_path: path.to_string(),
+                    coproduct: name.clone(),
+                    cause: RestResponseDecodeCause::NotAnExactDecimal { json_text: text },
+                }),
+            };
+        }
+        return Err(RestResponseDecodeRefusal {
+            field_path: path.to_string(),
+            coproduct: name.clone(),
+            cause: RestResponseDecodeCause::NotAnExactDecimal {
+                json_text: json.to_string(),
+            },
+        });
     }
     if ty.connective == Connective::Disj {
         let nullary =
@@ -21777,6 +21845,69 @@ pub(crate) fn json_container_depth(json: &serde_json::Value) -> usize {
         }
     }
     deepest
+}
+
+/// The largest decimal exponent an i64-unit decimal can carry: i64::MAX has 19 digits, 18 of them free.
+const EXACT_DECIMAL_MAX_DECIMAL_EXPONENT: u64 = 18;
+
+/// The largest scale (fraction digits) a decoded ExactDecimal may carry: 18 free significant digits whose
+/// leading digit lies at most 18 places past the point.
+const EXACT_DECIMAL_MAX_SCALE: i64 = 2 * EXACT_DECIMAL_MAX_DECIMAL_EXPONENT as i64;
+
+/// The exact `(units, fraction_digits)` of a JSON number's decimal text: `-?D+(.D+)?([eE][+-]?D+)?`.
+/// `units` is the signed mantissa digits and `fraction_digits` the count of digits after the point less
+/// the exponent; a negative scale is folded into `units`. `None` when the text is not that grammar or
+/// the digits do not fit i64, so the caller refuses rather than rounding.
+fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
+    let (negative, rest) = match text.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, text),
+    };
+    let (mantissa, exponent) = match rest.find(['e', 'E']) {
+        Some(i) => (&rest[..i], rest[i + 1..].parse::<i64>().ok()?),
+        None => (rest, 0),
+    };
+    // The exponent is bounded BEFORE any scaling: an i64 holds at most 18 full decimal digits, so an
+    // exponent beyond that either overflows the units or names a scale no Int-unit decimal carries. Without
+    // the bound a zero mantissa (`0e9223372036854775807`) never overflows and the scaling loop below does
+    // not return, and `1e-999999999` would be accepted with a billion fraction digits (review 82479).
+    // The scale is capped separately, because the exponent bound does not limit it: `parse::<i64>` accepts
+    // leading zeros, so `0.` followed by ten thousand zeros and a `1` has exponent 0 and scale 10001
+    // (review 82586). The cap is EXACT_DECIMAL_MAX_SCALE (36): at most 18 free significant digits whose
+    // leading digit lies at most 18 places past the point. An earlier cap at 19 refused a live price with 17
+    // significant digits at 20 fraction digits (`0.00026041666666666666`, fleet-converge run 39222150650)
+    // and with it the whole offer page.
+    if exponent.unsigned_abs() > EXACT_DECIMAL_MAX_DECIMAL_EXPONENT {
+        return None;
+    }
+    let (int_part, frac_part) = match mantissa.find('.') {
+        Some(i) => (&mantissa[..i], &mantissa[i + 1..]),
+        None => (mantissa, ""),
+    };
+    if int_part.is_empty()
+        || !int_part.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = format!("{}{}", int_part, frac_part);
+    let mut units: i64 = digits.parse::<i64>().ok()?;
+    let mut fraction_digits: i64 = (frac_part.len() as i64).checked_sub(exponent)?;
+    if fraction_digits > EXACT_DECIMAL_MAX_SCALE {
+        return None;
+    }
+    while fraction_digits < 0 {
+        units = units.checked_mul(10)?;
+        fraction_digits += 1;
+    }
+    Some((
+        if negative {
+            units.checked_neg()?
+        } else {
+            units
+        },
+        fraction_digits,
+    ))
 }
 
 fn json_to_value(json: &serde_json::Value) -> Value {
@@ -24124,6 +24255,40 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveAllocationAtSubject availability: the seed interpreter runs under the default
+            // allocator and selected no counting provider, so the answer is the typed `false`, not a
+            // refusal and not a count (std.realization_measurement allocation_reading).
+            arm "free_call.observed_allocation_available" { "observed_allocation_available" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Ok(Some(Value::Bool(false))),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_available takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_operations" { "observed_allocation_operations" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_bytes" { "observed_allocation_bytes" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes takes exactly one boundary label".to_string(),
+                }),
+            },
+
             arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
@@ -24583,6 +24748,15 @@ macro_rules! v1_builtin_arms {
                                 $ctx.sym("argv_input_refs"),
                                 list_value(
                                     row.argv_input_refs
+                                        .into_iter()
+                                        .map(str_value)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
+                            (
+                                $ctx.sym("executable_input_refs"),
+                                list_value(
+                                    row.executable_input_refs
                                         .into_iter()
                                         .map(str_value)
                                         .collect::<Vec<_>>(),

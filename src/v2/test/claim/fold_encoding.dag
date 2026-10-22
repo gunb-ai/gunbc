@@ -1,5 +1,6 @@
 module v2.test.claim.fold_encoding
 
+import v2.std.node { positional_child_target_nodes }
 import std.algebra { Empty }
 import v2.std.anonymous_binder { is_fold_carrier_binder }
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
@@ -127,7 +128,7 @@ fn fe_slots(encoding: Node) -> Optional<FeSlots> {
   match fold_recurrence_loop(encoding: encoding) {
     Absent => Absent
     Present { value: lp } =>
-      match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
+      match list_at_optional(xs: positional_child_target_nodes(node: encoding), index: 1) {
         Absent => Absent
         Present { value: init } =>
           match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
@@ -139,7 +140,7 @@ fn fe_slots(encoding: Node) -> Optional<FeSlots> {
                   match fe_lookup_target(l: loop_carrier_binder_target(children: lp.children)) {
                     Absent => Absent
                     Present { value: carrier } =>
-                      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
+                      match list_at_optional(xs: positional_child_target_nodes(node: lp), index: 0) {
                         Absent => Absent
                         Present { value: step } =>
                           if fe_atom_is(n: init, sym: ^seed) && fe_atom_is(n: collection, sym: ^xs)
@@ -210,7 +211,7 @@ fn fe_pipe_slots_hold(source: String) -> Bool {
               match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
                 Absent => false
                 Present { value: domain } =>
-                  match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
+                  match list_at_optional(xs: positional_child_target_nodes(node: encoding), index: 1) {
                     Absent => false
                     Present { value: init } =>
                       fe_atom_is(n: init, sym: ^seed) && fe_domain_reads_xs(domain: domain)
@@ -274,7 +275,7 @@ fn fe_step_binders(encoding: Node) -> List<Symbol> {
   match fold_recurrence_loop(encoding: encoding) {
     Absent => []
     Present { value: lp } =>
-      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: lp), index: 0) {
         Absent => []
         Present { value: step } =>
           match arrow_first_positional_target(children: step.children) {

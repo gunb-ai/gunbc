@@ -1,0 +1,54 @@
+module test.claim.debian.debian_version_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import extdeps.debian.version {
+  parse_debian_version, compare_debian_versions, parse_debian_relationships, constraint_satisfied,
+  DebianVersionConstraint, RelLaterEqual, RelEarlier, RelExact,
+}
+
+// DEBIAN VERSION ORDER, AGAINST dpkg's OWN ANSWERS. Every pair below was checked with
+// `dpkg --compare-versions A lt B` (dpkg 1.22.22); the order is the referent, not this module.
+
+fn lt(a: String, b: String) -> Bool {
+  match parse_debian_version(text: a) {
+    Absent => false
+    Present { value: x } => match parse_debian_version(text: b) {
+      Absent => false
+      Present { value: y } => compare_debian_versions(a: x, b: y) < 0 && compare_debian_versions(a: y, b: x) > 0
+    }
+  }
+}
+
+test fn tilde_sorts_before_the_end_and_letters_before_punctuation() -> Bool {
+  lt(a: "1.0~rc1", b: "1.0") && lt(a: "1.0~~", b: "1.0~") && lt(a: "1.0", b: "1.0a") && lt(a: "1.0a", b: "1.0+")
+}
+
+test fn digit_runs_compare_numerically_and_epoch_dominates() -> Bool {
+  lt(a: "1.9", b: "1.10") && lt(a: "9.9-9", b: "1:0.1") && lt(a: "2.39-0ubuntu8", b: "2.39-0ubuntu8.3")
+    && lt(a: "1.0-1", b: "1.0-1ubuntu1") && lt(a: "1.0", b: "1.0-0.1")
+}
+
+// Past any machine width: dpkg's verrevcmp skips leading zeros and compares the remaining digits by
+// length then digit by digit, so these runs order exactly; a width-limited parse read them as zero.
+test fn digit_runs_past_a_machine_width_still_order() -> Bool {
+  lt(a: "2.40", b: "2.99999999999999999999") && lt(a: "99999999999999999999", b: "100000000000000000000")
+    && lt(a: "9", b: "0010") && !lt(a: "1.007", b: "1.7") && !lt(a: "1.7", b: "1.007")
+    && !constraint_satisfied(constraint: DebianVersionConstraint { op: RelEarlier, version: "2.40" }, candidate: "2.99999999999999999999")
+}
+
+test fn a_version_with_an_inadmissible_character_does_not_parse() -> Bool {
+  match parse_debian_version(text: "1.0_beta") { Absent => true  Present { value: _ } => false }
+}
+
+test fn relationships_parse_with_versions_and_refuse_when_malformed() -> Bool {
+  let ok = match parse_debian_relationships(field: "libc6 (>= 2.34), gcc-13 (= 13.2.0-23ubuntu4), perl:any") {
+    Present { value: rs } => count(rs) == 3
+    Absent => false
+  }
+  let bad = match parse_debian_relationships(field: "libc6 (>=)") { Absent => true  Present { value: _ } => false }
+  ok && bad
+    && constraint_satisfied(constraint: DebianVersionConstraint { op: RelLaterEqual, version: "2.34" }, candidate: "2.39-0ubuntu8")
+    && !constraint_satisfied(constraint: DebianVersionConstraint { op: RelEarlier, version: "2.39" }, candidate: "2.39-0ubuntu8")
+    && constraint_satisfied(constraint: DebianVersionConstraint { op: RelExact, version: "13.2.0-23ubuntu4" }, candidate: "13.2.0-23ubuntu4")
+}

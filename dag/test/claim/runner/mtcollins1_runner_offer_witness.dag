@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn census_envelope(meminfo_body: String) -> BoundHostCaptureEnvelope {
   BoundHostCaptureEnvelope {
     machine: "mtcollins1",
-    run: KernelBootId { boot_id: "designed-fixture-boot" },
+    run: KernelBootId { boot_id: "aaaaaaaa-0000-4000-8000-000000000004" },
     sections: [HostCaptureBoundSection { name: "meminfo", body: meminfo_body }],
   }
 }
@@ -89,7 +89,7 @@ test fn census_meminfo_receipt_reads_as_measured_usable_ram() -> Bool {
     "MemTotal:       131000000 kB\nMemAvailable:   127000000 kB\n----EXIT meminfo: 0\n")))
   measured_bytes(a: a) == 131000000 * 1024
     && measured_provenance_names(a: a, pattern: "mtcollins1")
-    && measured_provenance_names(a: a, pattern: "designed-fixture-boot")
+    && measured_provenance_names(a: a, pattern: "aaaaaaaa-0000-4000-8000-000000000004")
 }
 
 fn refusal_is(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, expected: String) -> Bool {
@@ -112,7 +112,7 @@ fn refusal_is(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, expecte
 
 test fn census_meminfo_RED_non_reads_refuse_by_cause() -> Bool {
   refusal_is(a: host_usable_ram_from_capture(envelope: BoundHostCaptureEnvelope {
-      machine: "mtcollins1", run: KernelBootId { boot_id: "designed-fixture-boot" }, sections: [],
+      machine: "mtcollins1", run: KernelBootId { boot_id: "aaaaaaaa-0000-4000-8000-000000000004" }, sections: [],
     }), expected: "absent")
     && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
       "MemTotal:       131000000 kB\n"))), expected: "pending")
@@ -262,7 +262,7 @@ test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
 }
 
 data open_complete_meminfo_capture: String = join([
-  "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=designed-open-boot begin 2026-10-15T00:00:00Z=====\n",
+  "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000005 begin 2026-10-15T00:00:00Z=====\n",
   "----SECTION meminfo----\n",
   "----ARGV meminfo: grep -E 'MemTotal|MemAvailable' /proc/meminfo\n",
   "MemTotal:       131000000 kB\n",
@@ -333,7 +333,7 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
     control_plane: real.control_plane,
     served_deployment: real.served_deployment,
     disk: real.disk,
-    carries_shakedown_slot: real.carries_shakedown_slot,
+    authored_slots: real.authored_slots,
   }
 }
 

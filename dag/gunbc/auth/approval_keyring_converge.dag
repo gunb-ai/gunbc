@@ -42,7 +42,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContex
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.file_access { FileTreeScope }
-import gunbc.typed_remote_file_write {
+import gunbc.typed_remote_file_write { NoValidation,
   typed_remote_file_write_seal, converge_typed_remote_file,
   RemoteFileModeOwnerReadWriteGroupRead, RemoteFileViaNonInteractiveSudo,
   TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
@@ -229,6 +229,7 @@ fn keyring_install_file(
     admission: typed_remote_file_write_seal(path: dest as FilePath, content: content, allowed_scope: approval_keyring_etc_scope),
     mode: RemoteFileModeOwnerReadWriteGroupRead,
     privilege: RemoteFileViaNonInteractiveSudo,
+    validation: NoValidation,
   ) {
     TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
       exit_failure(reason: concat("approval keyring: ", concat(step, concat(" ", concat(st, concat(": ", why))))))

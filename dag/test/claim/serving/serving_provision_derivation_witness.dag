@@ -26,6 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data w_roots: ServingStoreRoots = ServingStoreRoots {
   root: "/root/serve/store" as NonEmptyStr,
   model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+  serve_log: "/root/serve/serve.log" as NonEmptyStr,
 }
 
 // The digest the S3c witness (test.claim.serving.serving_startup_witness) supplies as a literal.

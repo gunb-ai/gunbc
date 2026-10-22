@@ -10,18 +10,19 @@ use self::ResolvedFormals::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer_env::TypeBinding;
-pub use crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide;
-pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
+pub use crate::v1_compiler_infer_occurrence_binding::{
+    module_path_owner_binding_decide, ModulePathBindingProjection,
+};
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v1_std_core::ExprData::ExprCall;
-pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData,
-    NewlineIndex, Node, ResolvedFormal,
+    authored_name_at, expr_call_func_at, make_error_node, no_span, CompilerDiagnostic,
+    DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
+    ResolvedFormal,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -697,29 +698,6 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     })
 }
 
-pub fn merge_remaining_declared(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(v1_rt::map_values(&declared_sigs))
-        .iter()
-        .cloned()
-        .fold(
-            resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if (dsig.inferred.clone() != std::option::Option::None) {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        dsig.name.clone(),
-                        declared_to_resolved(dsig.clone()),
-                    )
-                } else {
-                    acc.clone()
-                }
-            },
-        )
-}
-
 pub fn topo_resolve_loop(
     mut __tco_loop_remaining: Rc<Vec<String>>,
     mut __tco_loop_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
@@ -761,12 +739,12 @@ pub fn topo_resolve_loop(
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
-                                    acc.clone(),
+                                    acc,
                                     dsig.name.clone(),
                                     declared_to_resolved(dsig.clone()),
                                 )
                             } else {
-                                acc.clone()
+                                acc
                             }
                         },
                     );
@@ -883,12 +861,12 @@ pub fn topo_resolve_loop(
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
-                                    acc.clone(),
+                                    acc,
                                     dsig.name.clone(),
                                     declared_to_resolved(dsig.clone()),
                                 )
                             } else {
-                                acc.clone()
+                                acc
                             }
                         },
                     );

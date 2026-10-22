@@ -4,8 +4,7 @@ import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
 import v2.test.claim.compiler.callback_argument_formal { caf_correction_type, caf_same_type }
 import v2.compiler.infer { infer, infer_entries_for_tree, infer_settled_type_at }
 import v2.std.diagnostic { Accepted, Diagnostic, None, Rejected, Some, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
-import v2.std.node { Bind, ComputationNode, Node, Symbol }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.node { positional_child_target_nodes, Bind, ComputationNode, Node, Symbol }
 import std.algebra { fold_list, list_at_optional, map_support_keys }
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -96,7 +95,7 @@ fn lbf_is_bind(n: Node) -> Bool {
 }
 
 fn lbf_child_type(bind: Node, index: Int, entries: Map<Node, List<InferredFacts>>) -> Optional<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: bind), index: index) {
+  match list_at_optional(xs: positional_child_target_nodes(node: bind), index: index) {
     Absent => optional_absent()
     Present { value: c } => infer_settled_type_at(target: c, entries: entries)
   }

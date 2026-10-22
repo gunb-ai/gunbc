@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.an_attempt_worktree_has_no_owner_until_the_attempt_state_exists
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data an_attempt_worktree_has_no_owner_until_the_attempt_state_exists: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_attempt_worktree_has_no_owner_until_the_attempt_state_exists" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "INVALID STATE: an attempt's worktree is created (git worktree add) before any record under the attempt names it, and no terminal path releases it from a record; the commit step's outcome write was unchecked, so a failed write read as a settled step. HARM: a killed attempt leaves a tree nothing owns, release cannot tell its tree from another attempt's, and a lost write hides an unsettled capture (DESIGN section 4b found at mitigatable).",
+
+    "SLICE 3, RUNG NOW: mitigatable. gunbc.roadmap.roadmap_attempt_worktree_claim writes a create-only claim slot under the attempt before worktree-add (belt_spawn_admitted) and an ensure pass over the claim store removes only the derived path of an open claim, without force, only when the worker ended or never started, the commit step settled the capture, and the tree is clean or on a remote; dirty, unpushed, unobserved, no-claim and closed-claim-with-tree all refuse and keep. The invalid state stays writable (a tree can still be made by hand), so the rung does not rise. CEILING: structurally guaranteed once worktree creation is a typed acquisition that cannot run without the claim. NEXT TRIGGER: the one-time slice-4 sweep settles pre-claim trees; the claim and acquisition then become one identity.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_ensure_pass_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_spawn_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_commit_outcome_persist", field: WholeDeclaration },
+  ],
+}

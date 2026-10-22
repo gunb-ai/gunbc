@@ -183,11 +183,31 @@ final class AppState: ObservableObject {
             try adopt(EnrolledDevice(
                 enrollment_id: grant.enrollment_id, decision_key_blob: p.decision_key_blob,
                 attest_key_id: p.attest_key_id, forwarded_apns_token: token))
+        } catch let WireError.status(status, body) where Self.refusal(body) != nil {
+            // The enrol route answered with a typed refusal. Which phase follows it is the generated
+            // EnrolmentMachine's (gunbc.approve_ios_enrolment_machine) decision, not this file's:
+            // only the refusals that prove the code minted no enrolment leave SubmissionUnknown.
+            let kind = Self.refusal(body)!
+            do {
+                if EnrolmentMachine.next(.submissionUnknown, on: .refused(kind)) == .unenrolled {
+                    try transition(.unenrolled)
+                    lastError = "The server says this code minted no enrolment (\(kind.rawValue), HTTP \(status)). Enter a new code."
+                } else {
+                    lastError = "The server refused the enrolment (\(kind.rawValue), HTTP \(status)); whether it was recorded is unknown."
+                }
+            } catch {
+                lastError = error.localizedDescription
+            }
         } catch {
-            // Whatever failed — transport, decode, a refusal, persisting Enrolled — the durable
-            // state stays SubmissionUnknown; readback is the only way forward.
+            // Whatever else failed — transport, decode, any other refusal, persisting Enrolled — the
+            // durable state stays SubmissionUnknown; readback is the only way forward.
             lastError = error.localizedDescription
         }
+    }
+
+    /// The typed refusal an enrol answer carries; nil for an undecodable body (EnrolmentAnswer.unanswered).
+    private static func refusal(_ body: String) -> EnrolmentRefusalKind? {
+        try? WireDecode.enrolmentRefusal(Data(body.utf8))
     }
 
     /// The one place Enrolled is entered. The attest key id is persisted as ENROLLED only here,

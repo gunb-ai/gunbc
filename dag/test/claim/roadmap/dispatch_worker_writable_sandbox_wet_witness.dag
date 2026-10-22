@@ -31,6 +31,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_git, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser,
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
@@ -68,8 +69,12 @@ import extdeps.tools.util_linux_flock { flock_exclusive_wait_words, flock_absolu
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
-import gunbc.live_deploy.release_locus { approval_broker_tree_subdirs }
+import gunbc.live_deploy.release_locus { release_locus_tree_subdirs }
 import extdeps.systemd.service_exec { ServiceResultSuccess }
+import test.claim.roadmap.sandbox_touch_reading {
+  SandboxTouch, SandboxTouchRan, SandboxTouchUnrunnable, SandboxTouchReading, SandboxTouchNeverRan,
+  SandboxTouchWroteReading, SandboxTouchRefusedReading, SandboxTouchInconclusive, sandbox_touch_reading_of,
+}
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -78,12 +83,20 @@ data wet_probe_node: RoadmapNodeId = "writable-probe" as RoadmapNodeId
 data wet_probe_key: String = "wetprobe"
 
 // WET: a real systemd-run --user transient with the worker unit's production properties, then one
-// argv `touch -- <path>` per subject. Asserts the kernel REFUSES a forbidden write. On today's
-// srv1 that assertion is RED: kernel.apparmor_restrict_unprivileged_userns=1 means the user
-// manager cannot build the mount namespace, ProtectSystem/ProtectHome/ReadWritePaths are dropped
-// without error, and the write succeeds (bright-moth-475, issuecomment-6175000334). That is the
-// discriminating RED for gunbc.rung_drop.user_manager_worker_write_boundary_unenforced; do not
-// invert this claim to expect success. Local recipe: claim_batch --wet --source-root dag
+// argv `touch -- <path>` per subject. Asserts the kernel REFUSES a forbidden write: the touch must
+// have RUN and failed with the path absent afterwards (sandbox_touch_reading_of), in a unit shape
+// whose allowed touch also runs (worker_shape_runs_an_allowed_touch). Two srv1 readings of this
+// shape, both un-refused: (1) before the empty bounding set, kernel.apparmor_restrict_unprivileged_userns=1
+// meant the user manager could not build the mount namespace and dropped ProtectSystem/ProtectHome/
+// ReadWritePaths without error, so the write succeeded (bright-moth-475, issuecomment-6175000334);
+// (2) with EmptyCapabilityBoundingSet in the properties (2026-10-21, systemd 255) the user manager
+// fails exec setup, status 218 EXIT_CAPABILITIES, so the command NEVER RUNS: fail closed, and no
+// evidence about the mount sandbox. That reading was once scored as a refused write; it is now
+// SandboxTouchNeverRan and this claim is RED on it. Production does not launch workers this way:
+// belt_actuate starts them as system-manager transients through attempt_system_unit_launch. This is
+// the discriminating RED for gunbc.rung_drop.user_manager_worker_write_boundary_unenforced; do not
+// invert this claim to expect success, and do not read its RED as "the write succeeded". Local
+// recipe: claim_batch --wet --source-root dag
 // --source-root src/v2 --entry dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag
 // Requires a user systemd manager (srv1).
 
@@ -130,10 +143,6 @@ fn worker_probe_properties(instance: HostDashboardInstance) -> List<SystemdRunPr
   )
 }
 
-type SandboxTouch
-  = SandboxTouchRan { exit_code: Int }
-  | SandboxTouchUnrunnable
-
 fn sandbox_touch(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> SandboxTouch {
   match systemd_run_user_wait_command(
     unit: unit,
@@ -152,24 +161,48 @@ fn sandbox_touch(instance: HostDashboardInstance, unit: NonEmptyStr, path: Strin
   }
 }
 
+fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> SandboxTouchReading {
+  let touch = sandbox_touch(instance: instance, unit: unit, path: path)
+  sandbox_touch_reading_of(
+    touch: touch,
+    path_present: shell.Exec.RunArgv(program: "test", arguments: ["-e", path]).exit_code == 0,
+  )
+}
+
 fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
-  match sandbox_touch(instance: instance, unit: unit, path: path) {
-    SandboxTouchUnrunnable => false
-    SandboxTouchRan { exit_code } => exit_code != 0
+  match sandbox_touch_read(instance: instance, unit: unit, path: path) {
+    SandboxTouchRefusedReading => true
+    SandboxTouchNeverRan => false
+    SandboxTouchWroteReading => false
+    SandboxTouchInconclusive => false
   }
 }
 
 fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
-  match sandbox_touch(instance: instance, unit: unit, path: path) {
-    SandboxTouchUnrunnable => false
-    SandboxTouchRan { exit_code } => exit_code == 0
+  match sandbox_touch_read(instance: instance, unit: unit, path: path) {
+    SandboxTouchWroteReading => true
+    SandboxTouchNeverRan => false
+    SandboxTouchRefusedReading => false
+    SandboxTouchInconclusive => false
   }
+}
+
+// The same-shape positive control for the refused cells: the worker unit shape must RUN a touch that
+// is allowed, or no refusal from it counts. It writes a dedicated path in the worker directory that nothing else names (systemd itself opens worker-stdout.log, so that file proves nothing about touch) and cleans up.
+fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance) -> Bool {
+  let control = join([probe_worker_dir(instance: instance), "/.gunbc-worker-control-probe"], "")
+  sandbox_touch_wrote(
+    instance: instance,
+    unit: "gunbc-writable-probe-control.service" as NonEmptyStr,
+    path: control,
+  ) && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", control]).exit_code == 0
 }
 
 test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() -> Bool {
   let inst = srv1_live_dashboard_instance()
   let attempt = probe_attempt_dir(instance: inst)
   prepare_probe_attempt(instance: inst)
+    && worker_shape_runs_an_allowed_touch(instance: inst)
     && sandbox_touch_write_refused(
       instance: inst,
       unit: "gunbc-writable-probe-bin.service" as NonEmptyStr,
@@ -202,7 +235,7 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
   let wt = probe_attempt_worktree(instance: inst)
   let scratch = probe_worker_dir(instance: inst)
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
-  let log_probe = join([scratch, "/worker-stdout.log"], "")
+  let log_probe = join([scratch, "/.gunbc-worker-write-probe"], "")
   prepare_probe_attempt(instance: inst)
     && sandbox_touch_wrote(
       instance: inst,
@@ -715,7 +748,7 @@ fn wet_flocked_launch_cli_words(instance: HostDashboardInstance, spool_root: Str
             gunbc_entry_run_argv(
               workspace_root: instance.repo_root as NonEmptyStr,
               binary: instance.serve_binary as NonEmptyStr,
-              source_roots: map(approval_broker_tree_subdirs, sub => join([instance.repo_root as String, "/", sub], "") as NonEmptyStr),
+              source_roots: map(release_locus_tree_subdirs, sub => join([instance.repo_root as String, "/", sub], "") as NonEmptyStr),
               entry: join([instance.repo_root as String, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
               function: attempt_system_unit_launch_function as NonEmptyStr,
             ),
@@ -867,6 +900,7 @@ fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
     directory_owner: lab.directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: lab.materialization_store_root,
     publication_base_branch: lab.publication_base_branch,
   }
