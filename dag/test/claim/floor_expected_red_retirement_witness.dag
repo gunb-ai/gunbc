@@ -88,7 +88,7 @@ import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_liv
 import v2.lens.module_graph { module_declaration_facts_at_live }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_days_from_civil, iso8601_civil_from_days }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
-import v2.workflow.floor_terminal_ledger { ClaimExpectation, ClaimDisposition, Passed, ExpectedRed, ExpectedToHold }
+import v2.workflow.floor_terminal_ledger { ClaimExpectation, ExpectedRed, ExpectedToHold }
 import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import v2.workflow.wet_evidence { WetScheduledClaim }
 import v2.workflow.floor_expected_red {

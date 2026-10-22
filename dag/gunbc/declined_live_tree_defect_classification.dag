@@ -2,11 +2,9 @@ module gunbc.declined_live_tree_defect_classification
 
 import std.types { String, List, CommitSha, NonEmptyStr }
 import v2.std.integer { Int }
-import std.execution_mode { ExecutionMode, Wet }
-import std.decl_ref { DeclarationRef, decl_ref }
-import std.optional { Optional, Present, Absent }
+import std.execution_mode { ExecutionMode }
+import std.decl_ref { DeclarationRef }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
 import std.algebra { list_snoc_item, count_where, length, fold_list }
 
 // WHY THIS CARRIER EXISTS. Thirteen witness identities were measured failing on
