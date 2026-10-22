@@ -4,7 +4,8 @@ import std.types { List }
 import std.algebra { Cons, Empty, list_flat_map }
 // The retirement carrier below reuses the closure-receipt shape this repo already declares for a
 // defect closed by prior work, rather than minting a second one (DESIGN §2). No cycle: that module
-// imports only std.types, v2.std.integer and std.algebra.
+// never imports this one; its own imports are std.types, v2.std.integer, std.execution_mode,
+// std.decl_ref, extdeps.units.iso8601_calendar and std.algebra.
 import gunbc.declined_live_tree_defect_classification {
   Closure,
   ReMeasurement,
