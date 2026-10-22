@@ -199,6 +199,11 @@ data host_assimilation_program_frontier_rows: List<FrontierRow> = [
     reason: "InferenceServingProvision maps to InferenceServingParticipation, and no real gunbc.fleet.fleet_enrollment fleet_enrollments entry carries that participation (the Sparks were sold), so the phase is in no real host program; the spine-claimed claim admits it only through this row",
     dissolution: unbound_dissolution(description: "a real enrollment carries InferenceServingParticipation: the flex wet create (product.fabric.flex_market) produces a RentedAllocationAcquired allocation whose intent gunbc.serving.rented_allocation_host_enrollment derives, or the owned RTX PRO 6000 enrollment lands. SUFFICIENT FOR deleting this row and the phase from phases_awaiting_a_real_enrollment, after which witness_every_spine_step_is_claimed_by_some_participation needs no exception"),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "runner_image_baked_deployment_plan"),
+    reason: "the image-baked arm (RamImageBoot hosts: fleet_image_baked_offers, ConvergePolicyDerived.image_baked) is derived but no image build input reads it yet: the runner_host_medium publish that bakes a host's slots and knobs into its seeded image is a later change, so the arm's only readers today are its witnesses",
+    dissolution: unbound_dissolution(description: "the image build input (runner_host_medium publish / seeded media) folds runner_image_baked_deployment_plan for its host's slots and knobs. SUFFICIENT FOR deleting this row: that fold, executed by a claim that a RamImageBoot host's image carries the derived runner count"),
+  ),
 ]
 
 type HostAssimilationProgram {

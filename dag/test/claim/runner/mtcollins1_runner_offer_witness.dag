@@ -14,7 +14,8 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host
 import gunbc.host.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound, fleet_converge_policy_from }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_image_baked_deployment_plan, runner_host_deployment_for,
-  HostRunnerDeploymentRefused, RefusedHostDeployment, HostNotEnrolledInFleet,
+  HostRunnerDeploymentRefused, HostRunnerDeploymentDerived, RefusedHostDeployment, HostNotEnrolledInFleet,
+  HostRealizedByImage, runner_fleet_capacity_plan,
 }
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId,
@@ -456,7 +457,24 @@ test fn ram_image_boot_host_is_image_baked_and_never_a_converge_target() -> Bool
 
 test fn the_converge_applied_plan_does_not_name_a_ram_image_host() -> Bool {
   match runner_host_deployment_for(p: runner_deployment_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostRealizedByImage } } => true
+    _ => false
+  }
+}
+
+// An enrolled image-baked host is not "not enrolled": the refusal names how it is realized. Control: a host
+// the fleet never enrolled keeps HostNotEnrolledInFleet.
+test fn an_unenrolled_host_still_refuses_as_not_enrolled() -> Bool {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: "not-a-fleet-host" as HostIdentity) {
     HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostNotEnrolledInFleet } } => true
+    _ => false
+  }
+}
+
+// The capacity plan keeps mtcollins1: CI capacity readers do not drop an image-baked host.
+test fn the_fleet_capacity_plan_carries_the_ram_image_host() -> Bool {
+  match runner_host_deployment_for(p: runner_fleet_capacity_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 5
     _ => false
   }
 }

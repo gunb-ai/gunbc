@@ -335,6 +335,7 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         CommittedWidthUnresolved { cause: _ } => false
         HostCpuAllocationUnchargeable { cause: _ } => false
         HostNotEnrolledInFleet => false
+        HostRealizedByImage => false
       }
     HostRunnerDeploymentDerived { deployment: _ } => false
   }
