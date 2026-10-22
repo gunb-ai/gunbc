@@ -14736,10 +14736,10 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
 // container's parameter, carrying the argument's declaration but not its arguments); the type it
 // denotes is its Resolved inferred. Binding the wrapper hands a bare parameter node to every
 // consumer of the binding (C1.2d: substituted nodes keep their DeclarationRef and use-args). An
-// Arrow child denotes itself (child_type_node), and a child that is not Resolved binds as it is.
+// Arrow child denotes itself (child_type_node); a child that is not Resolved, or resolves to a still-unsolved type variable (the element of an empty list literal), binds as it is so a later argument decides it.
 fn unify_child_actual(n: Node) -> Node {
   match n.inferred {
-    Present { value: Resolved { node: rt } } => if n.connective == Arrow { n } else { rt }
+    Present { value: Resolved { node: rt } } => if n.connective == Arrow || unify_binding_is_uninformative(n: rt) { n } else { rt }
     _ => n
   }
 }
