@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.an_authored_import_emits_no_use_line_when_its_spelling_is_forked
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data an_authored_import_emits_no_use_line_when_its_spelling_is_forked: RecurringFailureMode = RecurringFailureMode {
   identity: "an_authored_import_emits_no_use_line_when_its_spelling_is_forked" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "an authored import emits no use-line when its spelling is forked (a module authors `import M { T }` and uses `T` in a signature; the emitted module RENDERS the bare `T` and emits NO use-line binding it, so one emitted module contradicts itself and the target compiler refuses at the reference). INVALID STATE: an emitted module that spells a type it declined to import. HARM: E0425 at rustc on a crate the compiler reported as emitted clean -- the emission itself reports success, so the refusal lands in the target toolchain rather than at any gunbc boundary, and it lands in a module whose SOURCE names exactly one provider for the name.",

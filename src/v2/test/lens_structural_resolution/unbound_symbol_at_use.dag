@@ -1,5 +1,7 @@
 module v2.test.lens_structural_resolution.unbound_symbol_at_use
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 
 import v2.std.dependency { DependencyView }
@@ -78,7 +80,8 @@ fn sr_unbound_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
 fn sr_unbound_claim_tree() -> InferredTree {
   InferredTree {
     root: sr_unbound_decl,
-    facts: sr_unbound_claim_fact_map()
+    facts: sr_unbound_claim_fact_map(),
+    arm_resolutions: constructed_root_arm_resolutions()
   }
 }
 

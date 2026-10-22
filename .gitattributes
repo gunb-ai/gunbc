@@ -45,6 +45,7 @@ src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-art
 src/v1/stage0/src/evaluation_budget_consequence_generated.rs merge=generated-artifact
 src/v1/stage0/src/gunbc_file_transport_generated.rs merge=generated-artifact
 src/v1/stage0/src/native_route_seed_boundary_generated.rs merge=generated-artifact
+src/v1/stage0/src/emitted_build_seed_constants_generated.rs merge=generated-artifact
 src/v1/stage0/src/release_locus_seed_constants_generated.rs merge=generated-artifact
 src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
 tools/fabric_ci_fci1_bounded_execution_context.env merge=generated-artifact

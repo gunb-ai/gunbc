@@ -332,6 +332,9 @@ data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_disso
 data excl_closing_contract_execution_reason: String = "SUBSTANTIATED per-row (authored 2026-09-20 beside the mechanism it covers): every fn in this file drives shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL child claim-run of a PLANTED witness and adjudicate its exit status — the behavioral discrimination controls for the execution arm of gunbc.roadmap.roadmap_closing_contract_authoring (a witness that resolves and passes → PASS; unresolvable imports → typed resolve refusal; a resolved-but-false arm → typed failure). The hermetic envelope refuses each of those effects by construction ('no mock_response for operation Run'), the refusal is correct, and the file cannot be made hermetic: the subject IS the child process's exit status, which no in-process assertion observes, and mocking the invocation would let the discrimination claims pass against a fabricated status — precisely the defect (a textual oracle greening a witness that cannot resolve) this file exists to detect. The fixtures are planted into a mktemp source root under target/ at run time rather than committed, because a committed witness with unresolvable imports would fail every whole-root resolve it was swept into. Enrolled in bin_witness_wet_entries beside the run_verdict exit-status rows, the same class excl_run_verdict_exit_status_reason substantiates; the file's production inhabitance is the belt verify route, which executes closing_contract_authored itself."
 
 data excl_closing_contract_execution_dissolve: DissolutionCondition = unbound_dissolution(description: "the claim runner's exit-status seam becomes observable without a subprocess (the terminal excl_bin_wet_dissolve names); then this file's three claims re-enroll as ordinary hermetic discovery rows, the bin_witness_wet_entries rows and this exclusion row delete together. A mock_response for Run does NOT discharge it: a mocked status is authored data, so the discrimination claims would be re-checked against the mock rather than against a real child claim-run — the vacuous pass the file's header records.")
+data excl_claim_batch_unobserved_exit_reason: String = "SUBSTANTIATED per-row (authored 2026-10-21, gunbc#14539): both fns drive shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL claim_batch child over a PLANTED module pair and adjudicate its exit status and output shape, so the hermetic envelope refuses each effect by construction (no mock_response for operation Run). The subject IS the child process exit status: collapsing EntryResolveRefusal::ClosureDiagnostics into the unobserved arm flips exit 1 to 2 and the in-process unit tests (pure over two bools and over refusal classification) cannot see the CLI wiring. A Rust integration test would sit off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path). The closure error is planted into a mktemp root under target/ at run time, never committed. Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule as ExpectedToHold. The missing-entry row passes only the planted root; the closure-error row must also pass --source-root dag so gunbc.output_policy resolves, so its child walks the whole tree and runs over bin_witness_wet_per_row_wall_budget_seconds, which no path that runs local_repo_wet_schedule() arms (--eval-budget-ms arms the CPU/eval budget, not wall time; the only production set_witness_wall_budget call is in reach_base_standings, which has zero callers). That over-budget admission is stated here, and the same mechanism is declared as a rung drop in the parse-gate PR (gunbc#14601). This note dissolves if a wall budget or an in-process exit seam is armed on this lane."
+
+data excl_claim_batch_unobserved_exit_dissolve: DissolutionCondition = unbound_dissolution(description: "the claim runner exit-status seam becomes observable without a subprocess (the terminal excl_bin_wet_dissolve names); then these rows move to the execution corpus and this row and the two schedule entries delete together.")
 data excl_shell_spawn_refused_reason: String = "SUBSTANTIATED per-row: the subject of test.claim.shell_spawn_refused_real_execution_witness is whether the host can spawn argv[0], and whether the seed's shell transport turns a failed spawn into ShellSpawnRefused rather than aborting the evaluation. Both are facts about the real spawn, so the file cannot be made hermetic: a mock_response for test.ShellSpawnProbe.Observed would be authored data, and the discriminating red (an absent binary yields ShellSpawnRefused) would pass against a fabricated refusal whether or not the transport realizes one. Its fns are scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, which the required floor executes: the only effect is spawning a local program (true, false, an absent name) -- no network, no cargo, no remote host, no writes."
 
 data excl_manager_unaskable_reason: String = "SUBSTANTIATED per-row, and it is its OWN row rather than a second use of excl_shell_spawn_refused_reason because that reason substantiates a DIFFERENT SUBJECT AND A DIFFERENT EFFECT SET (review 69970): it says in terms that the subject of test.claim.shell_spawn_refused_real_execution_witness is whether the host can spawn argv[0], and that its only effect is spawning a local program. The subject here is a SYSTEMD USER MANAGER -- whether gunbc.compute.work_provider_local read_user_unit_property folds a refused spawn of systemctl into a property that was NOT QUERIED, so the two unit readings reach their own unavailable arm instead of the whole evaluation ending as a shell-spawn-refused runtime error with the seat charged and the producer lease held. The effects are the manager probe, systemctl ShowUserProperty for four unit properties, and a cgroup events read: a superset of the neighbour row's one effect, over a different boundary. DESIGN section 3b: a home that resolves but owns only part of the scope a row claims is a scope/ownership mismatch on the row. The negative half that admits it to the same LANE is the one every member shares: no network, no cargo, no remote host, no install media, and nothing written outside what the witness creates."
@@ -399,6 +402,16 @@ data excl_local_repo_wet_tempdir_write_reason: String = "real host-effect execut
 data excl_local_repo_wet_digest_stdin_reason: String = "real host-effect capture-verification witnesses reach extdeps.tools.sha256sum Sha256.DigestStdin through gunbc.host.memory_observation verify_memory_capture_content. DigestStdin has no mock_response, so hermetic execution refuses before a verdict. read_verified_memory_capture additionally reads committed artifact bytes through Filesystem.Read; neither route writes files or creates a temporary repository/directory. The required floor executes these identities through v2.workflow.local_repo_wet_terminal local_repo_wet_schedule and retains their DigestStdin route gaps in floor_route_gap_expectations."
 
 data excl_local_repo_wet_digest_stdin_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage for extdeps.tools.sha256sum Sha256.DigestStdin becomes sufficient to execute all enrolled capture-verification assertions through verify_memory_capture_content and read_verified_memory_capture, including known-answer, changed-content refusal, and committed-artifact replay controls. Verify those identities on the hermetic route, explicitly re-enroll them in discovery, and remove their LocalRepoWetLane exclusions, corresponding wet schedule entries and DigestStdin route gaps together; only then delete this reason/trigger. Mktemp.Dir, Filesystem.Write or git mock coverage alone cannot discharge this trigger.")
+
+// THE EFFECT THIS WITNESS ACTUALLY PERFORMS, named rather than borrowed. It is NOT
+// excl_local_repo_wet_tempdir_write_reason's effect: that reason says "no git operation runs", and
+// here the subject IS a git execution -- production's own capture route reaches git hash-object and
+// the staging install through compute_exec -> gunbc.WitnessBin.Run. Admitting this file under a
+// reason that denies the effect it exercises would make the roster's account of the lane false,
+// which is what the neighbour reasons insist on naming separately.
+data excl_output_capture_absence_wet_reason: String = "real host-effect execution witness: each row EXECUTES production's build-output capture route (gunbc.compute.work_provider_local compute_return_outputs) against a throwaway temp checkout on the runner's own host, so its effects are gunbc.WitnessBin.Run (git hash-object, and the staging install, both reached through production's own compute_exec -- not through a supplied pair or a mock), shell.Mktemp.DirWithTemplate, shell.Remove.RecursiveForce, and the Filesystem write/read/list verbs. None has a mock_response, so the hermetic envelope refuses before any verdict and the capture's absent-output refusal would go unexecuted; the local-repo wet lane executes it. EVERY WRITE ROOT THE ROUTE REACHES IS ENUMERATED IN THE WITNESS HEADER AND IS A CHILD OF THE DIRECTORY THE WITNESS CREATES AND REMOVES (the layout paths it derives are checked with starts_with against that root): the instance's own roots -- instance_root (hence layout.checkout/work_dir/target_dir through compute_root) and its materialization store, which is WitnessScratchRoot here rather than the fleet's /tmp/gunbc_compute_<frame> scratch -- are all children of the shell.Mktemp.Dir, and every row's Bool ANDs production_paths_stay_inside_root (each derived path is under that root, and the staging tree is not under materialization_store_frame_root_prefix) with root_lists_own_writes (a recursive listing of that root names the file the row wrote) and with the tree being removed and the host then answering not_found for it. The fleet frame-scratch population under /tmp/gunbc_compute_* is listed before and after the run and carried in the case record as REPORTED EVIDENCE for the PR body, per the manager's ruling; it is not an input to the Bool, because traffic in an unrelated /tmp path says nothing about where this run wrote. No network, no cargo, no remote host, no install media. It is ENROLLED AT IDENTITY GRAIN in the wet lane -- three rows: these claim rows, this exclusion row, and the v2.workflow.floor_route_gap expectations -- because a wet witness enrolled in only part of the triple is the incomplete-triple state chunk_21's header records as having blocked the merge queue, and because a control about silent absence must not itself be silently absent."
+
+data excl_output_capture_absence_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "these identities re-enroll as ordinary hermetic discovery rows only when the hermetic route can execute production's capture path itself, which needs response coverage for gunbc.WitnessBin.Run (and for the staging install and the Filesystem write verbs) rather than for the step's inputs -- supplying readings at the step boundary is what the HERMETIC twin test.claim.compute.output_capture_absence_witness already does, and it is not a substitute: DESIGN 3's pairing obligation forbids supplied inputs removing the last execution of the real path. WHAT THE TRIGGER REQUIRES IS NOT A BETTER MOCK BUT THE SEED CAPABILITY THAT gunbc.hermetic_mock_fidelity NAMES IN A TYPED CARRIER: `fabricated_fact_next_trigger` says an arm may only answer as a function of the operation's declared inputs, and that capability does not exist yet -- `eval_mock_response` evaluates arms in an EMPTY environment, so an input-discriminating arm is unwritable in this seed. That is what keeps this trigger from firing on a witness's initiative: the only arm an author could add today is the unconditional kind the same module filed as a defect and had deleted on 2026-08-23 (`hermetic_mock_fidelity_rows`, `mock_arm_is_fabricating`), which fabricates the very success this witness exists to refuse. No operator ruling is needed to hold that, and none is claimed here: the module carries it. Until the capability lands, these rows stay in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, this exclusion row and the v2.workflow.floor_route_gap expectations land and leave TOGETHER, and removing one alone is the incomplete triple this row exists to prevent.")
 
 data excl_local_repo_wet_bash_materialized_reason: String = "real host-effect execution witness whose effect is EXECUTING A MATERIALIZED EFFECT-PLAN SCRIPT UNDER BASH (shell.Exec.Run over the sealed transport script) -- refused by the hermetic envelope (no mock_response for operation Run), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in the file on that schedule. THIS IS A DISTINCT ADMITTED EFFECT FROM ITS NEIGHBOURS AND IS NAMED RATHER THAN FOLDED IN: the commands the scripts run are id -u, test -x / test -f over fixed paths, printf and true -- directly or through a Let-bound shell variable -- so no repository is built (not excl_local_repo_wet_reason), nothing is written (not excl_local_repo_wet_tempdir_write_reason), and the probe is of the EMITTED BYTES' behaviour under a real shell rather than of a host tool's presence (not excl_local_repo_wet_host_probe_reason). What admits it to the same lane is the shared negative half: no network, no cargo, no remote host, no install media, nothing outside the process. THIS FILE'S MOVE: on gunbc#11357 it is one of the entry files that leaves the bin-witness wet class -- whose standing excl_bin_wet_reason records and whose restoration that row leaves to the lanes that do it -- and gains a real per-PR executor, because the If / Let / Call witnesses became changed identities ending in a route gap, which the floor admits only with a wet terminal joined (changed_witness_planned_without_terminal_verdict). The three members that predate that change are enrolled deliberately alongside them: under the dark class they were not evidence either."
 
@@ -556,6 +569,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
   WitnessExclusionRow {
     pattern: "seeded_filler_real_execution.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
+    pattern: "base64_tool_real_execution_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
@@ -877,7 +895,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration.dag",
     classification: FalsifierRehomedBinWet,
-    reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows. Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
+    reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Declared but UNREALIZED consumer: the FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows name a cadence whose executor (falsifier.yml) was deleted at 611fd02770/#8283, so no scheduled run executes these two claims today; the loss is carried by the typed frontier falsifier_rehomed_roster_rows and the rung drop gunbc.rung_drop.falsifier_rehomed_rows_unexecuted (#14615). Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
     dissolution: unbound_dissolution(description: "measured eval for below_cap and second_root lands under bin_witness_wet_per_row_wall_budget_seconds on a measured run — then re-enroll per-PR discovery consciously, or delete when emit-stage positives are no longer full-pipeline priced")
   },
   WitnessExclusionRow {
@@ -912,6 +930,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: BinWitnessWet,
     reason: excl_closing_contract_execution_reason,
     dissolution: excl_closing_contract_execution_dissolve},
+  WitnessExclusionRow {
+    pattern: "claim_batch_unobserved_exit_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_claim_batch_unobserved_exit_reason,
+    dissolution: excl_claim_batch_unobserved_exit_dissolve},
   WitnessExclusionRow {
     pattern: "mtcollins1_census_image_local_wet.dag",
     classification: LocalRepoWetLane,
@@ -1124,6 +1147,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_immutable_pin_no_ci_wet_lane_dissolve},
   WitnessExclusionRow {
     pattern: "attempt_discharge_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "output_capture_absence_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_output_capture_absence_wet_reason,
+    dissolution: excl_output_capture_absence_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "fci1_bounded_store_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
@@ -1901,6 +1934,62 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
   }
 ]
+
+// THE TYPED FRONTIER FOR COMMIT-ROSTER ROWS THAT RODE FalsifierCadenceJob, and it is a list beside
+// falsifier_rehomed_bin_wet_rows rather than additions to it because that list is specifically the
+// bin_witness_wet per-row-budget overflow (falsifier_cadence_surface_note, before its correction,
+// said exactly this) -- mixing the two would give one name two meanings (DESIGN 3). The row shape is
+// shared on purpose: reason plus dissolution is what a re-home owes, whatever it was re-homed from.
+//
+// WHY THESE ROWS LEFT gunbc.commit_workflow commit_gate_roster (falsifier-surface leaf, node
+// adhoc-cea8e60d-505): FalsifierCadenceJob stopped being an executing surface, and a row enrolled
+// only on it is a bare de-enrollment. None of the five functions is returned to
+// GithubActionsCiJob here: that would re-open the batch-4 over-budget that re-homed them (batch-4 clamp
+// FLOOR-BATCH-OVER-BUDGET, run 30148859947), so they are carried here, typed, until an executor
+// exists. Walls: witness_row_cost_basis.tsv records 12481ms (wall, run 30550328673, srv_fleet_arm64)
+// for witness_parse_binding_fidelity_distinct_identifiers_holds, over the five-second per-PR
+// budget, which is the measured reason that row stays out of the floor; the bind/loop census rows
+// have no recorded reading there, so none is claimed for them.
+// The two frontier_probe rows that also rode the commit roster were the SAME identities already in
+// falsifier_rehomed_bin_wet_rows (a duplicate enrolment); they stay there and appear once.
+data falsifier_rehomed_roster_rows: List<RehomedBinWetRow> = [
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
+    function: "bind_census_ingested_executes_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); that surface's executor, falsifier.yml, was deleted at 611fd02770 (#8283), so the row ran nowhere while reading as enrolled. The file's other functions keep their per-PR file-grain enrolment.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
+    function: "bind_census_ingested_wrong_value_red_holds",
+    reason: "RED-control pole of bind_census_ingested_executes_holds: re-homed with it so the discriminating pair stays together; same dead executor.",
+    dissolution: unbound_dissolution(description: "fires with bind_census_ingested_executes_holds dissolution (same file, same mechanism)")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
+    function: "loop_census_ingested_executes_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); same dead executor as bind_census_ingested_executes_holds.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
+    function: "loop_census_ingested_wrong_value_red_holds",
+    reason: "RED-control pole of loop_census_ingested_executes_holds: re-homed with it; same dead executor.",
+    dissolution: unbound_dissolution(description: "fires with loop_census_ingested_executes_holds dissolution (same file, same mechanism)")
+  },
+  RehomedBinWetRow {
+    entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
+    function: "witness_parse_binding_fidelity_distinct_identifiers_holds",
+    reason: "Re-homed off the per-PR floor onto FalsifierCadenceJob by the batch-4 over-budget clamp (run 30148859947); same dead executor. Its cheap sibling witness_resolve_distinct_param_bindings_holds stays per-PR.",
+    dissolution: unbound_dissolution(description: "an executor runs this row (candidate: the known-red instrument once parallel queues land) and it is receipted there, or its measured wall fits the per-PR floor and it re-enrolls on GithubActionsCiJob; then delete this row")
+  }
+]
+
+fn falsifier_rehomed_roster_entries() -> List<ScheduleWitnessEntry> {
+  fold(falsifier_rehomed_roster_rows, init: [], f: fn(acc, r) {
+    concat(acc, [bin_wet(entry: r.entry, f: r.function)])
+  })
+}
 
 fn falsifier_rehomed_bin_wet_entries() -> List<ScheduleWitnessEntry> {
   fold(falsifier_rehomed_bin_wet_rows, init: [], f: fn(acc, r) {

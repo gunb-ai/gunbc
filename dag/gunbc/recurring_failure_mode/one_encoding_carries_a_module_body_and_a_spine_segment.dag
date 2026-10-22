@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.one_encoding_carries_a_module_body_and_a_spine_segment
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data one_encoding_carries_a_module_body_and_a_spine_segment: RecurringFailureMode = RecurringFailureMode {
   identity: "one_encoding_carries_a_module_body_and_a_spine_segment" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
 
   receipts: [
     "one encoding carries two meanings: the containment spine is a chain of single-Named-edge Conj wrappers, and a module body whose only member is a Named edge to a Conj has exactly that shape. `p { Flag: Conj }` and the path `p.Flag` were one tree. INVALID STATE: a grafted module whose qualified name, read back from its own nesting, is longer than the name it was authored with -- the first declaration has become a segment.",
