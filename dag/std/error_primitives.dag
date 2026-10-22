@@ -1,5 +1,7 @@
 module std.error_primitives
 
+import std.float { Float }
+
 type Result<ok, err> = Ok { value: ok } | Err { value: err }
 
 type DivError = DivideByZero | Overflow

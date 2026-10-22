@@ -13,8 +13,12 @@ import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {
-  ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+  ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged,
   managed_host_binding_for,
+}
+import gunbc.host.bmc_control_binding {
+  BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch,
+  bmc_control_route_observation,
 }
 import gunbc.machine_intake.mtcollins1_dimm_connector_observation { mtcollins1_blue_connector_observation }
 import gunbc.machine_intake.dimm_physical_orientation {
@@ -62,23 +66,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn mtcollins1_oriented(anchors: List<DimmPlacementAnchor>) -> DimmOrientedHost? {
   match managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr) {
     ManagedHostNotManaged { host: _ } => Absent
-    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } => match s {
-      ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+    ManagedHostFoundUnderDeclaredDrop { host: hm, control: s, drop: _, standing_subject: _, current_subject: _ } => match s {
+      BmcControlBound { route: r } => match host_dimm_orientation(host: hm.host, observation: bmc_control_route_observation(route: r), anchors: anchors) {
         HostDimmOriented { oriented: o } => Present { value: o }
         HostDimmBoardUnmodeled { host: _, board: _ } => Absent
       }
-      ManagedHostAccessUnobserved { endpoint: _ } => Absent
-      ManagedHostNotSecured { cause: _ } => Absent
-      ManagedHostEndpointMismatch { observed: _, secured: _ } => Absent
+      BmcControlAccessUnobserved { endpoint: _ } => Absent
+      BmcControlNotSecured { cause: _ } => Absent
+      BmcControlEndpointMismatch { observed: _, secured: _ } => Absent
     }
-    ManagedHostFound { standing: s } => match s {
-      ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+    ManagedHostFound { host: hm, control: s } => match s {
+      BmcControlBound { route: r } => match host_dimm_orientation(host: hm.host, observation: bmc_control_route_observation(route: r), anchors: anchors) {
         HostDimmOriented { oriented: o } => Present { value: o }
         HostDimmBoardUnmodeled { host: _, board: _ } => Absent
       }
-      ManagedHostAccessUnobserved { endpoint: _ } => Absent
-      ManagedHostNotSecured { cause: _ } => Absent
-      ManagedHostEndpointMismatch { observed: _, secured: _ } => Absent
+      BmcControlAccessUnobserved { endpoint: _ } => Absent
+      BmcControlNotSecured { cause: _ } => Absent
+      BmcControlEndpointMismatch { observed: _, secured: _ } => Absent
     }
   }
 }

@@ -38,6 +38,6 @@ data realization_respells_a_modeled_folds_sequencing_to_instrument_it: Recurring
   evidence: [
     DeclarationRef { module_path: "v2.compiler.program_assembly", decl_name: "program_assembly_read_to_normalized_root_seeded", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.staged_front_end", decl_name: "run_front_end_to", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.compiler.compile", decl_name: "native_test_context_absorb", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.source_root_eval", decl_name: "native_test_context_absorb", field: WholeDeclaration },
   ],
 }
