@@ -138,6 +138,7 @@ import gunbc.auth.heal_publisher_federation {
   heal_publisher_token_refused_message
 }
 import extdeps.github.app { GitHubAppInstallationId }
+import gunbc.fleet.organization_runner_roster_read_credential { organization_runner_roster_read_token_request_body }
 import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
@@ -2542,7 +2543,7 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
   )
 }
 
-fn org_admin_app_token_mint() -> AppInstallationTokenMint {
+fn org_installation_token_mint(request_body: String?, scope_note: String) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "org-admin",
     key_secret: gunbai_ci_app_pem_secret,
@@ -2563,15 +2564,32 @@ fn org_admin_app_token_mint() -> AppInstallationTokenMint {
       gunbai_ci_declared.slug as String,
       " installation ",
       to_string(gunbai_ci_declared_installation_id.value),
-      " (one-hour lifetime; key wiped; token held in this step's environment only)"
+      " (", scope_note, "one-hour lifetime; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: none,
+    request_body: request_body,
     observation_record: none
   }
 }
 
+fn org_admin_app_token_mint() -> AppInstallationTokenMint {
+  org_installation_token_mint(request_body: none, scope_note: "")
+}
+
+// THE ROSTER READER'S MINT: the same implementation, down-scoped at the mint to
+// organization_self_hosted_runners read (gunbc.fleet.organization_runner_roster_read_credential).
+fn org_roster_read_app_token_mint() -> AppInstallationTokenMint {
+  org_installation_token_mint(
+    request_body: Present { value: organization_runner_roster_read_token_request_body(installation: gunbai_ci_declared_installation_id) },
+    scope_note: "organization_self_hosted_runners read only; "
+  )
+}
+
 fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
   github_app_installation_token_prelude(spec: org_admin_app_token_mint())
+}
+
+fn gunbc_ci_org_roster_read_app_token_prelude() -> List<PipelineStep> {
+  github_app_installation_token_prelude(spec: org_roster_read_app_token_mint())
 }
 
 // THE APP-KEY VERSION VERIFIER, as two steps: a mint over the EXACT version the dispatch names,
@@ -3084,7 +3102,7 @@ data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host
 // org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
   gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_org_admin_app_token_prelude(),
+    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
