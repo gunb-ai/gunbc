@@ -6364,6 +6364,176 @@ pub fn shared_by_every_declarer(
     }
 }
 
+pub fn declaration_shared_at_key(
+    type_summaries: Rc<TypeSummaryIndex>,
+    key: String,
+    name: String,
+    recursive_type_set: Rc<BTreeSet<String>>,
+    target_needs_sharing: bool,
+) -> bool {
+    match crate::v1_compiler_infer_emit_info::type_summary_decided(
+        type_summaries.clone(),
+        key.clone(),
+    ) {
+        Some(summary) => v1_rt::set_contains(
+            &maybe_mark_shared_type(
+                v1_rt::rc_empty_set::<String>(),
+                summary.clone(),
+                recursive_type_set.clone(),
+                target_needs_sharing.clone(),
+            ),
+            name.clone(),
+        ),
+        std::option::Option::None => true,
+    }
+}
+
+pub fn declaration_has_non_copy_field(
+    type_summaries: Rc<TypeSummaryIndex>,
+    key: String,
+    recursive_type_set: Rc<BTreeSet<String>>,
+    target_needs_sharing: bool,
+) -> bool {
+    match crate::v1_compiler_infer_emit_info::type_summary_decided(
+        type_summaries.clone(),
+        key.clone(),
+    ) {
+        Some(summary) => {
+            let mut __found = false;
+            for tn in Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
+                .iter()
+                .cloned()
+            {
+                if if is_dag_value_type_name(tn.clone()) {
+                    false
+                } else {
+                    if ((crate::v1_compiler_infer_emit_info::type_summary_keys_of_leaf(
+                        type_summaries.clone(),
+                        tn.clone(),
+                    )
+                    .len() as i64)
+                        == 0)
+                    {
+                        true
+                    } else {
+                        shared_by_every_declarer(
+                            type_summaries.clone(),
+                            tn.clone(),
+                            recursive_type_set.clone(),
+                            target_needs_sharing.clone(),
+                        )
+                    }
+                } {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn leaf_sharing_disagreement_declarers(
+    type_summaries: Rc<TypeSummaryIndex>,
+    name: String,
+    identity: String,
+    recursive_type_set: Rc<BTreeSet<String>>,
+    target_needs_sharing: bool,
+) -> Rc<Vec<String>> {
+    {
+        let keys = crate::v1_compiler_infer_emit_info::type_summary_keys_of_leaf(
+            type_summaries.clone(),
+            name.clone(),
+        );
+        let verdicts = Rc::new({
+            let mut __result = Vec::new();
+            for key in keys.iter().cloned() {
+                __result.push(declaration_shared_at_key(
+                    type_summaries.clone(),
+                    key.clone(),
+                    name.clone(),
+                    recursive_type_set.clone(),
+                    target_needs_sharing.clone(),
+                ));
+            }
+            __result
+        });
+        let this_shared = {
+            let mut __found = false;
+            for key in keys.iter().cloned() {
+                if ((key.clone() == identity.clone())
+                    && declaration_shared_at_key(
+                        type_summaries.clone(),
+                        key.clone(),
+                        name.clone(),
+                        recursive_type_set.clone(),
+                        target_needs_sharing.clone(),
+                    ))
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let copy_over_non_copy = {
+            let mut __found = false;
+            for key in keys.iter().cloned() {
+                if ((key.clone() == identity.clone())
+                    && declaration_has_non_copy_field(
+                        type_summaries.clone(),
+                        key.clone(),
+                        recursive_type_set.clone(),
+                        target_needs_sharing.clone(),
+                    ))
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        if ((this_shared.clone() && copy_over_non_copy.clone()) && {
+            let mut __found = false;
+            for v in verdicts.iter().cloned() {
+                if !v.clone() {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) {
+            keys.clone()
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
+pub fn leaf_sharing_disagreement_refusal(
+    name: String,
+    identity: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let declarers = leaf_sharing_disagreement_declarers(
+            emit_info.type_summaries.clone(),
+            name.clone(),
+            identity.clone(),
+            emit_info.recursive_type_set.clone(),
+            crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
+                .needs_sharing
+                .clone(),
+        );
+        if ((declarers.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"leaf_sharing_disagreement: type '".to_string(), name.clone()), "' (".to_string()), identity.clone()), ") is heap-shared but its leaf is declared by ".to_string()), declarers.clone().join(&", ".to_string())), " and those declarations disagree on heap sharing; the shared set is keyed by leaf, so this declaration would be emitted unshared (Copy roster over Rc fields). Rename one declaration or key sharing by declaration identity.\");\n".to_string())
+        }
+    }
+}
+
 pub fn build_shared_types(
     type_summaries: Rc<TypeSummaryIndex>,
     recursive_type_set: Rc<BTreeSet<String>>,
@@ -16967,12 +17137,23 @@ pub fn emit_type_def_from_connective(
                     env.clone(),
                     emit_info.clone(),
                 );
+                let guarded_struct = v1_rt::concat(
+                    leaf_sharing_disagreement_refusal(
+                        item_text.clone(),
+                        crate::v1_compiler_infer_emit_info::type_decl_identity(
+                            env.module_path.clone(),
+                            item_text.clone(),
+                        ),
+                        emit_info.clone(),
+                    ),
+                    struct_text.clone(),
+                );
                 if (clone_bound_refusal.clone() == "".to_string()) {
-                    struct_text.clone()
+                    guarded_struct.clone()
                 } else {
                     v1_rt::concat(
                         v1_rt::concat(clone_bound_refusal.clone(), "\n".to_string()),
-                        struct_text.clone(),
+                        guarded_struct.clone(),
                     )
                 }
             }
@@ -17137,17 +17318,27 @@ pub fn emit_type_def_from_connective(
                                 emit_info.clone(),
                                 env.source_indices.clone(),
                             );
-                            let enum_text = emit_enum_from_children(
-                                item_text.clone(),
-                                type_params.clone(),
-                                generic_param_names.clone(),
-                                header_clone_param_names.clone(),
-                                item.children.clone(),
-                                recursive_types.clone(),
-                                shared_types.clone(),
-                                env.clone(),
-                                serde_policy.clone(),
-                                emit_info.clone(),
+                            let enum_text = v1_rt::concat(
+                                leaf_sharing_disagreement_refusal(
+                                    item_text.clone(),
+                                    crate::v1_compiler_infer_emit_info::type_decl_identity(
+                                        env.module_path.clone(),
+                                        item_text.clone(),
+                                    ),
+                                    emit_info.clone(),
+                                ),
+                                emit_enum_from_children(
+                                    item_text.clone(),
+                                    type_params.clone(),
+                                    generic_param_names.clone(),
+                                    header_clone_param_names.clone(),
+                                    item.children.clone(),
+                                    recursive_types.clone(),
+                                    shared_types.clone(),
+                                    env.clone(),
+                                    serde_policy.clone(),
+                                    emit_info.clone(),
+                                ),
                             );
                             let validations = if (clone_bound_refusal.clone() == "".to_string()) {
                                 validations.clone()
