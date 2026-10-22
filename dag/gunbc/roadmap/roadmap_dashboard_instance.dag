@@ -1886,6 +1886,16 @@ data dashboard_git_worker_directory_children: List<NonEmptyStr> = [
   dashboard_git_worker_objects_child, dashboard_git_worker_refs_child, dashboard_git_worker_logs_child,
 ] as List<NonEmptyStr>
 
+// THE MEMBER LABEL THE THREE GIT-WORKER OWNED-DIRECTORY DEMANDS ARE MINTED WITH. This ONE function is
+// the typed origin of "is this demand one of the git subtree's?": the roster mints members through it
+// (dashboard_instance_worker_git_directories) and the apply partitions through it
+// (gunbc.live_deploy.emit is_dashboard_git_worker_directory_demand), by PATH-FREE member equality --
+// never by a substring of the path, which would misclassify any unrelated owned directory whose path
+// merely happens to contain /logs or /refs (review round: path-substring classifier).
+fn dashboard_git_worker_directory_member(child: NonEmptyStr) -> NonEmptyStr {
+  join(["git-worker-", child as String], "") as NonEmptyStr
+}
+
 // THE CHILD OF THE REPO ROOT UNDER WHICH EVERY ATTEMPT'S PRIVATE GIT ENTRY SITS. Owned by the
 // account that creates the entries, world-traversable, never group-writable: git creates an entry there, and the worker's own
 // commit only ever writes inside the one entry the unit's ReadWritePaths= names.
@@ -1895,7 +1905,7 @@ fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) ->
   match instance.worker {
     WorkerIsServiceUser => []
     WorkerDedicatedAccount => map(dashboard_git_worker_directory_children, child => OwnedDirectoryDeclared {
-      member: join(["git-worker-", child as String], "") as NonEmptyStr,
+      member: dashboard_git_worker_directory_member(child: child),
       path: dashboard_instance_child(root: instance.repo_root, child: child as String),
       owner: dashboard_instance_worker_writable_owner(instance: instance),
       // THE ONE MODE AUTHORITY (dashboard_git_worker_subtree_declared_directory_mode): objects/ installs

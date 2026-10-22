@@ -202,7 +202,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   // WORKER-ROOT-EQUIVALENT-3: the apply side of the two new members reuses the SAME builders the
   // observer and the claims use -- one authority for what a re-group and what the posture are.
-  dashboard_git_worker_directory_children, dashboard_git_worker_subtree_path,
+  dashboard_git_worker_directory_children, dashboard_git_worker_directory_member,
+  dashboard_git_worker_subtree_path,
   dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_subtree_chgrp_command, dashboard_git_worker_subtree_chmod_command,
   dashboard_git_worker_subtree_needs_sticky, dashboard_git_worker_subtree_writes_files_in_place,
@@ -2400,47 +2401,84 @@ fn host_script_mutate_projection(fragments: List<HostScriptFragment>) -> HostScr
 // ONE CASE ANALYSIS per target: refusal is Decide with standing HostScriptRefused; Mutate carries only an admitted install.
 data owned_directory_unplannable_poison: String = "__GUNBC_DEPLOY_REFUSED__ owned directory NOT ENSURED: gunbc.owned_directory owned_directory_install_plan_of has no plan: "
 
-// THE GIT SUBTREE GROUP, EMITTED WHERE THE REPOSITORY EXISTS. The three worker .git/ installs, the
-// re-group sweep, and the shared-posture step share ONE premise -- the repository is established --
-// and so travel as one group: emitted at the artifact step that establishes the tree (the
-// GunbcSourceTree TreePublication arm), immediately after that step's convergence readback, and
-// preceded by the repository premise gate. They left the standing pre-position of
-// apply_intent_fragments, where the host script ran them BEFORE any step could create the
-// repository: on a fresh instance that installed -d --parents a root-owned source/.git skeleton
-// into exactly the directory the tree step must create (lab apply abd9fdc4, 2026-10-17), and the
-// old root kept serving. If the group is empty nothing is emitted, so an apply that establishes no
-// tree and mutates no git member writes no git command at all.
+// THE GIT SUBTREE GROUP, IN TWO POSITIONS. The re-group sweep and the shared-posture step share ONE
+// premise with the three worker .git/ installs -- the repository is established -- and the two
+// positions differ only in how that premise is guaranteed:
+//
+// THE TREE POSITION (git_repository_subtree_tree_position_fragments). Emitted at the artifact step
+// that establishes the tree (the GunbcSourceTree TreePublication arm), immediately after that step's
+// convergence readback, PRECEDED BY THE REPOSITORY PREMISE GATE. The installs travel here too (the
+// standing position suppresses exactly them, and only for this shape). They left the standing
+// pre-position of apply_intent_fragments, where the host script ran them BEFORE any step could
+// create the repository: on a fresh instance that installed -d --parents a root-owned source/.git
+// skeleton into exactly the directory the tree step must create (lab apply abd9fdc4, 2026-10-17),
+// and the old root kept serving.
+//
+// THE STANDING POSITION (git_repository_subtree_group_fragments). A spec that carries NO tree step
+// has no position to move to, so its sweep and posture stay where they always were -- today's
+// behaviour, unchanged, for exactly the shapes that always had it.
 fn git_repository_subtree_group_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  concat(
+    git_worker_subtree_fragments(spec: spec, plan: plan),
+    repository_shared_posture_fragments(spec: spec, plan: plan))
+}
+
+// THE TREE-POSITION GROUP: the partitioned installs (typed member equality against the roster's mint
+// authority), the sweep and the posture, behind the premise gate as its own member. compose_host_script
+// runs the mutate phase as one set -euo pipefail script with FailFast, so a gate failure aborts the
+// whole apply at the tree step's position -- no later member can mutate any .git path against a
+// non-repository. This is the handoff's "every git step carries a typed precondition": checked once,
+// authoritatively, before the group's first write, and the refusal names the read.
+fn git_repository_subtree_tree_position_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
   let install_fragments = flat_map(
     filter(deployment_directory_demands(spec: spec), t =>
       is_dashboard_git_worker_directory_demand(t: t) && owned_directory_will_install(spec: spec, plan: plan, t: t)),
     t => owned_directory_target_fragments(t: t))
-  let group = concat(install_fragments, concat(
-    git_worker_subtree_fragments(spec: spec, plan: plan),
-    repository_shared_posture_fragments(spec: spec, plan: plan)))
+  let group = concat(install_fragments, git_repository_subtree_group_fragments(spec: spec, plan: plan))
   if is_empty(xs: group) {
     []
   } else {
-    // The premise gate is its OWN member, emitted first. compose_host_script runs the mutate phase as
-    // one set -euo pipefail script with FailFast, so a gate failure aborts the whole apply at the tree
-    // step's position -- no later member can mutate any .git path against a non-repository. This is
-    // exactly the "every git step carries a typed precondition" the handoff demands: the precondition
-    // is checked once, authoritatively, before the group's first write, and the refusal names the read.
-    concat(
-      host_script_member_proceed(
-        member: "git-worker-subtree-premise" as NonEmptyStr,
-        mutate_steps: [dashboard_git_worker_repository_premise_gate_step(repo: dashboard_git_worker_subtree_repo_root(spec: spec))],
-      ),
-      group)
+    match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+      // NO FABRICATED ROOT, EVER. An unknown instance id has no repository root to name, and the gate
+      // would run git -C "" against the script's cwd -- a refusal that tests nothing. Refuse at
+      // EMISSION with the deployment poison (the fabric_storage_door_unknown_instance_poison
+      // precedent): the marker is not valid shell, so the apply fails rather than testing an
+      // invented path. A spec whose id is unknown cannot establish the premise for anyone.
+      DashboardInstanceIdUnknown { instance_id: instance_id } =>
+        host_script_member_refused(
+          member: "git-worker-subtree-premise" as NonEmptyStr,
+          cause: "the deployment names an unknown dashboard instance, so the git subtree group has no repository root to premise on",
+          command: join([git_subtree_group_rootless_poison, instance_id as String, "\n"], ""),
+        )
+      DashboardInstanceForId { instance: instance } =>
+        concat(
+          host_script_member_proceed(
+            member: "git-worker-subtree-premise" as NonEmptyStr,
+            mutate_steps: [dashboard_git_worker_repository_premise_gate_step(repo: instance.repo_root as String)],
+          ),
+          group)
+    }
   }
 }
 
-// A standing owned-directory demand is one of the worker's git directories when its path carries
-// one of the three declared children. Membership is keyed on the SAME data as the sweep and the
-// posture (dashboard_git_worker_directory_children), so the split cannot drift from the roster.
+// The emission-time poison for a tree-position group whose instance id is unknown (never "git -C ").
+data git_subtree_group_rootless_poison: String = "__GUNBC_DEPLOY_REFUSED__ git subtree group reached with an unknown dashboard instance (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_for_id): no repository root to premise the worker .git/ grants on. instance="
+
+// A standing owned-directory demand is one of the worker's git directories when it is a DECLARED
+// demand the roster minted with one of the three git-worker members. Membership is keyed on the ONE
+// typed origin (dashboard_git_worker_directory_member) that mints those members -- by member EQUALITY,
+// never by a substring of the path. The earlier form tested whether the path contained "/logs",
+// "/refs" or "/objects", which misclassified any unrelated owned directory whose path merely happens
+// to carry one of those segments (review round: path-substring classifier -- partition at the source,
+// where the richer origin exists). OwnedDirectoryManaged targets are never minted with a git-worker
+// member, and the arm only reads the declared member, so they cannot be swept in.
 fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
-  any(dashboard_git_worker_directory_children, child =>
-    string_contains(s: owned_directory_path(target: t) as String, pattern: concat("/", child)))
+  match t {
+    OwnedDirectoryManaged { directory: _ } => false
+    OwnedDirectoryDeclared { member: member, path: _, owner: _, mode: _, group_adoption: _ } =>
+      any(dashboard_git_worker_directory_children, child =>
+        member == dashboard_git_worker_directory_member(child: child))
+  }
 }
 
 // THE GIT SUBTREE'S REPOSITORY PREMISE, AS ONE GATE STEP. A commit in a linked worktree writes loose
@@ -2494,14 +2532,6 @@ fn dashboard_git_worker_repository_premise_refusal_sentence(repo: String) -> Str
     "gunbc-deploy-refused: repository premise: git rev-parse --absolute-git-dir at ",
     concat(repo, " is not ", concat(repo, "/.git -- the deployment tree step must establish the repository first"))
   )
-}
-
-// The repository whose premise the gate establishes: the instance's source repository root.
-fn dashboard_git_worker_subtree_repo_root(spec: DeploymentSpec) -> String {
-  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
-    DashboardInstanceIdUnknown { instance_id: _ } => ""
-    DashboardInstanceForId { instance: instance } => instance.repo_root as String
-  }
 }
 
 // Does this spec carry the step that establishes the repository tree? The group moves only for that
@@ -2564,15 +2594,19 @@ fn owned_directory_target_fragments(t: OwnedDirectoryTarget) -> List<HostScriptF
 }
 
 fn owned_directory_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  let tree_step_present = spec_publishes_source_tree(spec: spec)
   flat_map(deployment_directory_demands(spec: spec), t =>
     if !(owned_directory_will_install(spec: spec, plan: plan, t: t)) {
       []
-    } else if is_dashboard_git_worker_directory_demand(t: t) {
-      // THE GIT SUBTREE WAITS FOR THE REPOSITORY. The three worker .git/ installs travel with the
-      // re-group sweep and the shared-posture step in git_repository_subtree_group, emitted at the
-      // step that establishes the tree -- never at this standing position. An apply that ran them
-      // here would install -d --parents a root-owned skeleton into exactly the directory the tree
-      // step must create (the fresh-instance fabrication defect, lab apply 2026-10-17).
+    } else if tree_step_present && is_dashboard_git_worker_directory_demand(t: t) {
+      // THE GIT SUBTREE WAITS FOR THE REPOSITORY, AND ONLY FOR THE SHAPE THAT HAS A CREATING STEP.
+      // When the spec carries the GunbcSourceTree step, the three worker .git/ installs travel with
+      // the re-group sweep and the shared-posture step in git_repository_subtree_group_fragments,
+      // emitted AT that step -- never at this standing position. An apply that ran them here would
+      // install -d --parents a root-owned skeleton into exactly the directory the tree step must
+      // create (the fresh-instance fabrication defect, lab apply abd9fdc4 2026-10-17). When the spec
+      // carries NO such step, nothing else can emit them, so they stay here: today's behaviour,
+      // unchanged (this is the other direction of the both-way gate the review demanded).
       []
     } else {
       owned_directory_target_fragments(t: t)
@@ -4604,7 +4638,7 @@ fn apply_step_fragments(
         // bootstraps the repository), and never at the standing pre-position of apply_intent_fragments,
         // where it ran before any step could create the repository. The group carries its repository
         // premise gate first; a failed gate aborts the apply before any git path is created.
-        if art.kind == GunbcSourceTree { git_repository_subtree_group_fragments(spec: spec, plan: plan) } else { [] },
+        if art.kind == GunbcSourceTree { git_repository_subtree_tree_position_fragments(spec: spec, plan: plan) } else { [] },
       )
     Dependency { step: dep } =>
       host_script_member_proceed(
