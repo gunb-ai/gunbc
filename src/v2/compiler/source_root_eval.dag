@@ -3714,6 +3714,8 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
           let unrostered = fold_list(xs: done.site_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.rows, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
           let stale = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.sites, key: k) { Present { value: _ } => acc  Absent => if native_nfr_key_under_refused_file(refused: done.refused, key: k) { acc } else { list_snoc_item(xs: acc, item: k) } } })
           let unjudged = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { if native_nfr_key_under_refused_file(refused: done.refused, key: k) { list_snoc_item(xs: acc, item: "refused-file") } else { match map_lookup(m: done.sites, key: k) { Present { value: c } => if c == "scrutinee-is-an-expression" || c == "scrutinee-is-not-a-parameter" || c == "ambient-head" { list_snoc_item(xs: acc, item: c) } else { acc }  Absent => acc } } })
+          // EXIT PRECEDENCE: a found violation is a complete observation even beside refused files, so it is 1;
+          // 2 is only "no violation found, but refused or unjudged rows leave the verdict incomplete"; 0 needs both clean.
           let unobserved = length(xs: done.refused) + length(xs: done.unread)
           let bad = length(xs: unrostered) + length(xs: stale) + length(xs: done.duplicates)
           NativeNfrOutput {
@@ -3739,7 +3741,7 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
                 )
               )
             ),
-            exit: if unobserved > 0 { 2 } else if bad == 0 { 0 } else { 1 }
+            exit: if bad > 0 { 1 } else if unobserved + length(xs: unjudged) > 0 { 2 } else { 0 }
           }
       }
   }
