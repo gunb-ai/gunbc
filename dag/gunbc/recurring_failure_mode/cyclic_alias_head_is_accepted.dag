@@ -1,14 +1,15 @@
 module gunbc.recurring_failure_mode.cyclic_alias_head_is_accepted
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data cyclic_alias_head_is_accepted: RecurringFailureMode = RecurringFailureMode {
   identity: "cyclic_alias_head_is_accepted" as NonEmptyStr,
   rung: RungRead {
     found_at: FoundBelowTheLadder,
-    standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "a decidable, fully modeled class: the refusal is derived from the alias graph at declaration resolution, so no Accepted v1 program contains a transparent alias cycle" as NonEmptyStr },
+    standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of judging a transparent alias cycle on every in-scope path by ONE rule: the v1 declaration refusal and the v2 carrier reader carrier_chain_cycles share one cycle rule, and the refusal witness is a row of the required emitted-subject gate, so the discriminating RED is executed on the acceptance path rather than by a local claim run." },
   },
 
   receipts: [
@@ -20,7 +21,8 @@ data cyclic_alias_head_is_accepted: RecurringFailureMode = RecurringFailureMode 
     "NEXT-RUNG TRIGGER: the alias-resolution authority retains the visited declaration path and transports its cyclic outcome to every relevant consumer without converting it to an unexposed head or a partial successful answer. Execute the cyclic negative, acyclic positive, and a mutation that removes the refusal; enumerate the consumer population before claiming general coverage.",
     "CLIMBED (gunbc#14702, v1 seed path): the v1 front end now refuses every transparent alias cycle with a typed, located TypeAliasCycle on each member, raised once per declaration at v1.compiler.resolve resolve_item_types from SymbolIndex.alias_cycles, computed once by one linear pass over the alias graph (v1.compiler.infer transparent_alias_graph; identity edges are the same edge rule under the declared plain_only filter). The fuel-bounded chase and the per-alias walk are deleted, so no alias walk carries a fuel guard. SymbolIndex covers every module of the corpus, so a cycle in a module no entry reaches refuses too.",
     "EVIDENCE, EXECUTED: test.claim.alias_cycle_refusal_witness run with gunbc run --claim-run on a binary built from regenerated mirrors: the two-member, self, three-member and parameterized cycles refuse (PASS), and the controls A=B/B=Int, alias-of-alias of a generic and a 21-hop acyclic chain are accepted (PASS). REVERT ARM: the same witness on the pre-regeneration binary of the same head, which lacks the check, FAILS the four REDs and PASSES the three controls. Whole-corpus regeneration over the new check resolved the package graph without a TypeAliasCycle (it first refused bodiless opaque declarations such as Never, which are not alias edges because they record no authored right-hand side); the dedicated whole-tree compile-clean census exceeded the remote deadline and is not claimed.",
-    "SCOPE AND RESIDUE: the rung is for the v1 seed path. The v2 carrier reader's carrier_chain_cycles is a separate path that refuses the same shape on its own input; v1 TypeAliasCycle is the declaration rule and the two are not unified here. Identity-map construction still keys bare names by global uniqueness, which is the pre-existing ambiguity hole and not widened.",
+    "RUNG HONESTY (review 84464): the class rung is the minimum across in-scope paths (section 4b ob.1), so it is recorded MechanicallyPreventable, below the StructurallyGuaranteed ceiling: the v1 declaration refusal is derived structurally, but the v2 carrier path is a separate rule and the witness is executed by a local claim run, not enrolled on the required gate. The standing climbs when both are closed (the trigger).",
+    "SCOPE AND RESIDUE: the structural refusal is for the v1 seed path. The v2 carrier reader's carrier_chain_cycles is a separate path that refuses the same shape on its own input; v1 TypeAliasCycle is the declaration rule and the two are not unified here. Identity-map construction still keys bare names by global uniqueness, which is the pre-existing ambiguity hole and not widened.",
     "DISPOSITION: separate from the generic-inhabitance carrier repair. That repair may distinguish cyclic and unexposed results for its first routed product-application consumer. Such a scoped refusal does not discharge this general alias-head class.",
   ],
   evidence: [],
