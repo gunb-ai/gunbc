@@ -73,7 +73,23 @@ import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetwor
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
 // REMAINING COUPLING, owed to #14306: the seed binding is sole_constructor, so the only honest fixture is
 // the one its own producer builds. Every other fixture below is owned by this witness.
-import test.claim.altra_autoinstall_seed_witness { built_seed_and_binding }
+import test.claim.altra_autoinstall_seed_witness {
+  built_seed_and_binding,
+  build_seed_fixture,
+  network_posture,
+  network_posture_alt_netplan,
+  clean_packages,
+  one_key,
+  locked_console,
+  seeded_handle,
+  virtual_media_strategy,
+  target_altra,
+  unit_a_key,
+  attempt_one,
+  serial_selector,
+  bay_population,
+}
+import gunbc.provisioning.altra_autoinstall_seed { bind_altra_autoinstall_seed, Bound, BindRefused, select_target_disk }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -351,4 +367,36 @@ test fn the_two_strategies_project_different_actuations() -> Bool {
 
 test fn the_s5_frontier_names_this_declaration() -> Bool {
   provisioning_arm_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
+}
+
+// The seed is sealed: the only way to a second binding is the owner's binder, fed a seed whose documented
+// axis (the netplan source) differs. If either side refuses to bind, this is FALSE: a refusal never counts as
+// covering seed-varies.
+fn alt_seed_binding() -> AltraAutoinstallSeedBinding? {
+  match build_seed_fixture(network: network_posture_alt_netplan, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed(seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population)) {
+        Bound { binding: b } => Present { value: b }
+        BindRefused { blocker: _ } => Absent
+      }
+    Absent => Absent
+  }
+}
+
+test fn two_pxe_arms_differing_only_in_seed_yield_different_actuations() -> Bool {
+  match alt_seed_binding() {
+    Absent => false
+    Present { value: alt } => {
+      let e = DeliveryEvidence {
+        firmware: fixture_firmware_needs_boot_next(),
+        chainloader: pinned(),
+        virtual_media: media_available(),
+        origin: fixture_origin(),
+        seed: Present { value: alt },
+      }
+      let base = actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+      let other = actuate(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha")
+      !is_withheld(a: base) && !is_withheld(a: other) && base != other
+    }
+  }
 }
