@@ -10,7 +10,7 @@ import extdeps.gpu.types { TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_th
 import extdeps.gpu.nvidia { nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog, nvidia_rtx_pro_6000_max_q_catalog }
 import extdeps.qwen.qwen3_8_flash_next {
   qwen3_8_flash_next_architecture, flash_next_qsa_kv_bytes_per_token, flash_next_routed_expert_parameters,
-  flash_next_params_per_routed_expert, qwen3_8_flash_next_consumer_frontier,
+  flash_next_params_per_routed_expert, flash_next_indexer_kv_bytes_per_token, qwen3_8_flash_next_consumer_frontier,
 }
 import gunbc.serving.gpu_observed_memory_receipt { observed_memory_bytes, h200_nvl_observed_memory, b200_observed_memory, observed_memory_frontier }
 import gunbc.serving.flash_next_experiment_identity {
@@ -28,7 +28,7 @@ import gunbc.serving.flash_next_quant_matrix {
 import gunbc.serving.gpu_bench_warm_standing { WarmValid, WarmOverCapacity }
 import gunbc.serving.flash_next_topology {
   ServingTopology, CardBudget, TopologyFits, TopologyRefused, topology_capacity, card_budget_from_measured_cell,
-  topology_cards, topology_host_ngram_copies, flash_next_topology_frontier,
+  topology_cards, topology_host_ngram_copies, budget_with_indexer_scaled, flash_next_topology_frontier,
 }
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
 import gunbc.serving.flash_next_image_capability_observation {
@@ -368,20 +368,20 @@ test fn w_warm_throughput_scoreable_only_under_warm_valid() -> Bool {
 test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Bool {
   let cell = quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 })
   match cell {
-    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1)) {
+    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1), indexer_bytes_per_token: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1)) {
       Present { value: b } => {
-        let dp1 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 500)
-        let tp2 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 500)
-        let tp8 = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 500)
-        let tp8_idx = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b, indexer_permille: 1000)
-        let dp8 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, b: b, indexer_permille: 500)
+        let dp1 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 1, expert_parallel: false }, b: b)
+        let tp2 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 1, expert_parallel: false }, b: b)
+        let tp8 = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b)
+        let tp8_idx = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: budget_with_indexer_scaled(b: b, permille: 2000))
+        let dp8 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, b: b)
         match dp1 {
           TopologyFits { retained_tokens: r1, per_replica_tokens: p1, weight_copies_bytes: _ } => match tp2 {
             TopologyFits { retained_tokens: r2, per_replica_tokens: _, weight_copies_bytes: _ } => match tp8 {
               TopologyFits { retained_tokens: r8, per_replica_tokens: _, weight_copies_bytes: w8 } => match tp8_idx {
                 TopologyFits { retained_tokens: ri, per_replica_tokens: _, weight_copies_bytes: _ } => match dp8 {
                   TopologyFits { retained_tokens: rd, per_replica_tokens: _, weight_copies_bytes: wd } =>
-                    r1 == p1 && r2 > r1 && r8 > r2 && r8 < r2 * 4 && ri < r8 && rd == p1 * 8 && wd == w8 * 8
+                    r1 == p1 && r2 > r1 && r8 > r2 && r8 < r2 * 4 && ri < r8 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1) == 384 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 2) == 768 && rd == p1 * 8 && wd == w8 * 8
                   _ => false
                 }
                 _ => false

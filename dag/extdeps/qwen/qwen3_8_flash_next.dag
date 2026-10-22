@@ -63,6 +63,7 @@ type FlashNextArchitecture {
   qsa_layers: Nat
   indexer_budget_tokens: Nat
   indexer_heads: Nat
+  indexer_kv_heads: Nat
   indexer_head_dim: Nat
   indexer_compress: Nat
   moe_intermediate_size: Nat
@@ -95,6 +96,7 @@ data qwen3_8_flash_next_architecture: FlashNextArchitecture = FlashNextArchitect
   qsa_layers: 12,
   indexer_budget_tokens: 2048,
   indexer_heads: 4,
+  indexer_kv_heads: 1,
   indexer_head_dim: 128,
   indexer_compress: 4,
   moe_intermediate_size: 640,
@@ -110,6 +112,13 @@ data qwen3_8_flash_next_architecture: FlashNextArchitecture = FlashNextArchitect
 // not grow with context) and the indexer's own cache is a separate term the engine decides.
 fn flash_next_qsa_kv_bytes_per_token(arch: FlashNextArchitecture, element_bytes: Nat) -> Nat {
   arch.qsa_layers * 2 * arch.kv_heads * arch.head_dim * element_bytes
+}
+
+// INDEXER CACHE BYTES PER TOKEN, DERIVED FROM THE CONFIG (ModelOutput): one indexer KV head of indexer_head_dim per QSA
+// layer, compressed by indexer_compress, at a given element width (384 at FP8, 768 at BF16). Per-block scale bytes, if the
+// cache stores them, are not in the config and stay a declared frontier.
+fn flash_next_indexer_kv_bytes_per_token(arch: FlashNextArchitecture, element_bytes: Nat) -> Nat {
+  arch.qsa_layers * arch.indexer_kv_heads * arch.indexer_head_dim / arch.indexer_compress * element_bytes
 }
 
 // PARAMETERS HELD BY ROUTED EXPERTS: gate, up and down projections (3 x hidden x moe_intermediate) per
