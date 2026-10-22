@@ -14739,7 +14739,7 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
 // Arrow child denotes itself (child_type_node); a child that is not Resolved, or resolves to a still-unsolved type variable (the element of an empty list literal), binds as it is so a later argument decides it.
 fn unify_child_actual(n: Node) -> Node {
   match n.inferred {
-    Present { value: Resolved { node: rt } } => if n.connective == Arrow || unify_binding_is_uninformative(n: rt) { n } else { rt }
+    Present { value: Resolved { node: rt } } => if n.connective == Arrow || unify_binding_is_uninformative(n: rt) || rt.declaration == none { n } else { rt }
     _ => n
   }
 }
