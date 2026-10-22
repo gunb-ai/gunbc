@@ -22,11 +22,11 @@ import extdeps.boards.supermicro_h11ssl {
   supermicro_h11ssl_storage_support, VariantI, VariantC, VariantNc,
   supermicro_h11ssl_dimm_placements, supermicro_h11ssl_features, supermicro_h11ssl_frame,
   supermicro_h11ssl_io_edge_left_to_right, supermicro_h11ssl_fan_headers, supermicro_h11ssl_dimm_slots,
-  supermicro_h11ssl_fan_headers_bottom_edge_left_to_right, supermicro_h11ssl_dimm_population_read_standing,
+  supermicro_h11ssl_fan_headers_bottom_edge_left_to_right, supermicro_h11ssl_unplaced_features, supermicro_h11ssl_feature_knowledge, FeaturePlaced, FeatureExistsPositionUnread, FeatureNotKnown, supermicro_h11ssl_dimm_population_read_standing,
 }
 import extdeps.boards.physical_layout {
   dimm_slots_named, dimm_label_names_one_slot, dimm_is_socket_adjacent, dimms_share_bank, dimm_nearer_socket_than,
-  features_labelled, features_of_kind, LeftOfSocket, RightOfSocket, NeighbourFeature, NeighbourBoardEdge, EdgeRight, EdgeTop,
+  features_labelled, features_of_kind, LeftOfSocket, RightOfSocket, NeighbourFeature, NeighbourBoardEdge, EdgeRight, EdgeTop, EdgeBottom, EdgeLeft, RowTop, RowMiddle, RowBottom, ColumnLeft, ColumnCentre, ColumnRight, FeatureKind,
   KindFanHeader, KindPcieSlot, KindJumper, KindLed,
 }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
@@ -334,9 +334,95 @@ test fn w_jpg1_and_led_heartbeat_are_placed() -> Bool {
     && count(features_of_kind(features: supermicro_h11ssl_features, kind: KindJumper)) == 7
 }
 
-test fn w_io_edge_order_starts_at_uid_and_ends_at_com1() -> Bool {
-  count(supermicro_h11ssl_io_edge_left_to_right) == 8
+test fn w_io_edge_order_is_uid_first_and_com1_last() -> Bool {
+  supermicro_h11ssl_io_edge_left_to_right == ["UID-LED", "VGA", "LAN2", "LAN1", "USB4/5", "USB0/1", "IPMI_LAN", "COM1"]
     && all(supermicro_h11ssl_io_edge_left_to_right, l => count(features_labelled(features: supermicro_h11ssl_features, label: l)) == 1)
+}
+
+fn h11ssl_row_code(r: FrameRow) -> String {
+  match r { RowTop => "T"  RowMiddle => "M"  RowBottom => "B" }
+}
+fn h11ssl_column_code(c: FrameColumn) -> String {
+  match c { ColumnLeft => "L"  ColumnCentre => "C"  ColumnRight => "R" }
+}
+fn h11ssl_edge_code(e: BoardEdge?) -> String {
+  match e {
+    Absent => "-"
+    Present { value: x } => match x { EdgeTop => "T"  EdgeBottom => "B"  EdgeLeft => "L"  EdgeRight => "R" }
+  }
+}
+fn h11ssl_feature_code(f: FeaturePlacement) -> String {
+  f.label + "|" + h11ssl_row_code(r: f.row) + "|" + h11ssl_column_code(c: f.column) + "|" + h11ssl_edge_code(e: f.on_edge)
+}
+
+// An independent statement of the authored cell/edge map, one "label|row|column|edge" per
+// feature (T/M/B, L/C/R, T/B/L/R or - for no edge). Moving any feature one cell, or onto or off
+// an edge, in extdeps.boards.supermicro_h11ssl turns this red.
+data h11ssl_expected_feature_map: List<String> = [
+  "CPU1|M|C|-",
+  "SLOT1|M|L|-",
+  "SLOT2|M|L|-",
+  "SLOT3|M|L|-",
+  "SLOT4|M|L|-",
+  "SLOT5|M|L|-",
+  "SLOT6|M|C|-",
+  "J23|M|L|-",
+  "I-SATA0|B|L|-",
+  "I-SATA1|B|L|-",
+  "I-SATA2|B|L|-",
+  "I-SATA3|B|L|-",
+  "I-SATA4~7|B|L|-",
+  "L-SAS0~7|B|L|-",
+  "JNVME0|B|L|-",
+  "JNVME1|B|L|-",
+  "FAN1|B|R|B",
+  "FAN2|B|R|B",
+  "FAN3|B|C|B",
+  "FAN4|B|C|B",
+  "FAN5|T|R|R",
+  "FANA|B|C|B",
+  "FANB|B|L|B",
+  "JPWR2|B|R|-",
+  "JPWR1|B|R|R",
+  "JPW1|T|R|R",
+  "JF1|M|L|-",
+  "JBT1|M|L|-",
+  "JPB1|M|L|-",
+  "JPG1|T|L|-",
+  "JWD1|T|L|-",
+  "JPL1|T|C|-",
+  "JPL2|T|C|-",
+  "JPS1|B|C|-",
+  "BT1|M|L|-",
+  "LEDM1|T|L|-",
+  "UID-LED|T|C|T",
+  "LE1|M|L|-",
+  "LE3|M|C|-",
+  "LEDSAS|M|L|-",
+  "JOH1|M|L|-",
+  "COM1|T|R|T",
+  "IPMI_LAN|T|R|T",
+  "USB0/1|T|R|T",
+  "USB4/5|T|R|T",
+  "LAN1|T|R|T",
+  "LAN2|T|C|T",
+  "VGA|T|C|T",
+]
+
+test fn w_feature_cell_and_edge_map_matches_the_independent_statement() -> Bool {
+  count(supermicro_h11ssl_features) == count(h11ssl_expected_feature_map)
+    && all(supermicro_h11ssl_features, f => any(h11ssl_expected_feature_map, e => e == h11ssl_feature_code(f: f)))
+    && all(h11ssl_expected_feature_map, e => any(supermicro_h11ssl_features, f => h11ssl_feature_code(f: f) == e))
+}
+
+// Every known-unplaced label exists once, is not also placed, and the three knowledge states
+// are told apart.
+test fn w_unplaced_features_are_distinct_from_placed_and_unknown() -> Bool {
+  count(supermicro_h11ssl_unplaced_features) == 16
+    && all(supermicro_h11ssl_unplaced_features, u => match supermicro_h11ssl_feature_knowledge(label: u.label) { FeatureExistsPositionUnread => true  _ => false })
+    && match supermicro_h11ssl_feature_knowledge(label: "JL1") { FeatureExistsPositionUnread => true  _ => false }
+    && match supermicro_h11ssl_feature_knowledge(label: "JPG1") { FeaturePlaced => true  _ => false }
+    && match supermicro_h11ssl_feature_knowledge(label: "JNOPE1") { FeatureNotKnown => true  _ => false }
 }
 
 test fn w_population_read_is_cited_to_authority() -> Bool {

@@ -553,6 +553,46 @@ data supermicro_h11ssl_features: List<FeaturePlacement> = [
   h11ssl_feature(label: "VGA", kind: KindRearPort, row: RowTop, column: ColumnCentre, edge: Present { value: EdgeTop }, page: 36),
 ]
 
+// Known-unplaced features: they exist on the board (named on the p.11 callouts) but no cell is
+// authored for them. A label here is "exists, position unread"; a label in neither list is not
+// known to this model. Placing one adds it to supermicro_h11ssl_features and removes it here.
+type UnplacedFeature { label: NonEmptyStr, kind: FeatureKind, obligation: NonEmptyStr }
+
+fn h11ssl_unplaced(label: NonEmptyStr, kind: FeatureKind) -> UnplacedFeature {
+  UnplacedFeature {
+    label: label, kind: kind,
+    obligation: "Read the cell and edge of this feature from the p.11 callout figure (or the unit silkscreen) and add it to supermicro_h11ssl_features, then delete it from this list.",
+  }
+}
+
+data supermicro_h11ssl_unplaced_features: List<UnplacedFeature> = [
+  h11ssl_unplaced(label: "JL1", kind: KindHeader),
+  h11ssl_unplaced(label: "JSTBY1", kind: KindHeader),
+  h11ssl_unplaced(label: "JVRM1", kind: KindHeader),
+  h11ssl_unplaced(label: "PWRI2C", kind: KindHeader),
+  h11ssl_unplaced(label: "JNCSI1", kind: KindHeader),
+  h11ssl_unplaced(label: "JSD1", kind: KindHeader),
+  h11ssl_unplaced(label: "JSD2", kind: KindHeader),
+  h11ssl_unplaced(label: "JSEN1", kind: KindHeader),
+  h11ssl_unplaced(label: "JD1", kind: KindHeader),
+  h11ssl_unplaced(label: "JIPMB1", kind: KindHeader),
+  h11ssl_unplaced(label: "JTPM1", kind: KindHeader),
+  h11ssl_unplaced(label: "J38", kind: KindHeader),
+  h11ssl_unplaced(label: "USB2/3", kind: KindHeader),
+  h11ssl_unplaced(label: "USB6/7", kind: KindHeader),
+  h11ssl_unplaced(label: "USB8", kind: KindRearPort),
+  h11ssl_unplaced(label: "SP1", kind: KindHeader),
+]
+
+// Does the model know a label: placed, exists with position unread, or not known.
+type H11sslFeatureKnowledge = FeaturePlaced | FeatureExistsPositionUnread | FeatureNotKnown
+
+fn supermicro_h11ssl_feature_knowledge(label: NonEmptyStr) -> H11sslFeatureKnowledge {
+  if any(supermicro_h11ssl_features, f => f.label == label) { FeaturePlaced }
+  else if any(supermicro_h11ssl_unplaced_features, u => u.label == label) { FeatureExistsPositionUnread }
+  else { FeatureNotKnown }
+}
+
 // Order along the I/O shield edge (top edge, figure left to right), Figure 1-2 p.10 and the
 // Quick Reference p.11. Positional, so a witness can ask what lies between two ports.
 data supermicro_h11ssl_io_edge_left_to_right: List<NonEmptyStr> = [
