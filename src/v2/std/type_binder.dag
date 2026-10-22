@@ -320,13 +320,14 @@ fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration>
 // stamps `source_spelled_unelaborated` beside the predicates' source spellings. ElaboratedWhere
 // requires the positive `elaborated` mark; a clause with no mark, an unknown value, or missing
 // production or captured-projection structure is MalformedWhere, never read as elaborated.
-// CONSUMERS: declared frontier. No change reads predicates from a reflected fact yet; the first that
-// does (a reader interpreting reflected where-predicates, e.g. refinement checking over reflected
-// declarations) is triggered by the v2 reflection route elaborating predicates, and it refuses on
-// SourceSpelledWhere and MalformedWhere, its own RED landing with it. The claim
+// CONSUMER (declared frontier, Charter 5): the decl door emit_semantic_type_decl printing a refinement
+// type from a reflected fact. It reads the clause through this sum, must refuse SourceSpelledWhere and
+// MalformedWhere (only ElaboratedWhere may be printed), and its own RED lands with it. Until it
+// lands nothing reads predicates from a reflected fact. The claim
 // test.claim.decl_facts_alias_refinement_reflection pins that the real reflected NonEmptyStr is
-// SourceSpelledWhere and that a clause lowered through the real body_lower_kept_where_clause is
-// ElaboratedWhere. type_declaration_use_census where_clause_references reads r.where_clause
+// SourceSpelledWhere; test.claim.parse.parameter_refinement pins that a clause lowered through the
+// real body_lower_kept_where_clause is ElaboratedWhere and an unmarked clause is MalformedWhere.
+// type_declaration_use_census where_clause_references reads r.where_clause
 // directly: its inputs are compile-derived symbol-index nodes, which carry no mark, and it has no
 // refusal channel; it is NOT routed through this sum.
 // Dissolves when the v2 reflection route elaborates where-predicates through body_lowering_fold: delete
