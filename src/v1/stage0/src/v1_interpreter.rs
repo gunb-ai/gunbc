@@ -25761,6 +25761,29 @@ impl DagFnGuard {
             // MEASUREMENT-ONLY (v2, never lands): the acquisition DOOR is dedup-complete within one
             // start (known/absent memos), so a substrate cluster re-read means a fresh door start.
             // Name every start with its full caller stack + pid, so the 21 producers are identified.
+            if qc503_read_probe_enabled() && name == "closure_declarations_demand" {
+                // MEASUREMENT-ONLY (v2, never lands): the phase-1 fold COUNT — carrier=Absent means
+                // the fold EXECUTES (fresh resolution); Present means the carried index was reused.
+                // Acceptance reading: before = 21x Absent, after carry = 1x Absent per run.
+                qc503_proclaim_process();
+                let carrier = args
+                    .first()
+                    .map(|(_, v)| qc503_carrier_of(v))
+                    .unwrap_or_else(|| "?".to_string());
+                let stack = CURRENT_DAG_FN.with(|s| {
+                    s.borrow()
+                        .iter()
+                        .rev()
+                        .take(8)
+                        .map(|f| f.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" <- ")
+                });
+                eprintln!(
+                    "[qc503-read-probe] FOLD pid={} carrier={carrier} VIA {stack}",
+                    std::process::id()
+                );
+            }
             if qc503_read_probe_enabled() && name == "acquisition_start" {
                 qc503_proclaim_process();
                 let stack = CURRENT_DAG_FN.with(|s| {
@@ -25887,6 +25910,23 @@ fn qc503_proclaim_process() {
             cwd
         );
     });
+}
+
+// MEASUREMENT-ONLY (v2, never lands): name the closure_declarations carrier on the passed
+// ResolutionContext without walking it — Present means the fold was SKIPPED (index carried),
+// Absent means the phase-1 fold EXECUTES.
+fn qc503_carrier_of(v: &Value) -> String {
+    match v {
+        Value::Record { fields, .. } => fields
+            .iter()
+            .find(|(k, _)| format!("{k:?}") == "\"closure_declarations\"")
+            .map(|(_, inner)| match inner {
+                Value::Variant { variant_name, .. } => format!("{variant_name:?}"),
+                other => format!("?{other:?}").chars().take(24).collect(),
+            })
+            .unwrap_or_else(|| "<no-field>".to_string()),
+        _ => "<not-record>".to_string(),
+    }
 }
 
 // MEASUREMENT-ONLY (v2): summarize the door-start call's args (host dir + entries) so each of the
