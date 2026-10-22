@@ -95,6 +95,7 @@ import v2.std.grounding {
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
+  ListIntroductionUnwired,
   IntLiteralDecimal,
   ProducedDeclParamSegment,
   ProducedDeclRenderRows,
@@ -683,6 +684,7 @@ fn ts_value_expression_projection_full(
       false_token: ^ts_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^ts_token_num_lit },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: block_evaluation_mode
   }
 }

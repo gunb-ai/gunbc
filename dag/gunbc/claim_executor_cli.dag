@@ -4,6 +4,7 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // THIS REPOSITORY'S OWN BINARY, WHICH IS WHY IT HAS NO extdeps CITATION AND MUST NOT ACQUIRE ONE:
 // claim_executor is built from this tree, so its flags are a fact this repository already owns
@@ -15,7 +16,12 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 // relative because it names a build output inside the checkout the job is standing in, not an
 // installed program; that is a real difference from every extdeps tool row, whose absolute paths
 // exist because a sudoers rule or an ambient PATH would otherwise decide which binary ran.
-fn claim_executor_program() -> ProgramIdentity = uncataloged_program(invocation: "target/release/claim_executor")
+// The directory half is cargo's DEFAULT output tree (extdeps.rust.cargo), not spelled here; only the
+// binary name is this repository's own fact.
+fn claim_executor_relative_path() -> String =
+  concat(cargo_default_release_dir_rel, "/claim_executor")
+
+fn claim_executor_program() -> ProgramIdentity = uncataloged_program(invocation: claim_executor_relative_path())
 
 // The mode flag is a parameter rather than one builder per mode: the binary's modes are a growing
 // list this repository controls, and the SHAPE of the invocation -- one mode, then whatever operands
