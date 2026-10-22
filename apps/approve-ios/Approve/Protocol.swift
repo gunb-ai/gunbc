@@ -78,9 +78,9 @@ func enrollmentIdForCode(_ code: String) -> String {
 /// gunbc.auth.approval_device_wire RedemptionChallenge: stateless. nonce_hex is the server's
 /// MAC over redemption_challenge_message(escalation_id, request_revision, enrollment_id, expires_at);
 /// the app carries both back untouched.
-struct RedemptionChallenge: Equatable {
-    var expires_at: String
-    var nonce_hex: String
+struct RedemptionChallenge: Equatable, Sendable {
+    let expires_at: String
+    let nonce_hex: String
 }
 
 /// gunbc.auth.approval_device_wire DeviceRedemptionSigningInput, field for field.
@@ -143,8 +143,8 @@ struct ApnsRegistration: Equatable {
 }
 
 /// gunbc.auth.approval_device_wire ApprovalPushHint: one opaque locator, nothing that is decided.
-struct ApprovalPushHint: Equatable {
-    var notification_id: String
+struct ApprovalPushHint: Equatable, Sendable {
+    let notification_id: String
 }
 
 enum Base64Url {

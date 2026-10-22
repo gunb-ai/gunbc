@@ -860,7 +860,10 @@ fn swift_target_model_node() -> Node {
 
 // The kernel Int is realized as Swift's Int32, the width v2.extdeps.languages.rust rust_binding_spellings
 // gives it (`i32`); Swift's own `Int` is platform-width and would be a different realization.
+// The kernel host text (^string_node_symbol, the carrier of Timestamp, NonEmptyStr and the other String
+// refinements) is Swift's `String`.
 fn swift_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
   map_insert(
   map_insert(
     map_insert(
@@ -881,6 +884,9 @@ fn swift_binding_spellings() -> Map<Symbol, String> {
   ),
   ^dag_binding_type_int,
   "Int32"
+  ),
+  ^string_node_symbol,
+  "String"
   )
 }
 
