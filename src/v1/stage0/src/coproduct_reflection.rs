@@ -350,7 +350,9 @@ thread_local! {
     /// runner with the census at 138ms of that, were all BUDGET-REFUSED at 503–512ms on the CI
     /// host. The walk is a function of the roots and the prepared tree, not of the witness, so
     /// it is the floor's shared-build attribution defect at memo grain — the same class
-    /// `compile_dag_diagnostic_census` closes with its memo — and it is closed the same way:
+    /// `compile_dag_diagnostic_census` used to close with its own memo (that memo is deleted;
+    /// the census now avoids the recomputation by reading through process-level shared state --
+    /// see its entry point's deletion story) — and it is closed the same way here:
     /// the miss is bracketed as shared-artifact fill on both clocks, which `budgeted_cpu_nanos`
     /// nets from the deadline and `run_claim_measured` reports, never drops. Same roots, same
     /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
@@ -578,7 +580,6 @@ fn decls_parse_only_from_disk(
 /// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
 /// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
 /// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
-
 fn decls_parse_only_fail_closed(
     roots: &[String],
     files: &[String],

@@ -4908,7 +4908,7 @@ fn latest_complete_census_record(
             ));
             continue;
         }
-        if best.map_or(true, |t| started > t) {
+        if best.is_none_or(|t| started > t) {
             best = Some(started);
             choice.chosen = Some(path);
         }
@@ -5229,7 +5229,7 @@ pub fn measured_spawn_trampoline(receipt: std::path::PathBuf) -> i32 {
         return 2;
     };
     let started = std::time::Instant::now();
-    let child = Command::new(&binary)
+    let child = Command::new(binary)
         .args(argv)
         .env_remove(MEASURED_SPAWN_RECEIPT_ENV)
         .spawn();
