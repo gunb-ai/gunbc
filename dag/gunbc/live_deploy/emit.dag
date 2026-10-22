@@ -2522,8 +2522,16 @@ fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
 // The gate as one raw Mutate step. It carries NO __GUNBC_*_REFUSED__ marker: it is a runtime refusal
 // of a host premise (like the object-source serve refusal), not a plan-derivation refusal, so the
 // census over composed applies stays green while the refusal stays loud.
+// THE GATE RENDERED AS ONE SHELL STRING, FROM ONE AUTHORITY. gate_step wraps THIS text, and the wet
+// claim feeds THIS SAME text to `bash -c`, so what is executed in qualification is the exact command
+// the apply runs -- not a hand-retyped copy that could drift from the model (DESIGN section 5: green
+// by execution of the real artifact).
+fn dashboard_git_worker_repository_premise_gate_command_text(repo: String) -> String {
+  shell_command_text_of_stmts(stmts: [dashboard_git_worker_repository_premise_gate_stmts(repo: repo)])
+}
+
 fn dashboard_git_worker_repository_premise_gate_step(repo: String) -> PipelineStep {
-  deploy_raw(command: shell_command_text_of_stmts(stmts: [dashboard_git_worker_repository_premise_gate_stmts(repo: repo)]))
+  deploy_raw(command: dashboard_git_worker_repository_premise_gate_command_text(repo: repo))
 }
 
 // The refusal names the read that failed and the path it failed at, so the reader can act on it.
