@@ -32,10 +32,11 @@ fn cns_int_to_string() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> String {\n  x as String\n}\n")
 }
 
-// POSITIVE CONTROLS, declared routes v2 is known to admit (v2.std.coercion rows): Int -> Float and
-// an identity cast. Int -> String is NOT a control: it has no declared route.
-fn cns_int_to_float() -> Outcome<ResolvedTree> {
-  tpb_assemble(src: "module p\n\nimport std.types { Float }\n\nfn f(x: Int) -> Float {\n  x as Float\n}\n")
+// POSITIVE CONTROLS: the routes v2.std.coercion coercion_cast_crossing admits, structural equality
+// (Identity or Exact) and refinement to its declared carrier. A probe source has no imports, so the
+// controls are identity over a kernel type, and identity over a nominal product.
+fn cns_record_identity() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype P {\n  value: Int\n}\n\nfn f(p: P) -> P {\n  p as P\n}\n")
 }
 
 fn cns_int_identity() -> Outcome<ResolvedTree> {
@@ -84,9 +85,8 @@ test fn cns_generic_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns
 test fn cns_int_to_string_resolves() -> Bool { tpb_accepts(o: cns_int_to_string()) }
 test fn cns_int_to_string_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_int_to_string()) }
 test fn cns_int_to_string_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_to_string()) }
-test fn cns_int_to_float_resolves() -> Bool { tpb_accepts(o: cns_int_to_float()) }
-test fn cns_int_to_float_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_to_float()) }
 test fn cns_int_identity_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_int_identity()) }
 test fn cns_lambda_param_resolves() -> Bool { tpb_accepts(o: cns_lambda_param()) }
 test fn cns_lambda_param_refused_at_infer() -> Bool { cns_infer_rejects_no_target(o: cns_lambda_param()) }
 test fn cns_lambda_param_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_lambda_param()) }
+test fn cns_record_identity_accepted_at_infer() -> Bool { cns_infer_accepts(o: cns_record_identity()) }
