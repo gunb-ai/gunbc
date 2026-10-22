@@ -1,0 +1,72 @@
+module gunbc.recurring_failure_mode.seal_diagnostic_named_module_while_enforcing_file_path
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// WHY THIS ROW EXISTS, AND WHY ITS RUNG IS LATENT RATHER THAN REACHED. The seal that protects a
+// `sole_constructor` type tells the author one thing and enforces another: the diagnostic names a
+// MODULE, the code compares FILE paths. Read alone that is a meaning fork, and the class is the one
+// this ledger already tracks -- a diagnostic whose text describes a boundary the check does not
+// implement, so a reader who trusts the sentence models the wrong wall. What separates this row
+// from `diagnostic_asserts_standing_no_check_evaluated` is that here a check DOES run; only its
+// NAME is wrong.
+//
+// The distinction that keeps this row honest is that today the fork is UNREACHABLE, and it is
+// unreachable by an executed refusal rather than by convention. warm-wolf-570 asked that this be
+// checked before a trigger was named, because naming a trigger the layout rule already forbids is
+// the error. Measured, on a detached checkout, with `claim_batch` over the live tree:
+//
+//   - a `.dag` file carrying a SECOND `module` header does not survive the parse: the item loop
+//     refuses `expected item declaration (alias, type, fn, service, resource, data, extern,
+//     pattern, interface)` and the run is refused whole by `refuse_unparseable_module_sources`
+//     ("module index refused: N unparseable .dag source(s)").
+//   - two `.dag` FILES declaring ONE module name are refused at index build: "module-path collision:
+//     module 'test.claim.zz_dup' is declared by both ... — one module, one authority (DESIGN §3);
+//     silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or
+//     rename one side".
+//
+// Both directions are therefore refused, so file and module are equal BY CONSTRUCTION and the seal
+// cannot currently tell them apart. That makes this a LATENT meaning fork: the wall and its name
+// agree for every input the compiler accepts today. So the row's rung is those two refusals, and
+// its trigger is precisely a change that relaxes one of them -- while the second refusal also
+// settles what a relaxed rule must still not permit.
+data seal_diagnostic_named_module_while_enforcing_file_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "seal_diagnostic_named_module_while_enforcing_file_path" as NonEmptyStr,
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of letting one .dag file carry two modules, or two files declare one module name, without a replacement refusal for parse_unmarked_item's item refusal or the module-path-collision refusal -- at which point the seal's file test and the module boundary its text states genuinely diverge, and the fix is either boundary stated once in both places." } },
+
+
+  receipts: [
+    "**a seal that binds a FILE says it binds a MODULE** (INVALID STATE: `SoleConstructorViolation` is emitted when the CONSTRUCTION site's file differs from the sealed type's defining FILE -- `sole_constructor_construction_diags` compares `decl.span.file` against the construction `span.file` -- while its text reads \"sole_constructor type '<t>' cannot be constructed outside its defining module\". A reader who takes the sentence at face value believes two declarations in one file are separated by the seal. They are not: the comparison is on `span.file`, so any declaration in the same file passes. INVALID: the wording and the check disagree about the boundary. VALID: they must state the same boundary -- reword to \"outside its defining file\", or compare the defining module instead of the file.)",
+
+    "THE FORK IS LATENT, NOT REACHED, AND THAT IS AN EXECUTED FACT RATHER THAN AN ASSUMPTION. warm-wolf-570's check before writing this row: is a file hosting two modules already unwritable? Measured on a detached checkout under `claim_batch`: (a) a `.dag` with a second `module` header is refused by the parser -- `parse_unmarked_item` raises `expected item declaration (alias, type, fn, service, resource, data, extern, pattern, interface)` and `refuse_unparseable_module_sources` refuses the run whole with \"module index refused: N unparseable .dag source(s)\"; (b) Two `.dag` FILES declaring ONE module name are refused at index build, quoted verbatim from the probe: \"module-path collision: module 'test.claim.zz_dup' is declared by both 'dag/test/claim/zz_dup_a.dag' and 'dag/test/claim/zz_dup_b.dag' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side\". So for every tree the compiler accepts today, one file is exactly one module and the seal's file-test and module-test select the same set.",
+
+    "DISTINGUISHING FACT: not `diagnostic_asserts_standing_no_check_evaluated` -- that class is a diagnostic whose asserted check NEVER RAN. Here a check runs, is located, and is correctly fail-closed; only its NAME describes a different boundary than the one it enforces. Also not `two_source_files_claiming_one_module_path_misdiagnosed` -- that row is about INGEST refusing a duplicate module path (arm (b) above, which it already owns); this row borrows that refusal as its LATENCY PROOF and concerns the seal's wording, which no existing row names.",
+
+    "RECOGNITION RULE: a diagnostic that names a boundary -- module, file, package, tree, namespace, root -- must be read next to the predicate that raises it, because the sentence is authored and the predicate is what runs. The tell is cheap and available before any experiment: the text contains a boundary NOUN while the code compares a different carrier (`span.file` against a `span.file`, a path string against a path string). Where the two disagree, the disagreement is only dangerous to the extent some input can separate the carriers -- so the next question is which executed refusal today makes them inseparable, and a row that cannot name one is asserting a live defect it has not shown to be reachable.",
+
+    "RUNG FOUND AT: BELOW THE LADDER -- latent (below, not outside: section 4b puts silent wrongness below the ladder, where there is no GuaranteeRung to be found at, and guarantee_rung's OutsideTheLadder is a different fact -- an external reality observed at a boundary. The rung the class would occupy once reached is stated in the CEILING receipt below). No artifact is misjudged today: the file/module carriers are held equal by `parse_unmarked_item` and by the module-path-collision refusal, so the seal's wrong noun selects nothing it should not. The defect is real in the text and harmless only for as long as those two refusals hold.",
+
+    "CEILING: 2, by executed refusal. Today BOTH directions are enforced, so the fork cannot be exercised: a second `module` header in one file is refused at parse (`parse_unmarked_item`, surfaced by `refuse_unparseable_module_sources`), and two files declaring one module name are refused at index build naming both paths. A future change that relaxed either one would make the seal's file-test admit a same-module cross-file construction -- and the wording, not the check, is what would mislead the author who made it.",
+
+    "NEXT-RUNG TRIGGER: a change that lets one `.dag` file carry two modules, or two files declare one module name, WITHOUT a new refusal replacing `parse_unmarked_item`'s item refusal or the module-path-collision refusal above. At that point the seal's text and its predicate genuinely diverge and the row moves from latent to reached; the fix is either boundary, stated once. NOTE WHAT THE TRIGGER MUST NOT BE: merely authoring a two-module file, or two files with one module name -- both are already refused, so naming them as the trigger would credit the ledger with a wall it did not have to build. The second refusal also constrains the relaxation: a relaxed rule may not reintroduce last-root-wins shadowing, which is what the collision refusal exists to prevent (extdeps.shell, 2026-07-01).",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster, which `gunbc.rostered_row_join` derives for `RecurringFailureMode` -- so the row is read by being in the tree, with no hand-listed entry to update.",
+  ],
+
+  evidence: [
+    // The seal's own mint and the fixture that shows both seal shapes side by side: an unrostered
+    // mint exported to anyone, and a rostered one whose only caller is a named foreign declaration.
+    DeclarationRef { module_path: "test.fixture.sole_constructor_sealed.definer", decl_name: "mint_sealed_local", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.fixture.sole_constructor_sealed.admitted_caller", decl_name: "admitted_mint_call", field: WholeDeclaration },
+    // The other half of the wall, and the file-agnostic side a reader must not confuse with it.
+    DeclarationRef { module_path: "extdeps.external_authority", decl_name: "observed_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.compile_diagnostic_census", decl_name: "census_rows_of_class", field: WholeDeclaration },
+    // The layout authority whose §3 the collision refusal cites, and whose governed roots bound the
+    // file/module carriers the seal would otherwise be free to separate.
+    DeclarationRef { module_path: "gunbc.source_layout", decl_name: "layout_governed_roots", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "authored", field: WholeDeclaration },
+  ],
+}
