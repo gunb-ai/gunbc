@@ -1,11 +1,18 @@
 module gunbc.recurring_failure_mode.a_typed_port_drops_a_precondition_leg_the_script_carried
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_typed_port_drops_a_precondition_leg_the_script_carried: RecurringFailureMode = RecurringFailureMode {
   identity: "a_typed_port_drops_a_precondition_leg_the_script_carried" as NonEmptyStr,
 
+
+  // #14383 made the rung reading a required field; this row landed before it. Encoded from this row's own
+  // receipts: "RUNG FOUND AT 2, mitigatable" and "CEILING 3, structurally guaranteed for every effect whose
+  // legs are enumerable from the typed plan"; trigger_capability is the row's NEXT-RUNG TRIGGER capability.
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a capability that makes every required leg of a HostEffect observable on the single plan the typed emitter builds, so a port cannot drop one." } },
   receipts: [
     "**a typed port drops a precondition leg the script carried** (a retained shell script is dissolved into typed effects, every arm of the new effect is well-typed and every refusal is preserved, and one operation that the script performed UNCONDITIONALLY BEFORE the interesting work is simply not in the new sequence. Nothing fails to compile, because the omitted operation left no type behind to go missing: a `curl` and a checksum comparison are commands, not declarations).",
 
