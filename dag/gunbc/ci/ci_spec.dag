@@ -126,7 +126,6 @@ import v2.workflow.gunbc_invoke_step_emit {
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
-  project_falsifier_gates,
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
@@ -311,19 +310,6 @@ type CiSpec {
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-// The THIRD executing gate surface, projected beside the floor and regen lists so the
-// coproduct-totality witness can see it. v2.test.claim.ci_spec_witness
-// witness_gate_roster_matches_coproduct_arms asserts BAG-EQUALITY between the enrolled gates and
-// every arm of the Gate coproduct — the construction-shaped form of 'no gate is unenrolled',
-// strictly stronger than the per-row detection wall in gunbc.commit_workflow because it reds when a
-// gate is enrolled NOWHERE even if no roster row was edited (a newly added Gate arm, for instance).
-// When the cadence lane gained gates on 2026-07-26 that witness went red for exactly the right
-// reason: its universe of executing surfaces was two and there were now three. Adding this
-// projection to the bag EXTENDS the totality check to the new surface; the tempting alternative —
-// dropping the two flipped arms or slackening bag-equality to subset — would have silenced the wall
-// in the same motion that made it informative, the absorbing-fallback shape DESIGN §5 forbids.
-data gunbc_ci_falsifier_gates: List<Gate> = project_falsifier_gates(roster: commit_gate_roster)
-
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
 data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
@@ -418,7 +404,7 @@ data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived 
 // on host roulette, and a breach meaning 'you landed on srv2-02' trains the on-call to rerun:
 // crying wolf in budget clothes. POLICY: clamps are sized to cover MEASURED fleet spread, so a
 // breach means content grew, never which host answered. The growth-detector job moves to per-row
-// trend receipts on the falsifier cadence (row grew >2x against its dated basis = a counted drift
+// trend receipts on the falsifier cadence, DECLARED BUT UNREALIZED since its executor was deleted at 611fd02770/#8283 (row grew >2x against its dated basis = a counted drift
 // receipt), which is what makes a larger clamp margin safe — sensitivity is preserved at row grain
 // while merge-refusal stops firing on variance. BASIS OF 540: post-re-home projection 377s (the
 // worse of two observed walls, 613864ms on srv2-02, minus ~237s of eval the six re-homed rows
