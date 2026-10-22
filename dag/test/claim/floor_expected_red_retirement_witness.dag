@@ -307,9 +307,13 @@ fn arm_appears(labels: List<String>, arm: String) -> Bool {
 }
 
 // THE CARRIER'S OWN REFUSALS, UNDECORATED. Kept apart from the per-row labels so the emptiness control
-// compares whole labels the same way every other control does.
-fn carrier_refusal_labels() -> List<String> {
-  if length(xs: floor_expected_red_retired_rows()) == 0 {
+// compares whole labels the same way every other control does. PARAMETERISED, not hard-wired to the live
+// carrier: the live roster is never empty, so a fold that read it directly could only ever return the
+// non-empty branch -- an arm that can never fire is a decoration that reads as coverage (DESIGN §4b(1)),
+// which is exactly what a prior draft of this test was. Taking the rows lets `the_emptiness_arm...` feed the
+// empty case and still check the live case refuses nothing, so the arm is falsifiable in both directions.
+fn carrier_refusal_labels(rows: List<RetiredExpectedRedRow>) -> List<String> {
+  if length(xs: rows) == 0 {
     [ "carrier-holds-no-rows" ]
   } else {
     Empty {}
@@ -322,7 +326,7 @@ fn carrier_refusal_labels() -> List<String> {
 test fn retired_rows_are_accounted_for() -> ProcessExit {
   let rows = floor_expected_red_retired_rows()
   let reasons = list_append(
-    left: carrier_refusal_labels(),
+    left: carrier_refusal_labels(rows: rows),
     right: retired_rows_refusal_reasons(
       rows: rows,
       enrolled: enrolled_expected_red_identities(),
@@ -398,7 +402,13 @@ fn control_remeasurement() -> ReMeasurement {
     on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
     routes: [Wet, Hermetic],
     outcome: Passed,
-    instrument: decl_ref(module_path: "test.claim.synthetic_retirement_fixture", decl_name: "synthetic_retired_control"),
+    // REAL AND RESOLVABLE, per the manager ruling. A control that must refuse nothing cannot rest on a
+    // fictional module: `instrument-module-not-declared` fires on any instrument whose module resolves to
+    // no declaration, and a control that fires it makes all seven arm controls fail (each demands the
+    // control's refusal list be empty). The instrument's module is the field the fold resolves; here it is
+    // a real, live declaration, so the control stays clean. It is deliberately NOT plan_doc_graph_roots --
+    // the `instrument-is-not-the-row-itself` arm swaps in exactly that, and the control must differ from it.
+    instrument: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "doc_graph_roots_all"),
   }
 }
 
@@ -416,9 +426,13 @@ fn control_closure() -> Closure {
 
 fn control_row() -> RetiredExpectedRedRow {
   RetiredExpectedRedRow {
+    // IDENTITY == INSTRUMENT. `instrument-is-not-the-row-itself` refuses when the receipt credits a claim
+    // other than the row itself, so the only clean control names the SAME live declaration in both places.
+    // It points at a real gunbc.doc_graph_roots declaration (not a fictional fixture module), so it is the
+    // one row the fold finds nothing to refuse.
     identity: WitnessIdentity {
-      module_path: "test.claim.synthetic_retirement_fixture",
-      function: "synthetic_retired_control",
+      module_path: "gunbc.doc_graph_roots",
+      function: "doc_graph_roots_all",
     },
     standing_before: ExpectedRed,
     enrolled_on: Present { value: Iso8601CivilDate { year: 2026, month: 8, day: 22 } },
@@ -427,18 +441,18 @@ fn control_row() -> RetiredExpectedRedRow {
   }
 }
 
-data control_identity: String = "test.claim.synthetic_retirement_fixture.synthetic_retired_control"
-data control_entry: String = "dag/test/claim/synthetic_retirement_fixture.dag"
+data control_identity: String = "gunbc.doc_graph_roots.doc_graph_roots_all"
+data control_entry: String = "dag/gunbc/doc_graph_roots.dag"
 
 fn control_schedule(e: ClaimExpectation) -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
       identity: WitnessIdentity {
-        module_path: "test.claim.synthetic_retirement_fixture",
-        function: "synthetic_retired_control",
+        module_path: "gunbc.doc_graph_roots",
+        function: "doc_graph_roots_all",
       },
       entry: control_entry,
-      function: "synthetic_retired_control",
+      function: "doc_graph_roots_all",
       expectation: e
     },
   ]
@@ -694,7 +708,13 @@ test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool 
 // `the_durable_account_arms_refuse_empty_and_phantom` (below) is the executing check that enforces it.
 
 // ARM: carrier-holds-no-rows. The empty-list refusal has its own control, because the other way the live
-// claim could go quiet is by the carrier holding nothing.
+// claim could go quiet is by the carrier holding nothing. It is checked in BOTH directions now: an empty
+// roster must fire the arm, and the live (non-empty) roster must NOT -- a one-directional check that only
+// ever saw the live roster could never distinguish "the arm works" from "the arm is dead".
 test fn the_emptiness_arm_refuses_a_carrier_with_nothing_in_it() -> Bool {
-  arm_appears(labels: carrier_refusal_labels(), arm: "carrier-holds-no-rows")
+  arm_appears(labels: carrier_refusal_labels(rows: Empty {}), arm: "carrier-holds-no-rows")
+    && !(arm_appears(
+      labels: carrier_refusal_labels(rows: floor_expected_red_retired_rows()),
+      arm: "carrier-holds-no-rows"
+    ))
 }

@@ -1521,7 +1521,7 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
         why_no_change: "no attributed fix commit exists: no commit touches this claim's own file, and the guarantee that named it was retired by the declaration-bound formal carrier, so the removal rests on the executed check rather than on a change" as NonEmptyStr,
         durable_account: [
           decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "guarantee_probe_rows"),
-          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_ordinary"),
+          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_ordinary_module_red_probe"),
           decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_v2_module_red_probe"),
         ],
         re_measured: ReMeasurement {
