@@ -1,0 +1,28 @@
+module v2.test.claim.manual.record_canon_v2_tmp
+
+// Scratch PROBE (never lands): the v2 side of the same twelve cells (rows do not move v2; printed
+// for the same-head receipt).
+
+import std.types { String, List }
+import std.process { ProcessExit, exit_failure }
+import v2.test.claim.manual.unary_prefix_v2_canon_lib { v2_canon }
+
+test fn record_canon_v2_reports() -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "RECORD-CANON-V2@18\n",
+      "plain_record      ", v2_canon(body: "Foo { x: 1 }"), "\n",
+      "dotted_record     ", v2_canon(body: "Foo.Bar { x: 1 }"), "\n",
+      "minus_record      ", v2_canon(body: "-Foo { x: 1 }"), "\n",
+      "bang_record       ", v2_canon(body: "!Foo { x: 1 }"), "\n",
+      "minus_dot_record  ", v2_canon(body: "-Foo.Bar { x: 1 }"), "\n",
+      "bang_dot_record   ", v2_canon(body: "!Foo.Bar { x: 1 }"), "\n",
+      "add_record        ", v2_canon(body: "a + Foo { x: 1 }"), "\n",
+      "mul_record        ", v2_canon(body: "a * Foo { x: 1 }"), "\n",
+      "pipe_record       ", v2_canon(body: "a |> Foo { x: 1 }"), "\n",
+      "add_dot_record    ", v2_canon(body: "a + Foo.Bar { x: 1 }"), "\n",
+      "mul_dot_record    ", v2_canon(body: "a * Foo.Bar { x: 1 }"), "\n",
+      "pipe_dot_record   ", v2_canon(body: "a |> Foo.Bar { x: 1 }"), "\n",
+    ),
+  )
+}

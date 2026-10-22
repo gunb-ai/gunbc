@@ -1,0 +1,34 @@
+module v2.test.claim.manual.recshape_v2_tmp
+
+// Scratch PROBE (never lands): the v2 side of the same twelve cells (Transform head-labeled,
+// normalize included). The v2 grammar glues the record suffix at primary level
+// (src/v2/extdeps/languages/dag.dag:1979 optional(call-suffix | record-suffix) on the ident
+// primary), so v2 binds a record literal at the tightest tier, above prefix and every infix.
+
+import std.types { String, List }
+import std.process { ProcessExit, exit_failure }
+import v2.test.claim.manual.unary_prefix_v2_shape_probe_tmp { probe_verdict }
+
+fn cell(body: String) -> String {
+  concat("V2[", body, "] ", probe_verdict(body: body, sig: "a: Int, b: Int"), "\n")
+}
+
+test fn recshape_v2_reports() -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "RECSHAPE-V2\n",
+      cell(body: "Foo { x: 1 }"),
+      cell(body: "-Foo { x: 1 }"),
+      cell(body: "!Foo { x: 1 }"),
+      cell(body: "a + Foo { x: 1 }"),
+      cell(body: "a * Foo { x: 1 }"),
+      cell(body: "(-Foo) { x: 1 }"),
+      cell(body: "a |> Foo { x: 1 }"),
+      cell(body: "Foo.Bar { x: 1 }"),
+      cell(body: "-Foo.Bar { x: 1 }"),
+      cell(body: "!Foo.Bar { x: 1 }"),
+      cell(body: "a |> Foo.Bar { x: 1 }"),
+      cell(body: "a + Foo.Bar { x: 1 }"),
+    ),
+  )
+}

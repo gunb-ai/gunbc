@@ -1,0 +1,97 @@
+module v2.test.claim.manual.data_decl_layout_probe_tmp
+
+// Scratch PROBE (lane adhoc-9102e2d6-92f, lane B; never lands): the #14608 parser-parity
+// question, measured. Two data-declaration LAYOUTS (initializer joined on the '=' line vs
+// starting on the continuation line) through BOTH parse routes:
+//   - the v1 HOST route: v1.compiler.tokenize tokenize + v1.compiler.parse parse_with_table
+//     over the compiled-in dag_parse_environment (what concept_decl_facts fails closed on);
+//   - the v2 NATIVE grammar route: v2.compiler.tokenize tokenize_prepared +
+//     v2.compiler.parse parse_module_prepared over dag_prepared_grammar() (what decl_facts
+//     uses, and what admitted the #14559 continuation layout).
+// Plus the HAZARD cell: `data x: Int =` at EOF-adjacent with NO initializer and the next
+// declaration following - if the v2 matcher skips newlines and its expr production can start
+// at a `data` keyword, the second declaration gets SWALLOWED into the first value (a misparse
+// v1 refuses loudly). Which parser is wrong is decided by this probe's cells, not by taste:
+// v1's own `=` sites already split (type-body and fn-body and let skip newlines after `=`;
+// data, field-default and param-default do not), so neither route is self-consistent enough
+// to settle it from code reading.
+//
+// REPORT-STYLE probe: exit_failure carries the observation through claim_batch's Fail arm.
+
+import std.types { Bool, Int, String, List }
+import std.process { ProcessExit, exit_failure, ExitSuccess }
+import std.optional { Absent, Present }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core { build_newline_index, empty_intern_table }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+
+fn layout_source(layout: String) -> String {
+  if layout == "joined" {
+    "module probe.data_layout.joined\n\ndata probe_head: Int = 40\ndata probe_tail: Int = 2\n"
+  } else if layout == "continuation" {
+    "module probe.data_layout.continuation\n\ndata probe_head: Int = 40\ndata probe_tail: Int =\n  2\n"
+  } else if layout == "blank" {
+    "module probe.data_layout.blank\n\ndata probe_head: Int = 40\ndata probe_tail: Int =\n\ndata probe_third: Int = 3\n"
+  } else {
+    "module probe.data_layout.dangling\n\ndata probe_head: Int =\ndata probe_tail: Int = 2\n"
+  }
+}
+
+fn layout_file(layout: String) -> String {
+  if layout == "joined" { "probe_data_layout_joined.dag" }
+  else if layout == "continuation" { "probe_data_layout_continuation.dag" }
+  else if layout == "blank" { "probe_data_layout_blank.dag" }
+  else { "probe_data_layout_dangling.dag" }
+}
+
+fn v1_verdict(layout: String) -> String {
+  let file = layout_file(layout: layout)
+  let src = layout_source(layout: layout)
+  let parsed = parse_with_table(
+    tokens: tokenize(source: src, file: file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: src)),
+    intern_table: empty_intern_table(),
+  )
+  match parsed.result.module {
+    Absent => "v1-REFUSED"
+    Present { value: module } =>
+      concat("v1-OK items=", to_string(value: module.children |> length))
+  }
+}
+
+fn v2_verdict(layout: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "grammar-refused"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: layout_source(layout: layout), file: ^probe_data_layout, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "lex-refused"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "v2-REFUSED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              concat("v2-OK items=", to_string(value: artifact.tree.children |> length))
+          }
+      }
+  }
+}
+
+fn cell(layout: String) -> String {
+  concat(layout, ": ", v1_verdict(layout: layout), " | ", v2_verdict(layout: layout), "\n")
+}
+
+test fn data_decl_layout_parity_probe_reports() -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "DATA-LAYOUT-PROBE\n",
+      cell(layout: "joined"),
+      cell(layout: "continuation"),
+      cell(layout: "blank"),
+      cell(layout: "dangling"),
+    ),
+  )
+}

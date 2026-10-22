@@ -1,0 +1,127 @@
+module v2.test.claim.manual.unary_prefix_v2_shape_probe_tmp
+
+// Scratch PROBE (never lands; cited receipt): v2's LOWERED shape for the arms the agreement claim
+// must distinguish -- cast, field-access (dot), pipe -- so the canon walkers key on OBSERVED
+// structure. Walk idiom from the banked shape probe (WIP branch, 14/14 OK at main); the head child
+// of every Transform is its operator token (v2.std.compilers.body_lowering lower_binary_infix /
+// lower_unary_prefix), so each head is labeled by atom identity against the language's own token
+// classes (the idiom body_lowering_fold's body_lower_operator_is_pipe uses). Report channel =
+// refusal reason.
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node { Atom, ComputationNode, Conj, Disj, Arrow, Edge, Instantiation, Transform, TypeNode, Node }
+import v2.std.node_query { find_arrow_body_child }
+
+fn probe_source(body: String, sig: String) -> String {
+  concat("module probe.v2shape\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
+}
+
+fn probe_arrow_body(root: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: body, diagnostics: _ } => Present { value: body }
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: Absent, f: fn(found, e) {
+        match found {
+          Present { value: _ } => found
+          Absent => probe_arrow_body(root: e.target)
+        }
+      })
+  }
+}
+
+fn probe_head_label(node: Node) -> String {
+  match node_atom_identity_optional(node: node) {
+    Absent => "?"
+    Present { value: id } =>
+      if id == ^dag_token_kw_as { "as" }
+      else if id == ^dag_token_pipe_gt { "pipe" }
+      else if id == ^dag_token_pipe { "pipe?" }
+      else if id == ^dag_token_dot { "dot" }
+      else if id == ^dag_token_minus { "minus" }
+      else if id == ^dag_token_bang { "bang" }
+      else if id == ^dag_token_plus { "plus" }
+      else if id == ^dag_token_star { "star" }
+      else { "atom" }
+  }
+}
+
+fn probe_shape_of(node: Node) -> String {
+  let kids = node.children |> map(e => probe_shape_of(node: e.target)) |> join(separator: ",")
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      match node.children |> first {
+        Absent => "T0[]"
+        Present { value: head } =>
+          concat("T[", to_string(value: node.children |> length), ",h=", probe_head_label(node: head.target), "](", kids, ")")
+      }
+    ComputationNode { behavior: _ } => concat("C[", to_string(value: node.children |> length), "](", kids, ")")
+    TypeNode { connective: Atom { identity: _ } } => concat("A[", probe_head_label(node: node), "]")
+    TypeNode { connective: Conj } => concat("CONJ(", kids, ")")
+    TypeNode { connective: Disj } => concat("DISJ(", kids, ")")
+    TypeNode { connective: Arrow } => concat("ARROW(", kids, ")")
+    TypeNode { connective: Instantiation } => concat("INST(", kids, ")")
+    _ => concat("K(", kids, ")")
+  }
+}
+
+fn probe_verdict(body: String, sig: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "V2-GRAMMAR-REFUSED"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: probe_source(body: body, sig: sig), file: ^probe_v2shape, prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "V2-LEX-REFUSED"
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "V2-PARSE-REFUSED"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: _ } => "V2-NORM-REFUSED"
+                Accepted { value: normalized, diagnostics: _ } =>
+                  match probe_arrow_body(root: normalized.root) {
+                    Absent => "V2-NOBODY"
+                    Present { value: lowered } => probe_shape_of(node: lowered)
+                  }
+              }
+          }
+      }
+  }
+}
+
+type ProbeCase { body: String, sig: String }
+
+test fn unary_prefix_v2_shape_reports() -> ProcessExit {
+  let cases = [
+    ProbeCase { body: "-1 - 2", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-(1 - 2)", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a + b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a * b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-1 < 0", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-3", sig: "a: Int, b: Int" },
+    ProbeCase { body: "!a && b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "!a || b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "!a * b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "a - b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "a * b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a < b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a as T", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-(a as T)", sig: "a: Int, b: Int" },
+    ProbeCase { body: "a + b as T", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a.b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "(-a).b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "a |> f", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a |> f", sig: "a: Int, b: Int" },
+    ProbeCase { body: "!a |> f", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "!a.b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "-a.b + c", sig: "a: Int, b: Int, c: Int" },
+  ]
+  let lines = cases |> map(c => concat("BODY[", c.body, "] ", probe_verdict(body: c.body, sig: c.sig))) |> join(separator: "\n")
+  exit_failure(reason: lines)
+}

@@ -1,0 +1,97 @@
+module v2.test.claim.manual.unary_prefix_v1_shape_probe_tmp
+
+// Scratch PROBE (never lands; cited receipt): v1's parse shape for the arms the agreement claim
+// must distinguish -- cast, field-access (dot), pipe -- under the DECLARED powers, so the two canon
+// walkers key on OBSERVED structure and not on guessed arities. Report channel = refusal reason,
+// the idiom of the banked shape probes. Parsed by the production seed parser unmodified, via the
+// same read the v1 canon lib uses.
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core {
+  build_newline_index,
+  empty_intern_table,
+  ExprData, ExprBinOp, ExprUnaryOp, ExprFieldAccess, ExprCall, ExprCast, ExprIndex,
+  Node,
+}
+
+fn probe_source(body: String, sig: String) -> String {
+  concat("module probe.v1shape\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
+}
+
+fn probe_shape(node: Node, depth: Int) -> String {
+  let pad = if depth > 0 { "  " } else { "" }
+  let tag = match node.expr_data {
+    ExprBinOp { op: _, algebra_field: _, operand: _ } => "BINOP"
+    ExprUnaryOp { op: _ } => "UNARY"
+    ExprFieldAccess { summary: _ } => "FIELD"
+    ExprCall { call_semantics: _, descent_evidence: _ } => "CALL"
+    ExprCast => "CAST"
+    ExprIndex => "INDEX"
+    ExprMethodCall { method_semantics: _ } => "MCALL"
+    _ => "OTHER"
+  }
+  let kids = node.children |> map(c => probe_shape(node: c, depth: depth + 1)) |> join(separator: ", ")
+  if node.children |> count == 0 {
+    concat(pad, tag)
+  } else {
+    concat(pad, tag, "(", kids, ")")
+  }
+}
+
+fn probe_verdict(body: String, sig: String) -> String {
+  let file = "probe_v1shape.dag"
+  let src = probe_source(body: body, sig: sig)
+  let parsed = parse_with_table(
+    tokens: tokenize(source: src, file: file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: src)),
+    intern_table: empty_intern_table(),
+  )
+  match parsed.result.module {
+    Absent => "<v1-refused>"
+    Present { value: m } =>
+      match m.children |> first {
+        Absent => "<v1-nomember>"
+        Present { value: item } =>
+          match item.body {
+            Absent => "<v1-nobody>"
+            Present { value: b } => probe_shape(node: b, depth: 0)
+          }
+      }
+  }
+}
+
+type ProbeCase { body: String, sig: String }
+
+test fn unary_prefix_v1_shape_reports() -> ProcessExit {
+  let cases = [
+    ProbeCase { body: "-1 - 2", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-(1 - 2)", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a + b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a * b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-1 < 0", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-3", sig: "a: Int, b: Int" },
+    ProbeCase { body: "!a && b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "!a || b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "!a * b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "a - b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "a * b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a < b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a as T", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-(a as T)", sig: "a: Int, b: Int" },
+    ProbeCase { body: "a + b as T", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a.b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "(-a).b", sig: "a: Int, b: Int" },
+    ProbeCase { body: "a |> f", sig: "a: Int, b: Int" },
+    ProbeCase { body: "-a |> f", sig: "a: Int, b: Int" },
+    ProbeCase { body: "!a |> f", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "!a.b", sig: "a: Bool, b: Bool" },
+    ProbeCase { body: "-a.b + c", sig: "a: Int, b: Int, c: Int" },
+  ]
+  let lines = cases |> map(c => concat("BODY[", c.body, "] ", probe_verdict(body: c.body, sig: c.sig))) |> join(separator: "\n")
+  exit_failure(reason: lines)
+}

@@ -1,0 +1,36 @@
+module v2.test.claim.manual.recshape_v1_tmp
+
+// Scratch PROBE (never lands): review 84349's record-under-unary cells, STRUCTURED, v1 route.
+// The item-count probe printed identical member counts for every cell (jeca2ce48/jb15e04c0) --
+// members cannot see inside a body. This walks the body with the banked shape probe's own walker.
+// The dotted family is the family the declared "{" row actually gates (try_postfix's
+// ExprFieldAccess arm): the plain `Foo {` case is consumed earlier, by parse_ident_expr's UNGATED
+// uppercase-ident + LBrace branch, so a min_bp change cannot reach `-Foo { x: 1 }` at all.
+
+import std.types { String, List }
+import std.process { ProcessExit, exit_failure }
+import v2.test.claim.manual.unary_prefix_v1_shape_probe_tmp { probe_verdict }
+
+fn cell(body: String) -> String {
+  concat("V1[", body, "] ", probe_verdict(body: body, sig: "a: Int, b: Int"), "\n")
+}
+
+test fn recshape_v1_reports() -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "RECSHAPE-V1\n",
+      cell(body: "Foo { x: 1 }"),
+      cell(body: "-Foo { x: 1 }"),
+      cell(body: "!Foo { x: 1 }"),
+      cell(body: "a + Foo { x: 1 }"),
+      cell(body: "a * Foo { x: 1 }"),
+      cell(body: "(-Foo) { x: 1 }"),
+      cell(body: "a |> Foo { x: 1 }"),
+      cell(body: "Foo.Bar { x: 1 }"),
+      cell(body: "-Foo.Bar { x: 1 }"),
+      cell(body: "!Foo.Bar { x: 1 }"),
+      cell(body: "a |> Foo.Bar { x: 1 }"),
+      cell(body: "a + Foo.Bar { x: 1 }"),
+    ),
+  )
+}

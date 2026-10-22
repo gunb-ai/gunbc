@@ -1,0 +1,29 @@
+module v2.test.claim.manual.record_canon_v1_tmp
+
+// Scratch PROBE (never lands): what the LANDED v1 canon lib prints for the record cells at the
+// RAISED { row (18), with the ExprRecordLit/FieldInit arms added. Locks the agreement arms'
+// expected strings by measurement.
+
+import std.types { String, List }
+import std.process { ProcessExit, exit_failure }
+import v2.test.claim.manual.unary_prefix_v1_canon_lib { v1_canon }
+
+test fn record_canon_v1_reports() -> ProcessExit {
+  exit_failure(
+    reason: concat(
+      "RECORD-CANON-V1@18\n",
+      "plain_record      ", v1_canon(body: "Foo { x: 1 }"), "\n",
+      "dotted_record     ", v1_canon(body: "Foo.Bar { x: 1 }"), "\n",
+      "minus_record      ", v1_canon(body: "-Foo { x: 1 }"), "\n",
+      "bang_record       ", v1_canon(body: "!Foo { x: 1 }"), "\n",
+      "minus_dot_record  ", v1_canon(body: "-Foo.Bar { x: 1 }"), "\n",
+      "bang_dot_record   ", v1_canon(body: "!Foo.Bar { x: 1 }"), "\n",
+      "add_record        ", v1_canon(body: "a + Foo { x: 1 }"), "\n",
+      "mul_record        ", v1_canon(body: "a * Foo { x: 1 }"), "\n",
+      "pipe_record       ", v1_canon(body: "a |> Foo { x: 1 }"), "\n",
+      "add_dot_record    ", v1_canon(body: "a + Foo.Bar { x: 1 }"), "\n",
+      "mul_dot_record    ", v1_canon(body: "a * Foo.Bar { x: 1 }"), "\n",
+      "pipe_dot_record   ", v1_canon(body: "a |> Foo.Bar { x: 1 }"), "\n",
+    ),
+  )
+}
