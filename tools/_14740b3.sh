@@ -3,6 +3,8 @@ REPO=/root/workspace/repo-root
 HEADSHA=9d4661bc432010fb78b1636865460e270b54bbaa
 cd $REPO
 git fetch --force origin $HEADSHA 2>&1 | tail -1
+git worktree add -f /tmp/wt740b3 $HEADSHA 2>&1 | tail -1
+cd /tmp/wt740b3
 export CARGO_TARGET_DIR=$REPO/.t740
 CG=/sys/fs/cgroup/ver740b3; mkdir -p $CG
 if [ -f $CG/cgroup.subtree_control ]; then echo +memory > $CG/cgroup.subtree_control 2>/dev/null || true; fi
