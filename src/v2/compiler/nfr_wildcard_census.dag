@@ -4,7 +4,7 @@ import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_at_optional, list_
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Arrow, Atom, Authored, ComputationNode, Disj, Instantiation, Match, MatchArmPatternEdge, Node, Positional, StructuralLabel, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
+import v2.std.node { Arrow, Edge, Atom, Authored, ComputationNode, Disj, Instantiation, Match, MatchArmPatternEdge, Node, Positional, StructuralLabel, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child, find_binder_type, find_core_child, is_wildcard_pattern }
 import v2.std.text { String }
 
@@ -101,7 +101,7 @@ fn fn_sites(fn_name: String, arrow: Node) -> List<WildcardSite> {
             match scrutinee_name_optional(m: n) {
               Absent => acc
               Present { value: s } =>
-                fold_list(xs: params, empty: acc, cons: fn(inner, p) {
+                fold(params, init: acc, f: fn(inner, p) {
                   if p.name == s {
                     match p.head {
                       Present { value: h } => list_snoc_item(xs: inner, item: WildcardSite { fn_name: fn_name, type_head: h })
@@ -126,8 +126,14 @@ fn node_is_arrow(n: Node) -> Bool {
   }
 }
 
+fn node_member_edges(root: Node) -> List<Edge> {
+  fold(node_subtree_nodes(root: root), init: [], f: fn(acc, n) {
+    fold(n.children, init: acc, f: fn(a2, e) { list_snoc_item(xs: a2, item: e) })
+  })
+}
+
 fn root_member_sites(root: Node) -> List<WildcardSite> {
-  fold(root.children, init: [], f: fn(acc, e) {
+  fold(node_member_edges(root: root), init: [], f: fn(acc, e) {
       match e.label {
         Authored { name: sym } =>
           if node_is_arrow(n: e.target) {
@@ -152,7 +158,7 @@ fn member_is_coproduct(target: Node) -> Bool {
 }
 
 fn declares_coproduct_named(root: Node, name: String) -> Bool {
-  fold(root.children, init: false, f: fn(acc, e) {
+  fold(node_member_edges(root: root), init: false, f: fn(acc, e) {
       acc || (match e.label {
         Authored { name: sym } => symbol_lexeme(sym: sym) == name && (node_is_arrow(n: e.target) == false) && member_is_coproduct(target: e.target)
         Positional => false
