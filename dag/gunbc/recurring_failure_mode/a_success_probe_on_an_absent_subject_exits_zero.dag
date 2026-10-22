@@ -1,11 +1,18 @@
 module gunbc.recurring_failure_mode.a_success_probe_on_an_absent_subject_exits_zero
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_success_probe_on_an_absent_subject_exits_zero: RecurringFailureMode = RecurringFailureMode {
   identity: "a_success_probe_on_an_absent_subject_exits_zero" as NonEmptyStr,
 
+
+  // #14383 made the rung reading a required field; this row landed before it. Encoded from this row's own
+  // receipts: "RUNG: found BELOW the ladder" and "CEILING 2, mechanically preventable, and why it is not
+  // higher"; trigger_capability is the row's NEXT-RUNG TRIGGER capability, quoted from its receipt.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of binding an exit-code-keyed branch to a captured specimen of the ABSENT arm of its probe, so a probe whose absence arm succeeds cannot be used to skip an actuation." } },
   receipts: [
     "**a success probe on an absent subject exits zero** (a status query is asked about something that does not exist, and instead of failing it succeeds -- reporting the subject's zeroes, its emptiness, or its silence as though they were readings of a live subject. A caller that keys a decision on the probe's exit code therefore concludes the subject is healthy and present. The probe is not lying about the numbers; it is answering a question nobody asked, and its success code is the warrant the caller needed to stop looking).",
 

@@ -1,11 +1,20 @@
 module gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data declaration_reference_cites_a_declaration_nothing_resolved: RecurringFailureMode = RecurringFailureMode {
   identity: "declaration_reference_cites_a_declaration_nothing_resolved" as NonEmptyStr,
 
+
+  // #14383 made the rung reading a required field; this row landed the same day, below that door. Encoded
+  // from this row's own receipts: "RUNG FOUND AT: silent wrongness below the ladder ... NOW: mitigatable"
+  // (the decl-ref-census instrument, manual-dispatch only, REDs unenrolled) and "CEILING: structurally
+  // guaranteed for literals ... once the substrate can resolve at construction"; trigger_capability quotes
+  // the row's NEXT-RUNG TRIGGER (2), the strongest named capability.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "substrate construction that refuses an unresolvable DeclarationRef literal, with the census on the required path and its discriminating REDs enrolled." } },
   receipts: [
     "**a DeclarationRef literal, or a backtick symbol in ledger prose, names a module or declaration that does not exist, and nothing refuses it** (module_path, decl_name and field are three unchecked strings at construction, so an invented or stale citation is as writable as a real one).",
 
