@@ -48,7 +48,7 @@ fn run_status(done: Bool) -> WorkflowRunStatus {
 
 fn a_run(id: Int, attempt: Int, path: String, event: String, done: Bool) -> WorkflowRun {
   WorkflowRun {
-    id: GitHubWorkflowRunId { value: id }, name: Present { value: "fleet-converge" }, display_title: Present { value: title }, path: Present { value: path },
+    id: id, name: Present { value: "fleet-converge" }, display_title: Present { value: title }, path: Present { value: path },
     head_sha: "0123456789abcdef0123456789abcdef01234567" as CommitSha, head_branch: Present { value: "work/cax-onboard" },
     event: event, status: run_status(done: done), conclusion: none,
     workflow_id: 15, run_number: 900, run_attempt: attempt,
