@@ -614,7 +614,7 @@ test fn w_ranking_pro_layouts_beat_h200_at_a_synthetic_ratio() -> Bool {
     && seats_of(rows: rows, l: LayoutMaxQTp2Pair) == 24
     && tok_of(rows: rows, l: LayoutMaxQTp1) > 480 && tok_of(rows: rows, l: LayoutMaxQTp1) < 520
     && tok_of(rows: rows, l: LayoutMaxQTp2Pair) > 450 && tok_of(rows: rows, l: LayoutMaxQTp2Pair) < 480
-    && tok_of(rows: rows, l: LayoutH200Tp1) > 240 && tok_of(rows: rows, l: LayoutH200Tp1) < 300
+    && tok_of(rows: rows, l: LayoutH200Tp1) > 272 && tok_of(rows: rows, l: LayoutH200Tp1) < 282
     && rank_of(rows: rows, l: LayoutMaxQTp1) == 1
     && rank_of(rows: rows, l: LayoutMaxQTp2Pair) == 2
     && rank_of(rows: rows, l: LayoutH200Tp1) == 3

@@ -347,7 +347,7 @@ fn b_is_cheaper_per_slot(tco_b: Nat, slots_b: Nat, tco_r: Nat, slots_r: Nat) -> 
 // 7. THE FINAL RANKING. One price cell per option, each Optional: an absent price drops the option, it is never read as zero.
 // Every per-layout figure below is a MEASURED curve or a measured pool; the only committed numbers are those measurements and the
 // per-replica wall watts, and none is a price. The PRO 6000 curves were measured at 175k context, the H200 and B200 curves at
-// 128k and are derated to 97 percent here; the context_tokens parameter sets only the seat count, so a curve is not rescaled to it.
+// 128k (raw measured values; the single context derate follows) and derated once to 97 percent in the ranking; the context_tokens parameter sets only the seat count, so a curve is not rescaled to it.
 type RankedLayout
   = LayoutMaxQTp1
   | LayoutMaxQTp2Pair
@@ -445,12 +445,12 @@ fn layout_facts(l: RankedLayout) -> LayoutFacts {
     LayoutWorkstationTp2Pair => LayoutFacts { gpus_per_replica: 2, kv_tokens_per_replica: fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 2, dp: 1)),
       curve: pro6000_tp2_curve(), knee: 16, derate_milli: 1000, watts_per_replica: 1200, safe_resident_sessions: 12, standing: RowModelOutput }
     LayoutH200Tp1 => LayoutFacts { gpus_per_replica: 1, kv_tokens_per_replica: matrix_nvfp4_fp8_kv_tokens(v: H200UpstreamV032),
-      curve: MeasuredCurve { first: CurvePoint { concurrency: 1, tokens_per_second: 183 }, rest: [
-        CurvePoint { concurrency: 2, tokens_per_second: 301 }, CurvePoint { concurrency: 4, tokens_per_second: 410 }, CurvePoint { concurrency: 8, tokens_per_second: 655 } ] },
+      curve: MeasuredCurve { first: CurvePoint { concurrency: 1, tokens_per_second: 189 }, rest: [
+        CurvePoint { concurrency: 2, tokens_per_second: 310 }, CurvePoint { concurrency: 4, tokens_per_second: 423 }, CurvePoint { concurrency: 8, tokens_per_second: 675 } ] },
       knee: 8, derate_milli: 970, watts_per_replica: 480, safe_resident_sessions: 6, standing: RowModelOutput }
     LayoutB200Tp1 => LayoutFacts { gpus_per_replica: 1, kv_tokens_per_replica: matrix_nvfp4_fp8_kv_tokens(v: B200UpstreamV032),
-      curve: MeasuredCurve { first: CurvePoint { concurrency: 1, tokens_per_second: 293 }, rest: [
-        CurvePoint { concurrency: 4, tokens_per_second: 774 }, CurvePoint { concurrency: 8, tokens_per_second: 1204 }, CurvePoint { concurrency: 16, tokens_per_second: 1532 } ] },
+      curve: MeasuredCurve { first: CurvePoint { concurrency: 1, tokens_per_second: 302 }, rest: [
+        CurvePoint { concurrency: 4, tokens_per_second: 798 }, CurvePoint { concurrency: 8, tokens_per_second: 1241 }, CurvePoint { concurrency: 16, tokens_per_second: 1579 } ] },
       knee: 16, derate_milli: 970, watts_per_replica: 850, safe_resident_sessions: 12, standing: RowModelOutput }
   }
 }
