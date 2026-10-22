@@ -146,9 +146,9 @@ pub fn source_root_ingest_module_identities_for_ci(
     Ok(identities)
 }
 pub use entry_resolve::{
-    load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
-    whole_tree_resolved_ctx, EntryResolveRefusal,
+    host_budget_preflight, load_sources_for_entry, process_shared_index, resolve_entry_graph,
+    resolve_entry_with_index, resolve_entry_with_index_typed, resolve_seeded_compile_closure,
+    resolve_stage_totals, whole_tree_resolved_ctx, EntryResolveRefusal, HostBudgetRefusal,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -20220,7 +20220,7 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // exec created and is not inherited. A missing field is None, never a fabricated zero.
     #[cfg(target_os = "linux")]
     {
-        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+        proc_status_kb_field("VmHWM").filter(|b| *b > 0)
     }
     #[cfg(target_os = "macos")]
     {
