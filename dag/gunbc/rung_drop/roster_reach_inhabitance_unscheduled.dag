@@ -1,0 +1,38 @@
+module gunbc.rung_drop.roster_reach_inhabitance_unscheduled
+
+import std.types { NonEmptyStr, List, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target }
+
+// THE DECLARED RUNG DROP for the real call-reach walk behind the roster-token witness (DESIGN 3 pairing
+// obligation, 4b(3)). test.claim.fleet.fleet_converge_roster_token_prelude_witness is handed its reaching
+// target; the one execution of the real path, gunbc.instruments.roster_reach_inhabitance, costs hours of
+// interpreter time (one fn_arrow_decl_facts_live over the runner and fleet pool) and is operator-dispatched on
+// no lane. So between dispatches nothing turns red when a new roster-reading target appears or the supplied
+// target stops reaching organization_runner_roster_live_read. DRAFT: awaiting operator approval outside the
+// diff (DESIGN 5).
+//
+// THE POPULATION IS DERIVED from the supplied target the witness is handed, not copied.
+
+fn roster_reach_inhabitance_unscheduled_population() -> List<String> {
+  [concat(gunbc_ci_runner_host_file_converge_target.entry, concat("::", gunbc_ci_runner_host_file_converge_target.function))]
+}
+
+data roster_reach_inhabitance_unscheduled: RungDrop = RungDrop {
+  identity: "roster_reach_inhabitance_unscheduled" as NonEmptyStr,
+
+  subject: "the real call-reach walk pairing the supplied roster-reading target of the fleet-converge token witness, run only by operator dispatch of //gunbc/instruments:roster-reach-inhabitance",
+
+  declared: "2026-10-22",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "gunbc.instruments.roster_reach_inhabitance, run by operator dispatch of //gunbc/instruments:roster-reach-inhabitance" },
+    population: roster_reach_inhabitance_unscheduled_population(),
+    restoration_trigger: "fn_arrow_decl_facts_live is a modeled substrate fold whose pool walk fits a lane budget, so the walk is enrolled on a lane or cadence that executes it to a terminal verdict on every change touching the runner or fleet pool"
+  }
+}
