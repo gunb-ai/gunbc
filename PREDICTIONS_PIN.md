@@ -1127,3 +1127,14 @@ PRED-OF1: own-form guard fix (call-site app nodes: bound node whose leaves are t
 PRED-OF2: leaf-identity by declaration ref (NOT text) => census 11->9, leaving sites 2,12 (remote_shell_command.dag:106, integer.dag:425); no site joins.
 PRED-OF3: sites 7-10 survive both fixes (their classes differ); if any leave too, the fold-defect-suspect re-measurement caught a misclassification (that is the point).
 PRED-OF4: alias-shadow 1,13, wrapper 6,11, kernel-Int 5 unchanged by these two fixes (distinct classes; eager-cat #14632 not merged).
+
+## SELF-HOST CLOSURE CLASSIFICATION (2026-10-22, msg_6511d258: gate closure governs; both instruments per RED)
+CI //gunbc/instruments:self-host @cf726db: 21 distinct spans / ~51 lines. Contains ALL seedgen sites except remote_shell_command:106:22 & diagnostic:409:6 (not in closure). 9 self-host-only, rubric-classified from CI prints:
+- IDENTICAL-PRINT leaf class (#14056): dependency_demand_census.dag:114:15 + :177:49 ('Primitive(Optional)' vs 'Primitive(Optional)') -- two MORE #14056 sites beyond 2,12!
+- WRAPPER/Node-form (bare leaf vs applied node, same inner decl): qualified_name.dag:32:22 x3 (Primitive(QualifiedName) vs Node(QualifiedName<Symbol>)), demand_engine.dag:613:13 (Primitive(DependencyRelation) vs Node(DependencyRelation<...>)), algebra.dag:179:53 (Primitive(FreeMonoid) vs Node(FreeMonoid<Coproduct(FreeMonoid)>)) -- same family as site 7; distinct from eager-cat wrapper (inferred.Resolved); NEEDS debug render to decide bare-vs-applied equivalence rule.
+- Product(Unit<>) PLACEHOLDER (unconfirmed): python.dag:571:6 (bound Node(Outcome<Product(Unit<>)>) vs Node(Outcome<Container(FreeMonoid,Product(PrimitiveFactBundle<...>)>)>) -- family of sites 9,10.
+- EMPTY-PRIMITIVE RENDERING (bound prints Map(Primitive(),Primitive())): type_declaration_use_census.dag:850:49 + 2 kernel Map sites -- bound side lost primitive names; observation/rendering defect adjacent (fabricated-slot family).
+- LONG-PRODUCT TRUNCATED (undecided): source_authority.dag:41:1, program_assembly.dag:81:1 -- need full prints + renders.
+PRED-SH1: own-form guard removes ALL ~29 algebra.dag:1412:56 lines (biggest gate block).
+PRED-SH2: leaf-identity (#14056) removes seedgen 2,12 + CI 114:15,177:49 (4 sites; NOT remote_shell 106:22? NO -- 106:22 is seedgen-only but same class; removes there too).
+PRED-SH3: wrapper Node-form family needs its own mechanism decision after debug renders; do NOT bundle with eager-cat wrapper without render evidence.
