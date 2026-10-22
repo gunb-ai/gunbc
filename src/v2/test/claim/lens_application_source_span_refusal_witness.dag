@@ -19,16 +19,16 @@ import v2.std.node { Symbol }
 // read here (no corpus read in a claim). It is read by the pinned claim_batch run recorded in the
 // PR that landed this: the same import fixture exits 0 at the parent and 1 at the deletion head.
 
-data lasf_home_source: String = "module v2.lens.application\n\nimport std.types { Bool }\n\ntype Lens = Bool\n"
+data lasf_home_source: String = "module v2.lasf_lens\n\nimport std.types { Bool }\n\ntype Lens = Bool\n"
 
-data lasf_red_source: String = "module v2.lasf_red\n\nimport std.types { Bool }\nimport v2.lens.application { SourceSpan }\n\nfn lasf_red(p: SourceSpan) -> Bool { true }\n"
+data lasf_red_source: String = "module v2.lasf_red\n\nimport std.types { Bool }\nimport v2.lasf_lens { SourceSpan }\n\nfn lasf_red(p: SourceSpan) -> Bool { true }\n"
 
-data lasf_name_control_source: String = "module v2.lasf_name_control\n\nimport std.types { Bool }\nimport v2.lens.application { Lens }\n\nfn lasf_name_control(p: Lens) -> Bool { p }\n"
+data lasf_name_control_source: String = "module v2.lasf_name_control\n\nimport std.types { Bool }\nimport v2.lasf_lens { Lens }\n\nfn lasf_name_control(p: Lens) -> Bool { p }\n"
 
 data lasf_types_control_source: String = "module v2.lasf_types_control\n\nimport std.types { Bool, SourceSpan }\n\nfn lasf_types_control(p: SourceSpan) -> Bool { true }\n"
 
 data lasf_ingest: SourceRootIngest = Cons {
-  head: ncr_read(source: lasf_home_source, id: ^lasf_home_artifact, unit: ^lasf_home_cu, path: "dag/lasf_home.dag"),
+  head: ncr_read(source: lasf_home_source, id: ^lasf_home_artifact, unit: ^lasf_home_cu, path: "dag/lasf_lens.dag"),
   tail: Cons {
     head: ncr_read(source: lasf_red_source, id: ^lasf_red_artifact, unit: ^lasf_red_cu, path: "dag/lasf_red.dag"),
     tail: Cons {
@@ -65,35 +65,10 @@ test fn importing_source_span_from_std_types_resolves() -> Bool {
   ncr_verdict_is_resolved(v: lasf_verdict(module_name: "v2.lasf_types_control"))
 }
 
-fn lasf_is_absent(v: NcrVerdict) -> Bool {
-  match v {
-    NcrAbsent => true
-    _ => false
-  }
+test fn the_refusal_is_not_a_missing_module() -> Bool {
+  !ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_module_not_found)
 }
 
-fn lasf_is_file_refused(v: NcrVerdict) -> Bool {
-  match v {
-    NcrFileRefused => true
-    _ => false
-  }
+test fn the_refusal_is_an_unbound_symbol() -> Bool {
+  ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_unbound_symbol)
 }
-
-test fn probe_ctl_resolve_reason_declarer_refused() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_declarer_refused) }
-test fn probe_ctl_resolve_duplicate_module_name() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_duplicate_module_name) }
-test fn probe_ctl_resolve_module_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_module_not_found) }
-test fn probe_ctl_resolve_reason_malformed_imported_root() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_malformed_imported_root) }
-test fn probe_ctl_resolve_reason_ambiguous_symbol() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_ambiguous_symbol) }
-test fn probe_ctl_resolve_reason_reference_category_mismatch() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_name_control"), reason: ^resolve_reason_reference_category_mismatch) }
-test fn probe_red_resolve_reason_declarer_refused() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_declarer_refused) }
-test fn probe_red_resolve_duplicate_module_name() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_duplicate_module_name) }
-test fn probe_red_resolve_module_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_module_not_found) }
-test fn probe_red_resolve_reason_malformed_imported_root() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_malformed_imported_root) }
-test fn probe_red_resolve_reason_ambiguous_symbol() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_ambiguous_symbol) }
-test fn probe_red_resolve_reason_reference_category_mismatch() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_red"), reason: ^resolve_reason_reference_category_mismatch) }
-test fn probe_tys_resolve_reason_declarer_refused() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_declarer_refused) }
-test fn probe_tys_resolve_duplicate_module_name() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_duplicate_module_name) }
-test fn probe_tys_resolve_module_not_found() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_module_not_found) }
-test fn probe_tys_resolve_reason_malformed_imported_root() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_malformed_imported_root) }
-test fn probe_tys_resolve_reason_ambiguous_symbol() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_ambiguous_symbol) }
-test fn probe_tys_resolve_reason_reference_category_mismatch() -> Bool { ncr_verdict_refuses_with(v: lasf_verdict(module_name: "v2.lasf_types_control"), reason: ^resolve_reason_reference_category_mismatch) }
