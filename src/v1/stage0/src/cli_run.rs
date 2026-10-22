@@ -20452,7 +20452,7 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // exec created and is not inherited. A missing field is None, never a fabricated zero.
     #[cfg(target_os = "linux")]
     {
-        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+        proc_status_kb_field("VmHWM").filter(|b| *b > 0)
     }
     #[cfg(target_os = "macos")]
     {
