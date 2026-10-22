@@ -1,7 +1,7 @@
 set -uo pipefail
 REPO=/root/workspace/repo-root
 HEADSHA=ff85b62ae57f5f6bc2aeef903c463eb04bd56d04
-WIT=dag/test/claim/instrument_dispatch_workflow_witness.dag
+WIT=dag/test/claim/instruments/instrument_dispatch_workflow_witness.dag
 cd $REPO
 git fetch --force origin $HEADSHA 2>&1 | tail -1
 git worktree add -f /tmp/wt613i $HEADSHA 2>&1 | tail -1
