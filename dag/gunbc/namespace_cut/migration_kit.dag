@@ -1,0 +1,61 @@
+module gunbc.namespace_cut.migration_kit
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.algebra { length }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, census_blocking_rows, census_total_count }
+import gunbc.compile_census_probe { ProbeCensusRows, census_rows_for }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome }
+
+// THE NAMESPACE-MIGRATION ACCEPTANCE KIT (Seat 13). The proof shape every ambient-to-declared move repeats,
+// as ONE verdict over ONE row of gunbc.namespace_cut.ambient_name_home (name, home, retired_contract): a wave
+// supplies its row, never a hand-written claim. No new binding behavior: the producers are the existing
+// compile_dag_diagnostic_census (via gunbc.compile_census_probe) and the existing census-reading route.
+//
+// CHECKS HERE: (1) no-import RED and (2-positive) with-import GREEN as ONE DIFFERENTIAL -- the two sources
+// differ on the import axis alone, so the shared closure cancels (the exact form gunbc.compile_diagnostic_census
+// names for a census row set) and the kit never authors a census key from a reading. Check 2's exact-identity
+// half (target == row.home) needs the binding record, which only the census-reading route prints; it is the
+// kit's CliWire label, not a claim. (3) retired contract absent is read by migration_contract_still_present.
+// (4) realization by identity is the emit-check label. (5) is the required self-host job, only named.
+// (6) no second route is the same differential over a source that ALSO declares a local of the name.
+//
+// A VERDICT, NOT A BOOL: a claim over a not-yet-migrated name must say WHICH check fired, so the list_push
+// reading on main is a located observation and not a bare false.
+
+type KitFinding
+  = KitMigrated
+  | KitNotRunnable { cause: NonEmptyStr }
+  | KitNoImportDoesNotRefuse
+  | KitImportDoesNotClear
+  | KitSecondRouteBinds
+
+fn kit_call_source(row: AmbientNameHome, imported: Bool) -> String {
+  "module probe_migration_kit\n"
+    + "import std.types { Int, List }\n"
+    + (if imported { "import " + row.home + " { " + row.name + " }\n" } else { "" })
+    + "fn probe(xs: List<Int>) -> List<Int> { " + row.name + "(xs, 1) }\n"
+}
+
+fn kit_blocking_count(source: String) -> Int? {
+  match census_rows_for(source: source) {
+    Present { value: p } => Present { value: census_total_count(rows: census_blocking_rows(rows: p.rows)) }
+    Absent => Absent
+  }
+}
+
+// Checks 1 and 2-positive, as a differential: the unimported call must add blocking rows the imported one lacks.
+fn kit_import_differential(row: AmbientNameHome) -> KitFinding {
+  match kit_blocking_count(source: kit_call_source(row: row, imported: false)) {
+    Present { value: red } =>
+      match kit_blocking_count(source: kit_call_source(row: row, imported: true)) {
+        Present { value: green } =>
+          if red <= green { KitNoImportDoesNotRefuse } else { if green > 0 { KitImportDoesNotClear } else { KitMigrated } }
+        Absent => KitNotRunnable { cause: "census not runnable on the imported source" as NonEmptyStr }
+      }
+    Absent => KitNotRunnable { cause: "census not runnable on the unimported source" as NonEmptyStr }
+  }
+}
+
+// Check 3 residue boundary: whether the retired contract is still rostered is read from std.primitives by the
+// kit's label; the template-row leg of check 6 is a census of shapes, not facts, and is RESIDUE until a producer exists.

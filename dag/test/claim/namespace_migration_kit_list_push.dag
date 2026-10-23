@@ -1,0 +1,29 @@
+module test.claim.namespace_migration_kit_list_push
+
+import std.types { Bool, NonEmptyStr }
+import std.optional { optional_present }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
+import gunbc.namespace_cut.migration_kit { KitFinding, KitMigrated, kit_import_differential }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// SUPPLIED ROW for list_push (#14751's wave). Until that wave adds its ambient_name_homes() row this is the
+// kit's one subject; the wave replaces this module's row with its own and keeps the claim.
+fn list_push_row() -> AmbientNameHome {
+  AmbientNameHome {
+    name: "list_push" as NonEmptyStr,
+    home: "std.algebra" as NonEmptyStr,
+    table: PrimitiveAuthorityTable,
+    origin: ExistingDeclaration,
+    retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr)
+  }
+}
+
+// The migrated verdict. RED on main (not yet migrated) is the intended discrimination reading; green at #14751's head.
+test fn list_push_is_migrated_by_declaration_import() -> Bool {
+  match kit_import_differential(row: list_push_row()) {
+    KitMigrated => true
+    _ => false
+  }
+}
