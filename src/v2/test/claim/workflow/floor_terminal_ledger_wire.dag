@@ -48,6 +48,11 @@ import v2.workflow.floor_terminal_ledger_wire {
   render_disposition,
   render_ledger,
   render_ledger_from_seed,
+  render_ledger_from_outcomes,
+  derive_outcome_row,
+  OutcomeRowDerived,
+  OutcomeRowRefused,
+  outcome_kind_roster,
   render_row,
   render_terminal_detail,
   render_terminal_tag,
@@ -657,4 +662,76 @@ test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> 
          repository_snapshot: UnpublishedWorkingTree,
          prepared_subject: structural_content_hash(digest: "0000000000000002")
        })
+}
+
+// ── THE OUTCOME-FACING SURFACE (render_ledger_from_outcomes) ──────────────────────────────────
+
+fn outcome_fields(kind: String, code: String, ground: String) -> List<String> {
+  ["a.b.c.f", "expect-hold", kind, "why", code, ground]
+}
+
+fn outcome_tag_of(fields: List<String>) -> String {
+  match derive_outcome_row(fields: fields) {
+    OutcomeRowDerived { row: r } => r.terminal_tag
+    OutcomeRowRefused { reason: r, offending: _ } => r as String
+  }
+}
+
+// EVERY KIND THE SEED CAN NAME HAS AN ARM. The roster is the list the seed's exhaustive
+// `claim_outcome_kind` is cross-checked against, so a variant added without a wire arm fails here.
+test fn every_outcome_kind_in_the_roster_derives_a_row() -> Bool {
+  all(outcome_kind_roster(), k =>
+    match derive_outcome_row(fields: outcome_fields(kind: k, code: "1", ground: "NoMockResponse")) {
+      OutcomeRowDerived { row: _ } => true
+      OutcomeRowRefused { reason: _, offending: _ } => false
+    })
+}
+
+// THE DISCRIMINATING RED: an unrecognised kind refuses with its own typed reason, located at the
+// kind, and never reaches a default tag.
+test fn an_unrecognised_outcome_kind_refuses_located_at_the_kind() -> Bool {
+  match derive_outcome_row(fields: outcome_fields(kind: "Superposed", code: "", ground: "")) {
+    OutcomeRowDerived { row: _ } => false
+    OutcomeRowRefused { reason: r, offending: o } => r == "outcome-kind-unrecognized" && o == "Superposed"
+  }
+}
+
+test fn an_unrecognised_ground_refuses() -> Bool {
+  outcome_tag_of(fields: outcome_fields(kind: "HostEffectRefused", code: "", ground: "Nowhere")) == "outcome-ground-unrecognized"
+}
+
+test fn a_row_of_the_wrong_arity_refuses() -> Bool {
+  outcome_tag_of(fields: ["a.b.c.f", "expect-hold", "Pass"]) == "outcome-row-arity"
+}
+
+// CODE 2 IS THE EXIT CONTRACT'S "NO OBSERVATION"; any other code is a failing verdict.
+test fn exit_failure_code_two_is_unreadable_and_other_codes_are_exit_failure() -> Bool {
+  outcome_tag_of(fields: outcome_fields(kind: "ExitFailure", code: "2", ground: "")) == "returned-unreadable"
+    && outcome_tag_of(fields: outcome_fields(kind: "ExitFailure", code: "1", ground: "")) == "exit-failure"
+}
+
+test fn a_held_and_a_failed_outcome_keep_their_tags() -> Bool {
+  outcome_tag_of(fields: outcome_fields(kind: "Pass", code: "", ground: "")) == "returned-true"
+    && outcome_tag_of(fields: outcome_fields(kind: "Fail", code: "", ground: "")) == "returned-false"
+}
+
+test fn the_outcome_surface_renders_a_ledger_and_refuses_on_an_unknown_kind() -> Bool {
+  let good = render_ledger_from_outcomes(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: [outcome_fields(kind: "Pass", code: "", ground: ""), outcome_fields(kind: "ExitFailure", code: "2", ground: "")]
+  )
+  let bad = render_ledger_from_outcomes(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: [outcome_fields(kind: "Pass", code: "", ground: ""), outcome_fields(kind: "Superposed", code: "", ground: "")]
+  )
+  match good {
+    LedgerUnrenderable { reason: _, offending: _, diagnosis: _ } => false
+    LedgerRendered { text: _ } =>
+      match bad {
+        LedgerRendered { text: _ } => false
+        LedgerUnrenderable { reason: r, offending: _, diagnosis: _ } => r == "outcome-kind-unrecognized"
+      }
+  }
 }

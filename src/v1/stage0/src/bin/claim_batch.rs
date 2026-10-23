@@ -32,6 +32,11 @@ struct ResolveTimings {
     /// held nor failed. `SubjectUnresolved` in `v2.workflow.floor_terminal_ledger` names this
     /// terminal; no reader decodes the printed UNOBSERVED line into it yet (declared frontier).
     any_unobserved: bool,
+    /// One entry per claim run, in run order: the function name and what its `ClaimOutcome`
+    /// carried, as plain strings (`outcome_row_tail`). Collected only to be handed to
+    /// `v2.workflow.floor_terminal_ledger_wire render_ledger_from_outcomes` under `--outcomes-out`;
+    /// nothing in this crate decodes it.
+    outcome_rows: Vec<(String, Vec<String>)>,
 }
 
 /// Exit composition, 1 (a finding) > 2 (no observation) > 0 (clean): the batch verdict is a
@@ -207,6 +212,7 @@ struct ParsedArgs {
     eval_budget_ms: Option<u64>,
     pre_push: bool,
     print_entry_closure: bool,
+    outcomes_out: Option<String>,
 }
 
 fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCode> {
@@ -258,6 +264,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut eval_budget_ms: Option<u64> = None;
     let mut pre_push = false;
     let mut print_entry_closure = false;
+    let mut outcomes_out: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -322,6 +329,10 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             }
             "--pre-push" => pre_push = true,
             "--print-entry-closure" => print_entry_closure = true,
+            "--outcomes-out" => {
+                i += 1;
+                outcomes_out = Some(require_value(args, i, "--outcomes-out")?);
+            }
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -338,6 +349,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         eval_budget_ms,
         pre_push,
         print_entry_closure,
+        outcomes_out,
     })
 }
 
@@ -465,6 +477,170 @@ fn report_outcome(
     }
 }
 
+/// THE NAME OF THE `ClaimOutcome` VARIANT, AND NOTHING ELSE. The wire authority
+/// (`v2.workflow.floor_terminal_ledger_wire derive_outcome_row`) owns what each kind means: its
+/// tag, its detail and its disposition. This match is exhaustive with no wildcard on purpose, so a
+/// variant added to `ClaimOutcome` stops compiling here until it is named, and the unit test
+/// below cross-checks these names against the wire's `outcome_kind_roster`.
+fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
+    match outcome {
+        ClaimOutcome::Pass => "Pass",
+        ClaimOutcome::Fail => "Fail",
+        ClaimOutcome::NotBool { .. } => "NotBool",
+        ClaimOutcome::RuntimeError { .. } => "RuntimeError",
+        ClaimOutcome::BudgetInterrupted { .. } => "BudgetInterrupted",
+        ClaimOutcome::CompletedOverBudget { .. } => "CompletedOverBudget",
+        ClaimOutcome::HostToolUnresolved { .. } => "HostToolUnresolved",
+        ClaimOutcome::HostEffectRefused { .. } => "HostEffectRefused",
+        ClaimOutcome::Panicked { .. } => "Panicked",
+        ClaimOutcome::NotAttempted { .. } => "NotAttempted",
+        ClaimOutcome::ExitFailure { .. } => "ExitFailure",
+    }
+}
+
+/// The four trailing wire fields of a ledger row — kind, detail, exit code, ground — as the
+/// strings the variant carries. A field a variant does not carry is empty. Nothing here decides
+/// a tag or a disposition; that is the wire's.
+fn outcome_row_tail(outcome: &ClaimOutcome) -> Vec<String> {
+    use v1_compiler::v1_interpreter::HermeticEffectGround;
+    let kind = claim_outcome_kind(outcome).to_string();
+    let (detail, code, ground) = match outcome {
+        ClaimOutcome::Pass | ClaimOutcome::Fail | ClaimOutcome::CompletedOverBudget { .. } => {
+            (String::new(), String::new(), String::new())
+        }
+        ClaimOutcome::NotBool { got } => (got.clone(), String::new(), String::new()),
+        ClaimOutcome::RuntimeError { message, .. } => {
+            (message.clone(), String::new(), String::new())
+        }
+        ClaimOutcome::BudgetInterrupted { .. } => (
+            outcome.budget_figure_phrase().unwrap_or_default(),
+            String::new(),
+            String::new(),
+        ),
+        ClaimOutcome::HostToolUnresolved { name, .. } => {
+            (name.clone(), String::new(), String::new())
+        }
+        ClaimOutcome::HostEffectRefused { operation, ground } => (
+            operation.clone(),
+            String::new(),
+            match ground {
+                HermeticEffectGround::UnpublishedMockCase { .. } => "UnpublishedMockCase",
+                HermeticEffectGround::NoMockResponse => "NoMockResponse",
+                HermeticEffectGround::FilesystemRemoval => "FilesystemRemoval",
+            }
+            .to_string(),
+        ),
+        ClaimOutcome::Panicked { payload } => (payload.clone(), String::new(), String::new()),
+        ClaimOutcome::NotAttempted { halted_by } => {
+            (halted_by.clone(), String::new(), String::new())
+        }
+        ClaimOutcome::ExitFailure { code, reason } => (
+            reason.clone().unwrap_or_default(),
+            code.to_string(),
+            String::new(),
+        ),
+    };
+    vec![kind, detail, code, ground]
+}
+
+/// RENDER THROUGH THE ONE WIRE AUTHORITY AND WRITE THE BYTES. The render is
+/// `v2.workflow.floor_terminal_ledger_wire render_ledger_from_outcomes`, called by symbol: this
+/// function holds no row grammar, no tag and no disposition. What stays here is irreducibly the
+/// host's: resolving the wire module, handing it plain strings, and the atomic write.
+///
+/// `Err` is a typed, located cause and means NO LEDGER WAS WRITTEN; the caller counts it as no
+/// observation. A previous ledger at `out` is never left in place under a refusal (the stale
+/// file would read as this run's).
+fn write_outcomes_ledger(
+    source_roots: &[String],
+    index: &MultiEntryIndex,
+    entry: &str,
+    closure_subject: &str,
+    rows: &[(String, Vec<String>)],
+    execution_mode: ExecutionMode,
+    out: &str,
+) -> Result<(), String> {
+    use v1_compiler::v1_interpreter::{run_in_context_with_args, str_value, Value};
+    let wire_entry = source_roots
+        .iter()
+        .map(|root| std::path::Path::new(root).join("workflow/floor_terminal_ledger_wire.dag"))
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            "--outcomes-out renders through v2.workflow.floor_terminal_ledger_wire, which no \
+             --source-root holds; add --source-root src/v2"
+                .to_string()
+        })?;
+    let module_path = v1_compiler::module_path_index::parsed_dag_file::parse_dag_file(
+        std::path::Path::new(entry),
+    )
+    .map(|parsed| parsed.module.name.clone())
+    .ok_or_else(|| format!("cannot parse --entry {entry} to read its module path"))?;
+    let (graph, source_indices) =
+        resolve_entry_with_index_typed(index, &wire_entry.to_string_lossy())
+            .map_err(|refusal| format!("cannot resolve the wire module: {}", refusal.message()))?;
+    let ctx =
+        make_eval_context_with_runtime_options(&graph, source_indices, execution_mode, None, None);
+    let list = |items: Vec<Value>| Value::List(Rc::new(items.into_iter().collect()));
+    let row_values: Vec<Value> = rows
+        .iter()
+        .map(|(function, tail)| {
+            let mut fields = vec![
+                format!("{module_path}.{function}"),
+                "expect-hold".to_string(),
+            ];
+            fields.extend(tail.iter().cloned());
+            list(fields.iter().map(str_value).collect())
+        })
+        .collect();
+    let args = vec![
+        (
+            Some("repository_snapshot".to_string()),
+            str_value("unpublished"),
+        ),
+        (
+            Some("prepared_subject".to_string()),
+            str_value(closure_subject),
+        ),
+        (Some("rows".to_string()), list(row_values)),
+    ];
+    let rendered = run_in_context_with_args(&ctx, "render_ledger_from_outcomes", &args, false)
+        .map_err(|e| format!("render_ledger_from_outcomes did not evaluate: {e:?}"))?;
+    let field = |fields: &[(v1_compiler::v1_interpreter::Symbol, Value)], name: &str| -> String {
+        fields
+            .iter()
+            .find(|(k, _)| ctx.resolve(*k) == name)
+            .map(|(_, v)| format!("{v}"))
+            .unwrap_or_default()
+    };
+    match &rendered {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.resolve(*variant_name) == "LedgerRendered" => {
+            let text = field(&fields, "text");
+            let tmp = format!("{out}.partial");
+            std::fs::write(&tmp, text.as_bytes()).map_err(|e| format!("write {tmp}: {e}"))?;
+            std::fs::rename(&tmp, out).map_err(|e| format!("rename {tmp} -> {out}: {e}"))
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.resolve(*variant_name) == "LedgerUnrenderable" => {
+            let _ = std::fs::remove_file(out);
+            Err(format!(
+                "the ledger is unrenderable: {} (offending {:?})",
+                field(&fields, "reason"),
+                field(&fields, "offending"),
+            ))
+        }
+        other => Err(format!(
+            "render_ledger_from_outcomes returned an unexpected value: {other}"
+        )),
+    }
+}
+
 fn resolve_timed(
     index: &MultiEntryIndex,
     entry: &str,
@@ -539,6 +715,9 @@ fn run_claim_timed(
     timings: &mut ResolveTimings,
 ) {
     let (outcome, receipt) = run_claim_measured(ctx, closure_subject, function);
+    timings
+        .outcome_rows
+        .push((function.to_string(), outcome_row_tail(&outcome)));
     report_outcome(
         function,
         outcome,
@@ -1031,6 +1210,34 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
 
     partition.mark("entries");
 
+    if let Some(out) = parsed.outcomes_out.as_deref() {
+        // One entry group only: the ledger header names ONE prepared subject, and a ledger over
+        // several closures would have to invent which subject it speaks for.
+        let written = match entry_groups.as_slice() {
+            [group] => closure_subject_for_entry(&index, &group.entry)
+                .map_err(|e| format!("cannot name the prepared subject: {e:?}"))
+                .and_then(|subject| {
+                    write_outcomes_ledger(
+                        &source_roots,
+                        &index,
+                        &group.entry,
+                        &subject,
+                        &timings.outcome_rows,
+                        execution_mode,
+                        out,
+                    )
+                }),
+            _ => Err(format!(
+                "--outcomes-out supports exactly one --entry group, got {}",
+                entry_groups.len()
+            )),
+        };
+        if let Err(cause) = written {
+            eprintln!("claim_batch: NO OBSERVATION: --outcomes-out {out}: {cause}");
+            timings.any_unobserved = true;
+        }
+    }
+
     eprintln!(
         "[resolve-summary] mode={:?}; {} resolve(s) in {}ms wall; {} witness(es) in {}ms wall",
         execution_mode, timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
@@ -1219,6 +1426,81 @@ mod cli_path_resolution_wiring_tests {
             .chain(v.iter().copied())
             .map(str::to_string)
             .collect()
+    }
+
+    fn one_of_every_claim_outcome() -> Vec<v1_compiler::cli_run::ClaimOutcome> {
+        use v1_compiler::cli_run::{BudgetKind, ClaimOutcome, WitnessRuntimeCause};
+        use v1_compiler::v1_interpreter::{HermeticEffectGround, RaisePath};
+        vec![
+            ClaimOutcome::Pass,
+            ClaimOutcome::Fail,
+            ClaimOutcome::NotBool { got: "x".into() },
+            ClaimOutcome::RuntimeError {
+                cause: WitnessRuntimeCause::NoSuchFunction,
+                message: "m".into(),
+                raised_in: RaisePath::default(),
+            },
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms: 1,
+                budget_ms: 1,
+                kind: BudgetKind::Cpu,
+            },
+            ClaimOutcome::CompletedOverBudget {
+                elapsed_ms: 2,
+                budget_ms: 1,
+                kind: BudgetKind::Wall,
+            },
+            ClaimOutcome::HostToolUnresolved {
+                name: "t".into(),
+                probed: vec![],
+            },
+            ClaimOutcome::HostEffectRefused {
+                operation: "o".into(),
+                ground: HermeticEffectGround::NoMockResponse,
+            },
+            ClaimOutcome::Panicked {
+                payload: "p".into(),
+            },
+            ClaimOutcome::NotAttempted {
+                halted_by: "h".into(),
+            },
+            ClaimOutcome::ExitFailure {
+                code: 2,
+                reason: None,
+            },
+        ]
+    }
+
+    // The wire's roster is the authority for which kinds exist. Equality in BOTH directions: a
+    // ClaimOutcome variant the wire does not name, or a wire kind no variant produces, fails here.
+    #[test]
+    fn every_claim_outcome_kind_has_a_wire_arm_and_no_wire_kind_is_orphaned() {
+        let wire = include_str!("../../../../v2/workflow/floor_terminal_ledger_wire.dag");
+        let start = wire.find("fn outcome_kind_roster()").expect("roster fn");
+        let body = &wire[start
+            ..wire[start..]
+                .find("\n}\n")
+                .map(|e| start + e)
+                .expect("roster end")];
+        let roster: std::collections::BTreeSet<String> = body
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect();
+        let produced: std::collections::BTreeSet<String> = one_of_every_claim_outcome()
+            .iter()
+            .map(|o| super::claim_outcome_kind(o).to_string())
+            .collect();
+        assert_eq!(produced, roster);
+        assert_eq!(roster.len(), 11);
+    }
+
+    #[test]
+    fn outcome_row_tail_has_exactly_the_four_wire_fields() {
+        for o in one_of_every_claim_outcome() {
+            assert_eq!(super::outcome_row_tail(&o).len(), 4, "{o:?}");
+        }
     }
 
     #[test]

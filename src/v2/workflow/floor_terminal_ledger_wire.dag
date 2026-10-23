@@ -1008,3 +1008,202 @@ fn render_ledger_from_seed(
   }
   }
 }
+
+// ── THE OUTCOME-FACING SURFACE: THE SEED NAMES THE OUTCOME KIND, THIS MODULE OWNS WHAT IT MEANS ──
+//
+// `render_ledger_from_seed` asks the seed for a tag, a detail and a disposition per row, which
+// makes the seed author a second outcome-to-tag mapping beside `render_terminal_tag`. This surface
+// removes that mapping: the seed sends the NAME of the `ClaimOutcome` variant it reached and the
+// facts that variant carries as strings, and the tag, the detail and the disposition are all
+// derived here, once. The seed's disposition field is therefore derived from the same tag it is
+// compared with, so the `seed-disposition-disagrees` refusal cannot fire on this path: its check
+// guarded a second mapping and this surface has none.
+//
+// A ROW IS SIX FIELDS, IN THIS ORDER: qualified name, expectation wire, outcome kind, detail,
+// exit code, ground. A field a kind does not carry is the empty string and a kind that needs one
+// refuses when it is empty. An unknown kind refuses with its own typed reason; there is no
+// default tag, because a default is the plausible output that reads as a verdict nobody reached.
+fn outcome_kind_roster() -> List<String> {
+  [
+    "Pass", "Fail", "NotBool", "RuntimeError", "BudgetInterrupted", "CompletedOverBudget",
+    "HostToolUnresolved", "HostEffectRefused", "Panicked", "NotAttempted", "ExitFailure"
+  ]
+}
+
+type OutcomeRowDerivation
+  = OutcomeRowDerived { row: SeedLedgerRow }
+  | OutcomeRowRefused { reason: Symbol, offending: String }
+
+type OutcomeTerminalDerivation
+  = OutcomeTerminalDerived { tag: String, detail: String }
+  | OutcomeTerminalRefused { reason: Symbol }
+
+fn outcome_field(fields: List<String>, index: Int) -> String? {
+  match fields {
+    Empty => none
+    Cons { head: h, tail: t } =>
+      if index == 0 { Present { value: h } } else { outcome_field(fields: t, index: index - 1) }
+  }
+}
+
+fn outcome_ground_tag(ground: String) -> String? {
+  if ground == "UnpublishedMockCase" {
+    Present { value: "route-gap-unpublished-mock-case" }
+  } else {
+    if ground == "NoMockResponse" {
+      Present { value: "route-gap-no-mock-response" }
+    } else {
+      if ground == "FilesystemRemoval" { Present { value: "route-gap-filesystem-removal" } } else { none }
+    }
+  }
+}
+
+fn derive_outcome_terminal(kind: String, detail: String, exit_code: String, ground: String) -> OutcomeTerminalDerivation {
+  if kind == "Pass" {
+    OutcomeTerminalDerived { tag: "returned-true", detail: "" }
+  } else {
+  if kind == "Fail" {
+    OutcomeTerminalDerived { tag: "returned-false", detail: "" }
+  } else {
+  if kind == "NotBool" {
+    OutcomeTerminalDerived { tag: "returned-unreadable", detail: join(["returned a non-Bool value: ", detail], "") }
+  } else {
+  if kind == "RuntimeError" {
+    OutcomeTerminalDerived { tag: "runtime-errored", detail: detail }
+  } else {
+  if kind == "BudgetInterrupted" {
+    OutcomeTerminalDerived { tag: "budget-refused", detail: detail }
+  } else {
+  if kind == "CompletedOverBudget" {
+    OutcomeTerminalDerived { tag: "passed-over-budget", detail: "completed-past-limit" }
+  } else {
+  if kind == "HostToolUnresolved" {
+    OutcomeTerminalDerived { tag: "host-tool-unresolved", detail: detail }
+  } else {
+  if kind == "HostEffectRefused" {
+    match outcome_ground_tag(ground: ground) {
+      Present { value: tag } => OutcomeTerminalDerived { tag: tag, detail: detail }
+      Absent => OutcomeTerminalRefused { reason: "outcome-ground-unrecognized" }
+    }
+  } else {
+  if kind == "Panicked" {
+    OutcomeTerminalDerived { tag: "panicked", detail: detail }
+  } else {
+  if kind == "NotAttempted" {
+    OutcomeTerminalDerived { tag: "not-attempted", detail: detail }
+  } else {
+  if kind == "ExitFailure" {
+    if exit_code == "2" {
+      OutcomeTerminalDerived {
+        tag: "returned-unreadable",
+        detail: join(["returned ExitFailure code 2: ", detail], "")
+      }
+    } else {
+      OutcomeTerminalDerived { tag: "exit-failure", detail: join(["code ", exit_code, ": ", detail], "") }
+    }
+  } else {
+    OutcomeTerminalRefused { reason: "outcome-kind-unrecognized" }
+  }}}}}}}}}}}
+}
+
+fn derive_outcome_row(fields: List<String>) -> OutcomeRowDerivation {
+  match outcome_field(fields: fields, index: 0) {
+    Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: "" }
+    Present { value: qualified } =>
+      if fields.length() != 6 {
+        OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
+      } else {
+        let expectation_wire = outcome_field(fields: fields, index: 1)
+        let kind = outcome_field(fields: fields, index: 2)
+        let detail = outcome_field(fields: fields, index: 3)
+        let exit_code = outcome_field(fields: fields, index: 4)
+        let ground = outcome_field(fields: fields, index: 5)
+        match expectation_wire {
+          Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
+          Present { value: e } => match kind {
+            Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
+            Present { value: k } => match detail {
+              Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
+              Present { value: d } => match exit_code {
+                Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
+                Present { value: c } => match ground {
+                  Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
+                  Present { value: g } =>
+                    match derive_outcome_terminal(kind: k, detail: d, exit_code: c, ground: g) {
+                      OutcomeTerminalRefused { reason: r } => OutcomeRowRefused { reason: r, offending: k }
+                      OutcomeTerminalDerived { tag: t, detail: td } =>
+                        match parse_expectation(wire: e) {
+                          Absent => OutcomeRowRefused { reason: "seed-expectation-unrecognized", offending: qualified }
+                          Present { value: expectation } =>
+                            match readback_disposition(row: LedgerReadbackRow {
+                              qualified: qualified,
+                              expectation: expectation,
+                              terminal_tag: t,
+                              terminal_detail: td
+                            }) {
+                              Absent => OutcomeRowRefused { reason: "seed-terminal-tag-unrecognized", offending: qualified }
+                              Present { value: disposition } =>
+                                OutcomeRowDerived { row: SeedLedgerRow {
+                                  qualified: qualified,
+                                  expectation_wire: e,
+                                  terminal_tag: t,
+                                  terminal_detail: td,
+                                  seed_disposition_wire: render_disposition(disposition: disposition)
+                                } }
+                            }
+                        }
+                    }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn render_ledger_from_outcomes(
+  repository_snapshot: String,
+  prepared_subject: String,
+  rows: List<List<String>>,
+) -> LedgerRender {
+  let derivations = map(rows, r => derive_outcome_row(fields: r))
+  let derived = flat_map(derivations, d => match d {
+    OutcomeRowDerived { row: r } => [r]
+    OutcomeRowRefused { reason: _, offending: _ } => []
+  })
+  let refusals = flat_map(derivations, d => match d {
+    OutcomeRowRefused { reason: reason, offending: offending } => [OutcomeRowRefused { reason: reason, offending: offending }]
+    OutcomeRowDerived { row: _ } => []
+  })
+  match refusals.first() {
+    Present { value: first } =>
+      match first {
+        OutcomeRowDerived { row: _ } =>
+          LedgerUnrenderable {
+            reason: "unreachable-derived-in-refusals",
+            offending: "",
+            diagnosis: "unreachable-derived-in-refusals"
+          }
+        OutcomeRowRefused { reason: reason, offending: offending } =>
+          LedgerUnrenderable {
+            reason: reason,
+            offending: offending,
+            diagnosis: seed_diagnosis_of(
+              repository_snapshot: repository_snapshot,
+              prepared_subject: prepared_subject,
+              roster_identity: seed_roster_identity(rows: derived).digest,
+              rows: derived,
+              reason: reason,
+              offending: offending
+            )
+          }
+      }
+    Absent =>
+      render_ledger_from_seed(
+        repository_snapshot: repository_snapshot,
+        prepared_subject: prepared_subject,
+        rows: derived
+      )
+  }
+}

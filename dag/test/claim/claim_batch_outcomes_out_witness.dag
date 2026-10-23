@@ -1,0 +1,120 @@
+module test.claim.claim_batch_outcomes_out_witness
+
+import std.types { Bool, String, FilePath, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY THIS IS WET. The property is what the `claim_batch` PROCESS writes to --outcomes-out for a
+// claim it ran: the terminal ledger rendered by v2.workflow.floor_terminal_ledger_wire, whose row
+// for a code-2 ExitFailure is the typed no-observation (`returned-unreadable`) and for a held
+// claim `returned-true`, while the exit status stays 2 and 0. A file and an exit status are
+// external effects, so only a child process observes them. The unrecognized-kind refusal is an
+// in-process claim of the wire module (test.claim.workflow.floor_terminal_ledger_wire).
+//
+// THE CLAIMS ARE PLANTED, NEVER COMMITTED (see claim_batch_exit_two_unobserved_witness).
+
+data exit_two_unobserved_entry_source: String = "module probe.exit_two_entry
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+test fn exit_two_entry_holds() -> ProcessExit {
+  ExitFailure { code: 2, reason: \"subject never reached\" }
+}
+"
+
+data exit_success_held_entry_source: String = "module probe.exit_two_entry
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+test fn exit_two_entry_holds() -> ProcessExit {
+  ExitSuccess
+}
+"
+
+type PlantedExitTwo
+  = PlantedExitTwoReady { dir: String }
+  | PlantedExitTwoUnwritable { detail: String }
+
+fn plant_exit_two(root: String, entry_source: String) -> PlantedExitTwo {
+  let dir = shell.Mktemp.DirWithTemplate(
+    template: concat(root, "/target/exit-two-planted-XXXXXX") as FilePath,
+  )
+  if !dir.success {
+    PlantedExitTwoUnwritable { detail: "mktemp under target/ failed" }
+  } else {
+    let d = dir.path as String
+    let e = Filesystem.Write(path: concat(d, "/exit_two_entry.dag"), content: entry_source)
+    if e.success {
+      PlantedExitTwoReady { dir: d }
+    } else {
+      PlantedExitTwoUnwritable { detail: join(["fixture write failed: ", e.error], "") }
+    }
+  }
+}
+
+fn exit_two_args(dir: String) -> List<String> {
+  [
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--source-root", dir,
+    "--entry", concat(dir, "/exit_two_entry.dag"),
+    "--function", "exit_two_entry_holds",
+    "--outcomes-out", concat(dir, "/ledger.tsv")
+  ]
+}
+
+
+fn read_ledger(dir: String) -> String {
+  let r = Filesystem.Read(path: concat(dir, "/ledger.tsv"))
+  if r.success { r.content } else { "" }
+}
+
+// The RED. A code-2 claim run with --outcomes-out writes the UNOBSERVED row: the ledger names the
+// claim and carries the typed no-observation standing, and the process still exits 2.
+test fn an_outcomes_out_run_of_a_code_2_claim_writes_the_unobserved_row() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_exit_two(root: root, entry_source: exit_two_unobserved_entry_source) {
+    PlantedExitTwoUnwritable { detail: _ } => false
+    PlantedExitTwoReady { dir } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: exit_two_args(dir: dir)
+      )
+      let ledger = read_ledger(dir: dir)
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 2
+        && string_contains(s: ledger, pattern: "exit_two_entry_holds\texpect-hold\treturned-unreadable")
+        && string_contains(s: ledger, pattern: "gunbc-terminal-ledger/")
+    }
+  }
+}
+
+// The positive control. A held claim writes the held row and exits 0, so the arm above is not
+// satisfiable by a binary that writes the same row for everything.
+test fn an_outcomes_out_run_of_a_held_claim_writes_the_held_row_and_exits_0() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_exit_two(root: root, entry_source: exit_success_held_entry_source) {
+    PlantedExitTwoUnwritable { detail: _ } => false
+    PlantedExitTwoReady { dir } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: exit_two_args(dir: dir)
+      )
+      let ledger = read_ledger(dir: dir)
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 0
+        && string_contains(s: ledger, pattern: "exit_two_entry_holds\texpect-hold\treturned-true")
+        && !string_contains(s: ledger, pattern: "returned-unreadable")
+    }
+  }
+}
