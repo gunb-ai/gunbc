@@ -31,7 +31,7 @@ import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_g
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
   type_declaration_use_census_label, dependency_demand_census_label, decl_ref_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
-  known_red_derivation_label,
+  known_red_derivation_label, roster_reach_inhabitance_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -146,6 +146,9 @@ fn instrument_dispatch_labels() -> List<Label> {
     // purpose to print the list -- never as a merge gate. A row, not a job: no per-change workflow
     // gains it (instrument_dispatch_labels_are_rostered keeps it honest against gunbc.instrument_targets).
     known_red_derivation_label(),
+    // The roster-reach inhabitance walk is the pairing claim of the roster-token witness: hours of interpreter time
+    // over the runner and fleet pool, so it is run on purpose on the fleet and never as a merge gate.
+    roster_reach_inhabitance_label(),
   ]
 }
 
@@ -212,6 +215,9 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     // own (DESIGN §3 meaning fork). Its own receipt: a pooled 502-claim wet child peaked at 9.1 GiB
     // VmHWM and a per-entry claim_batch shard at 8.7 GiB, on top of the instrument host's resolve.
     InstrumentDispatchMemoryDemand { label: known_red_derivation_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    // One fn_arrow_decl_facts_live pass over the pool plus the resolve of ci_spec's closure: measured RSS 12-13.6 GB
+    // on srv1 (sleek-owl-397, 2026-10-22), the whole-tree row's class, not a number of its own (DESIGN §3).
+    InstrumentDispatchMemoryDemand { label: roster_reach_inhabitance_label(), demand: instrument_dispatch_whole_tree_memory_demand },
   ]
 }
 
