@@ -1,0 +1,111 @@
+module v2.workflow.binder_site_probe
+
+import std.algebra { fold_list, list_snoc_item }
+import std.types { List, String }
+import std.process { ProcessExit, exit_failure }
+import std.occurrence_identity { ReferencePosition, ValuePosition, TypeAnnotationPosition, ReturnPosition, LabelPosition, PatternTagPosition }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.reference_site_collector { ScopedReferenceSite, SiteHeadBinding, HeadBoundInFrame, HeadBoundAtRootValue, HeadBindingUndecided, HeadLexicallyUnbound, collect_scoped_module_reference_sites }
+import v2.workflow.roster_import_sweep { roster_qn_text }
+import v2.std.node { symbol_intern_lexeme }
+
+// MEASUREMENT PROBE for the sweep's home-name-locally-bound false positive (tidy-ant-251, Seat 13). It classifies,
+// per fixture, every reference site spelled `count` with the position and head binding the collector issues, so the
+// guard roster_name_locally_bound (v2.workflow.roster_import_sweep) can be compared with what the collector already
+// knows. One fixture per binder form, the in-scope use inside the same fn, the specimen shape (a binder in one fn and a
+// FREE call in another, dag/extdeps/npm.dag's `count` match-arm record pun beside free count() calls), and a control with
+// no binder. Run: gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/binder_site_probe.dag
+// --function binder_site_probe ; the table is the refusal reason (the entry must return ProcessExit).
+//
+// Expected reading to FALSIFY: the collector classifies the pun and let binders' in-scope uses as HeadBoundInFrame and the
+// other fn's free call as HeadLexicallyUnbound; if so the guard's module-wide refusal is redundant for those cells.
+
+fn probe_fixture_pun() -> String {
+  "module probe.pun\n\nfn f(v: Thing) -> Int {\n  match v {\n    Dup { count } => count\n    Other => 0\n  }\n}\n\nfn g(xs: List<Int>) -> Int {\n  count(xs)\n}\n"
+}
+
+fn probe_fixture_pun_in_scope_call() -> String {
+  "module probe.pun_call\n\nfn f(v: Thing) -> Int {\n  match v {\n    Dup { count } => count(v)\n    Other => 0\n  }\n}\n"
+}
+
+fn probe_fixture_let() -> String {
+  "module probe.letbind\n\nfn f(xs: List<Int>) -> Int {\n  let count = 3\n  count + 1\n}\n\nfn g(xs: List<Int>) -> Int {\n  count(xs)\n}\n"
+}
+
+fn probe_fixture_param() -> String {
+  "module probe.param\n\nfn f(count: Int) -> Int {\n  count + 1\n}\n\nfn g(xs: List<Int>) -> Int {\n  count(xs)\n}\n"
+}
+
+fn probe_fixture_param_called() -> String {
+  "module probe.param_called\n\nfn f(count: fn(String) -> Int, x: String) -> Int {\n  count(s: x)\n}\n"
+}
+
+fn probe_fixture_arrow() -> String {
+  "module probe.arrow\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs |> map(count => count + 1)\n}\n\nfn g(xs: List<Int>) -> Int {\n  count(xs)\n}\n"
+}
+
+fn probe_fixture_control_free_only() -> String {
+  "module probe.free_only\n\nfn g(xs: List<Int>) -> Int {\n  count(xs)\n}\n"
+}
+
+fn probe_position_text(p: ReferencePosition) -> String {
+  match p {
+    ValuePosition => "value"
+    TypeAnnotationPosition => "type"
+    ReturnPosition => "return"
+    LabelPosition => "label"
+    PatternTagPosition => "pattern_tag"
+  }
+}
+
+fn probe_head_text(h: SiteHeadBinding) -> String {
+  match h {
+    HeadBoundInFrame => "frame"
+    HeadBoundAtRootValue => "root_value"
+    HeadBindingUndecided => "undecided"
+    HeadLexicallyUnbound => "unbound"
+  }
+}
+
+fn probe_site_line(name: String, s: ScopedReferenceSite) -> String {
+  name + "\t" + roster_qn_text(qn: s.site.spelling) + "\t" + probe_position_text(p: s.position) + "\t" + probe_head_text(h: s.head) + "\n"
+}
+
+fn probe_fixture_table(name: String, text: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => name + "\tGRAMMAR-UNPREPARED\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: name), prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => name + "\tTOKENIZE-REFUSED\n"
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => name + "\tPARSE-REFUSED\n"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                Rejected { diagnostics: _ } => name + "\tNORMALIZE-REFUSED\n"
+                Accepted { value: scoped, diagnostics: _ } =>
+                  fold_list(
+                    xs: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: []).sites,
+                    empty: "",
+                    cons: fn(acc, s) { if roster_qn_text(qn: s.site.spelling) == "count" { acc + probe_site_line(name: name, s: s) } else { acc } }
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn binder_site_probe() -> ProcessExit {
+  exit_failure(reason:
+    probe_fixture_table(name: "pun", text: probe_fixture_pun())
+    + probe_fixture_table(name: "pun_in_scope_call", text: probe_fixture_pun_in_scope_call())
+    + probe_fixture_table(name: "let", text: probe_fixture_let())
+    + probe_fixture_table(name: "param", text: probe_fixture_param())
+    + probe_fixture_table(name: "param_called", text: probe_fixture_param_called())
+    + probe_fixture_table(name: "arrow", text: probe_fixture_arrow())
+    + probe_fixture_table(name: "control_free_only", text: probe_fixture_control_free_only()))
+}
