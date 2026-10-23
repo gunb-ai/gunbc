@@ -374,7 +374,7 @@ fn inhabitance_arrow_formal_generic_application_tree() -> Node {
   }
 }
 
-test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -> Bool {
+test fn infer_applied_generic_arrow_type_variable_is_counted_frontier_holds() -> Bool {
   match infer(
     tree: claim_resolved_tree_without_declarations(
       root: inhabitance_arrow_formal_generic_application_tree()
@@ -383,6 +383,29 @@ test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+  }
+}
+
+// POSITIVE CONTROL FOR THE SUPERSEDED SHAPE. The ORIGINAL subject of the counted-frontier claim was
+// the arrow NESTED inside a generic callable's formal -- (<T>(t: (Int) -> T))(1), i.e.
+// inhabitance_generic_formal_tree_over(declared: <the minted-codomain arrow>) -- the same fixture
+// repair (minted T positions) applied to it. #14749's rigid-binder rule makes that shape DECIDABLE:
+// the formal's T-headed type is known, T compares as itself, nothing is counted. This claim PINS that
+// decided verdict, so a future change that makes the nested shape counted again (or refused) goes red
+// HERE instead of silently unwatching the shape the re-target abandoned. Measured by claim_batch on
+// this module; it is the counterpart, not a duplicate, of the claim above: same obligation, two
+// positions, two pinned verdicts.
+test fn infer_nested_arrow_formal_type_variable_is_decided_not_counted_holds() -> Bool {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: inhabitance_generic_formal_tree_over(
+        declared: inhabitance_arrow_formal_tree_minted_codomain()
+      )
+    )
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      !diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
   }
 }
 
