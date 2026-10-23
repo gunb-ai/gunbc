@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -33,7 +33,8 @@ import std.occurrence_identity {
   OccurrenceMinted,
   OccurrencePending,
   OccurrenceProjected,
-  OccurrenceSynthetic
+  OccurrenceSynthetic,
+  ValuePosition
 }
 import std.types { List, Bool, GitRef }
 import extdeps.git
@@ -895,11 +896,25 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
     root: normalized_root,
     imported: list_map(xs: imported, f: fn(b) { b.binding })
   ).sites
-  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: roster_symbol_imported(imported: imported, row: row)) { n + 1 } else { n } })
-  let heads = roster_primary_heads(parse_root: parse_root, call: row.call)
-  if length(xs: heads) != free {
+  let imported_from_home = roster_symbol_imported(imported: imported, row: row)
+  let spelled = fold_list(xs: sites, empty: [], cons: fn(acc, st) { if roster_spelling_is(qn: st.site.spelling, call: row.call) { list_snoc_item(xs: acc, item: st) } else { acc } })
+  let free_off_value = fold_list(xs: spelled, empty: 0, cons: fn(n, st) {
+    match st.position {
+      ValuePosition => n
+      _ => if roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) { n + 1 } else { n }
+    }
+  })
+  let value_flags = fold_list(xs: spelled, empty: [], cons: fn(acc, st) {
+    match st.position {
+      ValuePosition => list_snoc_item(xs: acc, item: roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home))
+      _ => acc
+    }
+  })
+  let all_heads = roster_primary_heads(parse_root: parse_root, call: row.call)
+  if length(xs: all_heads) != length(xs: value_flags) || free_off_value != 0 {
     LabelsAmbiguous
   } else {
+    let heads = fold_list(xs: zip_map(a: all_heads, b: value_flags, f: fn(h, free) { if free { [h] } else { [] } }), empty: [], cons: fn(acc, one) { list_append(left: acc, right: one) })
     fold_list(xs: heads, empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
       match acc {
         LabelsAmbiguous => LabelsAmbiguous
@@ -1581,15 +1596,10 @@ fn roster_d4_tag_subject(with_import: Bool) -> String {
 // the free call (gunbc.recurring_failure_mode a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call). One binder
 // form per control, each paired with a free call in a sibling function so Clean cannot be satisfied by an inert row: a
 // parameter, a `let` (whose declaring occurrence is no site), and a match-arm record pun (UNDECIDED by design, never counted).
-// OPEN, PINNED AT ITS CURRENT TYPED REFUSAL (not a pass of the intended behavior): with the guard gone a parameter named like a
-// row plus a free call elsewhere refuses label-sites-ambiguous, where it used to refuse home-name-locally-bound. Both are loud
-// and located; the intended answer (the import for the free call) is the parameter cell's remaining work, named in the
-// recurring_failure_mode row. A change to this reading is deliberate or this control goes red.
+// The parameter cell: the label plan pairs each parse-tree head with the collector's own verdict on the SAME occurrence (document
+// order, lengths must agree), so the bound `chars` in `h(s: chars)` is a head the collector explains as bound, not a disagreement.
 fn roster_control_free_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_sweep_text(path: "control/free-call-beside-param.dag", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", prepared: prepared, lex: lex) {
-    RosterRefused { reason: RefusalLabelSitesAmbiguous } => ""
-    _ => "CONTROL-FAIL free-call-beside-param: the pinned label-sites-ambiguous refusal changed; decide the parameter cell deliberately\n"
-  }
+  roster_control_imports_for_free_call(name: "free-call-beside-param", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
 }
 
 fn roster_control_free_call_beside_let(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
