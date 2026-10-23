@@ -1,0 +1,61 @@
+module gunbc.instruments.append_chain_ladder
+
+import std.types { Int, List }
+import std.algebra { FreeSemigroup, non_empty_append, non_empty_to_list, list_append, list_snoc_item, fold_list }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// THE INSTRUMENT THAT LOCATED THE SUPERLINEAR APPEND (gunbc.recurring_failure_mode
+// non_empty_append_on_a_persistent_vector_is_superlinear). Each arm builds one accumulator by n
+// left-nested steps of 8 elements, and is run as its own process with the process timed by the caller:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/append_chain_ladder.dag --function <arm> --arg n=<N>
+//
+// That is the interpreter path. The emitted path is the same arms after
+// `gunbc compile --target rust --entry dag/gunbc/instruments/append_chain_ladder.dag`, called from a
+// timing loop over the emitted functions. EVERY ARM CHECKS ITS OWN VALUE: it exits 0 only when the
+// accumulator holds 8 * n elements, and otherwise exits with the length it saw. Only CURVES are
+// compared, the time ratio per doubling of n within one arm on one binary, never absolute seconds.
+// The arms isolate one link each. push_chain is list_snoc_item alone. concat_chain is list_append
+// alone, with a fixed 8-element right side. elementwise_chain appends the same right side one
+// element at a time, which is the shape of the fix. non_empty_append_chain is the production
+// operation. Recursion depth is n (one call per step), so the interpreter's call-depth limit bounds n
+// rather than 8 * n.
+
+fn ladder_piece() -> List<Int> { [1, 2, 3, 4, 5, 6, 7, 8] }
+
+fn ladder_verdict(n: Int, length: Int) -> ProcessExit {
+  if length == 8 * n { ExitSuccess }
+  else { ExitFailure { code: 1, reason: concat("append_chain_ladder: expected ", to_string(value: 8 * n), " elements, saw ", to_string(value: length)) } }
+}
+
+fn push_steps(i: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { acc }
+  else { push_steps(i: i + 1, n: n, acc: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: list_snoc_item(xs: acc, item: 1), item: 2), item: 3), item: 4), item: 5), item: 6), item: 7), item: 8)) }
+}
+
+fn push_chain(n: Int) -> ProcessExit { ladder_verdict(n: n, length: push_steps(i: 0, n: n, acc: []) |> count) }
+
+fn concat_steps(i: Int, n: Int, acc: List<Int>, piece: List<Int>) -> List<Int> {
+  if i >= n { acc } else { concat_steps(i: i + 1, n: n, acc: list_append(left: acc, right: piece), piece: piece) }
+}
+
+fn concat_chain(n: Int) -> ProcessExit { ladder_verdict(n: n, length: concat_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count) }
+
+fn elementwise_steps(i: Int, n: Int, acc: List<Int>, piece: List<Int>) -> List<Int> {
+  if i >= n { acc }
+  else { elementwise_steps(i: i + 1, n: n, acc: fold_list(xs: piece, empty: acc, cons: (a, x) => list_snoc_item(xs: a, item: x)), piece: piece) }
+}
+
+fn elementwise_chain(n: Int) -> ProcessExit { ladder_verdict(n: n, length: elementwise_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count) }
+
+fn non_empty_piece() -> FreeSemigroup<Int> { FreeSemigroup { head: 1, tail: [2, 3, 4, 5, 6, 7, 8] } }
+
+fn non_empty_steps(i: Int, n: Int, acc: FreeSemigroup<Int>, piece: FreeSemigroup<Int>) -> FreeSemigroup<Int> {
+  if i >= n { acc } else { non_empty_steps(i: i + 1, n: n, acc: non_empty_append(left: acc, right: piece), piece: piece) }
+}
+
+// The seed is one 8-element piece, so n steps leave 8 * (n + 1) elements; the verdict reads n + 1.
+fn non_empty_append_chain(n: Int) -> ProcessExit {
+  ladder_verdict(n: n + 1, length: non_empty_to_list(xs: non_empty_steps(i: 0, n: n, acc: non_empty_piece(), piece: non_empty_piece())) |> count)
+}
