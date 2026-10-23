@@ -337,6 +337,10 @@ fn ambient_name_census_standing(
   let missing = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => false  Absent => true })
   let newly_refused = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { NewlyRefused => true  _ => false })
   let base_unread = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { BaseUnread => true  _ => false })
+  // THE CARRIED SET (gunbc.rung_drop ambient_name_census_carried_refusals): refused at the head AND at the merge base,
+  // re-derived by this identity join on every run and never copied, so it can only shrink -- a module that resolves
+  // at the head leaves refused_rewritten, and a module the base did not refuse is newly_refused, not carried.
+  let carried = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { PreviouslyRefused => true  _ => false })
   let failed = failed_subject_runs(tree_runs: tree_runs)
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
@@ -352,6 +356,9 @@ fn ambient_name_census_standing(
     + "unanswered_declared_order_count\t" + to_string(count(unanswered)) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
     + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" }) + "\t" + refused_standing_text(standing: refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout))) |> join(separator: "\n")) + "\n"
+    + (carried |> map(m => "carried_refused\t" + m) |> join(separator: "\n")) + "\n"
+    + "carried_refused_count\t" + to_string(count(carried)) + "\n"
+    + "ambient-name-census: a ratchet, no module newly refused against the merge base; " + to_string(count(carried)) + " carried (refused at the base too, their edits not judged)\n"
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"

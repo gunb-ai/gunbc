@@ -310,7 +310,9 @@ fn type_declaration_use_census_label() -> Label {
 // (v2.compiler.occurrence_binding_census) by the same native census-infer walk; the ambient rows are
 // the names a wave has left to move, grouped by spelling and table by the reader
 // (gunbc.instruments.ambient_name_census_reading), which also refuses when any module recorded one
-// occurrence twice. `gunbc test //gunbc/instruments:ambient-name-census`. A report: its numbers are a
+// occurrence twice. IT IS A RATCHET: exit 0 says no module is newly refused against the merge base, not that every
+// rewritten module was judged; the modules refused at the base too are CARRIED, printed with their count on every run
+// (gunbc.rung_drop ambient_name_census_carried_refusals). `gunbc test //gunbc/instruments:ambient-name-census`. A report: its numbers are a
 // receipt, not transcribed into committed prose (DESIGN section 6).
 fn ambient_name_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "ambient-name-census" } }

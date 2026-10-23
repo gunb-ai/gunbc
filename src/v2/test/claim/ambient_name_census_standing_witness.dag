@@ -65,6 +65,43 @@ test fn touching_only_an_already_refused_module_does_not_refuse() -> Bool {
   }
 }
 
+test fn a_carried_only_run_exits_zero_and_prints_the_carried_identities_and_count() -> Bool {
+  match ambient_name_census_standing(
+    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: "binding_module\thealthy\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\n",
+    tree_runs: "",
+    rewritten: "already_refused\tpresent\n",
+    base_stdout: "binding_unreached\talready_refused\tresolve\n",
+    base_probed: "already_refused\n"
+  ) {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess } =>
+      string_contains(s: bytes, pattern: "carried_refused\talready_refused")
+        && string_contains(s: bytes, pattern: "carried_refused_count\t1")
+        && string_contains(s: bytes, pattern: "no module newly refused against the merge base; 1 carried")
+    _ => false
+  }
+}
+
+test fn a_carried_module_that_newly_resolves_leaves_the_carried_set() -> Bool {
+  match ambient_name_census_standing(
+    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: "binding_module\thealthy\t1\t0\t0\t0\nbinding_module\twas_refused\t1\t0\t0\t0\n",
+    tree_runs: "",
+    rewritten: "was_refused\tpresent\n",
+    base_stdout: "binding_unreached\twas_refused\tresolve\n",
+    base_probed: "was_refused\n"
+  ) {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess } =>
+      string_contains(s: bytes, pattern: "carried_refused_count\t0")
+        && !(string_contains(s: bytes, pattern: "carried_refused\twas_refused"))
+    _ => false
+  }
+}
+
 test fn a_refused_module_the_base_does_not_hold_is_newly_refused() -> Bool {
   match standing(
     base_stdout: "binding_unreached\talready_refused\tresolve\n",
