@@ -2,6 +2,8 @@ module test.claim.machine_intake.mtcollins1_census_medium_readback_witness
 
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { decl_ref }
+import std.dissolution { BoundDissolution, DeclarationRetires }
 import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, BootMediumVolumeLabel, stock_installer_boot_medium, bmc_boot_image_export, boot_image_export_eq }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
@@ -19,6 +21,7 @@ import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium,
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_image_name }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of, boot_medium_served_path, boot_medium_served_argv }
 import gunbc.machine_intake.mtcollins1_census_medium_readback {
+  census_medium_readback_unconsumed_frontier,
   CensusMediumReadback, CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus, CensusMediumReadbackExporterUnsupported,
   census_medium_readback,
   CensusMediumReadbackRecordUnreadable, CensusMediumReadbackRecordMalformed, CensusMediumReadbackRecordDisagrees,
@@ -416,6 +419,16 @@ test fn control_b_medium_whose_stem_does_not_match_its_image_refuses_before_any_
   }
   match census_medium_readback(medium: wrong_stem_medium, image: mtcollins1_census_image, attempt: "census2-readback") {
     CensusMediumReadbackNotCensus => true
+    _ => false
+  }
+}
+
+// The unconsumed-readback frontier is bound to THIS readback retiring, not to a free label: its trigger
+// names the declaration whose deletion discharges it.
+test fn the_unconsumed_readback_frontier_retires_with_the_readback() -> Bool {
+  match census_medium_readback_unconsumed_frontier {
+    BoundDissolution { trigger: DeclarationRetires { ref: r } } =>
+      r == decl_ref(module_path: "gunbc.machine_intake.mtcollins1_census_medium_readback", decl_name: "census_medium_readback")
     _ => false
   }
 }

@@ -2,6 +2,8 @@ module gunbc.machine_intake.mtcollins1_census_medium_readback
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
+import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationRetires }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { sha256_hex_digest }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.exec.command { argv_words }
@@ -235,4 +237,18 @@ fn census_medium_readback(
           }
       }
   }
+}
+
+// THIS READBACK HAS NO PRODUCTION CONSUMER (gunb-ai/gunbc#14912). The mtcollins1 boot run re-measures
+// its medium through gunbc.host.boot_medium_served_readback, and no boot path selects the census
+// medium today; only this module's witness and the acceptance matrix's census_record_path reach it.
+// census_readback_refusal_before_filing / _before_attach duplicate the generic wrappers. The residue is
+// bounded to this module and dissolves when census_medium_readback retires: its census-specific checks
+// (census_record_standing, the census qualification refusal) fold onto the generic readback for a
+// census-member boot, and the duplicated wrappers are deleted.
+data census_medium_readback_unconsumed_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationRetires { ref: census_medium_readback_ref() },
+}
+fn census_medium_readback_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.machine_intake.mtcollins1_census_medium_readback", decl_name: "census_medium_readback")
 }
