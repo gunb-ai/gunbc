@@ -43,6 +43,7 @@ import v2.std.node {
   Node,
   Positional,
   Transform,
+  NotADeclaration
 }
 import v2.std.witness { Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -57,15 +58,18 @@ fn rust_field_access_emit_wrong_field_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_dot)
+        target: dag_type_atom_node(identity: ^dag_token_dot),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_param_r)
+        target: dag_type_atom_node(identity: ^dag_binding_param_r),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
+        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

@@ -63,6 +63,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates, Witness, list_nth }
@@ -119,7 +120,8 @@ fn gha_fold_scalar_emitted(text: String) -> Node {
           kind: TypeNode { connective: Atom { identity: ^gha_fold_scalar_kind } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -127,7 +129,8 @@ fn gha_fold_scalar_emitted(text: String) -> Node {
           kind: TypeNode { connective: Atom { identity: emit_inline_scalar_text(s: text) } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -137,7 +140,7 @@ fn gha_fold_scalar_emitted(text: String) -> Node {
 fn gha_fold_flow_labels_single_emitted(label: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: label }],
+    children: [Edge { label: Positional, target: label, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -146,8 +149,8 @@ fn gha_fold_flow_labels_pair_emitted(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -196,9 +199,10 @@ fn gha_fold_runs_on_self_hosted_emitted(labels: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_runs_on_self_hosted)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_runs_on_self_hosted),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: labels }
+      Edge { label: Positional, target: labels, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -210,9 +214,10 @@ fn gha_fold_step_head_run_emitted(scalar: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_head_run)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_head_run),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: scalar }
+      Edge { label: Positional, target: scalar, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -224,9 +229,10 @@ fn gha_fold_step_head_uses_emitted(scalar: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_head_uses)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_head_uses),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: scalar }
+      Edge { label: Positional, target: scalar, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -238,9 +244,10 @@ fn gha_fold_step_tail_run_emitted(scalar: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_tail_run)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_tail_run),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: scalar }
+      Edge { label: Positional, target: scalar, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -252,9 +259,10 @@ fn gha_fold_step_tail_uses_emitted(scalar: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_tail_uses)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_step_tail_uses),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: scalar }
+      Edge { label: Positional, target: scalar, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -352,7 +360,7 @@ fn gha_fold_step_list_single_emitted(step_head: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: step_head }
+      Edge { label: Positional, target: step_head, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -362,8 +370,8 @@ fn gha_fold_step_list_pair_emitted(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -375,9 +383,10 @@ fn gha_fold_steps_block_emitted(step_list: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_steps_block)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_steps_block),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: step_list }
+      Edge { label: Positional, target: step_list, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -389,10 +398,11 @@ fn gha_fold_job_emitted(runs_on: Node, steps_block: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_job)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_job),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: runs_on },
-      Edge { label: Positional, target: steps_block }
+      Edge { label: Positional, target: runs_on, declaration: NotADeclaration },
+      Edge { label: Positional, target: steps_block, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -788,9 +798,10 @@ fn gha_fold_flat_step_head_run_emitted(scalar: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_flat_step_head_run)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_flat_step_head_run),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: scalar }
+      Edge { label: Positional, target: scalar, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -802,9 +813,10 @@ fn gha_fold_flat_step_tail_uses_emitted(scalar: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: gha_fold_prod_tag(binding: ^gha_production_fold_flat_step_tail_uses)
+        target: gha_fold_prod_tag(binding: ^gha_production_fold_flat_step_tail_uses),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: scalar }
+      Edge { label: Positional, target: scalar, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -815,7 +827,8 @@ data gha_fold_flat_steps_wrong_emitted: Node = Node {
   children: [
     Edge {
       label: Positional,
-      target: gha_fold_prod_tag(binding: ^gha_production_fold_job)
+      target: gha_fold_prod_tag(binding: ^gha_production_fold_job),
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
@@ -826,7 +839,8 @@ data gha_fold_flat_steps_wrong_emitted: Node = Node {
           ),
           right: gha_fold_scalar_emitted(text: "linux")
         )
-      )
+      ),
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
@@ -835,7 +849,8 @@ data gha_fold_flat_steps_wrong_emitted: Node = Node {
         children: [
           Edge {
             label: Positional,
-            target: gha_fold_prod_tag(binding: ^gha_production_fold_steps_block)
+            target: gha_fold_prod_tag(binding: ^gha_production_fold_steps_block),
+            declaration: NotADeclaration
           },
           Edge {
             label: Positional,
@@ -848,11 +863,13 @@ data gha_fold_flat_steps_wrong_emitted: Node = Node {
               right: gha_fold_flat_step_tail_uses_emitted(
                 scalar: gha_fold_scalar_emitted(text: "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09")
               )
-            )
+            ),
+            declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -873,13 +890,15 @@ data gha_fold_job_wrong_production_emitted: Node = Node {
   children: [
     Edge {
       label: Positional,
-      target: gha_fold_prod_tag(binding: ^gha_production_fold_runs_on_self_hosted)
+      target: gha_fold_prod_tag(binding: ^gha_production_fold_runs_on_self_hosted),
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
       target: gha_fold_flow_labels_single_emitted(
         label: gha_fold_scalar_emitted(text: "self-hosted")
-      )
+      ),
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic

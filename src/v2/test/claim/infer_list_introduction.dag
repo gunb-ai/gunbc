@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_nod
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { positional_child_target_nodes, ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { bool_node }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -40,8 +40,8 @@ fn ilt_head() -> Node {
 fn ilt_list(elements: List<Node>) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: fold(elements, init: [Edge { label: Positional, target: ilt_head() }], f: fn(acc, e) {
-      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e })
+    children: fold(elements, init: [Edge { label: Positional, target: ilt_head(), declaration: NotADeclaration }], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e, declaration: NotADeclaration })
     }),
     occurrence_id: OccurrenceSynthetic
   }
@@ -131,8 +131,8 @@ fn ilt_freemonoid_of(element: Node) -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: ilt_head() },
-      Edge { label: Positional, target: element }
+      Edge { label: Positional, target: ilt_head(), declaration: NotADeclaration },
+      Edge { label: Positional, target: element, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
