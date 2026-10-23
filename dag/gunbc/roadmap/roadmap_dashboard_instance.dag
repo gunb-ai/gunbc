@@ -2938,6 +2938,7 @@ fn dashboard_instance_provision_parent_directory(instance: HostDashboardInstance
         path: instance.provision_parent_root,
         owner: instance.directory_owner,
         mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
     ]
   }
@@ -2952,6 +2953,7 @@ fn dashboard_instance_root_directory(instance: HostDashboardInstance) -> List<Ow
         path: instance.instance_root,
         owner: PosixOwnerNames { user: instance.directory_owner.user, group: fleet_posix_worker_shared_group_name },
         mode: DirectoryOwnerAllGroupTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
     ]
   }
