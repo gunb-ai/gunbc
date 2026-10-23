@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.non_empty_append_on_a_persistent_vector_is_superlinear
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data non_empty_append_on_a_persistent_vector_is_superlinear: RecurringFailureMode = RecurringFailureMode {
+  identity: "non_empty_append_on_a_persistent_vector_is_superlinear" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a sequence built by repeatedly appending a small right side onto a growing left side costs more than linear time in the number of appends. std.algebra non_empty_append realizes its tail as list_append(list_snoc_item(left.tail, right.head), right.tail), and every list_append lowers to v1_rt rc_list_concat, which is make_mut(a).append(b.clone()) on an im Vector. Repeated small appends through im Vector append grow superlinearly; appending the same elements one at a time with push_back is linear.",
+    "HARM: an accumulator over FreeMonoid or FreeSemigroup pays a cost that grows with the square of its length, on the emitted Rust path and in the v1 interpreter. Today 13 corpus callers use non_empty_append on non-text sequences, some as fold accumulators (gunbc.runner.runner_host_file_converge, std.generated_provider, gunbc.host.host_converge), on small n. The A4(a) NonEmptyStr cut would route every migrated text accumulator through the same append (a grep lower bound of 44 sites), so the defect blocks that cut: operator ruling 2026-10-23, no cut and no generator until the cause is found and fixed.",
+    "DISTINGUISHING FACTS, EMITTED PATH (srv1, crate emitted from gunbc.probe_a4_concat_cost by the main seed at 08437488ec1, bin 0d1af18c, built and run in one dispatch, best of 5, 2000 to 32000 appends of 8 elements, ratios per doubling). Arm A, rc_list_push only, unique accumulator: 0.35 ms to 5.8 ms, x1.90 2.09 2.05 2.03, linear. Arm C, rc_list_concat only, unique accumulator, pre-sized 8-element right side: 22.4 ms to 1381 ms, x2.40 2.62 2.92 3.35, superlinear. Arm F, non_empty_append as emitted: 34.1 ms to 2459 ms, x2.49 2.74 3.06 3.46. Arm G, the same as C but appending the right side element-wise with push_back: 0.25 ms to 4.0 ms, x2.00, linear and 356 times faster than C at 32000, same result vector. Variants that keep an alias of the accumulator alive add a constant (push about 8x, concat about 1.7x) without changing the growth order, so make_mut copying a shared Rc is not the cause. The per-character unfold is outside the loop and excluded by construction.",
+    "DISTINGUISHING FACTS, INTERPRETER PATH (gunbc run, same seed, net of the 1.66 s load, best of 3, 2000 to 8000 or 16000 appends). list_snoc_item only: x1.73 1.85, linear (16000 hits the 100000 call-depth limit, not a timing). list_append only: x3.37 3.77 3.82, quadratic. non_empty_append: x3.02 3.69 3.82. The interpreter realizes list_append through its own route and is quadratic too. Under the v1 freeze it gets no performance work; this receipt records it.",
+    "CAUSE, MEASURED NOT EXPLAINED: the earliest unjustified boundary is v1.compiler.runtime_rust rt_rc_container_ops rc_list_concat, which realizes every append, including a small right side onto a large left, as im Vector append. The mechanism inside im is not examined; the measurement shows that the append call, and neither push nor aliasing, carries the growth.",
+    "RUNG FOUND AT: mitigatable only, by measurement. No committed control observes append cost, so reverting a fix would leave every committed test green.",
+    "CEILING: mechanically preventable for the route, through a control that times or counts an emitted chain of small appends and goes red when the per-doubling ratio leaves the linear band. Construction is not available: the carrier admits the append, and its cost is a property of the realization.",
+    "NEXT TRIGGER, NAMED AS A CAPABILITY: rc_list_concat appends a small right side element-wise and keeps append for large right sides, with the threshold measured, SUFFICIENT FOR arm C of the emitted probe to fall into the linear band. The fix owner is the list-push seam owner (sunny-bee-153), routed by the A4 managers. The probe harness is kept at srv1 ~/claude-work/probe-a4/kept/append_arms_main.rs and probe_a4_concat_cost.dag.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.runtime_rust", decl_name: "rt_rc_container_ops"),
+    decl_ref(module_path: "std.algebra", decl_name: "non_empty_append"),
+    decl_ref(module_path: "std.algebra", decl_name: "list_append"),
+    decl_ref(module_path: "std.algebra", decl_name: "list_snoc_item"),
+  ],
+}
