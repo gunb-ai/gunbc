@@ -30,7 +30,7 @@ data emitted_apply_names_the_ci_principal_instead_of_the_applying_one: Recurring
 
     "RUNG FOUND AT: silent until it refused after mutating (a mixed host, twice). RUNG NOW: structurally guaranteed on the gated production route -- every principal-sensitive fact in the apply, retract and dark-install scripts derives from the one DeployAccess the gated dispatcher holds, because each emitter's only source of a principal or a demand is that parameter (gunbc.live_deploy.emit imports the DeployAccess type and no access or principal constant) -- and the ungated route refuses. The claims above are not on the required witnesses path, so they are evidence for the rung, not a gate. CEILING: structurally guaranteed. NEXT-RUNG TRIGGER: none for this class on this route.",
 
-    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster; the claims above are NOT currently verified as enrolled: their named module was deleted with the helper-grant leg, and re-grounding them in test.claim.live_deploy.apply is owed.",
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster; the claims above are NOT currently verified as enrolled: their named module was deleted with the helper-grant leg, and the rung is declared dropped at gunbc.rung_drop emitted_apply_principal_claims_lost_with_helper_grant_module, whose trigger is a living witness re-grounding them in test.claim.live_deploy.",
   ],
 
   evidence: [],
