@@ -10980,6 +10980,13 @@ pub fn categorized_error(
     )
 }
 
+pub fn is_non_text_kernel_cast_source(name: String) -> bool {
+    (((((name.clone() == "Int".to_string()) || (name.clone() == "Float".to_string()))
+        || (name.clone() == "Bool".to_string()))
+        || (name.clone() == "Unit".to_string()))
+        || (name.clone() == "Nat".to_string()))
+}
+
 pub fn validate_cast(
     source_inferred: Option<Rc<InferredNode>>,
     target_name: String,
@@ -11010,37 +11017,55 @@ pub fn validate_cast(
                         ))
                     }
                 } else {
-                    if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
-                        std::option::Option::None
+                    if ((crate::v1_std_core::qualified_last_segment(target_name.clone())
+                        == "NonEmptyStr".to_string())
+                        && is_non_text_kernel_cast_source(
+                            crate::v1_std_core::qualified_last_segment(source_name.clone()),
+                        ))
+                    {
+                        {
+                            let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), source_name.clone()), " as ".to_string()), target_name.clone()), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)".to_string());
+                            Some(crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::InternalError {
+                                    message: msg.clone(),
+                                    span: span.clone(),
+                                }),
+                                module_name.clone(),
+                            ))
+                        }
                     } else {
-                        if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
+                        if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
                             std::option::Option::None
                         } else {
-                            if crate::std_coercion::dag_can_cast(
-                                source_name.clone(),
-                                target_name.clone(),
-                            ) {
+                            if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
                                 std::option::Option::None
                             } else {
-                                {
-                                    let msg = v1_rt::concat(
-                                        v1_rt::concat(
+                                if crate::std_coercion::dag_can_cast(
+                                    source_name.clone(),
+                                    target_name.clone(),
+                                ) {
+                                    std::option::Option::None
+                                } else {
+                                    {
+                                        let msg = v1_rt::concat(
                                             v1_rt::concat(
-                                                "invalid cast: ".to_string(),
-                                                source_name.clone(),
+                                                v1_rt::concat(
+                                                    "invalid cast: ".to_string(),
+                                                    source_name.clone(),
+                                                ),
+                                                " as ".to_string(),
                                             ),
-                                            " as ".to_string(),
-                                        ),
-                                        target_name.clone(),
-                                    );
-                                    let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                        message: msg.clone(),
-                                        span: span.clone(),
-                                    });
-                                    Some(crate::v1_std_core::make_error_node(
-                                        diag.clone(),
-                                        module_name.clone(),
-                                    ))
+                                            target_name.clone(),
+                                        );
+                                        let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                            message: msg.clone(),
+                                            span: span.clone(),
+                                        });
+                                        Some(crate::v1_std_core::make_error_node(
+                                            diag.clone(),
+                                            module_name.clone(),
+                                        ))
+                                    }
                                 }
                             }
                         }

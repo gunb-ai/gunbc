@@ -7484,7 +7484,7 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
 // A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table above names no row into
 // NonEmptyStr, and a source outside the table's domain passes validate_cast unjudged, so
 // `n as NonEmptyStr` over an Int, Bool, Float, Unit or Nat compiled clean and re-typed a number as
-// text (A4(a) probe_a4_nontext). The refusal is keyed on the kernel's own names: these mints are
+// text; test.claim.non_text_cast_into_text_wall_witness holds the five REDs and four GREENs. The refusal is keyed on the kernel's own names: these mints are
 // distinct nominal types with no text representation, so the set is closed, not a heuristic.
 fn is_non_text_kernel_cast_source(name: String) -> Bool {
   name == "Int" || name == "Float" || name == "Bool" || name == "Unit" || name == "Nat"
