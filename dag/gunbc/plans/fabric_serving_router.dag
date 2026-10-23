@@ -1,0 +1,75 @@
+module gunbc.plans.fabric_serving_router
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+fn fabric_serving_router_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Status: plan for review; one operator decision is open (section 2).** No code lands before it is decided. Operator ruling 2026-10-23, relayed by calm-crab-645: the ctrl repository is throwaway and nothing may rely on it. That makes the router realization `gunbc.serving.router_realization` describes this repository's to build, not ctrl's. Its own annotation still says the realization lives in ctrl, and slice R3 corrects that annotation in the same change that adds the realization."),
+      p(text: "**Goal.** Dashboard agent sessions speak OpenAI-compatible `/v1/completions` and `/v1/chat/completions`, streaming, to one pool endpoint. Each request is placed by the fabric onto a flex-rented card (Vast first, AWS EC2 later), admitted by the group's front door, proxied, and released when the stream ends. The router does no scoring and no failover outside placement."),
+    ]),
+
+    h2(text: "1. What exists and what is missing (read of main at cb6548946213)"),
+    h3(text: "The decision half exists"),
+    ul(items: [
+      li(text: "`gunbc.serving.router_realization` `router_capabilities` is the contract. Permitted: normalise to demand, ask placement, take the endpoint from the grant, proxy bytes, release on completion. Forbidden: an own load score, choosing a host directly, an authoritative binding ledger, a placement invented when placement is unreadable, forwarding without a permit."),
+      li(text: "Placement and release: `gunbc.harness.harness_cli` `harness_place_cli` and `harness_release_cli`, over `gunbc.serving.turn_admission` `serving_group_admission` and `product.capacity` lease, pool events and redemption."),
+      li(text: "The door: `gunbc.serving.serving_front_door` `mint_serving_seat_permit`, `front_door_admit_on_store`, `front_door_stream_end` and `front_door_recover`. Redemption is a compare-and-set transition per request, so a permit forwards one request at a time. These are executed by witnesses only and are not deployed. `front_door_access_decision` already projects the verdict to a `std.access` `AccessDecision`."),
+      li(text: "Supply: `product.fabric.selection` `select_supply`; the rented carriers under `gunbc.serving.rented_*`."),
+    ]),
+    h3(text: "Missing, in dependency order"),
+    ol(items: [
+      li(text: "**A streaming listener.** `gunbc serve` (the v1 seed, `cli_run` `serve_read_request` and `serve_write_response`) reads one Content-Length request and writes one response. It has no chunked or SSE response, no keep-alive and no TLS. This is the load-bearing question, section 2."),
+      li(text: "**The OpenAI-compatible wire model.** `extdeps.openrouter` models OpenRouter's key, limit and error surface. It does not model the completions request or the SSE chunk stream, and OpenRouter is a different upstream from the OpenAI API, so it is not the home. The home is a new `extdeps.openai` module citing the OpenAI API reference: request bodies, the `data:` event framing and the `[DONE]` terminator, plus `extdeps.whatwg` server-sent events for the framing, if that is not already modeled. Only the fields the router reads are modeled: model, stream, and the usage block for metering."),
+      li(text: "**The router entry**, composing normalise, place, mint permit, front-door admit and redeem, proxy, then stream end and release."),
+      li(text: "**The client pool key and TLS.** `gunbc.auth.request_authentication` and `gunbc.serving.serving_key_grant`. Today TLS is `tailscale serve`, so the endpoint is tailnet only, and that is acceptable for the first live target."),
+      li(text: "**Rent-to-enroll actuation.** `gunbc.serving.rented_enrollment` `rented_cohort_enrollments` is a hand list, `[]` on main. It becomes a fold over durable state written from `gunbc.serving.rented_allocation_host_enrollment`, not a list someone edits."),
+      li(text: "**The reclaim driver** over `gunbc.serving.rented_release` legs (drain, revoke, clean, destroy), plus re-placing a session onto a surviving card."),
+      li(text: "**The live-deploy leg and unit**, through `gunbc.live_deploy` `apply_legs` and emission."),
+    ]),
+
+    h2(text: "2. The load-bearing question: where the streaming listener lives"),
+    h3(text: "Option A: extend the v1 seed's `gunbc serve`"),
+    p(text: "Add chunked transfer, SSE passthrough and keep-alive to the seed's accept loop, then write the router as a handler graph with an upstream streaming client. The evidence against: `gunbc.v1.v1_maintenance_standing` `v1_seed_standing` admits a change only when it serves the v2 self-host program. A streaming HTTP server for inference serving serves the product, not the self-host program. It makes the seed more capable on a surface v2 does not need, which is the SeedFeatureCompletion and PublicSurfaceGrowth shape that carrier refuses, and its refusals dominate every admission. It would also put a new production dependency on the Rust the program is shrinking. **It fails the purpose test. It is admissible only by an explicit operator exception recorded in that carrier, and I do not recommend asking for one.**"),
+    h3(text: "Option B: a v2-emitted serve realization"),
+    p(text: "Emit the listener and proxy from `.dag` through v2. The evidence: v2 has no host network runtime at all. Nothing under `src/v2` binds a socket, and the v2 native CLI is the compiler. Option B therefore needs a modeled socket and stream effect, its emission rows, and a host runtime binding before any router byte moves. That is the terminal shape for gunbc-owned handlers, but it puts a v2 effect-runtime program on the critical path of a product deliverable and would be designed under schedule pressure from one consumer."),
+    h3(text: "Option C (recommended): bytes in an upstream proxy, decisions in gunbc"),
+    p(text: "DESIGN section 3 makes interface, realization and policy three facts, and makes transport one of N handlers bound to an interface. Moving bytes is `ProxyBytes`, the one router capability that carries no decision. Option C puts that capability in an independently versioned upstream reverse proxy. The proxy is modeled under its own extdeps module, and its configuration is emitted by gunbc, never hand-authored. Every decision is a callout the proxy makes to gunbc:"),
+    ul(items: [
+      li(text: "**Before forwarding:** an HTTP external-authorization callout. gunbc normalises, places, mints the permit, admits at the door and redeems. It answers deny, or allow plus the granted endpoint as the upstream to use. A plain request and response is enough, so the existing `gunbc serve` accept loop answers it **unchanged**, with no seed edit."),
+      li(text: "**At stream end:** a completion callout carrying the request identity and outcome. gunbc runs `front_door_stream_end` and the release. A proxy that dies before calling it is the case `front_door_recover` already models: recovery on observed quiescence, never a guess."),
+    ]),
+    p(text: "What makes C right rather than convenient: it adds no Rust, so the purpose test is not engaged. Every decision stays in `.dag` and in the existing door. The proxy is consumed by the terminal architecture unchanged: when v2 later hosts the callout handlers (Option B's work, done for its own reasons), the proxy and its emitted configuration survive, and only the callout host changes. The tells DESIGN section 6 lists (a hand-authored deployment script, a second path) are avoided only if the configuration is emitted and the proxy is the only route to the engines. Both are acceptance conditions of R3."),
+    p(text: "**What C must establish before R3, stated as the falsifier.** The candidate proxy must (a) take its upstream from the authorization response instead of choosing one, and (b) deliver a stream-end callout reliably for every forwarded request, including client disconnect and upstream reset. Envoy (an HTTP-mode `ext_authz` filter, and a completion hook) and OpenResty (`auth_request`, and log-phase completion) are the two candidates. The choice between them is an extdeps-modeling step in R1, made by citing each upstream's documented behavior for (a) and (b), not by preference. If neither meets (b) without a hand-authored script, C fails and the question returns to A or B."),
+    p(text: "**Who decides.** The choice adds a deployed upstream and sets which runtime the serving path depends on, so it goes to calm-crab-645 with C recommended. Until it is decided only R1 proceeds, because R1 is common to all three options."),
+
+    h2(text: "3. Slices (each its own PR, in order)"),
+    ol(items: [
+      li(text: "**R1 Wire models.** Add `extdeps.openai` (completions and chat completions request, SSE chunk framing, usage). Under C, add the chosen proxy's extdeps module, covering the authorization and completion hooks only. Control: decode a recorded chunk stream and a `[DONE]` terminator; refuse a body whose `stream` field is not a boolean."),
+      li(text: "**R2 The router decision entry.** One `.dag` entry: a request becomes either a typed refusal or a forward verdict naming endpoint, permit and redemption, by calling `harness_place_cli`'s underlying fold, `mint_serving_seat_permit` and `front_door_admit_on_store`. Plus the stream-end entry over `front_door_stream_end` and release. Every forbidden capability in `router_capabilities` gets a RED: a fixture that scores, picks a host, or forwards without a permit must refuse. Placement unreadable returns a typed refusal, never an endpoint."),
+      li(text: "**R3 The listener realization**, per the section 2 decision. Under C: the emitted proxy configuration, the callout handlers registered on `gunbc serve`, and the `router_realization` annotation corrected to say the realization lives here. Control: a streamed completion through the proxy to a stub engine releases its seat exactly once, and a client disconnect mid-stream also releases."),
+      li(text: "**R4 The pool key and TLS.** Authenticate the client with `gunbc.serving.serving_key_grant` through `gunbc.auth.request_authentication` at the authorization callout. TLS stays `tailscale serve` for the first target. A public endpoint is a separate, later decision and is not in this plan."),
+      li(text: "**R5 Rent-to-enroll.** Replace the hand list `rented_cohort_enrollments` with a fold over durable enrollment records written when `rented_allocation_host_enrollment` completes. Coordinate with witty-lynx-354: #14879 is changing `rented_allocation` and `rented_release`, so R5 starts after it lands and does not edit those carriers concurrently."),
+      li(text: "**R6 Reclaim and re-placement.** A driver over the `rented_release` legs. Re-placing a live session onto a surviving card has no home today, so this is a modeling obligation and not a router feature. It joins `gunbc.serving.replica_endpoint_launch`'s incarnation frontier: a reclaimed card's sessions are re-admitted through placement like any new turn. Per `gunbc.fabric.fabric_storage_placement` this is not a replica set, and no generic replica-failover abstraction is minted."),
+      li(text: "**R7 The live-deploy leg** through `gunbc.live_deploy` `apply_legs`, emitted, no hand unit."),
+    ]),
+
+    h2(text: "4. First live target"),
+    p(text: "Vast, Apply on, a $50 spend cap, at most 2 cards, after #14879's destroy-target safety fix lands. The endpoint is tailnet only. No endpoint address, key or account detail appears in any PR, because the repository is public."),
+
+    h2(text: "5. Completion bar"),
+    p(text: "A dashboard agent session streams a chat completion through the pool endpoint to a Vast-rented card that was enrolled by actuation and not by hand. Its seat is admitted by the front door and released at stream end. When the card is reclaimed, the session's next turn is placed on the surviving card. RED for the design: a forward the door did not admit, a seat still held after its stream ended, or an endpoint the router chose itself."),
+  ]
+}
+
+data fabric_serving_router_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "fabric-serving-router",
+  title: "Fabric-native serving router: streaming OpenAI-compatible front over placement, rent-to-enroll and reclaim",
+  body: fabric_serving_router_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this document when slices R1 to R7 are realized and the completion bar in section 5 has been observed live, with the router's rules carried by the serving modules' own declarations and witnesses.") },
+}
