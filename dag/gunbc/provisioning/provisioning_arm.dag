@@ -33,7 +33,7 @@ import gunbc.firmware_network_boot_standing {
 // S3, PR #14281: the pinned Ubuntu arm64 network origin an attempt fetches from.
 import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
 // S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
+import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding, BindingBlocker }
 
 // THE CLOSED SET OF DELIVERY STRATEGIES THE OPERATOR HAS PERMITTED. Network boot (PXE or UEFI HTTP,
 // one family: the firmware picks the transport) and BMC virtual media. There is deliberately no
@@ -92,6 +92,7 @@ type ArmRefusalCause
   | SecureBootRejectsChainloader { evidence: NonEmptyStr }
   | SecureBootStandingRefused { why: NonEmptyStr }
   | VirtualMediaNotAvailable { cause: NonEmptyStr }
+  | SeedBindingRefused { blocker: BindingBlocker }
 
 // THE SHAPE OF AN ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. It is derived from
 // (strategy, evidence) and from nothing else; no attempt or unit identity exists at this type, so the

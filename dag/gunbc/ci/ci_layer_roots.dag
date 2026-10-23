@@ -1118,11 +1118,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "proc_self_cgroup_real_execution_witness.dag",
-    classification: BinWitnessWet,
-    reason: excl_install_media_reason,
-    dissolution: excl_install_media_dissolve},
-  WitnessExclusionRow {
     pattern: "shell_spawn_refused_real_execution_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_shell_spawn_refused_reason,
@@ -1824,10 +1819,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "unmerged_index_with_no_markers_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "space_and_tab_named_paths_admit_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_missing_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_ambiguous_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_malformed_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_observed_shell_holds"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_live_witness.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness.dag", f: "host_effect_plan_typed_read_witness_holds_by_real_execution"),
