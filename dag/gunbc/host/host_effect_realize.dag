@@ -2,7 +2,7 @@ module gunbc.host.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
-import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item, trim, fold_list, list_map, non_empty_append, non_empty_singleton, non_empty_to_list, string_concat_join }
+import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item, trim, skip, fold_list, list_map, non_empty_append, non_empty_singleton, non_empty_to_list, string_concat_join }
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_command, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -102,6 +102,9 @@ import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
   approval_broker_helper_snapshot_base,
   approval_broker_helper_snapshot_locus,
+  HelperLocus,
+  HelperGrantSite,
+  HelperRevisionReceipt,
   helper_locus_dir,
 }
 import gunbc.live_deploy.emit {
@@ -277,6 +280,12 @@ import gunbc.live_deploy.retract_legs {
   DeployRetractLeg, DeployRetractPlan, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs, deploy_retract_leg_step,
   RetractServeOff, RetractDisableIfLoaded, RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, RetractDaemonReload, RetractUnitGoneReadback,
 }
+import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe, ObjectSourceServeDecideAtApplyPwd, observe_object_source_serve, object_source_serve_refusal_text }
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
+}
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import extdeps.systemd.systemctl {
@@ -287,9 +296,9 @@ import extdeps.systemd.systemctl {
   systemctl_start_command,
 }
 import gunbc.live_deploy.emit {
-  live_deploy_apply_script_for_wet,
   deployment_serve_route_command,
 }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -519,7 +528,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan, OwnedDirectoryEnsureOutcome,
-  owned_directory_ensure, owned_directory_observe,
+  owned_directory_ensure, owned_directory_observe, owned_directory_install_argv,
   owned_directory_outcome_converged, owned_directory_outcome_detail,
   ObserverRead, ObserverReadOut, ObserverReadFailed,
   ObserverTransportRefused, ObserverExited,
@@ -591,6 +600,7 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
+import extdeps.rust.cargo { cargo_default_release_dir }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -4490,23 +4500,23 @@ fn realize_nbd_proxy_session_on_host(
 // DISSOLVES WHEN a modeled source transfer establishes remote-tree identity, at which point this
 // arm carries the transferred candidate instead of refusing.
 
-fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> String {
+fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> Optional<String> {
   match transport {
-    LocalShell => ""
+    LocalShell => none
     SshShell { ssh_host: h } =>
-      join([
+      Present { value: join([
         "live_deploy apply refused over ssh host=", h,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
-      ], "")
+      ], "") }
     FleetSsh { target: t, context: _ } =>
-      join([
+      Present { value: join([
         "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
-      ], "")
+      ], "") }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      "live_deploy apply refused over EmitArtifactThenThinRun: the candidate release was observed in the local deploying checkout and no modeled source transfer proves the executing tree is that candidate."
+      Present { value: "live_deploy apply refused over EmitArtifactThenThinRun: the candidate release was observed in the local deploying checkout and no modeled source transfer proves the executing tree is that candidate." }
   }
 }
 
@@ -4604,8 +4614,8 @@ fn observe_slot_population_over_host_effect_transport(
 
 // THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS NOW DERIVED FROM A LIVE READ.
 //
-// Everything below this function takes the decision as a parameter -- `live_deploy_apply_script_for`,
-// `apply_intent_from_effects`, `deploy_memory_cap_apply_steps` -- so this is the single visible point
+// Everything below this function takes the decision as a parameter -- `deploy_apply_plan_legs` and
+// `deploy_apply_memory_cap_plan` (gunbc.live_deploy.apply_legs) -- so this is the single visible point
 // at which a real one is provided. An earlier revision supplied a HARDCODED `CapConvergeWithheld`
 // here whose cause said no caller could obtain the evidence. That was safe and it was also wrong
 // about itself: this realize is the EFFECTFUL layer -- it holds the transport and already executes a
@@ -4639,10 +4649,9 @@ fn observe_slot_population_over_host_effect_transport(
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE SHARED DEPLOY PREAMBLE, as TYPED EFFECTS.
 //
-// This block SHADOWS the bash body emitted by gunbc.live_deploy.emit deploy_apply_preamble_steps until the apply route takes it (that function's dissolution row names the trigger),
-// which shipped through retained_srvn / realize_shell_on_host. The script it reproduces is
-// gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_stmts followed by
-// gunbc.live_deploy.emit deploy_publication_principal_ensure_command, in that order:
+// Both the apply and the retract route open with this block; the bash preamble it replaced
+// (the deploy sudoers install, then the publication principal's ensure) is deleted. The script
+// lines it realizes, in order:
 //
 //   cat > "$_gunbc_stage/gunbc-deploy.sudoers" <<EOF …   -> PreambleStdin  (SudoersStage)
 //   sudo -n visudo -cf "$stage" || exit 1                -> PreambleArgv   (SudoersVisudoCheck)
@@ -5260,55 +5269,69 @@ fn realize_live_deploy_apply_on_host(
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let locus_refusal = live_deploy_apply_candidate_locus_refusal(transport: transport)
-  if locus_refusal != "" {
-    NotConverged { reason: locus_refusal, applied: intent }
-  } else {
-    let host = spec.target.host.identity
-    let census = surplus_observation(
-      census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
-    )
-    let required_standing = transition_required_retiring(host: host)
-    let admission = runner_host_deploy_for(host: host)
-    let cap_authorization = match admission {
-      RunnerHostDeployRefused { host: rh, cause: rc } =>
-        CapConvergeWithheld {
-          cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
-        }
-      RunnerHostDeployUnmodeled { host: uh } =>
-        CapConvergeWithheld {
-          cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
-        }
-      RunnerHostDeployFound { deploy: _ } =>
-        match required_standing {
-          RetireesUnresolved { host: uh, cause: rc } =>
-            CapConvergeWithheld {
-              cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
-            }
-          RetireesKnown { units: required } =>
-            cap_converge_decision(
-              host: host,
-              required_retiring: required,
-              observation: surplus_observation_from_census_and_retirement(
-                census: census,
-                standings: observe_retirement_standings(transport: transport, units: required),
-              ),
-            )
-        }
-    }
-    realize_shell_on_host(
-      script: retained_srvn(
-        body: live_deploy_apply_script_for_wet(
-          spec: spec,
-          plan: plan,
-          access: access,
-          cap_authorization: cap_authorization,
-        ),
-        reason: "live_deploy apply (unit install + start)",
-      ),
-      transport: transport,
-      intent: intent,
-    )
+  live_deploy_apply_orchestrate(
+    locus_refusal: live_deploy_apply_candidate_locus_refusal(transport: transport),
+    prepare: fn() { live_deploy_apply_prepared_on_host(spec: spec, plan: plan, transport: transport, intent: intent, access: access) },
+    principal: spec.names.publication_principal,
+    preamble: fn(principal) { live_deploy_apply_preamble_on_host(access: access, principal: principal) },
+    host: spec.target.host.identity,
+    intent: intent,
+  )
+}
+
+// WHAT THE APPLY OBSERVES BEFORE IT CAN PLAN, DEFERRED BEHIND THE LOCUS GATE: the orchestration forces
+// it only after a local locus is admitted, so a refused locus observes no slot census, retirement
+// standing or checkout. The checkout this process runs in is read once, and is both the source root
+// the object-source leg observes and the one every install reads from.
+fn live_deploy_apply_prepared_on_host(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+  access: DeployAccess,
+) -> DeployApplyPrepared {
+  let host = spec.target.host.identity
+  let census = surplus_observation(
+    census: observe_slot_population_over_host_effect_transport(host: host, transport: transport),
+  )
+  let required_standing = transition_required_retiring(host: host)
+  let admission = runner_host_deploy_for(host: host)
+  let cap_authorization = match admission {
+    RunnerHostDeployRefused { host: rh, cause: rc } =>
+      CapConvergeWithheld {
+        cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
+      }
+    RunnerHostDeployUnmodeled { host: uh } =>
+      CapConvergeWithheld {
+        cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
+      }
+    RunnerHostDeployFound { deploy: _ } =>
+      match required_standing {
+        RetireesUnresolved { host: uh, cause: rc } =>
+          CapConvergeWithheld {
+            cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
+          }
+        RetireesKnown { units: required } =>
+          cap_converge_decision(
+            host: host,
+            required_retiring: required,
+            observation: surplus_observation_from_census_and_retirement(
+              census: census,
+              standings: observe_retirement_standings(transport: transport, units: required),
+            ),
+          )
+      }
+  }
+  let source_root = git.Inspect.Toplevel().path as String
+  DeployApplyPrepared {
+    plan: deploy_apply_plan_legs(
+      spec: spec,
+      plan: plan,
+      authorization: cap_authorization,
+      source_root: source_root,
+      oidc_now: tracker_web_oidc_deploy_now_epoch(),
+    ),
+    ports: deploy_apply_ports_on_host(spec: spec, principal: access.principal, source_root: source_root, transport: transport, intent: intent),
   }
 }
 
@@ -5626,6 +5649,333 @@ fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, ports: Deploy
   }
 }
 
+// ── THE APPLY FOLD'S RUNNER (gunbc.live_deploy.apply_legs) ───────────────────────────────────────
+//
+// THE PORTS ARE THE HOST-TOUCHING OPERATIONS AND NOTHING ELSE: one argv through the transport, and
+// C1, the directory provider. Production supplies deploy_apply_ports_on_host; a control supplies
+// outcomes. The runner is a pure fold over them, so a leg after a failed one is never dispatched.
+type DeployApplyPorts {
+  command: fn(ArgvCommand) -> RunArgvTransportOutcome
+  stdin: fn(ArgvCommand, String) -> RunArgvTransportOutcome
+  ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
+  helper_grant: fn(ReleaseRevisionBinding) -> Optional<String>
+  root_helper_grant: fn(HelperGrantSite, HelperRevisionReceipt, ReleaseRevisionBinding) -> Optional<String>
+  broker_tree: fn(ReleaseRevisionBinding) -> Optional<String>
+  dependency: fn(DeploymentDependencyStep) -> Optional<String>
+  retract: DeployRetractPorts
+  object_source: fn() -> ObjectSourceServeAdmission
+}
+
+// THE PLAN AND THE PORTS THAT REALIZE IT, produced together because both read one checkout. The
+// orchestration takes them deferred, so a locus refusal is decided before either exists.
+type DeployApplyPrepared {
+  plan: DeployApplyPlan
+  ports: DeployApplyPorts
+}
+
+fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport, intent: HostEffectIntent) -> DeployApplyPorts {
+  DeployApplyPorts {
+    command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
+    stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
+    ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
+    helper_grant: fn(r) { live_deploy_apply_helper_grant_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
+    root_helper_grant: fn(site, receipt, r) { live_deploy_apply_root_helper_grant_on_host(site: site, receipt: receipt, revision: r, principal: principal, source_root: source_root, transport: transport) },
+    broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
+    dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
+    retract: deploy_retract_ports_on_host(transport: transport),
+    object_source: fn() { observe_object_source_serve(source: source_root) },
+  }
+}
+
+// C1: ONE OWNED DIRECTORY, ENSURED THROUGH THE ONE PROVIDER. The reads are the privileged list and stat
+// of the directory's parent chain (the same ones gunbc.live_deploy.member_observe makes), each keeping
+// its origin typed; the install is the provider's plan elevated; the verdict is the provider's
+// independent second stat, never the install's exit status.
+fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
+  match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
+    RunArgvTransportRefused { reason: r } => ObserverReadFailed { origin: ObserverTransportRefused { cause: r } }
+    RunArgvTransportObserved { observed: o } =>
+      if o.success {
+        ObserverReadOut { stdout: o.stdout }
+      } else {
+        ObserverReadFailed { origin: ObserverExited { exit_code: o.exit_code, stderr: o.stderr } }
+      }
+  }
+}
+
+fn deploy_apply_directory_observe(path: FilePath, transport: HostEffectTransport) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: path,
+    list: p => deploy_apply_directory_read(op: ListDirectoryEntries { path: p as String as NonEmptyStr }, transport: transport),
+    stat: p => deploy_apply_directory_read(op: ReadDirectoryIdentity { path: p as String as NonEmptyStr }, transport: transport),
+  )
+}
+
+fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, transport: HostEffectTransport) -> OwnedDirectoryEnsureOutcome {
+  owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: target,
+    observe: p => deploy_apply_directory_observe(path: p, transport: transport),
+    run: plan => match run_argv_over_host_effect_transport(
+      command: sudo_elevate_command(command: owned_directory_install_argv(plan: plan)),
+      transport: transport,
+    ) {
+      RunArgvTransportRefused { reason: _ } => false
+      RunArgvTransportObserved { observed: o } => o.success
+    },
+  )
+}
+
+type DeployApplyRun
+  = ApplyRunOk { legs_run: Int, reports: List<String> }
+  | ApplyRunFailed { step: String, reason: String, legs_run: Int }
+
+// C3: THE HELPER GRANT, THROUGH THE SHARED STAGES. The same dark_helper_grant_install the dark install
+// runs; a DarkFailed becomes the leg's refusal naming its step.
+fn live_deploy_apply_helper_grant_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+    DarkOk => Absent
+    DarkFailed { step: s, reason: r } => Present { value: join(["helper grant refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+  }
+}
+
+// A ROOT-OWNED HELPER GRANT OTHER THAN THE BROKER'S (the attempt launcher's), through the same site
+// sequence the broker's helper grant runs, with the site's revision receipt.
+fn live_deploy_apply_root_helper_grant_on_host(site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match dark_helper_site_install(site: site, receipt: Present { value: receipt }, revision: revision, principal: principal, source_root: source_root, transport: transport) {
+    DarkOk => Absent
+    DarkFailed { step: s, reason: r } => Present { value: join(["root helper grant at ", site.locus.base, " refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+  }
+}
+
+// AN ENSURED DEPENDENCY, through the typed ensure-dependency route the deploy's own dependency effect
+// runs (probe, then install only on the probe's verdict).
+fn live_deploy_apply_dependency_on_host(dep: DeploymentDependencyStep, transport: HostEffectTransport, intent: HostEffectIntent) -> Optional<String> {
+  match realize_live_deploy_ensure_dependency_on_host(dep: dep, transport: transport, intent: intent) {
+    Converged { evidence: _, applied: _ } => Absent
+    NotConverged { reason: r, applied: _ } => Present { value: r }
+  }
+}
+
+// A DIGEST ENV FILE WRITTEN FROM THE INSTALLED BYTES: sha256sum of the binary as installed, read back over
+// the command port, becomes NAME=<hex> written root-installed through the stdin port. A refused read, a
+// failed one and a line carrying no digest each stop the leg before anything is written, so an empty or
+// fabricated NAME= never reaches the file.
+fn deploy_apply_digest_env_failure(binary: String, env_name: String, dest: String, owner: NonEmptyStr, ports: DeployApplyPorts) -> Optional<String> {
+  let command = ports.command
+  match command(sha256sum_file_command(path: binary)) {
+    RunArgvTransportRefused { reason: r } => Present { value: join(["sha256sum of ", binary, " was refused: ", r], "") }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        Present { value: join(["sha256sum could not read ", binary, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
+      } else {
+        match sha256sum_line_digest(line: o.stdout) {
+          Absent => Present { value: join(["sha256sum printed no digest for ", binary], "") }
+          Present { value: d } => {
+            let hex: String = d.hex
+            deploy_retract_command_failure(outcome: ports.stdin(
+              sudo_elevate_command(command: coreutils_install_file_owned_argv(mode: install_file_shared_mode, owner: owner, group: owner, source: "/dev/stdin", dest: dest)),
+              join([env_name, "=", hex, "\n"], ""),
+            ))
+          }
+        }
+      }
+  }
+}
+
+// ONE RETRACT LEG ON APPLY (a leftover timer's retirement), through the retract runner itself.
+fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractPorts) -> Optional<String> {
+  match live_deploy_retract_run_legs(legs: [leg], ports: ports) {
+    RetractRunOk { legs_run: _, calls: _ } => Absent
+    RetractRunFailed { step: s, reason: r, legs_run: _, calls: _ } => Present { value: join(["retract leg ", s, ": ", r], "") }
+  }
+}
+
+// THE BROKER'S RELEASE TREE, through the same per-file install the dark install's broker stage runs.
+fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match approval_broker_tree_install(
+    owner: spec.service.service_user,
+    base_root: spec.approval_broker.repo_root as String,
+    source_root: source_root,
+    revision: revision,
+    executables: approval_broker_release_locus_executables,
+    transport: transport,
+  ) {
+    TreeInstallConverged { installed_digest: _, files_installed: _ } => Absent
+    TreeInstallRefused { step: ts, reason: r } => Present { value: join(["broker tree refused at tree step ", tree_install_step_name(step: ts), ": ", r], "") }
+  }
+}
+
+// THE LAST LINES OF A FAILED CONTROL PROCESS'S STATUS, the diagnosis the restart's bare refusal never
+// carries. Bounded to the tail so a long journal cannot bury the cause.
+fn deploy_apply_status_tail(text: String) -> String {
+  let lines = split(s: text, delimiter: "\n")
+  let n = count(lines)
+  join(if n > 40 { skip(xs: lines, n: n - 40) } else { lines }, "\n")
+}
+
+// A COMMAND WHOSE FAILURE IS DIAGNOSED: the failure still fails the leg (a diagnosis, never an escape
+// hatch), and carries the status tail read through the diagnosis command. A diagnosis that itself
+// cannot run is named in the reason rather than dropped.
+fn deploy_apply_diagnosed_failure(why: String, diagnosis: RunArgvTransportOutcome) -> String {
+  match diagnosis {
+    RunArgvTransportRefused { reason: r } => join([why, " | diagnosis could not run: ", r], "")
+    RunArgvTransportObserved { observed: o } =>
+      join([why, "\n--- control-process diagnosis ---\n", deploy_apply_status_tail(text: concat(o.stdout, o.stderr))], "")
+  }
+}
+
+// THE DIGEST OF A FILE ON THE HOST AGAINST THE ONE THE PLAN DECLARED. An unreadable file, an unparseable
+// line and a different digest are each their own refusal; none reads as a match.
+fn deploy_apply_digest_failure(path: String, digest: Digest, outcome: RunArgvTransportOutcome) -> Optional<String> {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => Present { value: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        Present { value: join(["sha256sum could not read ", path, ": exit ", to_string(o.exit_code), ": ", o.stderr], "") }
+      } else {
+        match sha256sum_line_digest(line: o.stdout) {
+          Absent => Present { value: join(["sha256sum printed no digest for ", path], "") }
+          Present { value: d } => {
+            let seen: String = d.hex
+            let planned: String = digest.hex
+            if seen == planned {
+              Absent
+            } else {
+              Present { value: join([path, " digest ", seen, " is not the planned ", planned], "") }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optional<String> {
+  let command = ports.command
+  let ensure = ports.ensure_directory
+  match leg {
+    ApplyLegEnsureDirectory { target: t } => {
+      let outcome = ensure(t)
+      if owned_directory_outcome_converged(o: outcome) { Absent } else { Present { value: owned_directory_outcome_detail(o: outcome) } }
+    }
+    ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
+    ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
+    ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+    ApplyLegReport { step: _, line: _ } => Absent
+    ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
+      match deploy_retract_command_failure(outcome: command(c)) {
+        Absent => Absent
+        Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
+      }
+    ApplyLegHelperGrant { revision: r } => ports.helper_grant(r)
+    ApplyLegRootHelperGrant { site: g, receipt: rc, revision: r } => ports.root_helper_grant(g, rc, r)
+    ApplyLegBrokerTree { revision: r } => ports.broker_tree(r)
+    ApplyLegRetract { step: _, leg: l } => deploy_apply_retract_leg_failure(leg: l, ports: ports.retract)
+    ApplyLegDependency { dep: d } => ports.dependency(d)
+    ApplyLegDigestEnvFile { step: _, binary: b, env_name: n, dest: d, owner: o } => deploy_apply_digest_env_failure(binary: b, env_name: n, dest: d, owner: o, ports: ports)
+    ApplyLegObjectSource => {
+      let observe = ports.object_source
+      match observe() {
+        ObjectSourceCanServe { source: _ } => Absent
+        ObjectSourceCannotServe { source: s, cause: c } =>
+          Present { value: object_source_serve_refusal_text(admission: ObjectSourceCannotServe { source: s, cause: c }) }
+        ObjectSourceServeDecideAtApplyPwd => Present { value: "object source standing was not observed (deferred to the host PWD): refusing rather than reading it as servable" }
+      }
+    }
+  }
+}
+
+fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
+  match leg {
+    ApplyLegReport { step: _, line: l } => [l]
+    ApplyLegEnsureDirectory { target: _ } => []
+    ApplyLegRepairDirectoryEntries { command: _ } => []
+    ApplyLegCommand { step: _, command: _ } => []
+    ApplyLegInstallFile { step: _, command: _, payload: _ } => []
+    ApplyLegHelperGrant { revision: _ } => []
+    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => []
+    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegRetract { step: _, leg: _ } => []
+    ApplyLegDependency { dep: _ } => []
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
+    ApplyLegObjectSource => []
+    ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => []
+  }
+}
+
+fn deploy_apply_run_legs_from(legs: List<DeployApplyLeg>, ports: DeployApplyPorts, done: Int, reports: List<String>) -> DeployApplyRun {
+  match legs {
+    Empty => ApplyRunOk { legs_run: done, reports: reports }
+    Cons { head: leg, tail: rest } =>
+      match deploy_apply_run_leg(leg: leg, ports: ports) {
+        Present { value: why } => ApplyRunFailed { step: deploy_apply_leg_step(leg: leg), reason: why, legs_run: done }
+        Absent => deploy_apply_run_legs_from(legs: rest, ports: ports, done: done + 1, reports: list_append(left: reports, right: deploy_apply_leg_report(leg: leg)))
+      }
+  }
+}
+
+fn deploy_apply_run_legs(legs: List<DeployApplyLeg>, ports: DeployApplyPorts) -> DeployApplyRun {
+  deploy_apply_run_legs_from(legs: legs, ports: ports, done: 0, reports: [])
+}
+
+// THE APPLY VERDICT. A failed run is NotConverged naming the step and the legs already completed; a clean
+// run converges with the withheld reports and the receipt line, in that order.
+fn live_deploy_apply_verdict(
+  run: DeployApplyRun,
+  host: NonEmptyStr,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match run {
+    ApplyRunFailed { step: s, reason: r, legs_run: n } =>
+      NotConverged {
+        reason: join(["live_deploy apply refused at step ", s, " after ", to_string(n), " completed legs: ", r], ""),
+        applied: intent,
+      }
+    ApplyRunOk { legs_run: _, reports: rs } =>
+      Converged {
+        evidence: ShellEffectApplied {
+          exit_code: 0,
+          stdout: join(concat(list_map(xs: rs, f: l => join([l, "\n"], "")), [live_deploy_receipt_line(host: host, fold: "apply")]), ""),
+          stderr: "",
+        },
+        applied: intent,
+      }
+  }
+}
+
+// THE APPLY ORCHESTRATION, ONE PURE FUNCTION OVER PORTS (mirrors live_deploy_retract_orchestrate).
+fn live_deploy_apply_orchestrate(
+  locus_refusal: Optional<String>,
+  prepare: fn() -> DeployApplyPrepared,
+  principal: NonEmptyStr,
+  preamble: fn(NonEmptyStr) -> LiveDeployPreambleVerdict,
+  host: NonEmptyStr,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match locus_refusal {
+    Present { value: why } => NotConverged { reason: why, applied: intent }
+    Absent => {
+      let prepared = prepare()
+      match prepared.plan {
+        ApplyPlanRefused { step: s, reason: r } =>
+          NotConverged { reason: join(["live_deploy apply refused at step ", s, ": ", r], ""), applied: intent }
+        ApplyPlanReady { legs: legs } =>
+          match preamble(principal) {
+            PreambleRefused { step: ps, reason: pr, legs_consumed: _ } =>
+              NotConverged {
+                reason: join(["live_deploy apply refused at preamble step ", live_deploy_preamble_step_name(step: ps), ": ", pr], ""),
+                applied: intent,
+              }
+            PreambleConverged { principal: _, dropin: _, legs_consumed: _ } =>
+              live_deploy_apply_verdict(run: deploy_apply_run_legs(legs: legs, ports: prepared.ports), host: host, intent: intent)
+          }
+      }
+    }
+  }
+}
+
 // THE APPROVAL BROKER'S RELEASE TREE, INSTALLED AS A TYPED, FAIL-FAST VERTICAL (W6). One leg of the
 // dark install, declared frontier: its consumers are the microVM controller install (W5) and the live_deploy apply (next PR), each landing in its own atomic PR that calls this one function, and until they land only its witness calls it: owner, base_root,
 // source_root and revision are PARAMETERS (the owner is never inferred, the source is never the
@@ -5925,7 +6275,7 @@ fn tree_executables_disagreement(executables: List<String>, source_root: String,
       Present { value: _ } => acc
       Absent =>
         match sha256_disagreement_text(agreement: tree_binary_agreement(
-          source_path: join([source_root, "/target/release/", name], ""),
+          source_path: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
           installed_path: join([locus, "/", name], ""),
           transport: transport)) {
           Present { value: why } => Present { value: join([name, ": ", why], "") }
@@ -5956,7 +6306,7 @@ fn approval_broker_tree_install_observed(
     tree_run_step(state: st, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
       command: coreutils_install_file_owned_argv(
         mode: install_executable_shared_mode, owner: owner, group: owner,
-        source: join([source_root, "/target/release/", name], ""),
+        source: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
         dest: join([locus, "/", name], "")))))
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
@@ -6045,6 +6395,7 @@ type DarkInstallStep
   | DarkStepGrantAdmission
   | DarkStepSnapshot
   | DarkStepSnapshotReadback
+  | DarkStepRevisionReceipt
   | DarkStepScratchAcquire
   | DarkStepSudoersStage
   | DarkStepSudoersCheck
@@ -6161,11 +6512,15 @@ fn tree_install_step_name(step: TreeInstallStep) -> String {
 // snapshot may be owned by another principal, writable by group/other, or be a symlink. Bare find (not
 // grantable); an unreadable entry is an observation failure and refuses.
 fn dark_snapshot_readback_legs(dir: String) -> List<DarkLeg> {
-  let root = approval_broker_helper_root_principal as String
+  dark_snapshot_readback_legs_at(locus: approval_broker_helper_snapshot_locus(), dir: dir)
+}
+
+fn dark_snapshot_readback_legs_at(locus: HelperLocus, dir: String) -> List<DarkLeg> {
+  let root = locus.owner as String
   [
     DarkLegExpectEmpty {
       step: DarkStepSnapshotReadback,
-      command: find_untrusted_entries_command(roots: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base), top_only: true, owner: root),
+      command: find_untrusted_entries_command(roots: path_ancestors_inclusive(path: locus.base), top_only: true, owner: root),
     },
     DarkLegExpectEmpty {
       step: DarkStepSnapshotReadback,
@@ -6178,19 +6533,38 @@ fn dark_snapshot_readback_legs(dir: String) -> List<DarkLeg> {
 // renamed over it -> policy-checked again -> read back through the applying principal and hashed
 // against the staged bytes. `scratch` is the directory the caller acquired and will remove.
 fn dark_sudoers_legs(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
-  let staged = join([scratch, "/", approval_broker_helper_sudoers_stage_name], "")
-  let readback = join([scratch, "/", approval_broker_helper_sudoers_readback_stage_name], "")
-  let temp_path = approval_broker_helper_sudoers_temp_path as String
-  let final_path = approval_broker_helper_sudoers_path as String
-  let root = approval_broker_helper_root_principal
+  dark_sudoers_legs_at(site: approval_broker_helper_grant_site(revision: revision), principal: principal, scratch: scratch)
+}
+
+// The approval broker's helper grant as a site: its snapshot under the one root-owned base, its one
+// sudoers file.
+fn approval_broker_helper_grant_site(revision: ReleaseRevisionBinding) -> HelperGrantSite {
+  HelperGrantSite {
+    locus: approval_broker_helper_snapshot_locus(),
+    spine: [approval_broker_helper_snapshot_base],
+    sudoers_content: approval_broker_helper_sudoers_content(revision: revision),
+    sudoers_mode: approval_broker_helper_sudoers_mode,
+    sudoers_temp_path: approval_broker_helper_sudoers_temp_path as String,
+    sudoers_path: approval_broker_helper_sudoers_path as String,
+    stage_name: approval_broker_helper_sudoers_stage_name,
+    readback_name: approval_broker_helper_sudoers_readback_stage_name,
+  }
+}
+
+fn dark_sudoers_legs_at(site: HelperGrantSite, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
+  let staged = join([scratch, "/", site.stage_name], "")
+  let readback = join([scratch, "/", site.readback_name], "")
+  let temp_path = site.sudoers_temp_path
+  let final_path = site.sudoers_path
+  let root = site.locus.owner
   let name = grounded_posix_principal_name(p: principal)
   [
-    DarkLegStdin { step: DarkStepSudoersStage, command: dd_overwrite_path_command(path: staged), payload: approval_broker_helper_sudoers_content(revision: revision) },
+    DarkLegStdin { step: DarkStepSudoersStage, command: dd_overwrite_path_command(path: staged), payload: site.sudoers_content },
     DarkLegArgv { step: DarkStepSudoersCheck, command: visudo_check_command(file: staged) },
     DarkLegArgv {
       step: DarkStepSudoersInstall,
       command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-        mode: approval_broker_helper_sudoers_mode, owner: root, group: root, source: staged, dest: temp_path)),
+        mode: site.sudoers_mode, owner: root, group: root, source: staged, dest: temp_path)),
     },
     DarkLegArgv { step: DarkStepSudoersPolicyTemp, command: visudo_policy_check_command(file: temp_path) },
     DarkLegArgv { step: DarkStepSudoersRename, command: dark_elevated_of(c: mv_exact_destination_command(source: temp_path, destination: final_path)) },
@@ -6253,86 +6627,145 @@ fn approval_broker_dark_install(
       reason: join(["the dark install was reached with a deployment that does not own this host's broker unit; gunbc-approval-broker.service is a host singleton owned by the spec holding the prod role. instance=", spec.instance_id as String], ""),
     }
   } else {
-    dark_stage_device_store(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
+    match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+      DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+      DarkOk => dark_stage_broker_tree(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
+    }
   }
 }
 
-fn dark_stage_device_store(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match managed_directory_admit(d: approval_device_store_directory()) {
-    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
-      DarkInstallRefused { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
-    ManagedDirectoryAdmitted { dir: d } =>
-      match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
-        step: DarkStepDeviceStore,
-        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
-          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
-      }) {
-        DarkOk => dark_stage_grant_admission(i: i)
-        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+// THE HELPER-GRANT STAGES, ONE SEQUENCE, TWO CALLERS: the dark install (approval_broker_dark_install)
+// and the live_deploy apply (the helper-grant leg's port). device store -> grant admission -> root-owned
+// snapshot tree -> sudoers (stage, visudo, install, rename, readback) -> retire of the superseded snapshot.
+// Each stage yields DarkOk or the typed DarkFailed naming its step; the first failure ends the sequence.
+fn dark_helper_grant_install(i: DarkInstallInputs) -> DarkState {
+  match dark_helper_device_store(i: i) {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk =>
+      match dark_helper_grant_admission(i: i) {
+        DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+        DarkOk =>
+          dark_helper_site_install(
+            site: approval_broker_helper_grant_site(revision: i.revision),
+            receipt: Absent,
+            revision: i.revision,
+            principal: i.principal,
+            source_root: i.source_root,
+            transport: i.transport,
+          )
       }
   }
 }
 
-fn dark_stage_grant_admission(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match approval_broker_helper_grant_admission(revision: i.revision) {
-    HelperGrantAdmitted => dark_stage_snapshot(i: i)
-    HelperGrantWordRefused { word: w } =>
-      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
-    HelperGrantLocusWritableByGrantee { owner: o } =>
-      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
+fn dark_helper_device_store(i: DarkInstallInputs) -> DarkState {
+  match managed_directory_admit(d: approval_device_store_directory()) {
+    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+      DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
+    ManagedDirectoryAdmitted { dir: d } =>
+      dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+        step: DarkStepDeviceStore,
+        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
+      })
   }
 }
 
-fn dark_stage_snapshot(i: DarkInstallInputs) -> DarkInstallVerdict {
-  let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: i.revision)
-  match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
-    step: DarkStepSnapshot,
-    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
-  }) {
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+fn dark_helper_grant_admission(i: DarkInstallInputs) -> DarkState {
+  match approval_broker_helper_grant_admission(revision: i.revision) {
+    HelperGrantAdmitted => DarkOk
+    HelperGrantWordRefused { word: w } =>
+      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
+    HelperGrantLocusWritableByGrantee { owner: o } =>
+      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
+  }
+}
+
+// ONE ROOT-OWNED HELPER GRANT AT ITS SITE: snapshot tree -> (the site's revision receipt, when it keeps
+// one) -> sudoers -> retire of the superseded snapshot. The approval broker's grant and the attempt
+// launcher's grant are two sites of this one sequence.
+
+fn dark_helper_site_install(
+  site: HelperGrantSite,
+  receipt: Optional<HelperRevisionReceipt>,
+  revision: ReleaseRevisionBinding,
+  principal: GroundedPosixPrincipal,
+  source_root: String,
+  transport: HostEffectTransport,
+) -> DarkState {
+  match dark_helper_snapshot_at(site: site, revision: revision, source_root: source_root, transport: transport) {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
-      match approval_broker_tree_install_at(
-        owner: approval_broker_helper_root_principal,
-        spine: [approval_broker_helper_snapshot_base],
-        locus: dir,
-        source_root: i.source_root,
-        revision: i.revision,
-        executables: [gunbc_release_bin_name],
-        transport: i.transport,
-      ) {
-        TreeInstallRefused { step: ts, reason: r } =>
-          DarkInstallRefused { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
-        TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          match dark_run_legs(legs: dark_snapshot_readback_legs(dir: dir), transport: i.transport) {
-            DarkOk => dark_stage_sudoers(i: i)
-            DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+      match dark_helper_revision_receipt(site: site, receipt: receipt, transport: transport) {
+        DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+        DarkOk =>
+          match dark_helper_sudoers_at(site: site, principal: principal, transport: transport) {
+            DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+            DarkOk => dark_helper_retire_at(site: site, revision: revision, transport: transport)
           }
       }
   }
 }
 
-fn dark_stage_sudoers(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: i.transport) {
-    RunArgvTransportRefused { reason: r } => DarkInstallRefused { step: DarkStepScratchAcquire, reason: r }
+fn dark_helper_revision_receipt(site: HelperGrantSite, receipt: Optional<HelperRevisionReceipt>, transport: HostEffectTransport) -> DarkState {
+  match receipt {
+    Absent => DarkOk
+    Present { value: rc } =>
+      dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegStdin {
+        step: DarkStepRevisionReceipt,
+        command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+          mode: install_file_shared_mode, owner: site.locus.owner, group: site.locus.owner, source: "/dev/stdin", dest: rc.path)),
+        payload: rc.text,
+      })
+  }
+}
+
+fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
+  let dir = helper_locus_dir(locus: site.locus, revision: revision)
+  match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
+    step: DarkStepSnapshot,
+    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
+  }) {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk =>
+      match approval_broker_tree_install_at(
+        owner: site.locus.owner,
+        spine: site.spine,
+        locus: dir,
+        source_root: source_root,
+        revision: revision,
+        executables: [gunbc_release_bin_name],
+        transport: transport,
+      ) {
+        TreeInstallRefused { step: ts, reason: r } =>
+          DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
+        TreeInstallConverged { installed_digest: _, files_installed: _ } =>
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: site.locus, dir: dir), transport: transport)
+      }
+  }
+}
+
+fn dark_helper_sudoers_at(site: HelperGrantSite, principal: GroundedPosixPrincipal, transport: HostEffectTransport) -> DarkState {
+  match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: transport) {
+    RunArgvTransportRefused { reason: r } => DarkFailed { step: DarkStepScratchAcquire, reason: r }
     RunArgvTransportObserved { observed: o } =>
       match (if o.success { admitted_scratch_path(prefix: dark_scratch_prefix, stdout: o.stdout) } else { none }) {
-        Absent => DarkInstallRefused { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
+        Absent => DarkFailed { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
         Present { value: scratch } => {
-          let state = dark_run_legs(legs: dark_sudoers_legs(revision: i.revision, principal: i.principal, scratch: scratch), transport: i.transport)
+          let state = dark_run_legs(legs: dark_sudoers_legs_at(site: site, principal: principal, scratch: scratch), transport: transport)
           let cleanup = dark_failed_of_outcome(
             step: DarkStepScratchCleanup,
-            outcome: run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: i.transport),
+            outcome: run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: transport),
           )
           match state {
             DarkFailed { step: s, reason: r } =>
               match cleanup {
-                DarkOk => DarkInstallRefused { step: s, reason: r }
-                DarkFailed { step: _, reason: cr } => DarkInstallRefused { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
+                DarkOk => DarkFailed { step: s, reason: r }
+                DarkFailed { step: _, reason: cr } => DarkFailed { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
               }
             DarkOk =>
               match cleanup {
-                DarkFailed { step: cs, reason: cr } => DarkInstallRefused { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
-                DarkOk => dark_stage_retire(i: i)
+                DarkFailed { step: cs, reason: cr } => DarkFailed { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
+                DarkOk => DarkOk
               }
           }
         }
@@ -6342,18 +6775,15 @@ fn dark_stage_sudoers(i: DarkInstallInputs) -> DarkInstallVerdict {
 
 // The previous release's snapshot is removed after the rename took its grant away: the sweep is
 // confined to the root-owned base and keeps exactly this release's directory.
-fn dark_stage_retire(i: DarkInstallInputs) -> DarkInstallVerdict {
-  match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+fn dark_helper_retire_at(site: HelperGrantSite, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+  dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepRetire,
     command: find_other_children_exec_command(
-      root: approval_broker_helper_snapshot_base,
-      keep_name: release_revision_execstart_text(binding: i.revision),
+      root: site.locus.base,
+      keep_name: release_revision_execstart_text(binding: revision),
       exec_argv: sudo_elevate_argv(command: [fleet_rm_binary_path as String, coreutils_rm_force_recursive_flags as String, "--"]),
     ),
-  }) {
-    DarkOk => dark_stage_broker_tree(i: i)
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-  }
+  })
 }
 
 // THE SIDECAR IS STANDING BEFORE THE BROKER UNIT IS SWAPPED. The broker unit loads the sidecar's digest env file and is
@@ -6463,6 +6893,7 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
     DarkStepGrantAdmission => "helper-grant-admission"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
+    DarkStepRevisionReceipt => "helper-revision-receipt"
     DarkStepScratchAcquire => "scratch-acquire"
     DarkStepSudoersStage => "sudoers-stage"
     DarkStepSudoersCheck => "sudoers-visudo-check"
@@ -7383,9 +7814,8 @@ fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
 }
 
 // WHAT A DEPLOY EFFECT MAY DEMAND BEFORE IT RUNS. Apply and retract both open with
-// gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step installs the deploy principal's
-// sudoers drop-in and then probes the whole roster against it, refusing on a miss before any other
-// mutation (gunbc.ci.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). So before them
+// live_deploy_apply_preamble_on_host, whose first legs install the deploy principal's sudoers drop-in
+// and then probe the whole roster against it, refusing on a miss before any other mutation. So before them
 // the gate demands only what that install spends; demanding the rest would require the grant the
 // gated step exists to install. Every other effect installs nothing and is gated on the full roster.
 // It narrows the VERDICT only: the scripts are emitted from the full DeployAccess, so the preamble's

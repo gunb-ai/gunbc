@@ -171,6 +171,35 @@ type DeclaredField {
   default: Optional<Node>
 }
 
+// A FIELD DEFAULT HAS ONE CONTRACT: an elaborated value. A literal default is a ComputationNode
+// { Value } whose one child is the atom of the literal's own spelling, so a string keeps its quotes
+// and `"false"` is never `false`. The host marshal refuses every default it cannot express this way
+// (a second source-text reading of BinderDefaultEdge was deleted: review 83500), so any other node is
+// MalformedDefault: a refusal, never read as a literal.
+type FieldDefault
+  = LiteralDefault { lexeme: Symbol }
+  | MalformedDefault { reason: Symbol }
+
+fn field_default_reading(d: Node) -> FieldDefault {
+  match d.kind {
+    ComputationNode { behavior: Value } => literal_default_of_children(xs: d.children)
+    _ => MalformedDefault { reason: symbol_intern_lexeme(lexeme: "a default node is not a literal Value computation") }
+  }
+}
+
+fn literal_default_of_children(xs: FreeMonoid<Edge>) -> FieldDefault {
+  match xs {
+    Cons { head: h, tail: rest } => match rest {
+      Empty => match h.target.kind {
+        TypeNode { connective: Atom { identity: sym } } => LiteralDefault { lexeme: sym }
+        _ => MalformedDefault { reason: symbol_intern_lexeme(lexeme: "a literal default's child is not the atom of its spelling") }
+      }
+      Cons { head: _, tail: _ } => MalformedDefault { reason: symbol_intern_lexeme(lexeme: "a literal default has more than one child") }
+    }
+    Empty => MalformedDefault { reason: symbol_intern_lexeme(lexeme: "a literal default has no child carrying its spelling") }
+  }
+}
+
 fn positional_payload_field_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "0")
 }
@@ -374,24 +403,16 @@ fn member_not_a_binder_diagnostic(e: Edge) -> Diagnostic {
   }
 }
 
-// A member's type name, for the indexes that record one. A binder's type is named through the
-// binder reader (XL-2). Concept-index reflection still marshals a Named member as name → type Atom
-// (coproduct_reflection marshal_variant_arm_target; stage0 HOLD #13388), which is not a binder, so
-// the binder reader answers Absent. That encoding still carries the authored Atom identity on the
-// target, and the index names that Atom -- the same spelling edge_field_type_name would report
-// after a binder unwrap. A StructuralLabel, or a Named member whose target is not an Atom, still
-// answers ^coproduct_unresolved_payload: never a name no declaration carries. Lenses that judge
-// whether a member IS a binder keep using member_edge_type_node, which stays Absent for the
-// marshal encoding.
+// A member's type name, for the indexes that record one: a binder's type through the binder reader
+// (XL-2), and a Positional member's target, which is its type. The host reflection now marshals a
+// declared field as a binder node too (coproduct_reflection marshal_field_binder), so the bare
+// name -> type Atom encoding, and the fallback arm that read it (stage0 HOLD #13388), are gone: a
+// Named member that is not a binder, or a StructuralLabel, answers ^coproduct_unresolved_payload --
+// never a name no declaration carries.
 fn member_edge_type_name(e: Edge) -> Symbol {
   match member_edge_type_node(e: e) {
     Present { value: t } => edge_field_type_name(target: t)
-    Absent =>
-      match e.label {
-        Authored { name: _ } => edge_field_type_name(target: e.target)
-        Positional => ^coproduct_unresolved_payload
-        StructuralLabel { label: _ } => ^coproduct_unresolved_payload
-      }
+    Absent => ^coproduct_unresolved_payload
   }
 }
 
