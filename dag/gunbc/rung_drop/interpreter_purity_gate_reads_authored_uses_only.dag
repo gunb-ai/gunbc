@@ -43,13 +43,11 @@ data interpreter_purity_gate_reads_authored_uses_only: RungDrop = RungDrop {
 
   declared: "2026-09-18",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: LostAsPassenger { carrier: "the authored uses rows that restate derived service demand, deleted by D13 cut (c); the gate's agreement with the demand carrier rode on their presence, and the deletion census accounts for the rows, not for the gate that read them" },
     population: Enumerated { members: FreeSemigroup { head: "interpreted calls to a function whose effects are derived from its body (it reaches a service operation) and which carries no authored uses row after cut (c)", tail: [] } },
     restoration_trigger: "the interpreter's purity decision agrees with the D13 demand carrier for every function WITHOUT the effect-dispatch guard carrying correctness -- sufficient that deleting that guard could not route an effectful call into a memo. Any one of three capabilities discharges it: (1) the call gate reads derived demand by callee IDENTITY (owning module plus declaration, against the identity-keyed registry), never by a leaf-keyed name; (2) the interpreter consumes the bound-handler interface of D11/D13, so effectfulness is a property of the handler it is handed rather than a row it reads; or (3) D10 removes the interpreter from the production route, demoting it to an offline oracle whose memo routing no production answer depends on. Widening the gate to the leaf-keyed name lookup does NOT discharge it.",
-  }
+  } }
 }

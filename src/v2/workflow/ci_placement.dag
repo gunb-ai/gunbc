@@ -14,7 +14,7 @@ import gunbc.commit_workflow {
 
 // The two-tier placement axis (ci-two-tier-placement-redesign.md D3, operator 2026-07-24): a check
 // rides the PR path iff its measured warm cost is within the fast-lane budget OR proportional to
-// the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence). Placement
+// the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence, declared but unrealized since falsifier.yml was deleted at 611fd02770/#8283). Placement
 // is DATA (PrTier | Gauntlet), never per-site prose. Admission is FAIL-CLOSED by construction:
 // PrTier requires (a) a measured warm-cost receipt within the fast-lane budget and (b) a
 // hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier

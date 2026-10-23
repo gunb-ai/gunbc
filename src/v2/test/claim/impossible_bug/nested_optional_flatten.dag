@@ -13,7 +13,7 @@ import v2.std.diagnostic {
 }
 import std.nat { Succ, Zero }
 import v2.std.optional_layers { wrap_type_node_occupancy }
-import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, NotADeclaration }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,

@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // AN EXISTING DEFICIT, RECORDED AS ONE -- NOT A DROP FROM A WALL THAT NEVER HELD. Three offline
 // accumulator-copy roster ratchets (accumulator_copy_roster_gate_std roster_std_change_dag_zero_suspects_within_ratchet,
@@ -62,7 +62,7 @@ data accumulator_copy_untyped_combiner_refusals_stall: GuaranteeStall = Guarante
   subject: "v2.lens.complexity_accumulator_copy.analyze refuses combiner_unregistered_carrier_reaches where a carrier reaches an operator or named callee whose copying depends on its operand type or callee declaration, which the pre-inference subject does not carry; observed over dag/std/change.dag, src/v2/extdeps/languages/lean.dag and src/v2/lens/complexity_accumulator_copy/analyze.dag, where the three offline roster ratchets are red",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
-  blocker: AwaitsOneGrounding { grounding: "a route to an inferred tree of each of the three files: v2 resolve, then infer, admitting the canonical dependency closure of each file in its declaration context -- every module the file imports plus every dependency reference derivation adds (the reference-derived closure v2.compiler.reference_closure reference_derived_closure computes, e.g. the declarations a fold head or a kernel call resolves to), not the import list alone. No such route has been established for any of the three; the refusals observed so far on std.change are listed in the annotation and are not claimed to be the whole obstacle. The accumulator-copy lens over that tree is then buildable on it" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: BoundedPopulation { members: [
       "v2.lens.complexity_accumulator_copy.analyze collect_direct_captures collect_direct_captures combiner_unregistered_carrier_reaches",
       "v2.lens.complexity_accumulator_copy.analyze collect_direct_captures collect_direct_captures combiner_unregistered_carrier_reaches (occurrence 2)",

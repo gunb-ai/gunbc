@@ -1,4 +1,6 @@
 module v2.compiler.self_host.direct_rust_door_fixture
+
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 import std.optional { optional_absent }
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
@@ -305,7 +307,8 @@ data direct_rust_door_inferred_tree: InferredTree = InferredTree {
   root: rust_fixture_emitted_add_fn,
   facts: PartialFunction {
     lookup: direct_rust_door_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn direct_rust_door_target_model() -> TargetModel {
