@@ -29,7 +29,7 @@ import gunbc.instruments.ambient_name_census_reading {
 // not by text match; modules counts the distinct modules holding them.
 //
 // THE CLASSES, assigned in this order and exactly one per row:
-//   in-flight  the spelling is claimed by a change already under way (ambient_operation_in_flight); counted,
+//   in-flight  the spelling is claimed by a change already under way (ambient_operation_claims, each naming its change and when it ends); counted,
 //              never classified, so the work is not duplicated;
 //   kernel-grounding  the binding source is an `ambient:kernel_*` table: a kernel token or type spelling, not an
 //              operation; a separate class by the manager's ruling, no migration;
@@ -48,8 +48,57 @@ import gunbc.instruments.ambient_name_census_reading {
 // its basis says so. B's evidence is exactly "none in the N7 closure": a statement about the closure the
 // census read, never about the corpus. A declaration outside the closure is invisible to this reading.
 
-fn ambient_operation_in_flight() -> List<String> {
-  ["list_push", "map_get"]
+type AmbientOperationClaim {
+  spelling: String
+  change: String
+  dissolves_when: String
+}
+
+// A spelling claimed by a change already under way: counted, never classified, so the work is not duplicated.
+// Each claim names its change and the condition that ends it; the manager's brief is the authority for the
+// two rows (Seat 12 brief, tidy-ant-251).
+data ambient_operation_claims: List<AmbientOperationClaim> = [
+  AmbientOperationClaim { spelling: "list_push", change: "gunb-ai/gunbc#14751 (sunny-bee-153)", dissolves_when: "the change lands: list_push is then a declared callable and classifies A" },
+  AmbientOperationClaim { spelling: "map_get", change: "map_get to std.algebra map_lookup (wise-moth-707)", dissolves_when: "the change lands: callers use map_lookup and the contract is retired" }
+]
+
+type DispositionClass
+  = DispositionInFlight
+  | DispositionA
+  | DispositionB
+  | DispositionC
+  | DispositionD
+  | DispositionKernelGrounding
+
+type DispositionVerdict {
+  class: DispositionClass
+  basis: String
+  evidence: String
+}
+
+type DispositionRow {
+  spelling: String
+  source: String
+  target: String
+  call_sites: Int
+  modules: Int
+  in_closure: Int
+  verdict: DispositionVerdict
+}
+
+fn disposition_class_text(class: DispositionClass) -> String {
+  match class {
+    DispositionInFlight => "in-flight"
+    DispositionA => "A"
+    DispositionB => "B"
+    DispositionC => "C"
+    DispositionD => "D"
+    DispositionKernelGrounding => "kernel-grounding"
+  }
+}
+
+fn disposition_claim_for(spelling: String) -> Optional<AmbientOperationClaim> {
+  first(ambient_operation_claims |> filter(c => c.spelling == spelling))
 }
 
 // Every ambient table is in scope (the census labels each `ambient:<table>`), so a spelling such as `split`
@@ -87,29 +136,40 @@ fn declaration_evidence(decl: String) -> String {
   field_at(line: decl, index: 1) + "." + field_at(line: decl, index: 2) + " " + field_at(line: decl, index: 4)
 }
 
-// (class, basis, evidence) of one row.
-fn classify_row(spelling: String, source: String, target: String, decls: List<String>) -> String {
-  if count(ambient_operation_in_flight() |> filter(s => s == spelling)) != 0 {
-    "in-flight\tin-flight\tclaimed by a change already under way; not classified here"
-  } else if starts_with(s: source, prefix: "ambient:kernel_") {
-    "kernel-grounding\toperator-ruling\tkernel grounding: the spelling is a kernel token or type spelling, not an operation; no migration (manager ruling, tidy-ant-251)"
+fn verdict(class: DispositionClass, basis: String, evidence: String) -> DispositionVerdict {
+  DispositionVerdict { class: class, basis: basis, evidence: evidence }
+}
+
+fn classify_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
+  match disposition_claim_for(spelling: spelling) {
+    Present { value: c } => verdict(class: DispositionInFlight, basis: "in-flight", evidence: "claimed by " + c.change + "; dissolves when " + c.dissolves_when)
+    Absent => classify_unclaimed_row(spelling: spelling, source: source, target: target, decls: decls)
+  }
+}
+
+fn classify_unclaimed_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
+  if starts_with(s: source, prefix: "ambient:kernel_") {
+    verdict(class: DispositionKernelGrounding, basis: "operator-ruling", evidence: "kernel grounding: the spelling is a kernel token or type spelling, not an operation; no migration (manager ruling, tidy-ant-251)")
   } else if source == "generated" {
-    "C\tgenerated-source\tthe compiler minted this reference (binding source generated) and it binds " + target
+    verdict(class: DispositionC, basis: "generated-source", evidence: "the compiler minted this reference (binding source generated) and it binds " + target)
   } else {
     match egress_observing_trigger(spelling: spelling) {
-      Present { value: next } => "D\tegress-evidence\tprimitive_egress row observes or mutates outside the value graph; retirement trigger: " + next
-      Absent =>
-        if source == "ambient:collection_roster" {
-          match declaration_at_path(decls: decls, path: target) {
-            Present { value: d } => "A\tbinding-identity\tthe roster binds the spelling to the declaration " + declaration_evidence(decl: d)
-            Absent => "A\tbinding-identity\tthe roster binds the spelling to " + target + " (no declaration row printed for it in the N7 closure)"
-          }
-        } else {
-          match declaration_named(decls: decls, name: spelling) {
-            Present { value: d } => "A\tHEURISTIC-name-match\tdeclaration " + declaration_evidence(decl: d) + " (name match only; argument types are not compared)"
-            Absent => "B\tHEURISTIC-no-name-match\tnone in the N7 closure"
-          }
-        }
+      Present { value: next } => verdict(class: DispositionD, basis: "egress-evidence", evidence: "primitive_egress row observes or mutates outside the value graph; retirement trigger: " + next)
+      Absent => classify_declared_row(spelling: spelling, source: source, target: target, decls: decls)
+    }
+  }
+}
+
+fn classify_declared_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
+  if source == "ambient:collection_roster" {
+    match declaration_at_path(decls: decls, path: target) {
+      Present { value: d } => verdict(class: DispositionA, basis: "binding-identity", evidence: "the roster binds the spelling to the declaration " + declaration_evidence(decl: d))
+      Absent => verdict(class: DispositionA, basis: "binding-identity", evidence: "the roster binds the spelling to " + target + " (no declaration row printed for it in the N7 closure)")
+    }
+  } else {
+    match declaration_named(decls: decls, name: spelling) {
+      Present { value: d } => verdict(class: DispositionA, basis: "HEURISTIC-name-match", evidence: "declaration " + declaration_evidence(decl: d) + " (name match only; argument types are not compared)")
+      Absent => verdict(class: DispositionB, basis: "HEURISTIC-no-name-match", evidence: "none in the N7 closure")
     }
   }
 }
@@ -118,7 +178,7 @@ fn in_closure_modules(modules: List<String>, attribution: Map<String, List<Strin
   count(modules |> filter(m => module_subjects_text(attribution: attribution, module: m) != "-"))
 }
 
-fn ambient_operation_rows(tree_stdout: String) -> List<String> {
+fn ambient_operation_rows(tree_stdout: String) -> List<DispositionRow> {
   let selected = distinct_lines(lines: binding_lines(stdout: tree_stdout)) |> filter(l => is_in_scope_source(source: field_at(line: l, index: 4)))
   let decls = distinct_lines(lines: declaration_lines(stdout: tree_stdout))
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
@@ -135,19 +195,29 @@ fn ambient_operation_rows(tree_stdout: String) -> List<String> {
     let spelling = field_at(line: k, index: 1)
     let target = field_at(line: k, index: 2)
     let modules = distinct_lines(lines: match map_get(mods, k) { Present { value: xs } => xs  Absent => [] })
-    "disposition\t" + spelling + "\t" + source + "\t" + target
-      + "\t" + to_string(match map_get(sites, k) { Present { value: n } => n  Absent => 0 })
-      + "\t" + to_string(count(modules))
-      + "\t" + to_string(in_closure_modules(modules: modules, attribution: attribution)) + "/" + to_string(count(modules))
-      + "\t" + classify_row(spelling: spelling, source: source, target: target, decls: decls)
+    DispositionRow {
+      spelling: spelling
+      source: source
+      target: target
+      call_sites: match map_get(sites, k) { Present { value: n } => n  Absent => 0 }
+      modules: count(modules)
+      in_closure: in_closure_modules(modules: modules, attribution: attribution)
+      verdict: classify_row(spelling: spelling, source: source, target: target, decls: decls)
+    }
   })
 }
 
-fn class_count(rows: List<String>, class: String) -> Int {
-  count(rows |> filter(r => field_at(line: r, index: 7) == class))
+fn render_disposition_row(r: DispositionRow) -> String {
+  "disposition\t" + r.spelling + "\t" + r.source + "\t" + r.target + "\t" + to_string(r.call_sites) + "\t" + to_string(r.modules)
+    + "\t" + to_string(r.in_closure) + "/" + to_string(r.modules)
+    + "\t" + disposition_class_text(class: r.verdict.class) + "\t" + r.verdict.basis + "\t" + r.verdict.evidence
 }
 
-fn ambient_operation_summary(rows: List<String>) -> List<String> {
+fn class_count(rows: List<DispositionRow>, class: String) -> Int {
+  count(rows |> filter(r => disposition_class_text(class: r.verdict.class) == class))
+}
+
+fn ambient_operation_summary(rows: List<DispositionRow>) -> List<String> {
   ["in-flight", "A", "B", "C", "D", "kernel-grounding"] |> map(c => "disposition_summary\t" + c + "\t" + to_string(class_count(rows: rows, class: c)))
 }
 
@@ -189,16 +259,16 @@ fn control_binding(name: String, source: String, target: String) -> String {
   "binding\tctl.mod\t" + name + "\t0\t" + source + "\t" + target + "\t1:1"
 }
 
-fn control_class_of(rows: List<String>, spelling: String) -> String {
-  match first(rows |> filter(r => field_at(line: r, index: 1) == spelling)) {
-    Present { value: r } => field_at(line: r, index: 7)
+fn control_class_of(rows: List<DispositionRow>, spelling: String) -> String {
+  match first(rows |> filter(r => r.spelling == spelling)) {
+    Present { value: r } => disposition_class_text(class: r.verdict.class)
     Absent => "missing-row"
   }
 }
 
 // THE CLASSIFIER'S OWN DISCRIMINATING CONTROL: a synthetic census stdout holding one spelling per class, whose
 // answer is known by construction (the D spelling is read from the egress ledger itself, so it cannot go stale).
-// A shifted tab index in row_key or in the class column makes a spelling land in the wrong class, and the
+// A shifted tab index in row_key (the census-line fields it joins on) makes a spelling land in the wrong class, and the
 // reading refuses (exit 1) instead of printing a well-formed table of wrong rows.
 fn disposition_classifier_control_failure() -> Optional<String> {
   match observing_runtime_name() {
@@ -224,7 +294,7 @@ fn disposition_classifier_control_for(d: String) -> Optional<String> {
 fn disposition_response(tree_stdout: String) -> CliWireResponse {
   let rows = ambient_operation_rows(tree_stdout: tree_stdout)
   let header = "subjects\t" + join(ambient_census_subjects(), separator: ",") + "\n"
-  let bytes = header + (rows |> join(separator: "\n")) + "\n" + (ambient_operation_summary(rows: rows) |> join(separator: "\n")) + "\n"
+  let bytes = header + (rows |> map(r => render_disposition_row(r: r)) |> join(separator: "\n")) + "\n" + (ambient_operation_summary(rows: rows) |> join(separator: "\n")) + "\n"
   if count(declaration_lines(stdout: tree_stdout)) == 0 {
     CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "the run printed no binding_declaration row: no declaration was observed, so no row can be told A from B" } }
   } else if count(rows) == 0 {
