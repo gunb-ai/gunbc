@@ -850,10 +850,28 @@ test fn the_name_the_host_yields_is_the_join_key_even_when_it_carries_another_sl
   let foreign = registration_leg_named(n: "01", name: minted(n: "02", tag: slot_current_mint_tag))
   let idle = admission_pass(legs: listener_legs_with(n: "01", reg: foreign), roster: roster_constant(list_stdout: roster_of(entries: [registered_current(n: "02", id: 8, busy: false)])), environment: route_environment())
   let busy = admission_pass(legs: listener_legs_with(n: "01", reg: foreign), roster: roster_constant(list_stdout: roster_of(entries: [registered_current(n: "02", id: 8, busy: true)])), environment: route_environment())
+  // Same host answer, a roster that carries rows but NOT this name: the join has to refuse on the name it
+  // actually tried, which is the foreign one. A roster of rows rather than an empty one, so the refusal is
+  // the join's own absence verdict and not an unavailable-roster reading.
+  let absent = admission_pass(legs: listener_legs_with(n: "01", reg: foreign), roster: roster_constant(list_stdout: roster_of(entries: [registered_current(n: "03", id: 9, busy: false)])), environment: route_environment())
+  // The three shapes the join can give for a name that belongs to a DIFFERENT slot: matched-not-busy,
+  // matched-busy, and not-on-the-roster. The first is the discriminating one -- under the shipped defect
+  // the join looks up the bare "srv3-01", finds nothing, and refuses, so this slot could never drain.
+  // The third proves the key was the host's identity and not the slot's, because the refusal has to name
+  // the FOREIGN name it tried to join on.
+  //
+  // What is deliberately NOT asserted here: the busy verdict is checked through the rendering the bracket
+  // actually produces for a busy registration ("the readings disagree", the same wording the roster-busy
+  // control uses), NOT through the registration name. A roster-busy refusal quotes no name -- it reports
+  // the disagreement between the roster and the cgroup -- and an assertion on a string the bracket does
+  // not print is a control that fails for the wrong reason.
   step_word(r: idle) == "drained:1"
     && string_contains(s: step_word(r: busy), pattern: "not-closed: ")
-    && string_contains(s: step_word(r: busy), pattern: minted(n: "02", tag: slot_current_mint_tag))
+    && string_contains(s: step_word(r: busy), pattern: "the readings disagree")
     && !string_contains(s: step_word(r: busy), pattern: minted(n: "01", tag: slot_current_mint_tag))
+    && string_contains(s: step_word(r: absent), pattern: "is ABSENT from the roster")
+    && string_contains(s: step_word(r: absent), pattern: minted(n: "02", tag: slot_current_mint_tag))
+    && !string_contains(s: step_word(r: absent), pattern: minted(n: "01", tag: slot_current_mint_tag))
 }
 
 // RED (unreadable identity): the host holds no readable current registration -- the file is gone or the read
