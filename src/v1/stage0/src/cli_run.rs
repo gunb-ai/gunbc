@@ -20975,6 +20975,38 @@ fn read_frozen_roster_at_commit(
     Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
 }
 
+/// THE INSTRUMENT'S THIN READOUT over the SAME authority the required floor consults:
+/// `collect_frozen_path_deferral_additions`, which joins the live tree's typed
+/// FrozenPathDeferral entries (via `frozen_path_deferral_head_keys`) against the resolved diff
+/// baseline. This function adds NO judgment of its own — no second parser, no second comparison
+/// (DESIGN §5: a check restating a constraint the model already carries is a second representation
+/// of it). It renders the join's verdict as one tagged String for the dag instrument program
+/// `dag/gunbc/instruments/witness_deferral_freeze_population.dag`:
+/// * `refused|<cause>` — the join itself could not run (the baseline or a file read failed); the
+///   instrument refuses with a located diagnostic, never a silent pass (§5: every path succeeds
+///   fully or fails with a typed, located diagnostic).
+/// * `bounded` — no live identity sits outside the baseline population: the frozen list is bounded
+///   and shrinking only (an identity REMOVED from the roster shrinks the live set, so the join
+///   still holds — this is the removal arm's permit).
+/// * `unbounded|<identity>;;...` — at least one identity is outside the baseline population: a
+///   deferral was ADDED without its identity being in the drop row's declared population, which is
+///   the additions arm's refusal.
+/// Fixture determinism comes from the resolver's operator-override input (GUNBC_CI_DIFF_BASE), not
+/// from a test-only code path: a head-built run with the override pinned at HEAD self-compares, so
+/// the join reduces to exactly the working-tree identities — the planted entry, or its absence.
+pub fn witness_deferral_freeze_population_census() -> String {
+    match collect_frozen_path_deferral_additions() {
+        Err(reason) => format!("refused|{reason}"),
+        Ok(additions) => {
+            if additions.is_empty() {
+                "bounded".to_string()
+            } else {
+                format!("unbounded|{}", additions.join(";;"))
+            }
+        }
+    }
+}
+
 fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), String> {
     if additions.is_empty() {
         return Ok(());
@@ -26976,9 +27008,19 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
     FunctionNotFound,
+    /// A file-grain row (`check_fns: []`) whose entry file carries no TEST MARKER: the sentinel
+    /// promises every marked declaration in the file, and a marked-empty file promises nothing,
+    /// so the row holds no witness. Its own cause, distinct from a named function going missing.
+    FileGrainEntryHasNoMarkedDeclarations,
+    /// A file-grain row whose entry file cannot be read to enumerate markers.
+    FileGrainEntryUnreadable,
 }
 
 #[derive(Debug, Clone)]
