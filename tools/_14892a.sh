@@ -62,11 +62,11 @@ runclaims() { # tag tree entry listfile chunksize wet
   done
 }
 echo "=== HEAD witness claims (bound) $(date -u +%H:%M:%S)Z"
-runclaims h $T $WIT $REPO/tools/fns892_hostreset.txt 8 "--wet"
+runclaims h $T $WIT $REPO/tools/fns892_hostreset.txt 8 ""
 echo "=== HEAD mtcollins claims (bound) $(date -u +%H:%M:%S)Z"
-runclaims hmt $T $MTWIT $REPO/tools/fns892_mtcollins.txt 8 "--wet"
+runclaims hmt $T $MTWIT $REPO/tools/fns892_mtcollins.txt 8 ""
 echo "=== MUTANT witness claims (bound) $(date -u +%H:%M:%S)Z"
-runclaims m $M $WIT $REPO/tools/fns892_hostreset.txt 8 "--wet"
+runclaims m $M $WIT $REPO/tools/fns892_hostreset.txt 8 ""
 # ---- regen: per-tree gunbc, unbound ----
 (cd $T && CARGO_TARGET_DIR=/root/workspace/repo-root/.t892gh cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -1)
 GH=/root/workspace/repo-root/.t892gh/release/gunbc
