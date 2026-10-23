@@ -77,19 +77,26 @@ for f in $FILES; do
   i=0; tagn=0
   while [ $i -lt ${#CLAIMS[@]} ]; do
     [ $(date +%s) -ge $END ] && break
-    batch=("${CLAIMS[@]:i:CHUNK}")
-    while :; do
-      run_chunk "${TREE}_$(basename $f .dag)_${tagn}_n${#batch[@]}" "$f" "${batch[@]}"
-      rc=$?
-      [ $rc -eq 0 ] && break
-      # failed chunk: if single claim, keep UNOBSERVED rows; else bisect
-      [ ${#batch[@]} -le 1 ] && break
-      half=$(( ${#batch[@]} / 2 ))
-      run_chunk "${TREE}_$(basename $f .dag)_${tagn}_bisect${half}" "$f" "${batch[@]:0:half}" || true
-      run_chunk "${TREE}_$(basename $f .dag)_${tagn}_bisectrest" "$f" "${batch[@]:half}" || true
-      break
+    # launch up to N chunks concurrently; each writes its own out file + cgroup child
+    pids=(); tags=(); batches=()
+    for j in $(seq 0 $((N-1))); do
+      b=("${CLAIMS[@]:i+j*CHUNK:CHUNK}")
+      [ ${#b[@]} -eq 0 ] && break
+      tag="${TREE}_$(basename $f .dag)_${tagn}_j${j}_n${#b[@]}"
+      ( run_chunk "$tag" "$f" "${b[@]}" > /tmp/w805p_out/$tag.rows 2>/dev/null ) &
+      pids+=($!); tags+=("$tag"); batches+=("${#b[@]}")
     done
-    i=$((i+${#batch[@]})); tagn=$((tagn+1))
+    for p in "${pids[@]}"; do wait $p || true; done
+    for tag in "${tags[@]}"; do cat /tmp/w805p_out/$tag.rows 2>/dev/null; done
+    # requeue sweep: any UNOBSERVED rows with cause=timeout/oom in multi-claim chunks -> rerun singly, once
+    for tag in "${tags[@]}"; do
+      grep -E ' UNOBSERVED [0-9]+ (na|[0-9]+) (timeout|oom|rc=137)$' /tmp/w805p_out/$tag.rows 2>/dev/null | while read -r _ _ ent nm _ _ _; do
+        echo "RETRY1 $TREE $ent $nm"
+        run_chunk "${tag}_rt_$(echo $nm | cut -c1-24)" "$ent" "$nm"
+      done
+    done
+    cnt=${#CLAIMS[@]}; i=$((i+cnt)); tagn=$((tagn+1))
+    true
   done
   echo "FILEDONE $TREE $f $(date -u +%H:%M:%S)Z"
 done
