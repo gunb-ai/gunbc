@@ -54,6 +54,7 @@ import extdeps.git {
   git_local_config_get_command, git_core_shared_repository_config_key,
   git_core_shared_repository_group_value, git_gc_auto_config_key, git_maintenance_auto_config_key,
   git_disabled_config_value, git_disabled_maintenance_config_value,
+  git_absolute_git_dir_premise_argv,
 }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, install_empty_file_command,
@@ -63,11 +64,6 @@ import gunbc.managed_directory { declared_directory_mode }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
 import extdeps.tools.findutils { find_subtree_mode_readback_command, find_path_probe_command }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
-import extdeps.languages.bash.invocation { bash_program_command }
-import gunbc.live_deploy.emit {
-  dashboard_git_worker_repository_premise_gate_command_text,
-  dashboard_git_worker_repository_premise_refusal_sentence,
-}
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, DashboardLocalProvision, DashboardEnsureGitSharedRepositoryPosture,
   DashboardMigrateGitWorkerSubtree, srv1_lab_dashboard_instance, dashboard_git_worker_subtree_walk_depth,
@@ -1359,60 +1355,68 @@ test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> 
   }
 }
 
-// ===================== WORKER-ROOT-EQUIVALENT-3: the repository premise gate, executed =====================
+// ===================== WORKER-ROOT-EQUIVALENT-3: the repository premise, executed =====================
 //
-// The gate is the fix's load-bearing arm. It admits ONLY an established repository -- one whose
-// --absolute-git-dir IS the directory itself -- and refuses every state in which the git subtree steps
-// would write against a non-repository. It is ONE test fn per planted state so a red run names the state
-// that failed (review: decompose, do not explain a whole-tree false). Each test feeds the apply's OWN
-// gate text (dashboard_git_worker_repository_premise_gate_command_text -- the single authority the step
-// runs) to `bash -c` over the host route and asserts BOTH signals: the EXIT CODE and the REFUSAL SENTENCE
-// ON STDOUT.
+// THE PREMISE IS THE FIX'S LOAD-BEARING ARM, AND IT IS ONE EXIT STATUS, NOT A SHELL SCRIPT. It admits ONLY
+// an established repository -- one whose git resolves as a real .git directory -- and refuses every state in
+// which the git subtree legs would write against a non-repository. It is ONE test fn per planted state so a
+// red run names the state that failed (review: decompose, do not explain a whole-tree false). Each test runs
+// the apply's OWN premise ArgvCommand over the host route and asserts its EXIT CODE; the refusals also read
+// git's OWN "not a git repository" on stderr, so a refuse arm cannot go green on an unrelated failure.
 //
-// WHY THE RAW OBSERVER, AND WHY ONE READ DECIDES EVERY STATE:
-//  (a) the gate's refusal sentence is on STDOUT (operator convention). run_shell_command_capture
-//      DISCARDS stdout on a nonzero exit, so a capture-based claim could not read a refusal -- the
-//      earlier "no gate logged a failure" symptom. This uses run_shell_command_observe, the raw
-//      {exit_code, stdout, stderr} triple gunbc.command_runner exists to hand back for exactly this
-//      caller ("whose evidence IS the stdout of a run that failed"), so the exit code and the stdout
-//      sentence are BOTH read off a refused run;
-//  (b) the single read git rev-parse --absolute-git-dir decides every state, because git's OWN discovery
-//      rules what counts as a repository. OBSERVED on the qualification host (srv1, git 2.43.0): on the
-//      fabricated skeleton -- .git/objects, .git/refs, .git/logs present but NO HEAD -- rev-parse
-//      --absolute-git-dir exits 128 ("not a git repository"), exactly as it does on a plain directory and
-//      an absent path. Git accepts a directory as a .git only when it holds a valid HEAD, so the capture
-//      is EMPTY for the fabrication and the path comparison refuses it. (An earlier draft of this claim
-//      asserted git 2.43 resolved a HEAD-less .git with exit 0, which would have needed a second,
-//      HEAD-based premise; that behaviour was NEVER observed -- it was inferred from a run whose gate text
-//      was itself broken, and the qualification host contradicts it. There is no consumer that requires
-//      refusing a well-formed HEAD whose object is missing -- a corrupt repository no producer makes -- so
-//      the gate models ONE premise, not two. DESIGN section 4d: do not keep modeled behavior no consumer
-//      requires.) Not a directory test.
+// WHY AN EXIT-STATUS PREMISE, NOT A CAPTURED COMPARISON, AND WHY ONE READ DECIDES EVERY STATE:
+//  (a) the #14660 cutover (c11aa231) deleted the bash gate this claim used to render
+//      (dashboard_git_worker_repository_premise_gate_command_text) and its stdout refusal sentence. The
+//      ruling is that the premise is not a shell script at all: it is one argv, git
+//      -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir. Passing an EXPLICIT
+//      --git-dir turns OFF git's upward discovery, so a nested directory can no longer resolve to an outer
+//      repository (that is why this replaces the deleted path-EQUALITY gate, which needed the raw observer to
+//      read a stdout sentence); the EXIT STATUS is the verdict, so there is no capture, no comparison, no
+//      printf and no quoting hazard left to go wrong. run_shell_command_observe (the raw {exit_code, stdout,
+//      stderr} triple) is used because the refusals read stderr -- run_shell_command_capture discards output
+//      on a nonzero exit.
+//  (b) the single read decides every state, because git's OWN discovery rules what counts as a repository.
+//      OBSERVED on the qualification host (srv1, git 2.43.0, uid 1000): the fabricated skeleton -- .git/objects,
+//      .git/refs, .git/logs present but NO HEAD -- a plain directory, and a directory nested in a repository
+//      each exit 128 and print "not a git repository". Git accepts a directory as a .git only when it holds a
+//      valid HEAD, so the skeleton is refused on any git. (An earlier draft asserted git 2.43 resolved a
+//      HEAD-less .git with exit 0, which would have needed a second HEAD-based premise; that behaviour was
+//      NEVER observed -- it was inferred from a run whose gate text was itself broken, and the qualification
+//      host contradicts it. No consumer requires refusing a well-formed HEAD whose object is missing -- a
+//      corrupt repository no producer makes -- so the premise models ONE read, not two. DESIGN section 4d.)
 //
-// RED on main: there was no gate builder and no such command text at 5ea3ffcd, so these cannot build.
-// RED at the pre-hardening head too: the old gate's else was a bare `:` and a plain directory was
-// admitted, so the refuse-state tests are the discriminating arms.
-
-// THE GATE RUN, AS THE SHIPPED COMMAND: `bash -c <gate text>` through the RAW observer, which keeps
-// stdout EVEN ON A NONZERO EXIT (gunbc.command_runner's run_shell_command_observe, the triple this
-// module exists to hand back -- run_shell_command_capture would throw the refusal sentence away). The
-// gate's verdict is the exit code; its refusal sentence is the stdout of a run that failed -- precisely
-// the evidence the raw observation was built to preserve.
+// RED on main: #14660 deleted the gate builder and its command text, and the typed premise builder did not
+// exist there, so the whole gate block cannot build at main -- the discriminating arms.
+// THE PREMISE, RUN THROUGH ITS OWN TYPED ARGV. #14660 (c11aa231) deleted the bash gate this claim used
+// to render (dashboard_git_worker_repository_premise_gate_command_text) and its stdout refusal sentence;
+// the ruling (bright-moth-475, msg_dd453af6) is that the premise is not a shell script at all -- it is one
+// argv, git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir, whose EXIT STATUS
+// is the premise. This runs the very ArgvCommand the realized ApplyLegDiagnosedCommand carries, so the wet
 fn wre3_gate_observation(repo: String) -> ProcessObservation {
   run_shell_command_observe(
-    command: bash_program_command(script: dashboard_git_worker_repository_premise_gate_command_text(repo: repo)),
+    command: git_absolute_git_dir_premise_argv(repo: repo as NonEmptyStr),
     transport: LocalExec,
   )
 }
 
+// ADMIT: the premise exited 0 (git resolved <repo>/.git through the explicit --git-dir). On an admit git
+// PRINTS the resolved git-dir, so stdout is deliberately NOT asserted empty -- that check belonged to the
+// deleted gate, which printed nothing.
 fn wre3_gate_passes(repo: String) -> Bool {
   wre3_gate_observation(repo: repo).exit_code == 0
 }
 
-// The refusal sentence the gate printed to STDOUT (kept on the failed run by the raw observer), trimmed.
-// "" on an admit -- an admitted gate writes nothing, so this is also the admit check.
-fn wre3_gate_stdout(repo: String) -> String {
-  trim(s: wre3_gate_observation(repo: repo).stdout)
+// REFUSE: the premise exited NONZERO AND git itself said the directory is not a repository. The second
+// half is the discrimination that keeps a broken claim from satisfying a refuse arm by accident: a claim
+// that only checked "exit != 0" would go green on an unrelated failure (a missing git, an unwritable
+// scratch root). OBSERVED on the qualification host (srv1, git 2.43.0, uid 1000): a HEAD-less .git
+// skeleton, a plain directory and a directory nested in a repository each exit 128 and print "not a git
+// repository" -- and because the premise passes an EXPLICIT --git-dir, the nested case cannot resolve to
+// the outer repository (upward discovery is off), which is exactly why this is one exit-status premise and
+// not the deleted path-equality gate.
+fn wre3_gate_refused(repo: String) -> Bool {
+  let o = wre3_gate_observation(repo: repo)
+  o.exit_code != 0 && string_contains(s: o.stderr, pattern: "not a git repository")
 }
 
 // A fresh scratch root for one state's claim; "" if the host gave us none.
@@ -1420,7 +1424,7 @@ fn wre3_scratch_root() -> String {
   wet_out(command: mktemp_directory_command(template: "/tmp/wre3-gate-XXXXXX" as NonEmptyStr))
 }
 
-// ADMIT STATE 1 -- a repository with a commit: exit 0 and NO refusal sentence on stdout.
+// ADMIT STATE 1 -- a repository with a commit: the premise exits 0 (git resolves <repo>/.git).
 test fn the_premise_gate_admits_a_committed_repository() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1428,7 +1432,7 @@ test fn the_premise_gate_admits_a_committed_repository() -> Bool {
   } else {
     let repo = join([root, "/real"], "")
     let planted = wet_ok(command: mkdir_parents_command(path: repo)) && wet_repo_with_a_commit(repo: repo)
-    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stdout(repo: repo) == ""
+    let admitted = wre3_gate_passes(repo: repo)
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && admitted && cleaned
   }
@@ -1436,8 +1440,8 @@ test fn the_premise_gate_admits_a_committed_repository() -> Bool {
 
 // ADMIT STATE 2 -- git init, no commit yet (the bootstrap arm's own state): an unborn HEAD is still an
 // established repository (git init writes .git/HEAD -> refs/heads/<branch>), so --absolute-git-dir answers
-// <repo>/.git and the path premise ADMITS it. This is a load-bearing control: the gate must not refuse a
-// freshly bootstrapped tree. Exit 0, no sentence.
+// <repo>/.git and the premise ADMITS it. This is a load-bearing control: the premise must not refuse a
+// freshly bootstrapped tree. Exit 0.
 test fn the_premise_gate_admits_an_unborn_repository() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1445,7 +1449,7 @@ test fn the_premise_gate_admits_an_unborn_repository() -> Bool {
   } else {
     let repo = join([root, "/unborn"], "")
     let planted = wet_ok(command: mkdir_parents_command(path: repo)) && wet_ok(command: git_init_quiet_command(repository_dir: repo))
-    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stdout(repo: repo) == ""
+    let admitted = wre3_gate_passes(repo: repo)
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && admitted && cleaned
   }
@@ -1456,7 +1460,7 @@ test fn the_premise_gate_admits_an_unborn_repository() -> Bool {
 // --absolute-git-dir is <repo>/.git, so the single premise ADMITS it. This is the control that would catch
 // a gate which wrongly required an ATTACHED branch (per git's own docs, symbolic-ref HEAD fails on a
 // detached HEAD -- a premise built on that read would have taken the whole deploy down though the tree is
-// real). Exit 0, no sentence.
+// real). Exit 0.
 test fn the_premise_gate_admits_a_detached_head_repository() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1467,7 +1471,7 @@ test fn the_premise_gate_admits_a_detached_head_repository() -> Bool {
     let planted = wet_ok(command: mkdir_parents_command(path: repo))
       && wet_repo_with_a_commit(repo: repo)
       && wet_ok(command: git_checkout_revision_command(repository_dir: repo, revision: "HEAD"))
-    let admitted = wre3_gate_passes(repo: repo) && wre3_gate_stdout(repo: repo) == ""
+    let admitted = wre3_gate_passes(repo: repo)
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && admitted && cleaned
   }
@@ -1476,12 +1480,11 @@ test fn the_premise_gate_admits_a_detached_head_repository() -> Bool {
 // REFUSE STATE 1 -- the FABRICATION: a .git DIRECTORY with objects/refs/logs and NO HEAD. THE
 // discriminating arm: this is the exact skeleton the old standing pre-position fabricated, and it is the
 // state a directory test would wave through. OBSERVED on the qualification host (srv1, git 2.43.0): there
-// git rev-parse --absolute-git-dir exits 128 ("not a git repository") -- git accepts a directory as a .git
-// only when it holds a valid HEAD -- so the capture is empty, the comparison against <repo>/.git is true,
-// and the gate prints the PATH refusal and exits nonzero. The claim asserts a NONZERO exit AND that exact
-// sentence (trimmed, straight from the builder -- no prose re-typed), so a gate that merely broke (bare
-// operand, arity error, silent admit) cannot satisfy it by accident. The find below first proves the state
-// really is HEAD-less, so this is the fabrication and not a real repository.
+// the premise exits 128 and prints "not a git repository" -- git accepts a directory as a .git only when it
+// holds a valid HEAD. The claim asserts a NONZERO exit AND that stderr phrase, so a premise that merely
+// broke (missing git, an unwritable scratch root, a silent admit) cannot satisfy it for the wrong reason.
+// The find below first proves the state really is HEAD-less, so this is the fabrication and not a real
+// repository.
 test fn the_premise_gate_refuses_a_headless_dot_git_skeleton() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1495,15 +1498,14 @@ test fn the_premise_gate_refuses_a_headless_dot_git_skeleton() -> Bool {
     let headless = !wet_ok(command: find_path_probe_command(path: join([skel, "/.git/HEAD"], ""), kind: "f", clause: []))
     // The single premise refuses it, so assert ITS sentence exactly -- not a loose prefix a broken gate
     // could satisfy for the wrong reason.
-    let refused = !wre3_gate_passes(repo: skel)
-      && wre3_gate_stdout(repo: skel) == trim(s: dashboard_git_worker_repository_premise_refusal_sentence(repo: skel))
+    let refused = wre3_gate_refused(repo: skel)
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && headless && refused && cleaned
   }
 }
 
-// REFUSE STATE 2 -- a plain directory, no repository at all: the path premise fires (its --absolute-
-// git-dir is not <repo>/.git). Assert the specific PATH sentence, from the model builder (trimmed).
+// REFUSE STATE 2 -- a plain directory, no repository at all: the premise cannot resolve it as a git dir,
+// so it exits nonzero with git's own "not a git repository". Assert BOTH, not just the exit code.
 test fn the_premise_gate_refuses_a_plain_directory() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1511,18 +1513,16 @@ test fn the_premise_gate_refuses_a_plain_directory() -> Bool {
   } else {
     let plain = join([root, "/plain"], "")
     let planted = wet_ok(command: mkdir_parents_command(path: plain))
-    let refused = !wre3_gate_passes(repo: plain)
-      && wre3_gate_stdout(repo: plain) == trim(s: dashboard_git_worker_repository_premise_refusal_sentence(repo: plain))
+    let refused = wre3_gate_refused(repo: plain)
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && refused && cleaned
   }
 }
 
-// REFUSE STATE 3 -- a directory NESTED INSIDE a repository: git walks up and resolves the OUTER .git,
-// so its --absolute-git-dir != <nested>/.git -- a directory test on the nested dir's own .git would
-// never even run, and this is why the gate is a path EQUALITY, not an existence check. Assert exit
-// nonzero and the refusal sentence (the outer resolution is what makes the comparison against
-// <nested>/.git fail).
+// REFUSE STATE 3 -- a directory NESTED INSIDE a repository. The premise passes an EXPLICIT --git-dir
+// = <nested>/.git, which turns git's upward discovery OFF, so the nested directory cannot resolve to
+// the OUTER .git; it is refused on its own merits (a directory test on the nested dir's own .git would
+// never even run). Assert exit nonzero AND git's own "not a git repository" on stderr.
 test fn the_premise_gate_refuses_a_directory_nested_in_a_repository() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1533,8 +1533,7 @@ test fn the_premise_gate_refuses_a_directory_nested_in_a_repository() -> Bool {
     let planted = wet_ok(command: mkdir_parents_command(path: outer))
       && wet_ok(command: git_init_quiet_command(repository_dir: outer))
       && wet_ok(command: mkdir_parents_command(path: nested))
-    let refused = !wre3_gate_passes(repo: nested)
-      && wre3_gate_stdout(repo: nested) == trim(s: dashboard_git_worker_repository_premise_refusal_sentence(repo: nested))
+    let refused = wre3_gate_refused(repo: nested)
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && refused && cleaned
   }
