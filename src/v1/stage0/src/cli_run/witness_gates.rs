@@ -807,18 +807,35 @@ pub(crate) fn commit_witness_claim_pair_resolvability_with_index(
     // claim was right and the scan was the second, wrong representation of the expansion rule.
     if test_module_hygiene_bridge::is_file_grain_function(function) {
         let path = super::workspace_root().join(entry);
-        return match test_module_hygiene_bridge::enumerate_entry_test_fns(
-            path.to_str().unwrap_or(entry),
-        ) {
-            Ok(markeds) if !markeds.is_empty() => CommitWitnessClaimPairResolvability::Resolvable,
-            Ok(_) => CommitWitnessClaimPairResolvability::FileGrainEntryHasNoMarkedDeclarations,
-            Err(_) => CommitWitnessClaimPairResolvability::FileGrainEntryUnreadable,
-        };
+        return file_grain_pair_resolvability(entry, path.to_str().unwrap_or(entry));
     }
     if names.contains(function) {
         CommitWitnessClaimPairResolvability::Resolvable
     } else {
         CommitWitnessClaimPairResolvability::FunctionNotFound
+    }
+}
+
+/// THE SENTINEL'S OWN VERDICT, READ OFF THE MARKER CHANNEL. Three refusals that the old scan
+/// collapsed into one wrong name: the file cannot be read at all (`FileGrainEntryUnreadable`),
+/// it parses but carries no TEST MARKER (`FileGrainEntryHasNoMarkedDeclarations` -- the sentinel
+/// promises every marked declaration and a marked-empty file promises nothing), or its source
+/// does not parse (`EntryResolveFailed`, the same cause a named-function row gets for the same
+/// fact). Kept separate from the index so the fixture test needs no whole-pool index build.
+pub(crate) fn file_grain_pair_resolvability(
+    entry: &str,
+    path: &str,
+) -> CommitWitnessClaimPairResolvability {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return CommitWitnessClaimPairResolvability::FileGrainEntryUnreadable,
+    };
+    match super::test_marker::test_marked_decl_names(&content, entry) {
+        Ok(markeds) if markeds.is_empty() => {
+            CommitWitnessClaimPairResolvability::FileGrainEntryHasNoMarkedDeclarations
+        }
+        Ok(_) => CommitWitnessClaimPairResolvability::Resolvable,
+        Err(detail) => CommitWitnessClaimPairResolvability::EntryResolveFailed { detail },
     }
 }
 
@@ -895,5 +912,65 @@ pub(crate) fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'stati
         ClaimOutcome::HostEffectRefused { .. } => "host_effect_refused",
         ClaimOutcome::Panicked { .. } => "panicked",
         ClaimOutcome::NotAttempted { .. } => "not_attempted",
+    }
+}
+
+#[cfg(test)]
+mod file_grain_resolvability_tests {
+    use super::*;
+
+    fn scratch_file(tag: &str, content: &str) -> std::path::PathBuf {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let id = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("gunbc_fgr_{tag}_{n}_{id}.dag"));
+        std::fs::write(&path, content).expect("write scratch fixture");
+        path
+    }
+
+    /// CONTROL: a file-grain entry with a TEST MARKER resolves through the marker channel.
+    /// Before the sentinel arm this returned `function_not_found` (the registry has no ""),
+    /// reding the six deliberate rows gunbc.commit_workflow declares.
+    #[test]
+    fn file_grain_entry_with_markers_is_resolvable() {
+        let path = scratch_file(
+            "marked",
+            "module fixture_file_grain\n\ntest fn planted_marker_holds() -> Bool { true }\n",
+        );
+        assert_eq!(
+            file_grain_pair_resolvability("tmp/fixture.dag", path.to_str().unwrap()),
+            CommitWitnessClaimPairResolvability::Resolvable
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// RED: a file-grain entry with no TEST MARKER gets its own typed refusal -- the sentinel
+    /// promises every marked declaration, and a marked-empty file promises nothing. This is NOT
+    /// `function_not_found` and NOT a silent pass: the row holds no witness and says so.
+    #[test]
+    fn file_grain_entry_without_markers_is_refused_by_its_own_arm() {
+        let path = scratch_file(
+            "unmarked",
+            "module fixture_unmarked\n\nfn plain_fn() -> Bool { true }\n",
+        );
+        assert_eq!(
+            file_grain_pair_resolvability("tmp/fixture.dag", path.to_str().unwrap()),
+            CommitWitnessClaimPairResolvability::FileGrainEntryHasNoMarkedDeclarations
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// The unreadable file gets its own arm too, not the marker-emptiness cause: three failures
+    /// that the pre-fix scan collapsed into one wrong name now carry three distinct causes.
+    #[test]
+    fn file_grain_entry_that_cannot_be_read_is_refused_as_unreadable() {
+        let missing = std::env::temp_dir().join("gunbc_fgr_definitely_absent_file.dag");
+        assert_eq!(
+            file_grain_pair_resolvability("tmp/fixture.dag", missing.to_str().unwrap()),
+            CommitWitnessClaimPairResolvability::FileGrainEntryUnreadable
+        );
     }
 }
