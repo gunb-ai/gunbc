@@ -38,6 +38,7 @@ import v2.std.node {
   ArrowBodyEdge,
   LoopBoundEdge,
   core_edge_label,
+  NotADeclaration
 }
 
 // Cited combiner Arrow bodies for per-op derivation (Wave 1 Gate 1 C1). Each row pairs a combiner
@@ -115,8 +116,8 @@ fn citation_conj_measure(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -151,9 +152,10 @@ fn citation_loop_body_linear_in(measure: Node) -> Node {
           kind: ComputationNode { behavior: Transform },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
-      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -180,12 +182,14 @@ fn citation_arrow_two_param_loop(
           kind: TypeNode { connective: Atom { identity: ^copied_port_citation_return_type } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       signature.order,
       Edge {
         label: core_edge_label(marker: ArrowBodyEdge),
-        target: citation_loop_body_linear_in(measure: measure)
+        target: citation_loop_body_linear_in(measure: measure),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

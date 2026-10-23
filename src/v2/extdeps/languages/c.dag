@@ -147,6 +147,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import std.host_text { chars }
 
@@ -901,7 +902,7 @@ fn c_atom(id: Symbol) -> Node {
 }
 
 fn c_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn c_concrete_tokens() -> List<ConcreteSyntaxToken> {

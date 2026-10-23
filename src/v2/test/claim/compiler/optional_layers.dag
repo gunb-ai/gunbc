@@ -31,7 +31,7 @@ import v2.std.inhabitance {
 }
 import v2.std.symbol_index { empty_symbol_index }
 
-import v2.std.node { Atom, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode, NotADeclaration }
 import v2.std.list_introduction { list_introduction_head_path }
 import v2.std.qualified_name { declaration_reference_node, optional_declaration_identity }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -50,8 +50,8 @@ fn ol_list_of(element: Node) -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
-      Edge { label: Positional, target: element }
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: element, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -90,7 +90,7 @@ fn ol_malformed_occupancy() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic) }
+      Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

@@ -50,6 +50,7 @@ import v2.std.node {
   MatchArmBodyEdge,
   MatchArmPatternEdge,
   Node,
+  NotADeclaration,
   Positional,
   Symbol,
   Transform,
@@ -136,7 +137,7 @@ fn rr_tree_with(root: Node, lookup: fn(Node) -> Optional<InferredFacts>) -> Infe
 }
 
 fn rr_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn rr_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
@@ -151,8 +152,8 @@ fn rr_arm(pattern: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
-      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
