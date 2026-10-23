@@ -66,6 +66,7 @@ import gunbc.auth.approval_broker {
   redemption_refusal_reason,
 }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_join_shape, list_push }
 
 // THE DURABLE HALF OF THE APPROVAL LOOP: WHERE A REQUEST WAITS, WHERE A DECISION LANDS, AND THE
 // KEY THAT MAKES A TAPPED LINK MEAN SOMETHING. gunbc.auth.approval_broker owns the lifecycle and

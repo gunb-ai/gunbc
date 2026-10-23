@@ -1,7 +1,7 @@
 module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
-import std.algebra { trim, skip }
+import std.algebra { trim, skip, collection_concat_shape, collection_count_shape, collection_join_shape, list_push }
 import std.decimal { decimal_digits_only }
 import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
