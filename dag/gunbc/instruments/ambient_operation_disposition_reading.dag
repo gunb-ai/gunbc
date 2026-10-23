@@ -389,7 +389,7 @@ fn disposition_classifier_control_for(d: String) -> Optional<String> {
   if stale_got != "list_push" || count(stale_claims(decls: declaration_lines(stdout: stdout))) != 0 { Present { value: "stale-claim control read '" + stale_got + "', expected list_push when a declaration exists and none otherwise" } }
   else if basis_got != basis_want { Present { value: "classifier control read bases " + basis_got + ", expected " + basis_want + " (verified candidate, unverified candidate, no candidate)" } }
   else if control_class_of(rows: rows, spelling: "map") != "A" { Present { value: "the verified-candidate control row map did not reach class A" } }
-  else if got == "in-flight,C,D,A,A,B,kernel-grounding,B" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B,kernel-grounding" } }
+  else if got == "in-flight,C,D,A,A,B,kernel-grounding,B" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B,kernel-grounding,B" } }
 }
 
 fn disposition_response(tree_stdout: String) -> CliWireResponse {
