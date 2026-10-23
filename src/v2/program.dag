@@ -58,6 +58,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -433,7 +434,7 @@ fn program_branch_effect_io_holds() -> Witness<Bool> {
 fn program_pick_if_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: callee }],
+    children: [Edge { label: Positional, target: callee, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }

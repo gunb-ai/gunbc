@@ -20,6 +20,7 @@ import v2.std.node {
   Node,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
@@ -48,7 +49,7 @@ data module_surface_atom: Node = Node {
 data module_container_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^child_mod }, target: module_surface_atom }
+    Edge { label: Authored { name: ^child_mod }, target: module_surface_atom, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -105,7 +106,8 @@ data malformed_record_root: Node = Node {
         kind: TypeNode { connective: Atom { identity: ^Text } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -131,7 +133,8 @@ data projection_named_record_root: Node = Node {
         kind: TypeNode { connective: Atom { identity: ^Text } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -175,7 +178,7 @@ data mixed_int_leaf: Node = Node {
 data mixed_module_and_unit_field_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^child_mod }, target: module_surface_atom },
+    Edge { label: Authored { name: ^child_mod }, target: module_surface_atom, declaration: NotADeclaration },
     binder_edge(name: ^clock_hz, type_node: mixed_int_leaf)
   ],
   occurrence_id: OccurrenceSynthetic
@@ -199,7 +202,8 @@ data conj_shaped_member_root: Node = Node {
         kind: TypeNode { connective: Conj },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -221,7 +225,8 @@ data arrow_shaped_member_root: Node = Node {
         kind: TypeNode { connective: Arrow },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -243,7 +248,8 @@ data computation_shaped_member_root: Node = Node {
         kind: ComputationNode { behavior: Value },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -261,7 +267,8 @@ data unstamped_conj_with_module_header_edge: Node = Node {
   children: [
     Edge {
       label: dag_surface_edge_label(edge: ^dag_surface_module_header),
-      target: dag_grammar_atom(id: ^dag_surface_module_header)
+      target: dag_grammar_atom(id: ^dag_surface_module_header),
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^x },
@@ -269,7 +276,8 @@ data unstamped_conj_with_module_header_edge: Node = Node {
         kind: TypeNode { connective: Atom { identity: ^Text } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -302,7 +310,8 @@ data stamped_fn_shell: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^grammar_production_identity_node_projection },
-      target: fn_decl_identity_atom
+      target: fn_decl_identity_atom,
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -311,7 +320,7 @@ data stamped_fn_shell: Node = Node {
 data module_with_stamped_fn_member: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^f }, target: stamped_fn_shell }
+    Edge { label: Authored { name: ^f }, target: stamped_fn_shell, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

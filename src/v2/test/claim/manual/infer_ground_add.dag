@@ -47,6 +47,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -343,7 +344,8 @@ fn fixture_add_resolved_node() -> Node {
           ],
           codomain: fixture_int_type_node(atom: ^fixture_add_body_int_atom),
           source: fixture_int_type_node(atom: ^fixture_add_int_atom)
-        )
+        ),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
