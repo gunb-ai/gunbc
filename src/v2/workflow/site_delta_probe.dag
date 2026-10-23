@@ -1,0 +1,85 @@
+module v2.workflow.site_delta_probe
+
+import std.algebra { fold_list }
+import std.types { List, String }
+import std.process { ProcessExit, exit_failure }
+import std.occurrence_identity { ReferencePosition, ValuePosition, TypeAnnotationPosition, ReturnPosition, LabelPosition, PatternTagPosition }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.reference_site_collector { ScopedReferenceSite, SiteHeadBinding, HeadBoundInFrame, HeadBoundAtRootValue, HeadBindingUndecided, HeadLexicallyUnbound, collect_scoped_module_reference_sites }
+import v2.workflow.roster_import_sweep { roster_qn_text }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+
+// MEASUREMENT PROBE (Seat 13, PR for the let-declaring-occurrence fix), a one-off, not an instrument: run on main and on the
+// fix to read the per-consumer site delta. For each path in paths_csv it prints one `site` line per reference site (position/head; count with sort | uniq -c), and, for the spelling `probe_spelling`, the located sites under imported=[] and imported=[spelling]
+// (the second reading is what a module-wide import of that name changes). Run:
+//   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/site_delta_probe.dag --function site_delta_probe --arg paths_csv=<csv>
+// The table is the refusal reason (the entry returns ProcessExit).
+fn probe_position_text(p: ReferencePosition) -> String {
+  match p {
+    ValuePosition => "value"
+    TypeAnnotationPosition => "type"
+    ReturnPosition => "return"
+    LabelPosition => "label"
+    PatternTagPosition => "pattern_tag"
+  }
+}
+
+fn probe_head_text(h: SiteHeadBinding) -> String {
+  match h {
+    HeadBoundInFrame => "frame"
+    HeadBoundAtRootValue => "root_value"
+    HeadBindingUndecided => "undecided"
+    HeadLexicallyUnbound => "unbound"
+  }
+}
+
+fn probe_class_of(s: ScopedReferenceSite) -> String {
+  probe_position_text(p: s.position) + "/" + probe_head_text(h: s.head)
+}
+
+fn probe_totals(path: String, sites: List<ScopedReferenceSite>) -> String {
+  fold_list(xs: sites, empty: "", cons: fn(acc, s) { acc + "site\t" + path + "\t" + probe_class_of(s: s) + "\n" })
+}
+
+fn probe_located(tag: String, path: String, spelling: String, sites: List<ScopedReferenceSite>) -> String {
+  fold_list(xs: sites, empty: "", cons: fn(acc, s) {
+    if roster_qn_text(qn: s.site.spelling) == spelling { acc + tag + "\t" + path + "\t" + spelling + "\t" + probe_class_of(s: s) + "\n" } else { acc }
+  })
+}
+
+fn probe_path_table(path: String, text: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => path + "\tGRAMMAR-UNPREPARED\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => path + "\tTOKENIZE-REFUSED\n"
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => path + "\tPARSE-REFUSED\n"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                Rejected { diagnostics: _ } => path + "\tNORMALIZE-REFUSED\n"
+                Accepted { value: scoped, diagnostics: _ } =>
+                  let bare = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: []).sites
+                  let imported = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: [symbol_intern_lexeme(lexeme: "count")]).sites
+                  probe_totals(path: path, sites: bare)
+                    + probe_located(tag: "count_bare", path: path, spelling: "count", sites: bare)
+                    + probe_located(tag: "count_imported", path: path, spelling: "count", sites: imported)
+              }
+          }
+      }
+  }
+}
+
+fn probe_path(acc: String, path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success { acc + probe_path_table(path: path, text: read.content) } else { acc + path + "\tUNREADABLE\n" }
+}
+
+fn site_delta_probe(paths_csv: String) -> ProcessExit {
+  exit_failure(reason: fold_list(xs: split(s: paths_csv, delimiter: ","), empty: "", cons: fn(acc, path) { probe_path(acc: acc, path: path) }))
+}
