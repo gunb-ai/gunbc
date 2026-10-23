@@ -5,7 +5,7 @@ import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes, ambient_name_candidates }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, AmbientNameKitType, ambient_name_homes, ambient_name_candidates }
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
 // emitted v2 compiler's census walk prints one `binding` line per module-level reference occurrence,
@@ -361,12 +361,30 @@ fn ambient_census_kit_module(row: AmbientNameHome, imported: Bool) -> String {
   "examples.kit_" + row.name + (if imported { "_imported" } else { "_unimported" })
 }
 
+fn kit_type_text(t: AmbientNameKitType) -> String {
+  t.name + (if count(t.arguments) == 0 { "" } else { "<" + (t.arguments |> map(a => kit_type_text(t: a)) |> join(separator: ", ")) + ">" })
+}
+
+// Every (home, name) a type mentions, each once: the imports a fixture needs are read off the references.
+fn kit_type_imports(t: AmbientNameKitType) -> List<String> {
+  fold(t.arguments, init: ["import " + t.home + " { " + t.name + " }"], f: fn(acc, a) {
+    fold(kit_type_imports(t: a), init: acc, f: fn(seen, i) { if count(seen |> filter(x => x == i)) == 0 { seen + [i] } else { seen } })
+  })
+}
+
+fn kit_call_imports(c: AmbientNameKitCall) -> List<String> {
+  fold(c.params |> map(p => p.type_ref) + [c.result], init: [], f: fn(acc, t) {
+    fold(kit_type_imports(t: t), init: acc, f: fn(seen, i) { if count(seen |> filter(x => x == i)) == 0 { seen + [i] } else { seen } })
+  })
+}
+
 fn ambient_census_kit_source(row: AmbientNameHome, imported: Bool) -> String {
   let c = row.kit_call
   "module " + ambient_census_kit_module(row: row, imported: imported) + "\n"
-    + "import std.types { " + c.type_imports + " }\n"
+    + (kit_call_imports(c: c) |> map(i => i + "\n") |> join(separator: ""))
     + (if imported { "import " + row.home + " { " + row.name + " }\n" } else { "" })
-    + "fn probe(" + c.params + ") -> " + c.result + " { " + row.name + "(" + c.args + ") }\n"
+    + "fn probe(" + (c.params |> map(p => p.name + ": " + kit_type_text(t: p.type_ref)) |> join(separator: ", ")) + ") -> " + kit_type_text(t: c.result)
+    + " { " + row.name + "(" + (c.params |> map(p => p.name) |> join(separator: ", ")) + ") }\n"
 }
 
 fn ambient_census_kit_files() -> List<AmbientCensusFixtureFile> {

@@ -267,7 +267,7 @@ fn rebind_red_failure(base_stdout: String, head_stdout: String) -> Optional<Stri
 }
 
 fn home_control_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "examples.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration, retired_contract: optional_absent(), kit_call: AmbientNameKitCall { type_imports: "Int" as NonEmptyStr, params: "x: Int" as NonEmptyStr, result: "Int" as NonEmptyStr, args: "x" as NonEmptyStr } }]
+  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "examples.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration, retired_contract: optional_absent(), kit_call: AmbientNameKitCall { params: [], result: kit_int() } }]
 }
 
 fn home_control_failure() -> Optional<String> {

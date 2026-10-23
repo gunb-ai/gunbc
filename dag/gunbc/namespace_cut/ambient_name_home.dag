@@ -28,16 +28,27 @@ type AmbientNameHomeOrigin
   = ExistingDeclaration
   | MintedDeclaration { reason: NonEmptyStr }
 
-// The call the acceptance kit's fixture pair makes of the name: a probe function of `params` returning `result`
-// whose body is `name(args)`, with `std.types` names `type_imports`. SUPPLIED BY THE WAVE with its row, because a
-// call shape is a fact of the name's signature, which no fixture template can guess (list_push takes a list and an
-// element; map_lookup does not). REQUIRED, not optional: a row without a call shape would make the kit's fixture
-// never observe the name, and one such row would turn the whole label into no-observation for every wave.
+// The call the acceptance kit's fixture pair makes of the name, as TYPED DATA: a probe whose parameters are `params`
+// and whose result is `result`, whose body forwards every parameter by name to `name`. A type reference names the
+// declaration it means (`home` + `name`), so the fixture's imports are DERIVED from the references and never listed
+// beside them. SUPPLIED BY THE WAVE with its row, because a call shape is a fact of the name's signature; it RESTATES
+// that signature, a second authority named in gunbc.rung_drop kit_call_shape_restates_the_home_signature and retired
+// when a signature reader callable before the census run exists. REQUIRED, not optional: a row without a call shape
+// would never observe the name, and one such row would turn the whole label into no-observation for every wave.
+type AmbientNameKitType {
+  home: NonEmptyStr
+  name: NonEmptyStr
+  arguments: List<AmbientNameKitType>
+}
+
+type AmbientNameKitParam {
+  name: NonEmptyStr
+  type_ref: AmbientNameKitType
+}
+
 type AmbientNameKitCall {
-  type_imports: NonEmptyStr
-  params: NonEmptyStr
-  result: NonEmptyStr
-  args: NonEmptyStr
+  params: List<AmbientNameKitParam>
+  result: AmbientNameKitType
 }
 
 type AmbientNameHome {
@@ -68,10 +79,19 @@ fn ambient_name_candidates() -> List<AmbientNameHome> {
     origin: ExistingDeclaration,
     retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr),
     kit_call: AmbientNameKitCall {
-      type_imports: "Int, List" as NonEmptyStr,
-      params: "xs: List<Int>" as NonEmptyStr,
-      result: "List<Int>" as NonEmptyStr,
-      args: "xs, 1" as NonEmptyStr
+      params: [
+        AmbientNameKitParam { name: "xs" as NonEmptyStr, type_ref: kit_list_of_int() },
+        AmbientNameKitParam { name: "x" as NonEmptyStr, type_ref: kit_int() }
+      ],
+      result: kit_list_of_int()
     }
   }]
+}
+
+fn kit_int() -> AmbientNameKitType {
+  AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "Int" as NonEmptyStr, arguments: [] }
+}
+
+fn kit_list_of_int() -> AmbientNameKitType {
+  AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "List" as NonEmptyStr, arguments: [kit_int()] }
 }
