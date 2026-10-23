@@ -101,8 +101,7 @@ test fn harness_shape_fatal_is_not_undecidable_argument_type_not_derived() -> Bo
 }
 
 test fn harness_shape_fatal_is_not_unbound_symbol() -> Bool {
-  shah_reason(src: shah_shape_source) != "assemble:resolve_reason_unbound_symbol"
-  && shah_reason(src: shah_shape_source) != "infer:resolve_reason_unbound_symbol"
+  (shah_reason(src: shah_shape_source) != "assemble:resolve_reason_unbound_symbol") && (shah_reason(src: shah_shape_source) != "infer:resolve_reason_unbound_symbol")
 }
 
 test fn harness_shape_fatal_is_not_undecidable_generic_formal() -> Bool {
