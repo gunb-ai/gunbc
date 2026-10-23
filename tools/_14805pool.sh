@@ -26,6 +26,13 @@ git worktree prune >/dev/null 2>&1 || true
 git fetch -q origin +refs/pull/14805/head:refs/verifier/f14805p || { echo FETCH_FAIL; exit 9; }
 [ "$(git rev-parse refs/verifier/f14805p)" = "$HEAD_SHA" ] || { echo "PR_REF_MOVED -- STOP"; exit 9; }
 CB=/root/workspace/repo-root/.t14805/release/claim_batch
+if [ ! -x $CB ]; then
+  echo "CB_MISSING building at head $(date -u +%H:%M:%S)Z"
+  rm -rf /tmp/w805pgb; git worktree add -q --detach /tmp/w805pgb $HEAD_SHA || { echo WT_FAIL; exit 9; }
+  cd /tmp/w805pgb && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
+  be=$?; cd $REPO || exit 9
+  [ $be -eq 0 ] || { echo "BUILD_FAIL $be -- STOP"; exit 9; }
+fi
 [ -x $CB ] || { echo "NO_BINARY -- STOP (never run without head-built CB)"; exit 9; }
 echo "BUILD_COMMIT=$HEAD_SHA CB_SHA=$(sha $CB) TREE=$TREE"
 WT=/tmp/w805p_$TREE
