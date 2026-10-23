@@ -63,6 +63,8 @@ data lrj_ingest: SourceRootIngest = [
   lrj_read(source: lrj_formal_only_source, id: ^lrj_formal_only_read, unit: ^lrj_formal_only_cu, path: "src/v2/test/fixture/lrj/formal_only.dag"),
   lrj_read(source: lrj_typed_arg_source, id: ^lrj_typed_arg_read, unit: ^lrj_typed_arg_cu, path: "src/v2/test/fixture/lrj/typed_arg.dag"),
   lrj_read(source: lrj_predicate_call_source, id: ^lrj_predicate_call_read, unit: ^lrj_predicate_call_cu, path: "src/v2/test/fixture/lrj/predicate_call.dag"),
+  lrj_read(source: lrj_plain_refined_decl_source, id: ^lrj_plain_refined_decl_read, unit: ^lrj_plain_refined_decl_cu, path: "src/v2/test/fixture/lrj/plain_refined_decl.dag"),
+  lrj_read(source: lrj_fn_body_source, id: ^lrj_fn_body_read, unit: ^lrj_fn_body_cu, path: "src/v2/test/fixture/lrj/fn_body.dag"),
   lrj_read(source: lrj_plain_source, id: ^lrj_plain_read, unit: ^lrj_plain_cu, path: "src/v2/test/fixture/lrj/plain.dag")
 ]
 
@@ -291,4 +293,18 @@ test fn lrj_locator_main_gather_collects_one_demand_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } => length(xs: infer_gather_for_tree(tree: r).demands) == 1
   }
+}
+
+// LOCATOR 4. (a) a String formal with a literal while a refined type is declared in the module (the declaration's
+// presence must not matter); (b) the refined formal with the literal inside a fn BODY rather than a data initializer.
+data lrj_plain_refined_decl_source: String = "module v2.test.lrj_plain_refined_decl\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take_plain(v: String) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take_plain(\"x\")\n"
+
+data lrj_fn_body_source: String = "module v2.test.lrj_fn_body\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\nfn lrj_caller() -> Bool { lrj_take(\"x\") }\n"
+
+test fn lrj_locator_plain_formal_literal_beside_a_refined_declaration_infers_holds() -> Bool {
+  lrj_infers(subject: "v2.test.lrj_plain_refined_decl")
+}
+
+test fn lrj_locator_refined_formal_literal_in_a_fn_body_infers_holds() -> Bool {
+  lrj_infers(subject: "v2.test.lrj_fn_body")
 }
