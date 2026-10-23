@@ -2599,12 +2599,16 @@ fn dashboard_git_worker_premise_abs_git_dir_var() -> String { "gunbc_premise_abs
 fn dashboard_git_worker_premise_head_ref_var() -> String { "gunbc_premise_head_ref" }
 fn dashboard_git_worker_premise_head_commit_var() -> String { "gunbc_premise_head_commit" }
 
-fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
-  bash_build_stmt_list_from_nodes(stmts: [
-    // The three git reads, captured into variables FIRST, so the tests below see only quoted variable
-    // operands (see dashboard_git_worker_premise_capture_git for why the operand must not be a bare
-    // command substitution). All three run before the tests; they are cheap, and this keeps the tests
-    // free of side effects.
+// The three captures and the decision, as a FLAT STATEMENT LIST -- the same shape the blessed instrument
+// guard emits (instrument_dispatch_memory_guard_statements: `VAR=$(...)` assigns followed by the guard,
+// serialized by bash_emit_stmts over a flat List<Node>). Each element is one top-level statement: three
+// command-substitution assigns, then the decision if/else. NOT wrapped in an outer
+// bash_build_stmt_list_from_nodes compound: the fold grammar serializes a flat program of statements, and
+// a stmt-list COMPOUND sitting at program top-level is what the serializer refuses -- the earlier
+// wrapping turned the whole gate into the refusal marker. The three reads run before the tests; they are
+// cheap and keep the tests free of side effects.
+fn dashboard_git_worker_repository_premise_gate_stmt_list(repo: String) -> List<Node> {
+  [
     dashboard_git_worker_premise_capture_git(
       repo: repo, name: dashboard_git_worker_premise_abs_git_dir_var(), verbs: ["rev-parse", "--absolute-git-dir"]),
     dashboard_git_worker_premise_capture_git(
@@ -2632,7 +2636,7 @@ fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
         else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
       )]),
     ),
-  ])
+  ]
 }
 
 // The gate as one raw Mutate step. It carries NO __GUNBC_*_REFUSED__ marker: it is a runtime refusal
@@ -2643,7 +2647,7 @@ fn dashboard_git_worker_repository_premise_gate_stmts(repo: String) -> Node {
 // the apply runs -- not a hand-retyped copy that could drift from the model (DESIGN section 5: green
 // by execution of the real artifact).
 fn dashboard_git_worker_repository_premise_gate_command_text(repo: String) -> String {
-  shell_command_text_of_stmts(stmts: [dashboard_git_worker_repository_premise_gate_stmts(repo: repo)])
+  shell_command_text_of_stmts(stmts: dashboard_git_worker_repository_premise_gate_stmt_list(repo: repo))
 }
 
 fn dashboard_git_worker_repository_premise_gate_step(repo: String) -> PipelineStep {
