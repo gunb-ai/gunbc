@@ -5,8 +5,10 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, Replac
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 import gunbc.instrument_targets { v2_native_census_scoped_label }
 
-// THE DECLARED DROP FOR THE INTERIM CARRIER GROUNDING (the operator ruling of 2026-10-23, escalation
-// msg_4841c082, M3 decision msg_d9888776; DESIGN 4b(3)).
+// THE DECLARED DROP FOR THE INTERIM CARRIER GROUNDING (the operator decision of 2026-10-23, declared
+// HERE as this row -- a RungDrop row is the repo-checkable authorization instrument for a lowered
+// rung, DESIGN 4b(3); the prior rung, its reason and its restoration trigger are the whole standing
+// of this path, nothing else authorizes it).
 //
 // WHAT IS DROPPED. At a declared TYPE position, `T where p` grounds to its carrier T for inference
 // (v2.compiler.infer infer_refinement_carrier_grounding_row, the type side), and a NON-LITERAL value
@@ -23,9 +25,11 @@ import gunbc.instrument_targets { v2_native_census_scoped_label }
 // scoped census -- re-derived, never transcribed (DESIGN 6), so this row states no count of its own and
 // no member list that could go stale between this file and the next merge.
 //
-// THE LITERAL ARM IS NOT THIS ROW'S POPULATION. A LITERAL at a refined position stays a REFUSAL (the
-// 2026-10-23 literal-only judgment, gunbc.design_ruling literal_only_refinement_judgment_is_interim,
-// seat 17's arm); it crosses nowhere and is counted nowhere here.
+// THE LITERAL ARM IS NOT THIS ROW'S POPULATION. A LITERAL at a refined position stays a REFUSAL with
+// the position's own inhabitance reason -- witnessed by the claims rcg_a_literal_at_a_refined_declared_return_refuses
+// and rcg_b_literal_at_a_let_annotation_refuses_not_counted in
+// v2.test.claim.compiler.infer_refinement_carrier_grounding_witness; the admitted-literal judgment is a
+// separate lane's program, not this row's authority. A literal crosses nowhere and is counted nowhere here.
 //
 // THE TRIGGER NAMES A CAPABILITY. The checked-constructor retirement
 // (gunbc.design_ruling where_refinements_retire_for_checked_constructors, landed via #14869): every
@@ -37,7 +41,7 @@ import gunbc.instrument_targets { v2_native_census_scoped_label }
 data non_literal_crossings_ground_to_the_refinement_carrier: RungDrop = RungDrop {
   identity: "non_literal_crossings_ground_to_the_refinement_carrier" as NonEmptyStr,
 
-  subject: "non-literal values crossing INTO where-refined declared type positions, which the interim carrier grounding accepts against the refinement's carrier with a counted located advisory and no predicate judgment (v2.compiler.infer infer_refinement_carrier_grounding_row and infer_refinement_carrier_grounding_decision; the operator ruling of 2026-10-23, escalation msg_4841c082)",
+  subject: "non-literal values crossing INTO where-refined declared type positions, which the interim carrier grounding accepts against the refinement's carrier with a counted located advisory and no predicate judgment (v2.compiler.infer infer_refinement_carrier_grounding_row and infer_refinement_carrier_grounding_decision; authorized by this row, per the operator decision of 2026-10-23 to be recorded in gunbc.design_ruling by the refinement-deletion program)",
 
   declared: "2026-10-23",
 

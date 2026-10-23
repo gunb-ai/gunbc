@@ -1,13 +1,14 @@
 module v2.test.claim.compiler.infer_refinement_carrier_grounding_witness
 
 // INTERIM CARRIER GROUNDING AT DECLARED TYPE POSITIONS (rung gunbc.rung_drop
-// non_literal_crossings_ground_to_the_refinement_carrier, ruling msg_4841c082 via
+// non_literal_crossings_ground_to_the_refinement_carrier, authorized by that row; dissolution via
 // gunbc.design_ruling where_refinements_retire_for_checked_constructors #14869).
 //
 // THE RULE: at a declared TYPE position, `T where p` grounds to its carrier `T` for inference with
 // NO predicate judgment; every NON-LITERAL value crossing into such a position is accepted with one
 // counted, located advisory ^refinement_carrier_grounding_crossing, never silently; LITERALS keep
-// refusing (the literal-only ruling, Seat 17's arm is the only admitted literal proof); and a
+// refusing with the position's own inhabitance reason (the admitted-literal judgment is a separate
+// lane's program); and a
 // refinement-declaration MISS keeps today's refusal untouched. The witness carries the RED and the
 // positive on the real native route (assemble + resolve_in_context + infer), the census being the
 // inhabitance reading and these claims the discriminating RED (DESIGN 5: done means executed).
@@ -52,7 +53,7 @@ fn rcg_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A STRING LITERAL AT A REFINED DECLARED RETURN: the literal arm refuses, with today's reason and
-// NO advisory. The literal-only ruling admits literals only through Seat 17's arm, not here.
+// NO advisory. The admitted-literal judgment is a separate lane's program, not this path.
 data rcg_literal_return_source: String = "module v2.test.rcg_literal_return\n\nfn rcf_non_empty(value: String) -> Bool { true }\n\ntype RcfMarked = String where rcf_non_empty\n\nfn rcg_f() -> RcfMarked { \"s\" }\n"
 
 // A NON-LITERAL (fn parameter) CROSSING INTO A REFINED RECORD FIELD: ACCEPTED, carrying exactly the
@@ -140,7 +141,7 @@ test fn rcg_an_unrefined_control_crossing_carries_no_advisory_holds() -> Bool {
   rcg_accepted_without(resolved: rcg_resolved_plain_control(), reason: ^refinement_carrier_grounding_crossing)
 }
 
-// THE R2 ASSERTION (msg_066087bd): a LITERAL at a let annotation over a refinement is NOT counted as
+// THE R2 ASSERTION: a LITERAL at a let annotation over a refinement is NOT counted as
 // a non-literal crossing -- it refuses today with the annotation's own reason, exactly as before this
 // change. The advisory keys on literalness, never on demand-absence.
 data rcg_literal_let_source: String = "module v2.test.rcg_literal_let\n\nfn rcf_non_empty(value: String) -> Bool { true }\n\ntype RcfMarked = String where rcf_non_empty\n\nfn rcg_f(s: String) -> String {\n  let x: RcfMarked = \"s\"\n  s\n}\n"

@@ -706,8 +706,10 @@ fn infer_formation_facts_from_entries(
   }
 }
 
-// THE INTERIM CARRIER GROUNDING AT A DECLARED TYPE POSITION (the operator ruling of 2026-10-23,
-// escalation msg_4841c082): at a declared TYPE position, `T where p` grounds to its carrier T for
+// THE INTERIM CARRIER GROUNDING AT A DECLARED TYPE POSITION (authorized by the rung-drop row
+// gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier, which carries the operator
+// decision of 2026-10-23, the prior rung, the reason and the dissolution trigger): at a declared TYPE
+// position, `T where p` grounds to its carrier T for
 // inference, with NO predicate judgment -- this row judges nothing. The predicate is a declared
 // frontier already carried by RefinementDeclaration.where_clause (v2.compiler.infer
 // refinement_declaration; the same frontier the where-predicate-call arm names), never a second one.
@@ -4809,8 +4811,9 @@ fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
   }
 }
 
-// THE CROSSING SIDE OF THE INTERIM CARRIER GROUNDING (the operator ruling of 2026-10-23, escalation
-// msg_4841c082; the type side is infer_refinement_carrier_grounding_row). A NON-LITERAL value crossing
+// THE CROSSING SIDE OF THE INTERIM CARRIER GROUNDING (authorized by the rung-drop row
+// gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier, which carries the operator
+// decision of 2026-10-23; the type side is infer_refinement_carrier_grounding_row). A NON-LITERAL value crossing
 // INTO a where-refined declared type position is GROUNDED TO THE CARRIER and counted -- accepted with a
 // located advisory diagnostic, never silently. The reason rides as the ordinary accepted-with-diagnostic
 // (infer_inhabitance_undecidable_accepted is the same posture), so it never abandons the module: the
@@ -4818,10 +4821,11 @@ fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
 // .non_literal_crossings_ground_to_the_refinement_carrier, which names the bounded population, the prior
 // rung, the reason, and the dissolution trigger (the NonEmptyStr structural cut,
 // gunbc.design_ruling where_refinements_retire_for_checked_constructors).
-// KEYED ON LITERAL-NESS, NOT ON DEMAND ABSENCE (M3 ruling msg_066087bd): the literal-ness test is the
+// KEYED ON LITERAL-NESS, NOT ON DEMAND ABSENCE: the literal-ness test is the
 // ONE predicate main already has, infer_node_is_literal -- a literal stays a REFUSAL here exactly as
-// today (the seat-17 literal arm owns literal crossings; a literal at a position that arm does not
-// cover yet -- cast, return, let -- must remain a refusal, not be miscounted as a non-literal crossing).
+// today (the admitted-literal judgment is a separate lane's program; a literal at a position that
+// program does not cover yet -- cast, return, let -- must remain a refusal, not be miscounted as a
+// non-literal crossing).
 // A POSITION IS REFINED WHEN THE ONE AUTHORITY SAYS SO: refinement_declaration on the alias-normalized
 // declared type. A MISS IS ABSENT AND ABSENT NEVER ADMITS -- the refusal below is returned untouched, so
 // every non-refinement refusal of today stands. The predicate is NEVER JUDGED here; this function says
