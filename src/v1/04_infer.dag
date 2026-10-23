@@ -8950,7 +8950,43 @@ fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
   }
 }
 
+// THROWAWAY PHASE A CENSUS INSTRUMENT (chain ii): never merged.
+fn chain2_class(t: Node, scope: InferScope) -> String {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: t)
+  if name == "Int" || name == "Nat" || name == "Bool" { name }
+  else if (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
+      || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: t, scope: scope)))
+      && cast_source_is_declared_nominal(source_node: t, source_indices: scope.type_env.source_indices, env: scope.type_env) { "nominal" }
+  else { "" }
+}
+
+fn chain2_arg_classes(func: String, c: Node, scope: InferScope) -> List<String> {
+  match c.inferred {
+    Present { value: Resolved { node: t } } =>
+      let direct = chain2_class(t: t, scope: scope)
+      let elems = if func == "join" && authored_name_at(source_indices: scope.type_env.source_indices, node: t) == "List" {
+        t.children |> map(ch => chain2_class(t: child_type_node(ch: ch), scope: scope))
+      } else { [] }
+      concat([direct], elems) |> filter(k => k != "")
+    _ => []
+  }
+}
+
 fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
+  let r = infer_expr_body_core(texpr: texpr, scope: scope, expected: expected)
+  let fname = match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } => expr_call_func_at(texpr: texpr, source_indices: scope.type_env.source_indices)
+    ExprMethodCall { method_semantics: _ } => expr_method_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
+    _ => ""
+  }
+  if fname == "concat" || fname == "join" {
+    let classes = r.typed.children |> flat_map(c => chain2_arg_classes(func: fname, c: c, scope: scope))
+    let diags = classes |> map(k => inference_error(message: concat("CHAIN2CENSUS ", fname, " ", k), span: texpr.span, module_name: scope.module_name))
+    InferResult { typed: r.typed, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_of_diagnostics(diagnostics: diags)) }
+  } else { r }
+}
+
+fn infer_expr_body_core(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
