@@ -61,6 +61,8 @@ data lrj_ingest: SourceRootIngest = [
   lrj_read(source: lrj_one_arg_source, id: ^lrj_one_arg_read, unit: ^lrj_one_arg_cu, path: "src/v2/test/fixture/lrj/one_arg.dag"),
   lrj_read(source: lrj_decl_only_source, id: ^lrj_decl_only_read, unit: ^lrj_decl_only_cu, path: "src/v2/test/fixture/lrj/decl_only.dag"),
   lrj_read(source: lrj_formal_only_source, id: ^lrj_formal_only_read, unit: ^lrj_formal_only_cu, path: "src/v2/test/fixture/lrj/formal_only.dag"),
+  lrj_read(source: lrj_typed_arg_source, id: ^lrj_typed_arg_read, unit: ^lrj_typed_arg_cu, path: "src/v2/test/fixture/lrj/typed_arg.dag"),
+  lrj_read(source: lrj_predicate_call_source, id: ^lrj_predicate_call_read, unit: ^lrj_predicate_call_cu, path: "src/v2/test/fixture/lrj/predicate_call.dag"),
   lrj_read(source: lrj_plain_source, id: ^lrj_plain_read, unit: ^lrj_plain_cu, path: "src/v2/test/fixture/lrj/plain.dag")
 ]
 
@@ -260,4 +262,18 @@ test fn lrj_locator_declaration_alone_infers_holds() -> Bool {
 
 test fn lrj_locator_refined_formal_without_a_call_infers_holds() -> Bool {
   lrj_infers(subject: "v2.test.lrj_formal_only")
+}
+
+// LOCATOR 2: a call passing a value ALREADY of the refined type (no literal, so this arm is not involved), and the
+// predicate called directly on the literal in source (the shape the post-pass synthesizes).
+data lrj_typed_arg_source: String = "module v2.test.lrj_typed_arg\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\nfn lrj_relay(w: LrjNe) -> Bool { lrj_take(w) }\n"
+
+data lrj_predicate_call_source: String = "module v2.test.lrj_predicate_call\n\nfn lrj_p(s: String) -> Bool { true }\n\ndata lrj_direct: Bool = lrj_p(\"x\")\n"
+
+test fn lrj_locator_call_with_refined_typed_argument_infers_holds() -> Bool {
+  lrj_infers(subject: "v2.test.lrj_typed_arg")
+}
+
+test fn lrj_locator_predicate_called_directly_on_a_literal_infers_holds() -> Bool {
+  lrj_infers(subject: "v2.test.lrj_predicate_call")
 }
