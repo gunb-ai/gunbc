@@ -5335,24 +5335,28 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
             .cloned()
             .collect::<Vec<_>>()
     };
-    let refuse_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
-    let silent_sources = select(&["silent_zcopy.dag", "silent_share.dag", "silent_entry.dag"]);
+    let independent_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
+    let recursive_sources = select(&[
+        "recursive_chain.dag",
+        "recursive_flat.dag",
+        "recursive_entry.dag",
+    ]);
     let green_sources = select(&["green_a.dag", "green_b.dag", "green_entry.dag"]);
-    if refuse_sources.len() != 3 {
-        return unreached("refuse fixture files missing".to_string());
+    if independent_sources.len() != 3 {
+        return unreached("independent fixture files missing".to_string());
     }
-    if silent_sources.len() != 3 {
-        return unreached("silent fixture files missing".to_string());
+    if recursive_sources.len() != 3 {
+        return unreached("recursive fixture files missing".to_string());
     }
     if green_sources.len() != 3 {
         return unreached("green fixture files missing".to_string());
     }
 
-    let refuse_report = match classify_sources("stlc.red_entry", refuse_sources) {
+    let independent_report = match classify_sources("stlc.red_entry", independent_sources) {
         Ok(report) => report,
         Err(e) => return unreached(e),
     };
-    let silent_report = match classify_sources("stlc.silent_entry", silent_sources) {
+    let recursive_report = match classify_sources("stlc.recursive_entry", recursive_sources) {
         Ok(report) => report,
         Err(e) => return unreached(e),
     };
@@ -5360,21 +5364,21 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
         Ok(report) => report,
         Err(e) => return unreached(e),
     };
-    print_report("fixture", "stlc.red_entry", refuse_report.clone());
-    print_report("fixture", "stlc.silent_entry", silent_report.clone());
+    print_report("fixture", "stlc.red_entry", independent_report.clone());
+    print_report("fixture", "stlc.recursive_entry", recursive_report.clone());
     print_report("fixture", "stlc.green_entry", green_report.clone());
 
     let standing = census::fixture_standing(
-        refuse_report.clone(),
-        silent_report.clone(),
+        independent_report.clone(),
+        recursive_report.clone(),
         green_report.clone(),
     );
     for line in standing.lines() {
         println!("{PREFIX}: {line}");
     }
     let held = census::fixture_controls_hold(
-        refuse_report.clone(),
-        silent_report.clone(),
+        independent_report.clone(),
+        recursive_report.clone(),
         green_report.clone(),
     );
 
@@ -5394,9 +5398,25 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     .iter()
     .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
     let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
-    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
-        && census::build_is_reportable_finding(refuse_report.build.clone())
-        && census::observation_held(held, false);
+    let nonzero_build =
+        shared_type_census_subject_build_from_cargo_verdict(&CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: "error[E0204]: bounded-control".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            cargo_network_retries: 0,
+            first_error: None,
+        });
+    let completed_nonzero_control = match nonzero_build {
+        Ok(build) => {
+            census::build_is_refused_finding(build.clone())
+                && census::build_is_reportable_finding(build)
+                && census::observation_held(held, false)
+        }
+        Err(_) => false,
+    };
     println!(
         "{PREFIX}: {}",
         census::control_line(
