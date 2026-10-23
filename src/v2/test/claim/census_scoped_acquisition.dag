@@ -5,7 +5,6 @@ import std.algebra { Cons, Empty, fold_list, list_find_first }
 import std.optional { Absent, Present }
 import v2.compiler.source_root_eval {
   native_census_scoped_entries,
-  native_census_substrate_entries,
 }
 import v2.compiler.module_acquisition {
   AcquiredModule,
@@ -254,65 +253,39 @@ test fn a_denied_request_does_not_block_a_later_permitted_read() -> Bool {
   shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry_denied_first"]))
 }
 
-// ---- THE SCOPED POPULATION CARRIES THE DECLARED SUBSTRATE (census hermeticity) ----
+// ---- THE SCOPED CENSUS ADMITS NO AMBIENT RESOLUTION AUTHORITY (census hermeticity, reversed) ----
 //
 // The resolver's ambient primitive-authority tier binds an unimported spelling to a contract row read
-// from the LOADED POPULATION's symbol index. If the population were exactly the subjects' closures,
-// whether a byte-identical module's ambient name binds would depend on which SUBJECTS were asked --
-// rows reading the loaded population instead of module+closure (the executed repro: one driver binary,
-// subjects {std.fermi} vs {std.fermi, std.primitives} flipping std.fermi's `first` from
-// binding_unbound ... 72:20 to binding ... ambient:primitive_authority std.primitives.first_contract
-// 72:20). The seed's native_census_scoped_entries is the one place that answers "which modules does a
-// scoped census load"; these claims hold it to the contract that fold's comment states. They read the
-// fold itself, so they stay executable without a host filesystem; the executed same-module two-
-// population byte-identity is the driver route (v2-native-census-scoped) and its without-arm flip is
-// the regression control named in the PR receipt.
+// from the LOADED POPULATION's symbol index. Two readings of "hermetic" were measured and one was
+// executed wrong (October 2026): adding the contract module to every population made the census bind
+// names the ROUTE cannot bind -- at the join head the parse-label route's first fatal moved from
+// list_push @ dag/std/algebra.dag bytes 5195..5204 to Map @ bytes 73768..73771, i.e. the instrument
+// resolved THROUGH a contract the real route refuses at. The ruling (v2 native, seat 12 era): neither
+// acquisition path admits the ambient primitive contracts as a resolution authority; the census matches
+// THE ROUTE. So the boundary claim is identity, not inclusion: fn native_census_scoped_entries must
+// return the subjects EXACTLY -- same names, same argv order, nothing appended. If anyone re-adds a
+// module the subjects did not name (a contract roster, a convenience tier), these claims RED, because
+// that appended module is precisely how the census would start binding through something the route
+// can't. The executed half of the same fact is not a claim: it is the census's first fatal being
+// byte-identical to the route's on the same subject (the PR receipt carries the run IDs).
 
-// The substrate is IN, exactly once, whatever the subjects are -- even a subject list that never
-// reaches it (no import path from std.fermi to std.primitives is declared, which is the whole point:
-// the ambient tier is import-free by design).
-test fn the_declared_substrate_rides_every_scoped_population() -> Bool {
-  let substrate = native_census_substrate_entries()
-  let entries = native_census_scoped_entries(subjects: ["std.fermi"])
-  (substrate |> count) > 0
-    && all_names_in(entries: substrate, population: entries)
-    && count_item(entries: entries, name: "std.primitives") == 1
+// Identity for every supplied population -- including one that spells a contract module itself, which
+// must ride as the CALLER'S name in the CALLER'S position, not as an authority the census injected:
+// the fold neither adds nor removes nor reorders (plain equality on supplied lists, no std.algebra
+// fold surface, so these claims hold without any ambient contract being resolvable -- probe
+// scratch/qc503-claims-only @ 4741a1f271c9 proved a claim that walks std.algebra's BODY cannot
+// prepare once the contracts stop loading, and M1 forbade re-implementing std.algebra here).
+test fn the_census_admits_no_ambient_resolution_authority() -> Bool {
+  native_census_scoped_entries(subjects: ["std.fermi"]) == ["std.fermi"]
+    && native_census_scoped_entries(subjects: []) == []
+    && native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) == ["extdeps.git.versioning", "std.fermi"]
 }
 
-// The union does not duplicate: a subject already naming the substrate is not added again (the caller's
-// own list stays faithful -- including its own duplicates, which the fold neither adds to nor removes
-// from: exactly one copy rides per copy the caller named, and zero extra).
-test fn a_subject_naming_the_substrate_does_not_duplicate_it() -> Bool {
-  count_item(entries: native_census_scoped_entries(subjects: ["std.fermi", "std.primitives"]), name: "std.primitives") == 1
-    && count_item(entries: native_census_scoped_entries(subjects: ["std.primitives", "std.primitives"]), name: "std.primitives") == 2
-}
-
-// The subjects ride unchanged, in argv order, in front of the appended substrate: the union only ADDS,
-// it never drops or reorders a module the caller named (clever-carp-254's inclusion condition: a
-// module's pre-fix rows must be a subset of its post-fix rows).
-test fn the_union_never_drops_or_reorders_the_named_subjects() -> Bool {
-  let entries = native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"])
-  match entries {
-    Cons { head: first, tail: rest } =>
-      match rest {
-        Cons { head: second, tail: after } =>
-          first == "extdeps.git.versioning" && second == "std.fermi"
-            && all_names_in(entries: native_census_substrate_entries(), population: after)
-        Empty => false
-      }
-    Empty => false
-  }
-}
-
-fn all_names_in(entries: List<String>, population: List<String>) -> Bool {
-  fold_list(xs: entries, empty: true, cons: fn(ok, name) {
-    ok && match list_find_first(xs: population, predicate: fn(n) { n == name }) {
-      Absent => false
-      Present { value: _ } => true
-    }
-  })
-}
-
-fn count_item(entries: List<String>, name: String) -> Int {
-  fold_list(xs: entries, empty: 0, cons: fn(n, e) { if e == name { n + 1 } else { n } })
+// The same identity under the shape the old substrate fold existed to serve: a population that never
+// reaches the ambient tier still gets EXACTLY itself -- nothing "rides" it. The census's entries are
+// the subjects' own declarations and nothing the acquisition invented.
+test fn a_subject_list_gets_exactly_itself_whatever_it_reaches() -> Bool {
+  native_census_scoped_entries(subjects: ["std.fermi"]) == ["std.fermi"]
+    && native_census_scoped_entries(subjects: ["std.fermi", "std.primitives"]) == ["std.fermi", "std.primitives"]
+    && native_census_scoped_entries(subjects: ["std.primitives", "std.primitives"]) == ["std.primitives", "std.primitives"]
 }
