@@ -88,19 +88,9 @@ pub fn source_annotation_graph_concat(
     left: Rc<SourceAnnotationGraph>,
     right: Rc<SourceAnnotationGraph>,
 ) -> Rc<SourceAnnotationGraph> {
-    {
-        let __rb_0_0 = v1_rt::concat(left.rows.clone(), right.rows.clone());
-        let mut __rb_h = right;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.rows = __rb_0_0;
-            }
-            None => {
-                __rb_h = Rc::new(SourceAnnotationGraph { rows: __rb_0_0 });
-            }
-        }
-        __rb_h
-    }
+    Rc::new(SourceAnnotationGraph {
+        rows: v1_rt::concat(left.rows.clone(), right.rows.clone()),
+    })
 }
 
 pub fn code_point_is_line_feed(cp: i64) -> bool {
@@ -450,9 +440,9 @@ pub fn annotation_attach_step(
         match acc.pending.clone() {
             Some(open) => {
                 if (continues.clone() && (open.gap.clone() == gap.clone())) {
-                    {
-                        let __rb_0_0 = acc.rows.clone();
-                        let __rb_1_0 = Some(Rc::new(SourceAnnotationDebt {
+                    Rc::new(AnnotationAttachAcc {
+                        rows: acc.rows.clone(),
+                        pending: Some(Rc::new(SourceAnnotationDebt {
                             gap: open.gap.clone(),
                             text: v1_rt::concat(
                                 open.text.clone(),
@@ -464,80 +454,32 @@ pub fn annotation_attach_step(
                                 end: capture.origin.end.clone(),
                             }),
                             placement: open.placement.clone(),
-                        }));
-                        let __rb_2_0 = true;
-                        let mut __rb_h = acc;
-                        match Rc::get_mut(&mut __rb_h) {
-                            Some(__rb_r) => {
-                                __rb_r.rows = __rb_0_0;
-                                __rb_r.pending = __rb_1_0;
-                                __rb_r.pending_adjacent = __rb_2_0;
-                            }
-                            None => {
-                                __rb_h = Rc::new(AnnotationAttachAcc {
-                                    rows: __rb_0_0,
-                                    pending: __rb_1_0,
-                                    pending_adjacent: __rb_2_0,
-                                });
-                            }
-                        }
-                        __rb_h
-                    }
+                        })),
+                        pending_adjacent: true,
+                    })
                 } else {
-                    {
-                        let __rb_0_0 = v1_rt::rc_list_push(acc.rows.clone(), open.clone());
-                        let __rb_1_0 = Some(Rc::new(SourceAnnotationDebt {
+                    Rc::new(AnnotationAttachAcc {
+                        rows: v1_rt::rc_list_push(acc.rows.clone(), open.clone()),
+                        pending: Some(Rc::new(SourceAnnotationDebt {
                             gap: gap.clone(),
                             text: capture.text.clone(),
                             origin: capture.origin.clone(),
                             placement: capture.placement.clone(),
-                        }));
-                        let __rb_2_0 = true;
-                        let mut __rb_h = acc;
-                        match Rc::get_mut(&mut __rb_h) {
-                            Some(__rb_r) => {
-                                __rb_r.rows = __rb_0_0;
-                                __rb_r.pending = __rb_1_0;
-                                __rb_r.pending_adjacent = __rb_2_0;
-                            }
-                            None => {
-                                __rb_h = Rc::new(AnnotationAttachAcc {
-                                    rows: __rb_0_0,
-                                    pending: __rb_1_0,
-                                    pending_adjacent: __rb_2_0,
-                                });
-                            }
-                        }
-                        __rb_h
-                    }
+                        })),
+                        pending_adjacent: true,
+                    })
                 }
             }
-            std::option::Option::None => {
-                let __rb_0_0 = acc.rows.clone();
-                let __rb_1_0 = Some(Rc::new(SourceAnnotationDebt {
+            std::option::Option::None => Rc::new(AnnotationAttachAcc {
+                rows: acc.rows.clone(),
+                pending: Some(Rc::new(SourceAnnotationDebt {
                     gap: gap.clone(),
                     text: capture.text.clone(),
                     origin: capture.origin.clone(),
                     placement: capture.placement.clone(),
-                }));
-                let __rb_2_0 = true;
-                let mut __rb_h = acc;
-                match Rc::get_mut(&mut __rb_h) {
-                    Some(__rb_r) => {
-                        __rb_r.rows = __rb_0_0;
-                        __rb_r.pending = __rb_1_0;
-                        __rb_r.pending_adjacent = __rb_2_0;
-                    }
-                    None => {
-                        __rb_h = Rc::new(AnnotationAttachAcc {
-                            rows: __rb_0_0,
-                            pending: __rb_1_0,
-                            pending_adjacent: __rb_2_0,
-                        });
-                    }
-                }
-                __rb_h
-            }
+                })),
+                pending_adjacent: true,
+            }),
         }
     }
 }

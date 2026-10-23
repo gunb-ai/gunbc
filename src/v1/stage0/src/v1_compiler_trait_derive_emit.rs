@@ -2368,7 +2368,6 @@ pub fn v1_record_derive_traits_copy_for_construction(
 
 pub fn v1_emit_struct_derives(
     name: String,
-    sharing_key: String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
@@ -2408,7 +2407,7 @@ pub fn v1_emit_struct_derives(
                 }
             }
         } else {
-            if v1_rt::set_contains(&shared_types, sharing_key.clone()) {
+            if v1_rt::set_contains(&shared_types, name.clone()) {
                 crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
                     v1_with_map_key_requirement(
                         v1_record_derive_traits_heap_for_construction(
@@ -4657,7 +4656,6 @@ pub fn v1_emit_type_params_with_clone_bounds(
 pub fn v1_emit_struct_from_capability_table(
     module_path: String,
     name: String,
-    sharing_key: String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
@@ -4695,7 +4693,7 @@ pub fn v1_emit_struct_from_capability_table(
         };
         if ((fm_params.clone().len() as i64) > 0) {
             {
-                let base = if v1_rt::set_contains(&shared_types, sharing_key.clone()) {
+                let base = if v1_rt::set_contains(&shared_types, name.clone()) {
                     v1_record_derive_traits_heap_for_construction(deserialize_forbidden.clone())
                 } else {
                     v1_record_derive_traits_copy_for_construction(deserialize_forbidden.clone())
@@ -4766,7 +4764,7 @@ pub fn v1_emit_struct_from_capability_table(
                 };
                 if ((ord_propagated_params.clone().len() as i64) > 0) {
                     {
-                        let base = if v1_rt::set_contains(&shared_types, sharing_key.clone()) {
+                        let base = if v1_rt::set_contains(&shared_types, name.clone()) {
                             v1_record_derive_traits_heap_for_construction(
                                 deserialize_forbidden.clone(),
                             )
@@ -4813,7 +4811,6 @@ pub fn v1_emit_struct_from_capability_table(
                     {
                         let derive_attr = v1_emit_struct_derives(
                             name.clone(),
-                            sharing_key.clone(),
                             children.clone(),
                             shared_types.clone(),
                             has_fn_fields.clone(),
