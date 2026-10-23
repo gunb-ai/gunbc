@@ -240,7 +240,7 @@ jobs:
                   return json.load(r)
           import base64 as _b64
           SERVER = os.environ['GITHUB_SERVER_URL']
-          BASE_REF = 'origin/t02-sim-base2'.replace('origin/', '')
+          BASE_REF = 'origin/t02-reval-base'.replace('origin/', '')
           def auth_header():
               return 'Authorization: Basic ' + _b64.b64encode(('x-access-token:' + TOKEN).encode()).decode()
           def ensure_objects(rev):
