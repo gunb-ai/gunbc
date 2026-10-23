@@ -1,0 +1,646 @@
+module extdeps.cloud.aws_cli
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import std.optional { Present, Absent }
+import std.decimal { ExactDecimal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.env_binding { EnvBinding, EnvSet, EnvUnset }
+import std.measure { mebibyte, gigabyte }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command, env_prefixed_command }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonArray, JsonObject, JsonBool, JsonNull }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_int, json_field_bool,
+}
+import extdeps.languages.json.grammar { json_number_lexeme }
+import extdeps.languages.json.number { read_json_number, JsonNumberExact, JsonNumberOutsideExactFragment }
+import extdeps.cloud.aws_ec2 {
+  AwsEc2Region, AwsEc2RegionOptInStatus, AwsEc2OptInNotRequired, AwsEc2OptedIn, AwsEc2NotOptedIn,
+  AwsEc2InstanceTypeOffering, AwsEc2LocationAvailabilityZone,
+  AwsEc2InstanceTypeInfo, AwsEc2GpuDeviceInfo, AwsEc2InstanceStorageInfo, AwsEc2DiskInfo,
+  AwsEc2SpotPrice, AwsEc2Instance, AwsEc2Placement, AwsEc2InstanceState, AwsEc2InstanceStateName,
+  AwsEc2Pending, AwsEc2Running, AwsEc2ShuttingDown, AwsEc2Terminated, AwsEc2Stopping, AwsEc2Stopped,
+  AwsEc2InstanceLifecycle, AwsEc2LifecycleSpot, AwsEc2LifecycleScheduled, AwsEc2LifecycleCapacityBlock,
+  AwsEc2Tag, AwsEc2StateReason,
+}
+import extdeps.cloud.aws_service_quotas { AwsServiceQuota }
+
+// THE AWS COMMAND LINE INTERFACE, VERSION 2, AS ONE TRANSPORT HANDLER FOR THE AWS SHAPES. Its own
+// upstream (aws/aws-cli, versioned separately from every service API), so its own module: the API
+// shapes stay extdeps.cloud.aws_ec2's and extdeps.cloud.aws_service_quotas's, and what this module owns
+// is the CLI's PROJECTION of them, its JSON output, read back into those shapes, plus the argv that asks
+// for it. Another handler (curl SigV4 plus an XML reader) would be a second module bound to the same
+// shapes, not an edit here (gunbc.plans.flex_supplier_generalization D4).
+//
+// THE JSON IS THE API'S MEMBERS IN PascalCase (InstanceType, SpotPrice, ...), one document per call.
+// PAGINATION: the CLI pages the API itself and merges every page into one document unless told not to,
+// and a `NextToken` survives into the output only when it stopped early. So a document that still
+// carries one is INCOMPLETE and refuses here; a complete answer is one without it.
+//
+// CREDENTIALS NEVER CROSS argv: the caller names a shared-credentials FILE (0600, on the custody host),
+// the ambient key, profile and region variables are unset so the file is the only source, the config
+// file is /dev/null so no profile default can supply a region, and instance-metadata lookups are off.
+// THE REGION IS EXPLICIT ON EVERY CALL (`--region`), because region is a selection variable, never an
+// ambient default. `--debug` is never spelled: its log prints signed requests.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/cli/latest/userguide/cli-chap-welcome.html" }
+}
+
+data aws_cli_pagination_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/cli/latest/userguide/cli-usage-pagination.html" }
+}
+
+data aws_cli_environment_variables_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html" }
+}
+
+data aws_cli_changelog: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef { module_path: "extdeps.cloud.aws_cli", decl_name: "aws_cli_pinned_version", field: WholeDeclaration }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [aws_cli_pagination_page, aws_cli_environment_variables_page, aws_cli_changelog],
+}
+
+// The newest release in the changelog when read, 2026-10-23. The custody host installs exactly this.
+data aws_cli_pinned_version: NonEmptyStr = "2.38.5" as NonEmptyStr
+
+fn aws_cli_program() -> ProgramIdentity = uncataloged_program(invocation: "aws" as NonEmptyStr)
+
+fn aws_cli_environment(credentials_file: FilePath) -> List<EnvBinding> {
+  [
+    EnvSet { name: "AWS_SHARED_CREDENTIALS_FILE", value: credentials_file as String },
+    EnvSet { name: "AWS_CONFIG_FILE", value: "/dev/null" },
+    EnvSet { name: "AWS_EC2_METADATA_DISABLED", value: "true" },
+    EnvSet { name: "AWS_PAGER", value: "" },
+    EnvUnset { name: "AWS_PROFILE" },
+    EnvUnset { name: "AWS_REGION" },
+    EnvUnset { name: "AWS_DEFAULT_REGION" },
+    EnvUnset { name: "AWS_ACCESS_KEY_ID" },
+    EnvUnset { name: "AWS_SECRET_ACCESS_KEY" },
+    EnvUnset { name: "AWS_SESSION_TOKEN" },
+  ]
+}
+
+// THE ONE BUILDER every operation goes through: service, operation, the explicit region, JSON output.
+fn aws_cli_command(credentials_file: FilePath, region: NonEmptyStr, service: NonEmptyStr, operation: NonEmptyStr, arguments: List<String>) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: aws_cli_environment(credentials_file: credentials_file),
+    command: argv_command(
+      program: aws_cli_program(),
+      arguments: concat([service as String, operation as String, "--region", region as String, "--output", "json"], arguments),
+    ),
+  )
+}
+
+fn aws_cli_describe_regions(credentials_file: FilePath, region: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-regions" as NonEmptyStr, arguments: ["--all-regions"])
+}
+
+fn aws_cli_describe_type_offerings(credentials_file: FilePath, region: NonEmptyStr, type_pattern: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-instance-type-offerings" as NonEmptyStr,
+    arguments: ["--location-type", "availability-zone", "--filters", join(["Name=instance-type,Values=", type_pattern as String], "")])
+}
+
+fn aws_cli_describe_instance_types(credentials_file: FilePath, region: NonEmptyStr, types: List<NonEmptyStr>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-instance-types" as NonEmptyStr,
+    arguments: concat(["--instance-types"], map(types, t => t as String)))
+}
+
+// The current price in each zone: a start time of now answers the price in effect at that instant.
+fn aws_cli_describe_spot_prices(credentials_file: FilePath, region: NonEmptyStr, types: List<NonEmptyStr>, product: NonEmptyStr, now_iso8601: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-spot-price-history" as NonEmptyStr,
+    arguments: concat(concat(["--instance-types"], map(types, t => t as String)), ["--product-descriptions", product as String, "--start-time", now_iso8601 as String]))
+}
+
+fn aws_cli_describe_owned_instances(credentials_file: FilePath, region: NonEmptyStr, tag_key: NonEmptyStr, owner: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-instances" as NonEmptyStr,
+    arguments: ["--filters", join(["Name=tag:", tag_key as String, ",Values=", owner as String], "")])
+}
+
+fn aws_cli_get_service_quota(credentials_file: FilePath, region: NonEmptyStr, service_code: NonEmptyStr, quota_code: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "service-quotas" as NonEmptyStr, operation: "get-service-quota" as NonEmptyStr,
+    arguments: ["--service-code", service_code as String, "--quota-code", quota_code as String])
+}
+
+// ---- READING THE PROJECTION BACK. One result type, so every refusal names what was unreadable. ----
+
+type AwsCliRead<T>
+  = AwsCliReadOk { value: T }
+  | AwsCliReadRefused { cause: String }
+
+fn aws_cli_refused<T>(cause: String) -> AwsCliRead<T> { AwsCliReadRefused { cause: cause } }
+
+fn aws_cli_document(stdout: String) -> AwsCliRead<JsonValue> {
+  match parse_json_document(s: stdout) {
+    JsonDocumentParsed { value: v } =>
+      match json_field(obj: v, key: "NextToken") {
+        FieldAbsent => AwsCliReadOk { value: v }
+        FieldRead { value: _ } => aws_cli_refused(cause: "the answer still carries a NextToken, so the CLI stopped before the last page")
+        FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+      }
+    JsonDocumentUnreadable { gap: g } => aws_cli_refused(cause: concat("the CLI output is not one JSON document: ", json_document_gap_text(gap: g)))
+  }
+}
+
+fn aws_cli_string(obj: JsonValue, key: String) -> AwsCliRead<NonEmptyStr> {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: s } => if s == "" { aws_cli_refused(cause: concat(key, " is empty")) } else { AwsCliReadOk { value: s as NonEmptyStr } }
+    FieldAbsent => aws_cli_refused(cause: concat(key, " is absent"))
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+  }
+}
+
+fn aws_cli_optional_string(obj: JsonValue, key: String) -> AwsCliRead<String?> {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: s } => AwsCliReadOk { value: Present { value: s } }
+    FieldAbsent => AwsCliReadOk { value: none }
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+  }
+}
+
+fn aws_cli_int(obj: JsonValue, key: String) -> AwsCliRead<Int> {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: n } => AwsCliReadOk { value: n }
+    FieldAbsent => aws_cli_refused(cause: concat(key, " is absent"))
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+  }
+}
+
+fn aws_cli_bool(obj: JsonValue, key: String) -> AwsCliRead<Bool> {
+  match json_field_bool(obj: obj, key: key) {
+    FieldRead { value: b } => AwsCliReadOk { value: b }
+    FieldAbsent => aws_cli_refused(cause: concat(key, " is absent"))
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+  }
+}
+
+fn aws_cli_object(obj: JsonValue, key: String) -> AwsCliRead<JsonValue> {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } => match v { JsonObject { members: _ } => AwsCliReadOk { value: v }  _ => aws_cli_refused(cause: concat(key, " is not an object")) }
+    FieldAbsent => aws_cli_refused(cause: concat(key, " is absent"))
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+  }
+}
+
+// An absent array member is an empty list on this wire (the CLI omits empty collections in some
+// answers); a member of another kind refuses.
+fn aws_cli_array(obj: JsonValue, key: String) -> AwsCliRead<List<JsonValue>> {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } => match v { JsonArray { elements: es } => AwsCliReadOk { value: es }  _ => aws_cli_refused(cause: concat(key, " is not an array")) }
+    FieldAbsent => AwsCliReadOk { value: [] }
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+  }
+}
+
+// A decimal the wire sends as a string ("0.123400") or as a number (a quota Value, 64.0), read through
+// the one JSON number grammar, so a value that is not a decimal numeral refuses rather than truncates.
+fn aws_cli_decimal_lexeme(key: String, lexeme: String) -> AwsCliRead<ExactDecimal> {
+  match json_number_lexeme(s: lexeme) {
+    Absent => aws_cli_refused(cause: join([key, " is not a decimal numeral: ", lexeme], ""))
+    Present { value: lx } =>
+      match read_json_number(lexeme: lx) {
+        JsonNumberExact { value: d } => AwsCliReadOk { value: d }
+        JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } => aws_cli_refused(cause: join([key, " is outside the exact decimal fragment: ", lexeme], ""))
+      }
+  }
+}
+
+fn aws_cli_decimal(obj: JsonValue, key: String) -> AwsCliRead<ExactDecimal> {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } =>
+      match v {
+        JsonString { value: s } => aws_cli_decimal_lexeme(key: key, lexeme: s)
+        JsonNumber { lexeme: l } => aws_cli_decimal_lexeme(key: key, lexeme: l as String)
+        _ => aws_cli_refused(cause: concat(key, " is neither a decimal string nor a number"))
+      }
+    FieldAbsent => aws_cli_refused(cause: concat(key, " is absent"))
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+  }
+}
+
+// Every element read, or the first refusal named with its position.
+fn aws_cli_each<T>(key: String, elements: List<JsonValue>, read: fn(JsonValue) -> AwsCliRead<T>) -> AwsCliRead<List<T>> {
+  fold(
+    elements,
+    init: AwsCliReadOk { value: [] },
+    f: (acc, e) =>
+      match acc {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: done } =>
+          match read(e) {
+            AwsCliReadOk { value: x } => AwsCliReadOk { value: concat(done, [x]) }
+            AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: join([key, "[", to_string(length(done)), "]: ", c], "") }
+          }
+      },
+  )
+}
+
+fn aws_cli_list<T>(doc: JsonValue, key: String, read: fn(JsonValue) -> AwsCliRead<T>) -> AwsCliRead<List<T>> {
+  match aws_cli_array(obj: doc, key: key) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: es } => aws_cli_each(key: key, elements: es, read: read)
+  }
+}
+
+// ---- describe-regions ----
+
+fn aws_cli_opt_in(s: NonEmptyStr) -> AwsCliRead<AwsEc2RegionOptInStatus> {
+  if (s as String) == "opt-in-not-required" { AwsCliReadOk { value: AwsEc2OptInNotRequired } }
+  else if (s as String) == "opted-in" { AwsCliReadOk { value: AwsEc2OptedIn } }
+  else if (s as String) == "not-opted-in" { AwsCliReadOk { value: AwsEc2NotOptedIn } }
+  else { aws_cli_refused(cause: concat("OptInStatus is not a documented value: ", s as String)) }
+}
+
+fn aws_cli_region(v: JsonValue) -> AwsCliRead<AwsEc2Region> {
+  match aws_cli_string(obj: v, key: "RegionName") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: name } =>
+      match aws_cli_string(obj: v, key: "Endpoint") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: endpoint } =>
+          match aws_cli_string(obj: v, key: "OptInStatus") {
+            AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+            AwsCliReadOk { value: s } =>
+              match aws_cli_opt_in(s: s) {
+                AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+                AwsCliReadOk { value: status } => AwsCliReadOk { value: AwsEc2Region { region_name: name, endpoint: endpoint, opt_in_status: status } }
+              }
+          }
+      }
+  }
+}
+
+fn aws_cli_read_regions(stdout: String) -> AwsCliRead<List<AwsEc2Region>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_list(doc: doc, key: "Regions", read: v => aws_cli_region(v: v))
+  }
+}
+
+// ---- describe-instance-type-offerings (asked with location type availability-zone) ----
+
+fn aws_cli_offering(v: JsonValue) -> AwsCliRead<AwsEc2InstanceTypeOffering> {
+  match aws_cli_string(obj: v, key: "InstanceType") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: t } =>
+      match aws_cli_string(obj: v, key: "Location") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: l } => AwsCliReadOk { value: AwsEc2InstanceTypeOffering { instance_type: t, location_type: AwsEc2LocationAvailabilityZone, location: l } }
+      }
+  }
+}
+
+fn aws_cli_read_offerings(stdout: String) -> AwsCliRead<List<AwsEc2InstanceTypeOffering>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_list(doc: doc, key: "InstanceTypeOfferings", read: v => aws_cli_offering(v: v))
+  }
+}
+
+// ---- describe-instance-types ----
+
+fn aws_cli_mib(obj: JsonValue, key: String) -> AwsCliRead<Int> {
+  match aws_cli_object(obj: obj, key: key) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: m } => aws_cli_int(obj: m, key: "SizeInMiB")
+  }
+}
+
+fn aws_cli_gpu(v: JsonValue) -> AwsCliRead<AwsEc2GpuDeviceInfo> {
+  match aws_cli_string(obj: v, key: "Name") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: name } =>
+      match aws_cli_string(obj: v, key: "Manufacturer") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: maker } =>
+          match aws_cli_int(obj: v, key: "Count") {
+            AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+            AwsCliReadOk { value: n } =>
+              match aws_cli_mib(obj: v, key: "MemoryInfo") {
+                AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+                AwsCliReadOk { value: mib } => AwsCliReadOk { value: AwsEc2GpuDeviceInfo { name: name, manufacturer: maker, count: n, memory_size_in_mib: mebibyte(count: mib) } }
+              }
+          }
+      }
+  }
+}
+
+fn aws_cli_disk(v: JsonValue) -> AwsCliRead<AwsEc2DiskInfo> {
+  match aws_cli_int(obj: v, key: "SizeInGB") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: gb } =>
+      match aws_cli_int(obj: v, key: "Count") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: n } =>
+          match aws_cli_string(obj: v, key: "Type") {
+            AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+            AwsCliReadOk { value: t } => AwsCliReadOk { value: AwsEc2DiskInfo { size_in_gb: gigabyte(count: gb), count: n, disk_type: t } }
+          }
+      }
+  }
+}
+
+fn aws_cli_storage(v: JsonValue) -> AwsCliRead<AwsEc2InstanceStorageInfo?> {
+  match json_field(obj: v, key: "InstanceStorageInfo") {
+    FieldAbsent => AwsCliReadOk { value: none }
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+    FieldRead { value: s } =>
+      match aws_cli_int(obj: s, key: "TotalSizeInGB") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: total } =>
+          match aws_cli_list(doc: s, key: "Disks", read: d => aws_cli_disk(v: d)) {
+            AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+            AwsCliReadOk { value: disks } =>
+              match aws_cli_string(obj: s, key: "NvmeSupport") {
+                AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+                AwsCliReadOk { value: nvme } => AwsCliReadOk { value: Present { value: AwsEc2InstanceStorageInfo { total_size_in_gb: gigabyte(count: total), disks: disks, nvme_support: nvme } } }
+              }
+          }
+      }
+  }
+}
+
+fn aws_cli_usage_class(v: JsonValue) -> AwsCliRead<NonEmptyStr> {
+  match v { JsonString { value: s } => if s == "" { aws_cli_refused(cause: "an empty usage class") } else { AwsCliReadOk { value: s as NonEmptyStr } }  _ => aws_cli_refused(cause: "a usage class is not a string") }
+}
+
+fn aws_cli_instance_type(v: JsonValue) -> AwsCliRead<AwsEc2InstanceTypeInfo> {
+  match aws_cli_string(obj: v, key: "InstanceType") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: t } =>
+  match aws_cli_object(obj: v, key: "VCpuInfo") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: vcpu } =>
+  match aws_cli_int(obj: vcpu, key: "DefaultVCpus") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: vcpus } =>
+  match aws_cli_mib(obj: v, key: "MemoryInfo") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: mem } =>
+  match aws_cli_object(obj: v, key: "GpuInfo") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: gpu_info } =>
+  match aws_cli_list(doc: gpu_info, key: "Gpus", read: g => aws_cli_gpu(v: g)) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: gpus } =>
+  match aws_cli_bool(obj: v, key: "InstanceStorageSupported") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: storage_supported } =>
+  match aws_cli_storage(v: v) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: storage } =>
+  match aws_cli_list(doc: v, key: "SupportedUsageClasses", read: u => aws_cli_usage_class(v: u)) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: classes } =>
+      AwsCliReadOk {
+        value: AwsEc2InstanceTypeInfo {
+          instance_type: t,
+          default_vcpus: vcpus,
+          memory_size_in_mib: mebibyte(count: mem),
+          gpus: gpus,
+          total_gpu_memory_in_mib: match json_field_int(obj: gpu_info, key: "TotalGpuMemoryInMiB") { FieldRead { value: n } => Present { value: mebibyte(count: n) }  _ => none },
+          instance_storage_supported: storage_supported,
+          instance_storage: storage,
+          supported_usage_classes: classes,
+        },
+      }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn aws_cli_read_instance_types(stdout: String) -> AwsCliRead<List<AwsEc2InstanceTypeInfo>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_list(doc: doc, key: "InstanceTypes", read: v => aws_cli_instance_type(v: v))
+  }
+}
+
+// ---- describe-spot-price-history ----
+
+fn aws_cli_spot_price(v: JsonValue) -> AwsCliRead<AwsEc2SpotPrice> {
+  match aws_cli_string(obj: v, key: "AvailabilityZone") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: az } =>
+  match aws_cli_string(obj: v, key: "InstanceType") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: t } =>
+  match aws_cli_string(obj: v, key: "ProductDescription") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: pd } =>
+  match aws_cli_decimal(obj: v, key: "SpotPrice") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: price } =>
+  match aws_cli_string(obj: v, key: "Timestamp") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: at } =>
+      AwsCliReadOk { value: AwsEc2SpotPrice { availability_zone: az, instance_type: t, product_description: pd, spot_price: price, timestamp: at as String } }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn aws_cli_read_spot_prices(stdout: String) -> AwsCliRead<List<AwsEc2SpotPrice>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_list(doc: doc, key: "SpotPriceHistory", read: v => aws_cli_spot_price(v: v))
+  }
+}
+
+// ---- describe-instances (the owned roster) ----
+
+fn aws_cli_state_name(s: NonEmptyStr) -> AwsCliRead<AwsEc2InstanceStateName> {
+  let n = s as String
+  if n == "pending" { AwsCliReadOk { value: AwsEc2Pending } }
+  else if n == "running" { AwsCliReadOk { value: AwsEc2Running } }
+  else if n == "shutting-down" { AwsCliReadOk { value: AwsEc2ShuttingDown } }
+  else if n == "terminated" { AwsCliReadOk { value: AwsEc2Terminated } }
+  else if n == "stopping" { AwsCliReadOk { value: AwsEc2Stopping } }
+  else if n == "stopped" { AwsCliReadOk { value: AwsEc2Stopped } }
+  else { aws_cli_refused(cause: concat("State.Name is not a documented value: ", n)) }
+}
+
+fn aws_cli_lifecycle(v: JsonValue) -> AwsCliRead<AwsEc2InstanceLifecycle?> {
+  match aws_cli_optional_string(obj: v, key: "InstanceLifecycle") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: Absent } => AwsCliReadOk { value: none }
+    AwsCliReadOk { value: Present { value: s } } =>
+      if s == "spot" { AwsCliReadOk { value: Present { value: AwsEc2LifecycleSpot } } }
+      else if s == "scheduled" { AwsCliReadOk { value: Present { value: AwsEc2LifecycleScheduled } } }
+      else if s == "capacity-block" { AwsCliReadOk { value: Present { value: AwsEc2LifecycleCapacityBlock } } }
+      else { aws_cli_refused(cause: concat("InstanceLifecycle is not a documented value: ", s)) }
+  }
+}
+
+fn aws_cli_tag(v: JsonValue) -> AwsCliRead<AwsEc2Tag> {
+  match aws_cli_string(obj: v, key: "Key") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: k } =>
+      match json_field_string(obj: v, key: "Value") {
+        FieldRead { value: val } => AwsCliReadOk { value: AwsEc2Tag { key: k, value: val } }
+        FieldAbsent => AwsCliReadOk { value: AwsEc2Tag { key: k, value: "" } }
+        FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+      }
+  }
+}
+
+fn aws_cli_state_reason(v: JsonValue) -> AwsCliRead<AwsEc2StateReason?> {
+  match json_field(obj: v, key: "StateReason") {
+    FieldAbsent => AwsCliReadOk { value: none }
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+    FieldRead { value: r } =>
+      match aws_cli_string(obj: r, key: "Code") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: code } =>
+          match json_field_string(obj: r, key: "Message") {
+            FieldRead { value: m } => AwsCliReadOk { value: Present { value: AwsEc2StateReason { code: code as String, message: m } } }
+            FieldAbsent => AwsCliReadOk { value: Present { value: AwsEc2StateReason { code: code as String, message: "" } } }
+            FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+          }
+      }
+  }
+}
+
+fn aws_cli_instance(v: JsonValue) -> AwsCliRead<AwsEc2Instance> {
+  match aws_cli_string(obj: v, key: "InstanceId") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: id } =>
+  match aws_cli_string(obj: v, key: "InstanceType") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: t } =>
+  match aws_cli_object(obj: v, key: "Placement") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: placement } =>
+  match aws_cli_string(obj: placement, key: "AvailabilityZone") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: az } =>
+  match aws_cli_object(obj: v, key: "State") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: state } =>
+  match aws_cli_int(obj: state, key: "Code") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: code } =>
+  match aws_cli_string(obj: state, key: "Name") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: sn } =>
+  match aws_cli_state_name(s: sn) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: name } =>
+  match aws_cli_state_reason(v: v) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: reason } =>
+  match aws_cli_lifecycle(v: v) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: lifecycle } =>
+  match aws_cli_optional_string(obj: v, key: "SpotInstanceRequestId") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: spot_request } =>
+  match aws_cli_string(obj: v, key: "LaunchTime") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: launched } =>
+  match aws_cli_optional_string(obj: v, key: "PublicIpAddress") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: ip } =>
+  match aws_cli_list(doc: v, key: "Tags", read: g => aws_cli_tag(v: g)) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: tags } =>
+      AwsCliReadOk {
+        value: AwsEc2Instance {
+          instance_id: id,
+          instance_type: t,
+          placement: AwsEc2Placement { availability_zone: az },
+          state: AwsEc2InstanceState { code: code, name: name },
+          state_reason: reason,
+          instance_lifecycle: lifecycle,
+          spot_instance_request_id: spot_request,
+          launch_time: launched as String,
+          public_ip_address: ip,
+          tags: tags,
+        },
+      }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+// Every reservation's instances, in answer order.
+fn aws_cli_reservation_instances(v: JsonValue) -> AwsCliRead<List<AwsEc2Instance>> {
+  aws_cli_list(doc: v, key: "Instances", read: i => aws_cli_instance(v: i))
+}
+
+fn aws_cli_read_instances(stdout: String) -> AwsCliRead<List<AwsEc2Instance>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } =>
+      match aws_cli_list(doc: doc, key: "Reservations", read: r => aws_cli_reservation_instances(v: r)) {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: groups } => AwsCliReadOk { value: fold(groups, init: [], f: (acc, g) => concat(acc, g)) }
+      }
+  }
+}
+
+// ---- service-quotas get-service-quota ----
+
+fn aws_cli_read_service_quota(stdout: String) -> AwsCliRead<AwsServiceQuota> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } =>
+  match aws_cli_object(obj: doc, key: "Quota") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: q } =>
+  match aws_cli_string(obj: q, key: "ServiceCode") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: service } =>
+  match aws_cli_string(obj: q, key: "QuotaCode") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: code } =>
+  match aws_cli_decimal(obj: q, key: "Value") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: value } =>
+  match aws_cli_bool(obj: q, key: "Adjustable") {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: adjustable } =>
+      AwsCliReadOk {
+        value: AwsServiceQuota {
+          service_code: service,
+          quota_code: code,
+          quota_name: match json_field_string(obj: q, key: "QuotaName") { FieldRead { value: n } => n  _ => "" },
+          value: value,
+          unit: match json_field_string(obj: q, key: "Unit") { FieldRead { value: u } => u  _ => "" },
+          adjustable: adjustable,
+        },
+      }
+  }
+  }
+  }
+  }
+  }
+  }
+}
