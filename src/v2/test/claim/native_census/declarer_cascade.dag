@@ -73,7 +73,7 @@ type DcCounts {
 fn dc_tally(counts: DcCounts, m: NativeCensusCauseMember) -> DcCounts {
   match m.cascade {
     NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
-      DcCounts { roots: counts.roots + 1, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2, other: counts.other }
+      DcCounts { roots: if m.path == ^dc_d1_cu || m.path == ^dc_d2_cu { counts.roots + 1 } else { counts.roots }, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2, other: counts.other }
     NativeCensusCascadeNone =>
       DcCounts { roots: counts.roots, members_of_d1: counts.members_of_d1, members_of_d2: counts.members_of_d2, other: counts.other + 1 }
     NativeCensusCascadeUnattributed { reason: _ } =>
@@ -118,6 +118,7 @@ fn dc_census() -> Optional<DcCounts> {
   }
 }
 
+// The v2-tree lib is a root of its own and is not one of the two declarers, so roots are counted at the declarers' paths.
 // RED if the two declarers collapse into one root (reason-sequence grouping), if either user is filed
 // under the other's declarer, or if a user is left as a root of its own (the pre-change count of 4).
 test fn two_refused_declarers_with_one_reason_sequence_are_two_roots_holds() -> Bool {
@@ -126,3 +127,4 @@ test fn two_refused_declarers_with_one_reason_sequence_are_two_roots_holds() -> 
     Present { value: c } => c.roots == 2 && c.members_of_d1 == 1 && c.members_of_d2 == 1 && c.other == 0
   }
 }
+
