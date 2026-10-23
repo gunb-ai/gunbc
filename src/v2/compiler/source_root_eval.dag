@@ -4528,7 +4528,7 @@ fn native_census_substrate_entries() -> List<String> {
 // boundary). A consumer needing another ambient tier adds it at native_census_substrate_entries, at the
 // one home, naming the tier -- never by hand-listing at a call site.
 fn run_substrate_entries(base: List<String>) -> List<String> {
-  fold_list(xs: native_census_substrate_entries(), empty: base, cons: fn(acc, substrate) {
+  fold_list(xs: list_snoc_item(xs: native_census_substrate_entries(), item: "std.types"), empty: base, cons: fn(acc, substrate) {
     match list_find_first(xs: acc, predicate: fn(m) { m == substrate }) {
       Present { value: _ } => acc
       Absent => list_snoc_item(xs: acc, item: substrate)
