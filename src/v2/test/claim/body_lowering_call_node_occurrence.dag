@@ -27,6 +27,7 @@ import v2.std.node {
   TypeNode,
   node_subtree_nodes
 }
+import std.algebra { Cons, Empty }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.list { first_where }
 
