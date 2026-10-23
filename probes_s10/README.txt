@@ -1,1 +1,2 @@
 Seat 10 none/Unit native probes (NOT for landing). red_* each need a refusal; pos_* acceptance. Run unstubbed after #14751.
+Discriminator for smart-boar-59: red_generic_* = verbatim keyed_row/keyed_roster shapes (none init, generic K,V); pos_generic_typed_init = same with typed init; pos_concrete = none init, concrete types. If red_generic fatals like 107/106 and both pos accept, the none-seeded generic accumulator is the cause.

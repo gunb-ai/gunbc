@@ -1,0 +1,16 @@
+module gunbc.s10_pos_generic_typed_init_fold
+
+import std.types { String, Bool, List, Int }
+import std.optional { Optional, Present, Absent }
+
+type KRow<K, V> {
+  row_key: K
+  value: V
+}
+
+fn probe<K, V>(rows: List<KRow<K, V>>, wanted_key: K, key_eq: fn(K, K) -> Bool) -> KRow<K, V>? {
+  let init0: KRow<K, V>? = none
+  fold(rows, init: init0, f: fn(acc, row) {
+    if key_eq(row.row_key, wanted_key) { Present { value: row } } else { acc }
+  })
+}

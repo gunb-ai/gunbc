@@ -1,0 +1,21 @@
+module gunbc.s10_red_generic_none_fold_if_acc
+
+import std.types { String, Bool, List, Int }
+import std.optional { Optional, Present, Absent }
+
+type KRow<K, V> {
+  row_key: K
+  value: V
+}
+
+// verbatim shape of std.keyed_row keyed_row_find
+fn probe<K, V>(rows: List<KRow<K, V>>, wanted_key: K, key_eq: fn(K, K) -> Bool) -> KRow<K, V>? {
+  fold(rows, init: none, f: fn(acc, row) {
+    if key_eq(row.row_key, wanted_key) { Present { value: row } } else { acc }
+  })
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}
