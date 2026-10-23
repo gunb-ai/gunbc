@@ -360,7 +360,7 @@ type ServeResponseHeader
   | ServeResponseHeaderSetCookie { cookie: SetCookie }
   | ServeResponseHeaderNoStore
   | ServeResponseHeaderCacheImmutable { max_age_seconds: Int }
-  | ServeResponseHeaderField { name: String, value: String }
+  | ServeResponseHeaderField { name: HttpExtensionFieldName, value: String }
 
 // RFC 6265 section 4.1 Set-Cookie, as its named parts rather than a pre-spelled line: the
 // cookie-pair and the attributes a deployment sets (Path, Secure, HttpOnly, Max-Age, and
@@ -415,7 +415,7 @@ fn set_cookie_value(cookie: SetCookie) -> String {
 // The wire header carries its RFC 9110 field-name as the label String the seed writes verbatim,
 // so the seed holds no per-header table: a header is a (name, value) pair and a new one is a row
 // of serve_response_header_wire, never an edit to the seed.
-type ServeWireHeader {
+type ServeWireHeader sole_constructor {
   name: String
   value: String
 }
@@ -443,27 +443,27 @@ fn serve_header_name_is_framing(name: String) -> Bool {
   (serve_framing_header_names() |> filter(n => n == folded) |> count) > 0
 }
 
-// The one predicate every writer of a header name asks, so a ServeWireHeader built directly by a
-// handler is held to the same rule as the extension arm's construction route.
-fn serve_header_name_is_settable(name: String) -> Bool {
-  serve_header_name_is_token(name: name) && !serve_header_name_is_framing(name: name)
+// AN HTTP EXTENSION FIELD-NAME, as a type rather than a checked String: `sole_constructor` makes
+// it constructible only inside this module, so the one way to hold one is http_extension_field_name,
+// which admits an RFC 9110 token and refuses a framing field the seed's accept loop owns. A
+// ServeResponseHeaderField carries this type, so a framing header has no expression in the arm; a
+// literal, a cast or a raw String at the arm meets SoleConstructorViolation at compile. The type
+// names no product: which field a deployment sets is the consuming layer's spelling.
+type HttpExtensionFieldName sole_constructor {
+  label: String
 }
 
-type ServeResponseHeaderFieldAdmission
-  = ServeResponseHeaderFieldAdmitted { header: ServeResponseHeader }
-  | ServeResponseHeaderFieldRefused { reason: String }
+type HttpExtensionFieldNameAdmission
+  = HttpExtensionFieldNameAdmitted { name: HttpExtensionFieldName }
+  | HttpExtensionFieldNameRefused { cause: String }
 
-// THE ONE CONSTRUCTION ROUTE of the upstream-agnostic extension arm: a field-name that is a
-// nonempty RFC 9110 token and not a framing header the seed owns. The product that picks the name
-// and value (which header, which token) lives in the consuming layer; this module only knows what
-// a field-name may be.
-fn serve_response_header_field(name: String, value: String) -> ServeResponseHeaderFieldAdmission {
-  if !serve_header_name_is_token(name: name) {
-    ServeResponseHeaderFieldRefused { reason: "a header field-name is a nonempty RFC 9110 token" }
-  } else if serve_header_name_is_framing(name: name) {
-    ServeResponseHeaderFieldRefused { reason: "a framing header is owned by the seed's accept loop and cannot be set by a handler" }
+fn http_extension_field_name(label: String) -> HttpExtensionFieldNameAdmission {
+  if !serve_header_name_is_token(name: label) {
+    HttpExtensionFieldNameRefused { cause: "a header field-name is a nonempty RFC 9110 token" }
+  } else if serve_header_name_is_framing(name: label) {
+    HttpExtensionFieldNameRefused { cause: "a framing header is owned by the seed's accept loop and cannot be set by a handler" }
   } else {
-    ServeResponseHeaderFieldAdmitted { header: ServeResponseHeaderField { name: name, value: value } }
+    HttpExtensionFieldNameAdmitted { name: HttpExtensionFieldName { label: label } }
   }
 }
 
@@ -474,7 +474,7 @@ fn serve_response_header_wire(header: ServeResponseHeader) -> ServeWireHeader {
     ServeResponseHeaderNoStore => ServeWireHeader { name: "Cache-Control", value: "no-store" }
     ServeResponseHeaderCacheImmutable { max_age_seconds: n } =>
       ServeWireHeader { name: "Cache-Control", value: join(["public, max-age=", to_string(value: n), ", immutable"], "") }
-    ServeResponseHeaderField { name: n, value: v } => ServeWireHeader { name: n, value: v }
+    ServeResponseHeaderField { name: n, value: v } => ServeWireHeader { name: n.label, value: v }
   }
 }
 
@@ -490,22 +490,11 @@ fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
 // order; the no-header projection above is this fold at the empty list, so the two spellings
 // cannot drift.
 fn serve_wire_response_with_headers(r: ServeHttpResponse, headers: List<ServeResponseHeader>) -> ServeWireResponse {
-  let wire = serve_response_headers_wire(headers: headers)
-  let unsettable = wire |> filter(h => !serve_header_name_is_settable(name: h.name))
-  if (unsettable |> count) > 0 {
-    ServeWireResponse {
-      status: 500,
-      content_type_label: "text/plain; charset=utf-8",
-      body: "a response header named a framing header or a non-token; refused at the wire projection\n",
-      headers: [],
-    }
-  } else {
-    ServeWireResponse {
-      status: r.status,
-      content_type_label: media_type_wire_label(m: r.content_type),
-      body: r.body,
-      headers: wire,
-    }
+  ServeWireResponse {
+    status: r.status,
+    content_type_label: media_type_wire_label(m: r.content_type),
+    body: r.body,
+    headers: serve_response_headers_wire(headers: headers),
   }
 }
 

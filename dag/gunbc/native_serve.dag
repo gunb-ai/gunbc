@@ -3,7 +3,7 @@ module gunbc.native_serve
 import std.types { Int, List, String, Bool, CommitSha }
 import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count, Second, second, second_count }
 import std.algebra { Cons, Empty, trim }
-import extdeps.http.server { ServeWireResponse, ServeWireHeader, serve_header_name_is_settable }
+import extdeps.http.server { ServeWireResponse, ServeWireHeader }
 import gunbc.running_release_identity { release_revision_text_valid }
 import extdeps.tailscale.identity { tailscale_user_login_header }
 import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
@@ -463,8 +463,9 @@ data native_serve_handler_name: String = "native_serve_handle"
 // into the header block just like a header value), because a value is handler data and one carrying a line break would split the
 // header block. The seed makes the same two checks in hand Rust after evaluation; here they are a
 // fold, and a response that fails them is answered as a typed 500 naming why, never written.
-// Header NAMES are checked by extdeps.http.server serve_header_name_is_settable (an RFC 9110 token
-// that is not a framing header the main writes itself: Content-Type, Content-Length, Connection).
+// Header NAMES need no check: a ServeWireHeader is sole_constructor in extdeps.http.server and is
+// built only from a ServeResponseHeader, whose open arm carries an HttpExtensionFieldName, so the
+// framing headers the main writes itself (Content-Type, Content-Length, Connection) cannot be set.
 type NativeServeOutgoing {
   status: Int
   content_type_label: String
@@ -493,15 +494,12 @@ fn native_serve_header_line(h: ServeWireHeader) -> String {
 
 fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
   let unsafe_headers = r.headers |> filter(h => !native_serve_value_is_field_safe(value: h.value))
-  let unsettable_names = r.headers |> filter(h => !serve_header_name_is_settable(name: h.name))
   if r.status < 100 || r.status > 599 {
     native_serve_unwritable(reason: concat("status ", concat(to_string(value: r.status), " is not an HTTP status")))
   } else if !native_serve_value_is_field_safe(value: r.content_type_label) {
     native_serve_unwritable(reason: "the content type carries CR, LF or NUL")
   } else if (unsafe_headers |> count) > 0 {
     native_serve_unwritable(reason: "a header value carries CR, LF or NUL")
-  } else if (unsettable_names |> count) > 0 {
-    native_serve_unwritable(reason: "a header name is not a settable RFC 9110 token")
   } else {
     NativeServeOutgoing {
       status: r.status,

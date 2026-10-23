@@ -6,9 +6,8 @@ import extdeps.http.server {
   ServedRouteTable,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route, serve_response_header_field, serve_response_header_wire,
-  ServeResponseHeaderFieldAdmitted, ServeResponseHeaderFieldRefused,
-  ServeResponseHeaderField, ServeHttpResponse, serve_wire_response_with_headers,
+  serve_select_route, http_extension_field_name, serve_response_header_wire,
+  HttpExtensionFieldNameAdmitted, HttpExtensionFieldNameRefused, ServeResponseHeaderField,
 }
 import extdeps.uri_path { path_param_value }
 import gunbc.auth.approval_broker_marker {
@@ -516,42 +515,34 @@ test fn a_json_body_is_served_untouched_with_exactly_one_marker_header() -> Bool
   }
 }
 
-// The extension arm's construction route: a token name is admitted and rides the wire as that name.
-test fn the_field_arm_admits_a_token_name_and_the_wire_carries_it_verbatim() -> Bool {
-  match serve_response_header_field(name: "X-Served-By", value: "t") {
-    ServeResponseHeaderFieldAdmitted { header: h } => {
-      let w = serve_response_header_wire(header: h)
+// The sealed name's one construction route: a token is admitted and rides the wire as that label.
+test fn the_field_name_admits_a_token_and_the_wire_carries_it_verbatim() -> Bool {
+  match http_extension_field_name(label: "X-Served-By") {
+    HttpExtensionFieldNameAdmitted { name: n } => {
+      let w = serve_response_header_wire(header: ServeResponseHeaderField { name: n, value: "t" })
       w.name == "X-Served-By" && w.value == "t"
     }
-    ServeResponseHeaderFieldRefused { reason: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => false
   }
 }
 
-// RED controls: a framing header (any case) and a non-token name are refused.
-test fn the_field_arm_refuses_a_framing_header_and_a_non_token_name() -> Bool {
-  let framing = match serve_response_header_field(name: "Content-Length", value: "1") {
-    ServeResponseHeaderFieldAdmitted { header: _ } => false
-    ServeResponseHeaderFieldRefused { reason: _ } => true
+// RED controls: a framing field (any case), a non-token and an empty label are refused.
+test fn the_field_name_refuses_a_framing_field_and_a_non_token() -> Bool {
+  let framing = match http_extension_field_name(label: "Content-Length") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
   }
-  let folded = match serve_response_header_field(name: "tRaNsFeR-eNcOdInG", value: "x") {
-    ServeResponseHeaderFieldAdmitted { header: _ } => false
-    ServeResponseHeaderFieldRefused { reason: _ } => true
+  let folded = match http_extension_field_name(label: "tRaNsFeR-eNcOdInG") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
   }
-  let spaced = match serve_response_header_field(name: "X Bad: y", value: "x") {
-    ServeResponseHeaderFieldAdmitted { header: _ } => false
-    ServeResponseHeaderFieldRefused { reason: _ } => true
+  let spaced = match http_extension_field_name(label: "X Bad: y") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
   }
-  let empty = match serve_response_header_field(name: "", value: "x") {
-    ServeResponseHeaderFieldAdmitted { header: _ } => false
-    ServeResponseHeaderFieldRefused { reason: _ } => true
+  let empty = match http_extension_field_name(label: "") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
   }
   framing && folded && spaced && empty
-}
-
-// RED control for the construction bypass: the extension arm built DIRECTLY with a framing name
-// (skipping serve_response_header_field) is refused at the wire projection, not written.
-test fn a_directly_built_framing_header_is_refused_at_the_wire_projection() -> Bool {
-  let r = ServeHttpResponse { status: 200, content_type: application_json_utf8, body: "{}", headers: [] }
-  let w = serve_wire_response_with_headers(r: r, headers: [ServeResponseHeaderField { name: "Content-Length", value: "0" }])
-  w.status == 500 && (w.headers |> count) == 0
 }

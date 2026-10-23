@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import std.markup { MarkupComment, serialize_fragment_with }
 import extdeps.languages.html { html_markup_medium }
 import std.markup { Serialized, Rejected }
-import extdeps.http.server { MediaType, ServeResponseHeader, ServeResponseHeaderFieldAdmitted, ServeResponseHeaderFieldRefused, ServeWireHeader, serve_response_header_field }
+import extdeps.http.server { MediaType, ServeResponseHeader, ServeResponseHeaderField, HttpExtensionFieldNameAdmitted, HttpExtensionFieldNameRefused, ServeWireHeader, http_extension_field_name }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
 // ── WHICH FOLD ANSWERED, WRITTEN INTO THE ONLY CHANNEL THE PROBE CAN READ ────────────────────
@@ -43,7 +43,7 @@ import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapPro
 //
 // THE CHANNEL IS A FACT ABOUT THE MEDIA TYPE (see approval_broker_marked_body): a format with comment
 // syntax carries the marker in its body, every other format carries it in the X-Served-By response
-// header (admitted by extdeps.http.server serve_response_header_field; the name and token are this
+// header (admitted by extdeps.http.server http_extension_field_name; the name and token are this
 // module's, X-Served-By being a gunbc convention and not an IANA-registered field). A first cut put it in the body of EVERY
 // response, which made application/json bodies unparseable to the phone app.
 
@@ -219,9 +219,9 @@ fn approval_broker_marked_body(content_type: MediaType, body: String, m: Approva
   } else if content_type.subtype == "javascript" {
     BrokerBodyMarked { body: join([body, "\n// x-approval-broker: ", token as String, "\n"], ""), headers: [] }
   } else {
-    match serve_response_header_field(name: approval_broker_marker_header_name, value: token as String) {
-      ServeResponseHeaderFieldAdmitted { header: h } => BrokerBodyMarked { body: body, headers: [h] }
-      ServeResponseHeaderFieldRefused { reason: r } => BrokerMarkerRefused { reason: r }
+    match http_extension_field_name(label: approval_broker_marker_header_name) {
+      HttpExtensionFieldNameAdmitted { name: n } => BrokerBodyMarked { body: body, headers: [ServeResponseHeaderField { name: n, value: token as String }] }
+      HttpExtensionFieldNameRefused { cause: r } => BrokerMarkerRefused { reason: r }
     }
   }
 }
