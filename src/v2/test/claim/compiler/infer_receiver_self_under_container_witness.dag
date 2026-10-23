@@ -1,0 +1,101 @@
+module v2.test.claim.compiler.infer_receiver_self_under_container_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_source }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import std.types { Bool, List, String }
+
+// SUBJECT: the two std.algebra string-profile template rows that nest ReceiverSelf under a constructor
+// (`split` returns ContainerOf { List, ReceiverSelf }; `join` takes it), in both polarities, judged by the
+// native route (assemble_program_from_ingest, then v2.compiler.infer). The v1 seed leaves ReceiverSelf open
+// there, so a split-derived element goes untyped and a Container inhabits a Coproduct annotation
+// (gunbc.recurring_failure_mode v1_accepts_a_container_at_a_coproduct_annotation_and_a_split_derived_element_untyped).
+// These are the native REDs and positive controls for its trigger: the re-run against the real std.algebra.
+//
+// THE ALGEBRA PEER IS THE ONE SWAP POINT. rsu_algebra_peer_source is the std.algebra the subjects import. Today
+// it is a stub (FreeMonoid and list_at_optional only; the real std.algebra is not yet natively compilable), so
+// the claims below are rung-asserted on the stub. The unstubbed re-run replaces that one data row with the real
+// dag/std/algebra.dag text and changes nothing else.
+//
+// POLARITY. RETURN: the result of `split` (a List<String> at a non-list annotation; a split-derived element
+// at a non-String annotation). PARAMETER: `join` over a list whose element is not String. Each RED has a
+// positive control beside it on the same route, so a refusal is distinguishable from never-reached.
+//
+// OPEN FRONTIER, FOUND NOT FILLED: nothing in src/v2 consumes the std.algebra operation-template table, so a
+// native `split` / `join` call head has no declared signature authority. The split-derived and join REDs below
+// therefore currently refuse for infer_reason_primitive_without_declared_signature_authority, not for the
+// ReceiverSelf instantiation the class is about; they are asserted at that reason and flip to the instantiation
+// reason when the template row is consumed. Never deleted.
+
+data rsu_algebra_peer_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+fn rsu_peer() -> DagSourceReadWitness {
+  bla_source(src: rsu_algebra_peer_source, artifact: bla_q_artifact, cu: ^rsu_algebra_cu)
+}
+
+data rsu_list_at_bool: String = "module p\n\nimport std.types { List, String, Bool }\n\nfn f(xs: List<String>) -> Bool {\n  let n: Bool = xs\n  n\n}\n"
+
+data rsu_list_at_color: String = "module p\n\nimport std.types { List, String }\n\ntype Color = Red | Green\n\nfn f(xs: List<String>) -> Color {\n  let n: Color = xs\n  n\n}\n"
+
+data rsu_list_at_list: String = "module p\n\nimport std.types { List, String }\n\nfn f(xs: List<String>) -> List<String> {\n  let n: List<String> = xs\n  n\n}\n"
+
+data rsu_split_elem_int: String = "module p\n\nimport std.types { String, Int }\nimport std.algebra { list_at_optional }\nimport std.optional { Absent, Present }\n\nfn f(line: String) -> Int {\n  let fields = split(s: line, delimiter: \"|\")\n  match list_at_optional(xs: fields, index: 1) {\n    Absent => 0\n    Present { value: user } =>\n      let z: Int = user\n      z\n  }\n}\n"
+
+data rsu_split_elem_string: String = "module p\n\nimport std.types { String }\nimport std.algebra { list_at_optional }\nimport std.optional { Absent, Present }\n\nfn f(line: String) -> String {\n  let fields = split(s: line, delimiter: \"|\")\n  match list_at_optional(xs: fields, index: 1) {\n    Absent => \"\"\n    Present { value: user } =>\n      let z: String = user\n      z\n  }\n}\n"
+
+data rsu_split_at_bool: String = "module p\n\nimport std.types { String, Bool }\n\nfn f(line: String) -> Bool {\n  let n: Bool = split(s: line, delimiter: \"|\")\n  n\n}\n"
+
+data rsu_join_list_int: String = "module p\n\nimport std.types { String, Int, List }\n\nfn f(sep: String) -> String {\n  let xs: List<Int> = [1, 2]\n  join(xs, sep)\n}\n"
+
+data rsu_join_list_string: String = "module p\n\nimport std.types { String, List }\n\nfn f(parts: List<String>, sep: String) -> String {\n  join(parts, sep)\n}\n"
+
+fn rsu_reason(src: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: src, peers: [rsu_peer()]) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_infer_tree(tree: tree) {
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+        Accepted { value: _, diagnostics: _ } => ^accepted
+      }
+  }
+}
+
+fn rsu_refused(src: String) -> Bool { rsu_reason(src: src) != ^accepted }
+
+// RETURN POLARITY, container-vs-coproduct: a List<String> at a Bool or a user-enum annotation is refused;
+// List<String> at List<String> is the positive control on the same route.
+test fn rsu_a_string_list_at_a_bool_annotation_refuses() -> Bool { rsu_refused(src: rsu_list_at_bool) }
+
+test fn rsu_a_string_list_at_a_user_enum_annotation_refuses() -> Bool { rsu_refused(src: rsu_list_at_color) }
+
+test fn rsu_a_string_list_at_its_own_list_annotation_is_accepted() -> Bool { rsu_reason(src: rsu_list_at_list) == ^accepted }
+
+// RETURN POLARITY, split-derived element: refused at Int; a String element at String is the positive control.
+test fn rsu_a_split_derived_element_at_int_refuses() -> Bool { rsu_refused(src: rsu_split_elem_int) }
+
+test fn rsu_a_split_result_at_bool_refuses() -> Bool { rsu_refused(src: rsu_split_at_bool) }
+
+test fn rsu_a_split_derived_element_at_string_is_accepted() -> Bool { rsu_reason(src: rsu_split_elem_string) == ^accepted }
+
+// PARAMETER POLARITY: join over List<Int> refuses; over List<String> is the positive control.
+test fn rsu_join_over_an_int_list_refuses() -> Bool { rsu_refused(src: rsu_join_list_int) }
+
+test fn rsu_join_over_a_string_list_is_accepted() -> Bool { rsu_reason(src: rsu_join_list_string) == ^accepted }
+
+// THE FRONTIER, ASSERTED AT ITS CURRENT REASON (see above): with no consumer of the template table, the
+// native refusal of these call heads is the missing signature authority.
+test fn rsu_split_head_has_no_declared_signature_authority_yet() -> Bool {
+  rsu_reason(src: rsu_split_at_bool) == ^infer_reason_primitive_without_declared_signature_authority
+}
+
+fn rsu_probe_list_at_bool() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_list_at_bool)) }
+fn rsu_probe_list_at_color() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_list_at_color)) }
+fn rsu_probe_list_at_list() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_list_at_list)) }
+fn rsu_probe_split_elem_int() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_split_elem_int)) }
+fn rsu_probe_split_elem_string() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_split_elem_string)) }
+fn rsu_probe_split_at_bool() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_split_at_bool)) }
+fn rsu_probe_join_list_int() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_join_list_int)) }
+fn rsu_probe_join_list_string() -> String { symbol_lexeme(sym: rsu_reason(src: rsu_join_list_string)) }
