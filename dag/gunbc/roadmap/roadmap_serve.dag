@@ -800,6 +800,8 @@ fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
     DeviceRequestHandler => false
     DeviceEnrollmentReadbackHandler => false
     DevicePushUpdateHandler => false
+    DeviceListHandler => false
+    DeviceRevokeHandler => false
   }
 }
 

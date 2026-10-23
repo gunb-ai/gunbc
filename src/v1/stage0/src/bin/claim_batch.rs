@@ -44,10 +44,27 @@ struct ResolveTimings {
 /// that definitely failed makes the answer "did not hold" even when another group was never
 /// evaluated. Only nothing-failed with something unobserved is "no observation". Every group's
 /// lines print either way.
-fn batch_exit_code(any_unobserved: bool, any_failed: bool) -> u8 {
-    if any_failed {
+///
+/// The cost partition's verdict is a third conjunct. An accounting that contradicts itself
+/// (rows past the parent, a nested span, in-span time past the thread total) is a measurement
+/// that did not hold: it fails the line, so a Refused verdict is never printed and then
+/// ignored. `NoSpans` made no observation at all, which is exit 2's meaning.
+fn batch_exit_code(
+    any_unobserved: bool,
+    any_failed: bool,
+    partition: &v1_compiler::cli_run::CostAccountingVerdict,
+) -> u8 {
+    use v1_compiler::cli_run::{CostAccountingRefusal, CostAccountingVerdict};
+    let (partition_unobserved, partition_failed) = match partition {
+        CostAccountingVerdict::Reconciled { .. } => (false, false),
+        CostAccountingVerdict::Refused {
+            cause: CostAccountingRefusal::NoSpans,
+        } => (true, false),
+        CostAccountingVerdict::Refused { .. } => (false, true),
+    };
+    if any_failed || partition_failed {
         1
-    } else if any_unobserved {
+    } else if any_unobserved || partition_unobserved {
         2
     } else {
         0
@@ -1267,6 +1284,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
             );
         }
     }
+    let partition_verdict: v1_compiler::cli_run::CostAccountingVerdict;
     {
         let st = v1_compiler::cli_run::resolve_stage_totals();
         let ms = |n: u128| n as f64 / 1.0e6;
@@ -1305,6 +1323,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
         // witness-entry resolves. The partition below reports against the span total that
         // actually contains them, and refuses rather than quoting a share off the mismatch.
         let partition = v1_compiler::cli_run::exclusive_cost_partition();
+        partition_verdict = partition.verdict.clone();
         eprintln!(
             "[cost-partition] {}",
             v1_compiler::cli_run::render_exclusive_cost_partition_json(
@@ -1372,6 +1391,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     Ok(ExitCode::from(batch_exit_code(
         timings.any_unobserved,
         timings.any_failed,
+        &partition_verdict,
     )))
 }
 
@@ -1521,10 +1541,65 @@ mod cli_path_resolution_wiring_tests {
 
     #[test]
     fn exit_composition_is_failed_over_unobserved_over_clean() {
-        assert_eq!(batch_exit_code(false, false), 0);
-        assert_eq!(batch_exit_code(false, true), 1);
-        assert_eq!(batch_exit_code(true, false), 2);
-        assert_eq!(batch_exit_code(true, true), 1);
+        use v1_compiler::cli_run::CostAccountingVerdict;
+        let ok = CostAccountingVerdict::Reconciled {
+            residual_nanos: 0,
+            tolerance_nanos: 0,
+        };
+        assert_eq!(batch_exit_code(false, false, &ok), 0);
+        assert_eq!(batch_exit_code(false, true, &ok), 1);
+        assert_eq!(batch_exit_code(true, false, &ok), 2);
+        assert_eq!(batch_exit_code(true, true, &ok), 1);
+    }
+
+    /// A Refused cost partition joins the exit at the same precedence as any other verdict.
+    /// RED: an over-attributed partition (rows past the parent) fails the line even when every
+    /// claim held. POSITIVE CONTROL: a reconciled partition adds nothing, so a clean batch is 0.
+    #[test]
+    fn a_refused_partition_joins_the_batch_exit() {
+        use v1_compiler::cli_run::{CostAccountingRefusal, CostAccountingVerdict};
+        let flags = |v: CostAccountingVerdict| batch_exit_code(false, false, &v);
+        let refused = |cause| CostAccountingVerdict::Refused { cause };
+        assert_eq!(
+            flags(CostAccountingVerdict::Reconciled {
+                residual_nanos: 0,
+                tolerance_nanos: 0
+            }),
+            0,
+            "control: a reconciled partition leaves a clean batch at 0"
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::OverAttributed {
+                sum_exclusive_nanos: 2,
+                parent_span_nanos: 1
+            })),
+            1,
+            "an over-attributed partition fails the line"
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::InSpanExceedsThread {
+                stage: "pool_parse",
+                in_span_nanos: 2,
+                thread_nanos: 1
+            })),
+            1
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::NestedSpanAttribution {
+                nested_spans: 1
+            })),
+            1
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::NoSpans)),
+            2,
+            "no span ran: no observation, exit 2, never a failure"
+        );
+        // precedence against a claim-level verdict: failed over unobserved over clean.
+        assert_eq!(
+            batch_exit_code(false, true, &refused(CostAccountingRefusal::NoSpans)),
+            1
+        );
     }
 
     /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).
