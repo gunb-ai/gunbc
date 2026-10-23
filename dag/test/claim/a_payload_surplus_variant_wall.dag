@@ -34,15 +34,19 @@ fn surplus_variant_probe_source(holding: String) -> String {
 
 // THE ROWS ACCESSOR IS NOT REDECLARED HERE. This file used to carry its own `type ProbeCensusRows`
 // plus a `surplus_variant_probe_rows` that matched the census coproduct by hand -- the second local
-// implementation of one rule (§6b), which review 82870 caught when a third copy appeared. It now
+// implementation of one rule (§6b), which a third copy exposed. It now
 // imports the one home, gunbc.compile_census_probe, and passes it a source it builds locally.
 
 data target_class: String = "TypeMismatch"
 
-// The holding field is CgroupNotQuiet. CgroupSubtreeEmpty inhabits CgroupSubtreeReadback, so the
-// compiler's histogram subject for this refusal is the payload coproduct, not the outer
-// StopQuiescence wrapper (same grain as no_fallback's Coproduct(BootDeliveryCandidateStanding)).
-data target_subject: String = "Coproduct(CgroupNotQuiet)"
+// MEASURED, not derived: the refused expression is the variant VALUE `CgroupSubtreeEmpty`, and the
+// compiler's histogram subject is the coproduct that value inhabits -- CgroupSubtreeReadback --
+// not the field's declared type CgroupNotQuiet. An earlier revision of this comment reasoned the
+// opposite way and the claim sat red on main with a subject no compile produces; the RED source's
+// census carries exactly one blocking row the GREEN one lacks, TypeMismatch /
+// Coproduct(CgroupSubtreeReadback). The row counts of that reading are in the failure-mode receipt
+// (an_expected_census_key_authored_from_a_reading_and_never_executed), not transcribed here.
+data target_subject: String = "Coproduct(CgroupSubtreeReadback)"
 
 fn censuses_differ_by_exactly_the_target_row(
   red: List<CompileDiagnosticCensusRow>,
@@ -68,7 +72,7 @@ fn green_rows() -> ProbeCensusRows? {
   )
 }
 
-// THE DISCRIMINATING RED. Exactly one blocking TypeMismatch at the CgroupNotQuiet key — not
+// THE DISCRIMINATING RED. Exactly one blocking TypeMismatch at the target_subject key — not
 // "something refused".
 test fn an_empty_subtree_cannot_inhabit_cgroup_still_holding() -> Bool {
   match red_rows() {

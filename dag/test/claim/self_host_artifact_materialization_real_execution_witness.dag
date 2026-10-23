@@ -139,7 +139,7 @@ test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> B
       match o {
         ArtifactMaterializationObserved { executable: exe, digest: d } =>
           match sha512sum_observe_file(path: exe) {
-            Sha512FileObserved { digest: again } => (d as String) == (again as String)
+            Sha512FileObserved { digest: again } => d.hex == again.hex
             Sha512FileObservationRefused { cause: _ } => false
           }
         ArtifactMaterializationBuildFailed { target_name: _ } => false
@@ -241,21 +241,13 @@ fn axis_identity(artifact: GeneratedArtifactIdentity) -> GenerationIdentity {
   }
 }
 
-fn moved_axis_count(both: TwoBuilds) -> Int {
-  match both {
-    TwoBuildsSetupRefused { cause: _ } => 0 - 1
-    TwoBuilds { first: f, second: s } =>
-      if !axis_is_materialized(a: f) || !axis_is_materialized(a: s) {
-        0 - 1
-      } else {
-        length(
-          xs: generation_identity_mismatched_axes(
-            left: axis_identity(artifact: f),
-            right: axis_identity(artifact: s)
-          )
-        )
-      }
-  }
+fn moved_axis_count(first: GeneratedArtifactIdentity, second: GeneratedArtifactIdentity) -> Int {
+  length(
+    xs: generation_identity_mismatched_axes(
+      left: axis_identity(artifact: first),
+      right: axis_identity(artifact: second)
+    )
+  )
 }
 
 test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool {
@@ -268,7 +260,7 @@ test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool
     TwoBuilds { first: f, second: s } =>
       axis_is_materialized(a: f)
         && axis_is_materialized(a: s)
-        && moved_axis_count(both: both) == 1
+        && moved_axis_count(first: f, second: s) == 1
         && for_all(
           xs: generation_identity_mismatched_axes(
             left: axis_identity(artifact: f),
@@ -292,6 +284,6 @@ test fn rebuilding_identical_source_in_place_moves_no_axis() -> Bool {
     TwoBuilds { first: f, second: s } =>
       axis_is_materialized(a: f)
         && axis_is_materialized(a: s)
-        && moved_axis_count(both: both) == 0
+        && moved_axis_count(first: f, second: s) == 0
   }
 }

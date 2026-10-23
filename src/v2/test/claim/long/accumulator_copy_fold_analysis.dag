@@ -2,7 +2,7 @@ module v2.test.claim.long.accumulator_copy_fold_analysis
 
 import std.live_tree { LiveTreeDisposition }
 
-import v2.std.node { Authored, StructuralLabel, Positional, Edge, Node, ComputationNode, TypeNode, Transform, Atom }
+import v2.std.node { Authored, StructuralLabel, Positional, Edge, Node, ComputationNode, TypeNode, Transform, Atom, NotADeclaration }
 
 import std.algebra { Cons, Empty }
 
@@ -283,12 +283,12 @@ fn edge_is_head_slot(e: Edge) -> Bool {
 fn rebuilt_edge(e: Edge) -> Edge {
   if edge_is_head_slot(e: e) {
     if edge_target_is_mystery(e: e) {
-      Edge { label: e.label, target: opaque_head_node() }
+      Edge { label: e.label, target: opaque_head_node(), declaration: e.declaration }
     } else {
-      Edge { label: e.label, target: break_mystery_head(n: e.target) }
+      Edge { label: e.label, target: break_mystery_head(n: e.target), declaration: e.declaration }
     }
   } else {
-    Edge { label: e.label, target: break_mystery_head(n: e.target) }
+    Edge { label: e.label, target: break_mystery_head(n: e.target), declaration: e.declaration }
   }
 }
 
@@ -475,9 +475,9 @@ fn supplied_lowered_call(head: Node, left: Symbol, right: Symbol) -> Node {
   v2.std.node.node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: head },
-      Edge { label: Authored { name: ^left }, target: supplied_atom(identity: left) },
-      Edge { label: Authored { name: ^right }, target: supplied_atom(identity: right) }
+      Edge { label: Positional, target: head, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^left }, target: supplied_atom(identity: left), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^right }, target: supplied_atom(identity: right), declaration: NotADeclaration }
     ]
   )
 }

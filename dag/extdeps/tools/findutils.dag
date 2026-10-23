@@ -77,6 +77,13 @@ fn find_owned_regular_files_exec_argv(dir: String, owner: String, command: List<
   concat(concat([find_program().invocation as String, dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"])
 }
 
+fn find_owned_regular_files_exec_command(dir: String, owner: String, command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(concat([dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"]),
+  )
+}
+
 // THE REGULAR FILES UNDER A ROOT, ONE `<size> <relative path>` LINE EACH (find(1) -printf: %s is the
 // size in bytes, %P the path with the starting point removed). A plain argv: no shell, and find's own
 // status is the one the caller reads.
