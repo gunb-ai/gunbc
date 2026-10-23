@@ -6,7 +6,12 @@ import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   TerminationProof
 }
+import std.types { List, Map, Set }  // PROVISIONAL
 import std.algebra { map_lookup, collection_concat_shape, collection_count_shape, collection_map_shape }
+// PROVISIONAL (measure/n7-lookahead-2, census probe, NEVER LANDS): bind the kernel container
+// spellings used bare in this module to their H1 homes in std.types (List, Map, Set). Direction:
+// warm-crane-888's Map-crossing design (outside std.algebra, bind Map through an explicit
+// 'import std.types { Map }'); List/Set spelled the same way, no ruling cited for them.
 
 type GraphEdge {
   caller: String

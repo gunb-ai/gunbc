@@ -1,6 +1,6 @@
 module std.syntax
 
-import std.types { List }
+import std.types { List, Map }  // PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): Map added; direction warm-crane-888 (outside std.algebra, bind Map via explicit std.types import)
 
 type BinOp
   = Add | Sub | Mul | Div | Mod
