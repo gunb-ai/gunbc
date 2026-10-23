@@ -16,9 +16,9 @@ import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Diagnostics, Diagnostic }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.node { Symbol, Node, ComputationNode, Transform, positional_child_target_nodes, node_subtree_nodes }
+import v2.std.node { Symbol, Node, ComputationNode, Transform, Value, Branch, Match, TypeNode, Atom, Conj, Arrow, Instantiation, Disj, positional_child_target_nodes, node_subtree_nodes }
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.types { Int }
+import std.types { Int, List }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
@@ -315,3 +315,73 @@ test fn zz_census_any_node_has_entry() -> Bool { zz_census(subject: "v2.test.zzp
 test fn zz_census_every_node_has_entry() -> Bool { zz_census(subject: "v2.test.zzpd_t", only_transform: false, want_every: true) }
 test fn zz_census_any_transform_has_entry() -> Bool { zz_census(subject: "v2.test.zzpd_t", only_transform: true, want_every: false) }
 test fn zz_census_every_transform_has_entry() -> Bool { zz_census(subject: "v2.test.zzpd_t", only_transform: true, want_every: true) }
+
+fn zz_kind_is(n: Node, k: Int) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } => k == 0 || k == 1
+    ComputationNode { behavior: Value } => k == 0 || k == 2
+    ComputationNode { behavior: Branch } => k == 0 || k == 3
+    ComputationNode { behavior: Match } => k == 0 || k == 4
+    ComputationNode { behavior: _ } => k == 0 || k == 10
+    TypeNode { connective: Atom { identity: _ } } => k == 0 || k == 5
+    TypeNode { connective: Conj } => k == 0 || k == 6
+    TypeNode { connective: Arrow } => k == 0 || k == 7
+    TypeNode { connective: Instantiation } => k == 0 || k == 8
+    TypeNode { connective: Disj } => k == 0 || k == 9
+  }
+}
+
+// region: 0 whole tree, 1 ancestors of the call, 2 descendants of the call
+fn zz_in_region(r: Node, call: Node, n: Node, region: Int) -> Bool {
+  if region == 0 { true }
+  else if region == 1 { list_contains_node(xs: node_subtree_nodes(root: n), x: call) && !(n == call) }
+  else { list_contains_node(xs: node_subtree_nodes(root: call), x: n) && !(n == call) }
+}
+
+fn list_contains_node(xs: List<Node>, x: Node) -> Bool {
+  fold(xs, init: false, f: fn(acc, y) { acc || y == x })
+}
+
+fn zz_exists(subject: String, k: Int, region: Int, entried: Bool) -> Bool {
+  match zz_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      match zz_call(tree: r) {
+        Absent => false
+        Present { value: call } =>
+          match zz_obligated(subject: subject) {
+            Absent => false
+            Present { value: t } =>
+              fold(node_subtree_nodes(root: r.root), init: false, f: fn(acc, n) {
+                acc || (zz_kind_is(n: n, k: k) && zz_in_region(r: r.root, call: call, n: n, region: region) && (zz_has_entry(t: t, n: n) == entried))
+              })
+          }
+      }
+  }
+}
+test fn zz_exists_entryless_kind_0() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 0, region: 0, entried: false) }
+test fn zz_exists_entried_kind_0() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 0, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_1() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 1, region: 0, entried: false) }
+test fn zz_exists_entried_kind_1() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 1, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_2() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 2, region: 0, entried: false) }
+test fn zz_exists_entried_kind_2() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 2, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_3() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 3, region: 0, entried: false) }
+test fn zz_exists_entried_kind_3() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 3, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_4() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 4, region: 0, entried: false) }
+test fn zz_exists_entried_kind_4() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 4, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_5() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 5, region: 0, entried: false) }
+test fn zz_exists_entried_kind_5() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 5, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_6() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 6, region: 0, entried: false) }
+test fn zz_exists_entried_kind_6() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 6, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_7() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 7, region: 0, entried: false) }
+test fn zz_exists_entried_kind_7() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 7, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_8() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 8, region: 0, entried: false) }
+test fn zz_exists_entried_kind_8() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 8, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_9() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 9, region: 0, entried: false) }
+test fn zz_exists_entried_kind_9() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 9, region: 0, entried: true) }
+test fn zz_exists_entryless_kind_10() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 10, region: 0, entried: false) }
+test fn zz_exists_entried_kind_10() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 10, region: 0, entried: true) }
+test fn zz_exists_entryless_ancestor() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 0, region: 1, entried: false) }
+test fn zz_exists_entried_ancestor() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 0, region: 1, entried: true) }
+test fn zz_exists_entryless_descendant() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 0, region: 2, entried: false) }
+test fn zz_exists_entried_descendant() -> Bool { zz_exists(subject: "v2.test.zzpd_t", k: 0, region: 2, entried: true) }
