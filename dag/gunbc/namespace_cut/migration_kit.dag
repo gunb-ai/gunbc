@@ -44,6 +44,11 @@ fn kit_blocking_count(source: String) -> Int? {
   }
 }
 
+// COUNT-BASED, PROVISIONAL (tidy-ant-251, Seat 13 review): a count of blocking rows is a count equality, not an
+// identity join (DESIGN section 5), and can pass for the wrong reason (the call never reached). Checks 1 and 2 are
+// to read the located binding record of THAT occurrence (BoundAmbient vs BoundToDeclaration{path}) once the
+// census-reading label exists; until then these verdicts are provisional.
+//
 // A BASELINE WITHOUT THE CALL anchors both arms: the unimported call must add blocking rows over it (check 1: the name
 // is unbound, not resolved ambiently), and the imported call must add none (check 2). Comparing the two call sources
 // to each other is confounded on a not-yet-migrated name, where the import itself refuses and both add rows.
