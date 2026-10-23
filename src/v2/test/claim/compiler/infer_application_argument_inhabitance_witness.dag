@@ -340,11 +340,12 @@ test fn infer_optional_formal_owes_no_descent_holds() -> Bool {
 // is explicit Present, gunbc.design_ruling explicit_present_is_the_authoring_policy). The old
 // Occupancy connective admitted it with the OptionalCarrier advisory; that admission is what the cut retires.
 // REASON UPDATED to the typed 'no implicit lift' reason #14644 (the Optional stack, Rule A part 3)
-// introduced, MEASURED by v2.test.claim.compiler.infer_red_claims_fatal_namer (nam_b_fatal_is_-
-// literal_at_optional PASS): the refusal is unchanged -- still Rejected, still no accept -- but the
-// chain's reason is now infer_literal_at_optional_is_not_present, the same reason the source-route
-// witnesses v2.test.claim.compiler.infer_arm_close_witness (rb_x1/rb_x3/rc8) pin green for the
-// identical ruling. The formerly asserted label was the pre-#14644 spelling the typed reason replaced.
+// introduced: the refusal is unchanged -- still Rejected, still no accept -- but the chain's reason
+// is now infer_literal_at_optional_is_not_present, minted by v2.compiler.infer's
+// InferLiteralElaborationRefused cause, the same reason the landed source-route witnesses
+// v2.test.claim.compiler.infer_arm_close_witness (rb_x1/rb_x3/rc8) pin green for the identical
+// ruling. This claim, re-derived by claim_batch on this module, is the instrument; the formerly
+// asserted label was the pre-#14644 spelling the typed reason replaced.
 test fn infer_bare_int_at_an_optional_formal_refuses_holds() -> Bool {
   match iaai_resolved_with_optional(root: inhabitance_optional_formal_tree()) {
     Rejected { diagnostics: _ } => false
