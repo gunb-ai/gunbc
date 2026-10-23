@@ -34,11 +34,6 @@ struct ResolveTimings {
     any_unobserved: bool,
 }
 
-/// Exit composition, 1 (a finding) > 2 (no observation) > 0 (clean): the batch verdict is a
-/// conjunction over its claims, and under Kleene logic false AND unknown is false, so a claim
-/// that definitely failed makes the answer "did not hold" even when another group was never
-/// evaluated. Only nothing-failed with something unobserved is "no observation". Every group's
-/// lines print either way.
 /// What the cost partition's verdict contributes to the batch exit. An accounting that
 /// contradicts itself (rows past the parent, a nested span, in-span time past the thread
 /// total) is a measurement that did not hold: it fails the line, so a Refused verdict is never
@@ -55,6 +50,11 @@ fn partition_exit_flags(verdict: &v1_compiler::cli_run::CostAccountingVerdict) -
     }
 }
 
+/// Exit composition, 1 (a finding) > 2 (no observation) > 0 (clean): the batch verdict is a
+/// conjunction over its claims, and under Kleene logic false AND unknown is false, so a claim
+/// that definitely failed makes the answer "did not hold" even when another group was never
+/// evaluated. Only nothing-failed with something unobserved is "no observation". Every group's
+/// lines print either way.
 fn batch_exit_code(any_unobserved: bool, any_failed: bool) -> u8 {
     if any_failed {
         1
