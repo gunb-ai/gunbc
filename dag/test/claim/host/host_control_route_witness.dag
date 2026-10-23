@@ -15,10 +15,9 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet.fleet_enrollment {
   HostEnrollmentIntent, EnrollmentAdmitted, EnrollmentRefused, enrollment_for_host, ci_runner_enrollment_participation,
-  CiRunnerParticipation, admit_enrollment, refused_enrollments, hosts_enrolled_among, fleet_enrollment_refusals,
+  CiRunnerParticipation, admit_enrollment, hosts_enrolled_among, fleet_enrollment_refusals,
 }
 import gunbc.runner.runner_host_deploy { runner_host_resolutions_among }
-import gunbc.fleet.fleet_convergence_verdict { fleet_convergence_verdict, FleetConverged, FleetNotConverged, FleetEnrollmentRefused }
 import gunbc.host.host_control_route {
   HostControlStanding, HostControlled, HostControlRefused, ProviderApiControlRoute, BmcControlRoute,
   BmcHostNotManaged, NoOutOfBandRoute, ProviderResourceNotAcquired, ProviderControlUnobserved, enrolled_host_control,
@@ -189,22 +188,4 @@ test fn a_virtual_media_install_over_a_bmc_is_enrolled_and_on_the_runner_roster(
 
 test fn the_production_roster_refuses_no_enrollment() -> Bool {
   fleet_enrollment_refusals.length() == 0
-}
-
-// RED: the production convergence gate (collect_fleet_convergence_wet's fleet_convergence_verdict) stops the line on a
-// refused enrollment instead of letting it vanish, naming the refusal. CONTROL: no refusal reaches the convergence reading.
-test fn a_refused_enrollment_stops_the_fleet_convergence_verdict() -> Bool {
-  match fleet_convergence_verdict(enrollments: [], refusals: refused_enrollments(intents: [impossible_intent()]), receipts: []) {
-    FleetEnrollmentRefused { refusals: r } => r.length() == 1
-    FleetConverged { host_count: _ } => false
-    FleetNotConverged { standings: _ } => false
-  }
-}
-
-test fn without_a_refusal_the_verdict_reads_convergence() -> Bool {
-  match fleet_convergence_verdict(enrollments: [], refusals: [], receipts: []) {
-    FleetEnrollmentRefused { refusals: _ } => false
-    FleetConverged { host_count: _ } => false
-    FleetNotConverged { standings: _ } => true
-  }
 }

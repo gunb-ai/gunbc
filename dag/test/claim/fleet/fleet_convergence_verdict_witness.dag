@@ -6,7 +6,8 @@ import std.types { Bool, String, NonEmptyStr, List, Int }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments, fleet_enrollment_refusals }
-import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, EnrollmentRefused }
+import gunbc.fleet.fleet_host_backing { OwnedProvisioning, NoOutOfBand, InstalledViaVirtualMedia }
 import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
 import gunbc.host.host_converge { VerdictConverged, VerdictAbsent, Drifted }
 import gunbc.fleet.fleet_convergence_verdict {
@@ -136,5 +137,24 @@ test fn knob_standing_with_only_foreign_receipts_is_unobserved() -> Bool {
   match host_knob_standing(host: "srv5" as HostIdentity, receipts: [converged_receipt(host: "srv6")]) {
     KnobUnobserved { host: _ } => true
     _ => false
+  }
+}
+
+// RED: a refused enrollment stops the line instead of vanishing from the verdict, naming the refusal. CONTROL: with
+// none, the verdict reads convergence as before. Unresolved at base with the rest of this witness (host_identity_adopt).
+test fn a_refused_enrollment_stops_the_fleet_convergence_verdict() -> Bool {
+  let refused = EnrollmentRefused { host: operator_host_srv1, provisioning: OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia } }
+  match fleet_convergence_verdict(enrollments: [], refusals: [refused], receipts: no_receipts()) {
+    FleetEnrollmentRefused { refusals: r } => length(r) == 1
+    FleetConverged { host_count: _ } => false
+    FleetNotConverged { standings: _ } => false
+  }
+}
+
+test fn without_a_refusal_the_verdict_reads_convergence() -> Bool {
+  match fleet_convergence_verdict(enrollments: [], refusals: [], receipts: no_receipts()) {
+    FleetEnrollmentRefused { refusals: _ } => false
+    FleetConverged { host_count: _ } => false
+    FleetNotConverged { standings: _ } => true
   }
 }
