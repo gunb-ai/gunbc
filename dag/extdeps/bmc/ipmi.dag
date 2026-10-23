@@ -455,3 +455,220 @@ service diagnostic.ipmi.Tool {
   }
 
 }
+
+// ── COMPLETION CODES ───────────────────────────────────────────────────────────────────────────
+// A completion code is a BYTE from the IPMI Platform Interface's completion-code list, and it is the
+// only thing a controller sends back to explain a refusal. Modelled as a NUMBER because that is what
+// the wire carries; the English is the specification's description of that number, useful to a human
+// and useless as an identity. Two consumers of this: a firmware behaviour keyed to one code, and an
+// operator-facing message. Conflating them is how "Invalid data field in request" ends up standing in
+// for the length complaint "Request data length invalid" (0xC7), which points at a different cause.
+//
+// The rendering matches what ipmitool prints, because ipmitool is what we run and observe: its
+// completion-code table (lib/ipmi_strings.c) maps { 0xcc, "Invalid data field in request" }.
+// WHY THIS SHAPE AND NOT AN EXISTING BYTE TYPE. Two candidates own an 8-bit concept elsewhere and both
+// were rejected on measured properties, not preference:
+//   - std.integer `UInt8` is `Compose<UInt, MachineWidth<8>>`, and Compose is Phantom: it has NO
+//     INHABITANT, so "the width is eight" checks nothing. std.integer's own note says so and cites the
+//     receipt -- std.encoding base64_octets takes List<UInt8> and was called with [256, 0, 0], which
+//     compiled and executed; and its mint uint8_of_int answers UInt8Ready carrying an Int, because
+//     declaring that arm UInt8 "WAS THE DEFECT" and the first consumer to EMIT it got E0308. Typing a
+//     completion code UInt8 would trade a bound for a brand and re-create a defect std.integer deleted.
+//     It is also the wrong concept: a completion code is an enumerated code from a spec list, not a
+//     quantity anyone does arithmetic on.
+//   - extdeps.network.ipv4 `Octet` is the same `Int where range(min: 0, max: 255)` shape but owned by the
+//     IPv4 layer, and std.machine_word's frontier row records it as "a pre-existing duplicate of UInt8"
+//     with an unbound dissolution waiting on a future cut. Pointing the IPMI wire at it would make a
+//     Platform Interface code depend on the IPv4 model, and add a consumer to the row the corpus wants to
+//     retire -- §3 runs the other way.
+// So the byte lives in the module that models this wire, beside IpmiChannelNumber and IpmiUserId, which
+// do the same for the other two spec-bounded numbers here. If the corpus's own next-rung trigger lands --
+// an inhabited, sole-constructed 8-bit type over the word carrier -- this row moves there.
+type IpmiCompletionCodeByte = Int where range(min: 0, max: 255)
+
+type IpmiCompletionCode {
+  code: IpmiCompletionCodeByte
+}
+
+// THE SPEC'S SENTENCE LIVES IN THESE COMMENTS, NOT IN A DATA ROW. Each code used to carry a
+// `<name>_text: NonEmptyStr` row beside it, under a note that named two consumers and promised a claim
+// comparing each code to its own row. Neither existed: the rows had no reader once the receipts moved to
+// the observing layer (an import is not a consumer), and this module declares no `test fn`, so the claim
+// was never written -- §3c's "a row no fold reads", with §4c's warning that an annotation is never
+// evidence the claim beside it holds. Both rows are gone rather than given invented consumers. A text row
+// is minted when a caller needs it, naming that caller in the same change, and not before. What is NOT
+// relaxed: the code arrives as a typed `IpmiCompletionCode`, so the BYTE is the fact an operator acts on,
+// and two of them are compared with == like any other value type -- a named equality predicate would
+// restate == with the constant hidden behind its name and would exist for no caller but a test.
+//
+// 0xCC -- "Invalid data field in Request": a data field in the request was not valid for this
+// controller's policy or state. Distinct from 0xC7 (length) and 0xCC is not an authentication
+// failure: the command was accepted, understood, and refused on policy.
+data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
+
+// 0xC7 IS NOT DECLARED HERE, AND 0xCC IS. Only the code a write was actually refused with gets a name:
+// 0xCC is read by the receipts row that records the measured refusal. 0xC7 ("Request data length
+// invalid" -- the request's LENGTH, not the firmware's policy on the value) is worth knowing because a
+// reader confuses the two, and mistaking the length complaint for the policy refusal would spend a
+// destructive ResetAll on a unit whose firmware would have accepted the write. That is a reason for the
+// sentence to exist, not for a declaration to: it has no reader outside a test, and §3c counts a witness
+// asserting existence as dangling, not consuming. The byte is 0xC7 = 199; the sentence above is the fact
+// worth keeping.
+//
+// NO EQUALITY WRAPPER EITHER. Two IpmiCompletionCode values are compared with == like any other value
+// type; a named predicate over them would restate == with the constant hidden behind its name and would
+// exist for no caller but a test.
+
+// THE IPMI COMMAND-LINE INTERFACE, AS A CLOSED PAIR OF SUMS ────────────────────────────────────
+//
+// ONE NAME SPACE, TWO TYPES. The wire names below are the complete set ipmitool's -I accepts, and the
+// parse decides ONCE which side of the in-band line each falls on. Consumers never see a single undivided
+// "interface" type they have to interrogate: see THE ONE CLASSIFICATION below for why the decision is in
+// the shape of the data and not in a predicate.
+//
+// WHY THIS IS A SUM AND NOT A STRING. `ipmitool -I <name>` picks the transport, and this route's most
+// consequential decision -- whether a write was made over a channel that needs no credential -- used to
+// rest on a string compared against a DENY-LIST. A deny-list fails open: a misspelling, a casing change, a
+// trailing space, or a transport nobody thought to name all counted as in-band, and the thing gated at the
+// end of that decision is a destructive ResetAll. It also refused the wrong thing: `open` is ipmitool's
+// OpenIPMI driver over /dev/ipmi0, which IS the in-band, passwordless interface this route exists to use.
+// An in-band tag carried as free text with a validator in front of it is an undeclared sum (§5: make the
+// bad state unwritable rather than catching it; a refusal arm must refuse, never widen).
+//
+// So the names are declared once, here, and anything that does not map to one is refused at the parse
+// rather than admitted and then second-guessed. The set mirrors upstream's own registry, which is the only
+// authority for what `-I` accepts: the `ipmi_intf_table[]` array in `src/plugins/ipmi_intf.c`, plus each
+// plugin's
+// `.name` field (src/plugins/<p>/<p>.c). A transport ipmitool does not have cannot be named here, and a
+// transport it does have but which is not a host-to-controller path cannot be admitted as one.
+// THE ONE CLASSIFICATION, DECLARED STRUCTURALLY RATHER THAN ANSWERED WITH A BOOL ────────────────
+//
+// WHY THE ARMS ARE SPLIT IN TWO AND NOT TAGGED WITH A PREDICATE. "Is this a transport from a host to the
+// controller inside its own chassis?" is the question this route's most consequential decision rests on,
+// and it is not asked of the data anywhere. One undivided interface type plus a true/false function would
+// put the decision OUTSIDE the data: a value that was not an in-band path could still be carried around as
+// an in-band one, and every consumer had to remember to ask -- and a consumer that forgot to ask failed
+// OPEN. Two sums make the distinction part of the type (§5: stronger than catching a wrong state is making
+// it unwritable), so an out-of-band transport cannot be handed to anything that wants an in-band one, and
+// the parse is the only place that decides which side a name falls on.
+//
+// Out-of-band network transports are on the other side because they authenticate BY A SECRET -- admitting
+// "lanplus" would make this a route that assumes the very password it set out to recover. `dbus` lives on
+// the BMC itself and is not reachable from a host, `serial-terminal` is a console rather than an IPMI
+// transport, and `dummy` fabricates answers, so none of them can be an in-band path however they are
+// spelled.
+type InBandHostTransport
+  = OpenIpmiDriver          // "open"            src/plugins/open: OpenIPMI kernel driver over /dev/ipmi0; upstream's default when built (configure.ac DEFAULT_INTF_NO_ENV=open)
+  | BmcKernelDriver         // "bmc"             src/plugins/bmc: the legacy in-tree BMC driver, also /dev/ipmi0
+  | FreeIpmiDriver          // "free"            src/plugins/free/free.c: the FreeIPMI library backend (includes <freeipmi/freeipmi.h>, drives ipmi-udm), in-band
+  | LipmiDriver             // "lipmi"           src/plugins/lipmi: legacy in-chassis IPMI 1.5 host interface
+  | ImbDriver               // "imb"             src/plugins/imb: Intelligent Management Bus, inside the chassis
+  | UsbTransport            // "usb"             src/plugins/usb: host-to-BMC over USB, physical presence required
+  | SerialBasicTransport    // "serial-basic"    src/plugins/serial/serial_basic.c: IPMI over a serial lead inside the chassis
+
+type OutOfBandOrNonHostTransport
+  = LanTransport            // "lan"             src/plugins/lan: RMCP out-of-band over the network
+  | LanPlusTransport        // "lanplus"         src/plugins/lanplus/lanplus.c: RMCP+ out-of-band, REQUIRES a credential
+  | DbusLocalService        // "dbus"            src/plugins/dbus: D-Bus on the BMC itself -- not reachable from a host
+  | SerialTerminal          // "serial-terminal" src/plugins/serial/terminal.c: a console, not an IPMI transport
+  | DummyTestInterface      // "dummy"           src/plugins/dummy: fabricates responses; never a controller
+
+// WHICH SIDE OF THE LINE A NAME FELL ON, as the parse decided it, with the reason carried on the
+// refusing side so a reader learns WHY "lanplus" cannot be this route's channel without looking the
+// transport up. The reason is description, not decision: the decision is which arm this is.
+type IpmiCommandTransport
+  = InBandHostTransportChannel { transport: InBandHostTransport }
+  | NotInBandHostTransport { transport: OutOfBandOrNonHostTransport, why_not_in_band: NonEmptyStr }
+
+type IpmiCommandInterfaceParse
+  = IpmiCommandInterfaceParsed { wire: String, transport: IpmiCommandTransport }
+  | IpmiCommandInterfaceUnrecognized { wire: String }
+
+// A name becomes an arm on one side or the other, or the parse REFUSES -- there is no "assume in-band"
+// default, and no arm for "unknown but tolerated". Matching is exact on purpose: ipmitool's own dispatch
+// is `strcmp` on `i->name` inside `ipmi_intf_load()` (`src/plugins/ipmi_intf.c`), which returns NULL for a
+// name no plugin claims -- so "LANPLUS" and "lanplus " are
+// not interfaces it would load, and a capture that appears to name them was read wrong, which is a refusal
+// worth having rather than a transport silently invented.
+fn ipmi_command_interface_from_wire(wire: String) -> IpmiCommandInterfaceParse {
+  if wire == "open" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: OpenIpmiDriver } } }
+  else if wire == "bmc" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: BmcKernelDriver } } }
+  else if wire == "free" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: FreeIpmiDriver } } }
+  else if wire == "lipmi" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: LipmiDriver } } }
+  else if wire == "imb" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: ImbDriver } } }
+  else if wire == "usb" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: UsbTransport } } }
+  else if wire == "serial-basic" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: SerialBasicTransport } } }
+  else if wire == "lan" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: LanTransport, why_not_in_band: "out-of-band RMCP over the network: it authenticates by a secret, which is what this route exists to avoid assuming" as NonEmptyStr } } }
+  else if wire == "lanplus" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: LanPlusTransport, why_not_in_band: "out-of-band RMCP+ over the network, and it requires a credential: admitting it would make the recovery assume the password it set out to recover" as NonEmptyStr } } }
+  else if wire == "dbus" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: DbusLocalService, why_not_in_band: "D-Bus on the BMC itself: unreachable from the rescue host, so it cannot be the in-band path" as NonEmptyStr } } }
+  else if wire == "serial-terminal" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: SerialTerminal, why_not_in_band: "a console, not an IPMI transport: it carries no IPMI command" as NonEmptyStr } } }
+  else if wire == "dummy" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: DummyTestInterface, why_not_in_band: "fabricates responses: it can never stand for a controller, so it must never satisfy a precondition" as NonEmptyStr } } }
+  else { IpmiCommandInterfaceUnrecognized { wire: wire } }
+}
+
+// WHICH DEVICE A NAME ADDRESSES, AND THE ONLY SPELLING THAT MEANS IT. §2: "A String leaf hiding named
+// parts is anemic modeling." The in-band plugins do not open a path someone
+// chooses: src/plugins/open/open.c builds "/dev/ipmi%d" from the device NUMBER it was handed, and
+// src/plugins/imb/imb.c hardcodes IPMI_IMB_DEV "/dev/imb". So the addressable set is closed and belongs
+// here, beside the transports that open them, rather than as a NonEmptyStr in a gunbc route compared
+// against a copy of itself.
+//
+// WHY AN ARMS-OF-ONE TYPE AND NOT A Refinement. extdeps.container.oci.reference.dag shows the repo's two
+// admitted spellings for a constrained String, and the refinement form
+// (`type X = String where pred`) buys nothing here: the predicate would have to re-express what the arms
+// already are. Naming an arm is the construction, so there is no state to be unwritable from.
+type IpmiDeviceNode
+  = IpmiDevIpmiNode { device_number: Int }   // "/dev/ipmi<N>"  src/plugins/open/open.c:102
+  | IpmiImbDeviceNode                          // "/dev/imb"     src/plugins/imb/imb.c:52 IPMI_IMB_DEV
+
+// THE SPELLING A CAPTURE WOULD SHOW, derived from the arm. Nothing in this repo compares two of these by
+// text: two nodes are the same device when the arms and the numbers agree, which is what the canonical
+// equality surface does for free. This function exists so a reader holding the bytes ("crw------- 1 root
+// root 235, 0 Oct 16 06:52 /dev/ipmi0") can see which arm that line is, not so a gate can string-match.
+fn ipmi_device_node_canonical_text(node: IpmiDeviceNode) -> String {
+  match node {
+    IpmiDevIpmiNode { device_number: n } => join(["/dev/ipmi", to_string(n)], "")
+    IpmiImbDeviceNode => "/dev/imb"
+  }
+}
+
+// THE ANSWER TO `ipmitool mc info`, TYPED ─────────────────────────────────────────────────────
+//
+// WHY THIS EXISTS ALONGSIDE extdeps.bmc.capability's BmcFirmwareVersion RATHER THAN REPLACING IT.
+// They are two different instruments reading the same controller. BmcFirmwareVersion comes from a Redfish
+// Manager resource, which needs a session and therefore a credential. This is the IPMI Device ID command's
+// answer, which the host's own kernel driver services over /dev/ipmi0 with NO credential -- the only
+// identity a LOCKED BMC will give up. A recovery route that had to wait for a credential to know which
+// controller it was talking to could not justify its own destructive step, so the identity that justifies
+// it has to come from this instrument.
+//
+// WHY manufacturer_id AND product_id ARE HERE AND NOT ONLY IN A FRU PARSE. The Get Device ID response
+// carries Manufacturer ID and Product ID directly (IPMI Platform Management Interface Specification,
+// 2nd gen, §27.1 Get Device ID), so this is the board identity as the controller itself reports it, not a
+// board name someone typed. The capture shows how lossy the text is: `Product Name : Unknown (0x2035)`
+// because the SDR/FRU text is not read -- the NUMBER is present and the STRING is a placeholder. So the
+// numbers are identity-bearing and the strings are description only, which is why nothing below compares
+// a name. A reading taken on a real board is filed with that board's catalog, in its vendor module; this
+// module only owns the SHAPE of an answer and how two answers compare.
+type IpmiDeviceIdentity {
+  device_id: Int
+  device_revision: Int
+  firmware_revision_major: Int
+  firmware_revision_minor: Int
+  manufacturer_id: Int
+  manufacturer_name: NonEmptyStr
+  product_id: Int
+  product_name: NonEmptyStr
+}
+
+// THE IDENTITY A READING MUST AGREE ON TO BE THE SAME CONTROLLER RUNNING THE SAME RELEASE. Compared on
+// the numbers the controller reported -- Manufacturer ID, Product ID, and both Firmware Revision fields.
+// device_id and device_revision are excluded deliberately: they say which chip answered, not which
+// release it runs, and a recovery decision is keyed to a release. Names are excluded for the reason the
+// capture gives: a controller can answer "Unknown (0x2035)" while being exactly the board it is.
+fn ipmi_device_identity_runs_same_firmware(a: IpmiDeviceIdentity, b: IpmiDeviceIdentity) -> Bool {
+  a.manufacturer_id == b.manufacturer_id
+    && a.product_id == b.product_id
+    && a.firmware_revision_major == b.firmware_revision_major
+    && a.firmware_revision_minor == b.firmware_revision_minor
+}
