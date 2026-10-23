@@ -5447,9 +5447,9 @@ fn infer_where_sole_predicate(where_clause: Node) -> Optional<Node> {
   match find_named_child(root: where_clause, name: ^grammar_production_captured_node_projection) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: set, diagnostics: _ } =>
-      match set.children {
+      match infer_edge_targets(edges: set.children) {
         Cons { head: only, tail: Empty } =>
-          match positional_child_target_nodes(node: only.target) {
+          match positional_child_target_nodes(node: only) {
             Cons { head: callee, tail: Empty } => Present { value: callee }
             Cons { head: _, tail: Cons { head: _, tail: _ } } => Absent
             Empty => Absent
@@ -5458,6 +5458,10 @@ fn infer_where_sole_predicate(where_clause: Node) -> Optional<Node> {
         Empty => Absent
       }
   }
+}
+
+fn infer_edge_targets(edges: List<Edge>) -> List<Node> {
+  fold(edges, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
 }
 
 fn infer_literal_refinement_demand(
