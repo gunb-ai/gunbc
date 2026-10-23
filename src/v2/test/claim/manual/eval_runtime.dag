@@ -1,6 +1,5 @@
 module v2.test.claim.manual.eval_runtime
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -89,6 +88,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.std.verification {
   EqualsClaim,
@@ -135,8 +135,8 @@ data eval_two_literal: Node = Node {
 data eval_add_subgraph_node: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: eval_two_literal },
-    Edge { label: Positional, target: eval_two_literal }
+    Edge { label: Positional, target: eval_two_literal, declaration: NotADeclaration },
+    Edge { label: Positional, target: eval_two_literal, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -321,8 +321,7 @@ fn eval_inferred_tree() -> InferredTree {
     root: eval_add_subgraph(),
     facts: PartialFunction {
       lookup: eval_fact_lookup
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 
