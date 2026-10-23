@@ -1,0 +1,107 @@
+# mtcollins1 stable SSH host key: mint, deliver, anchor (operator procedure)
+
+Goal: stand up the STABLE per-boot SSH host key of **mtcollins1** (operator ruling 2026-10-22,
+option A — mtcollins1 is diskless, `gunbc.runner.runner_host_medium` RAM image; booting it is
+ruled **not sensitive**) so a live `HostBoundTransport` through
+`gunbc.host.host_bound_transport host_bound_transport_of` can bind with its trust anchored on that
+key, via `gunbc.host.anchored_host_transport anchored_host_transport_of`.
+
+This runbook is the **apply-ready** procedure the **operator or merry-fox-82** runs — minting the
+real key and writing it into Secret Manager is a privileged effect, and no agent session runs it.
+The `.dag` side is the authority and ships in the same PR as this runbook:
+
+| Fact | Authority |
+|------|-----------|
+| The secret (SecretRef) | `dag/gunbc/fleet/fleet_ssh_access.dag` `mtcollins1_ssh_host_key_secret` (project `fleet_secrets_gcp_project` = `gunbai-secrets`, `dag/gunbc/fleet/fleet_secrets_config.dag`) |
+| Per-boot delivery (Q1: in memory on the host only, never disk across boot, never argv, never logged) | `dag/gunbc/fleet/host_credential_custody_converge.dag` arm `Mtcollins1SshHostKey` → `/run/gunbc-ssh/ssh_host_ed25519_key`, `CustodyOnlyOnHost mtcollins1`, root-only 0400, `CustodyTmpfsNoSwap` |
+| Accessor IAM | `dag/gunbc/auth/fleet_secret_accessor_roster.dag` `mtcollins1_ssh_host_key_accessor_row` — a converge grant-set cell (`gunbc.auth.gcp_iam_converge`). **Do not run `gcloud secrets add-iam-policy-binding`**: the roster is the single authority and converge binds it. |
+| The trust anchor + its standing | `dag/gunbc/host/anchored_host_transport.dag` `mtcollins1_host_key_anchor`, the ONE mint `anchored_host_trusted_row` |
+| The gated readback scan | `dag/gunbc/host/anchored_host_transport.dag` `anchored_host_key_scan_wet` (refuses without `GUNBC_HOST_KEY_READBACK_GO`; the go is a `HumanIntervention` — merry-fox-82, relayed by snappy-koi-83) |
+| Evidence | `dag/test/claim/host/anchored_host_transport_witness.dag` (11 claims) |
+
+## Rule Q1 (non-negotiable)
+
+The PRIVATE half exists only: in the operator's shell between mint and upload, in Secret Manager,
+and in mtcollins1's memory on each boot. It never goes on disk across boot, never into argv, never
+into a log, never into a commit. Every command below passes it via **stdin pipe**, never as an
+argument.
+
+## Step 1 — mint and upload (operator / merry-fox-82, one shell session)
+
+```bash
+install -d -m 700 ~/keytmp
+ssh-keygen -t ed25519 -f ~/keytmp/mc_host -N '' -C mtcollins1 -q
+
+# Create the secret with NO --data-file: creating with --data-file=/dev/null would publish an
+# EMPTY version 1, which a reader resolving "latest" (or the pin in step 2) could then pick up as
+# key material. Without data, the secret exists with zero versions; the real key becomes version 1.
+gcloud secrets create mtcollins1-ssh-host-key --project gunbai-secrets
+#   (older gcloud may prompt for a replication policy on this command; answer automatic, or pass
+#    --replication-policy=automatic. It does not prompt on gunbai-secrets' current SDK.)
+
+# The private half reaches the server ONLY over stdin — never argv, never a file path the CLI reads.
+cat ~/keytmp/mc_host | gcloud secrets versions add mtcollins1-ssh-host-key \
+  --project gunbai-secrets --data-file=-
+
+# Record the printed version number for step 2 (expect 1).
+```
+
+## Step 2 — pin the SecretRef
+
+`mtcollins1_ssh_host_key_secret.version` ships as `"pending"` (HashPending) precisely because
+there is no published version to pin until the mint lands. Update it, in a normal PR, to the
+version number step 1 printed — following the pinning convention of the neighboring rows in
+`dag/gunbc/auth/gcp_secret_accessor_roster.dag` / `gcp_secret_access` (a pinned version string is
+the guard against silent rotation). Until this happens every custody read refuses at Secret
+Manager, which is the honest state, not a failure to hide.
+
+## Step 3 — transcribe the PUBLIC half into the anchor (discharges the read obligation)
+
+Still in the same shell, while `~/keytmp` still exists — order matters: the public half is
+transcribed BEFORE anything is shredded (shredding first leaves step 3 nothing to read):
+
+```bash
+cat ~/keytmp/mc_host.pub    # "ssh-ed25519 <base64> mtcollins1"
+```
+
+Take the two components (key type, base64 public blob) into the ONE mint,
+`anchored_host_trusted_row` (admitted callers: `mtcollins1_host_key_anchor` and the witness) —
+host, address, key type, public base64, and the `SHA256:` fingerprint computed from the real key
+(`ssh-keygen -lf ~/keytmp/mc_host.pub` prints it). The mint carries the standing
+(`TranscribedUncited`) and the read obligation as TYPED VALUES. Fabricating or guessing key
+material is forbidden (DESIGN §4d) — the components come from THIS transcription.
+
+Only after the anchor row lands in the tree:
+
+```bash
+shred -u ~/keytmp/mc_host ~/keytmp/mc_host.pub
+rmdir ~/keytmp
+```
+
+## Step 4 — live boot, readback, match (needs merry-fox-82's go, relayed by snappy-koi-83)
+
+1. Boot mtcollins1 (ruled not sensitive). The custody route delivers the secret to
+   `/run/gunbc-ssh/ssh_host_ed25519_key` on the tmpfs; the boot route must start sshd pointing at
+   exactly that HostKey (today the RAM image has no sshd in this slice — see
+   `runner_host_first_boot_receipt` — which is frontier row 3 of
+   `anchored_host_transport_frontier_rows`; closing this step dissolves it through its trigger).
+2. Run the gated scan: `anchored_host_key_scan_wet(operator_host_mtcollins1)` with
+   `GUNBC_HOST_KEY_READBACK_GO` exported by the named human (the `HumanIntervention` row
+   `anchored_host_key_readback_go_step`). Its argv is `ssh-keyscan` only — the private half is
+   never in argv, never rendered (witness-pinned; class
+   `dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag`).
+3. Match the presented `known_hosts_line` line-for-line against the anchored row's. A mismatch
+   must REFUSE (witness-pinned RED); a match is the read that discharges the obligation.
+4. Record the minted evidence **through the real dispatch** — the pairing obligation #14738 left
+   open (`lost_boot_sweep_effect_pairing_frontier`): the read-to-admission route, not a supplied-
+   text shortcut. The lost-boot sweep mode stays GATED until then.
+
+## What refuses until each step lands
+
+- Secret absent → custody read refuses at Secret Manager, naming the secret.
+- Anchor absent (`"pending"`, no transcription) → any transport ROUTED through
+  `anchored_host_transport_of` refuses at `AnchoredBindingAnchorAbsent`, cause carrying the read
+  obligation and the secret name. (Production does not route through it yet — frontier rows 1–3.)
+- Wrong presented key → `AnchoredBindingPresentedKeyMismatch` with expected+observed; the observed
+  never equals the anchored material.
+- Empty presented line → refuses before any cast.
