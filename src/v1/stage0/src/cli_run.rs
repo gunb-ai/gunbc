@@ -12668,10 +12668,11 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `exclusive_cost_partition_law` test module, `out_of_span_rows`, and the three
 // `[cost-partition]` emissions (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`)
 // — ~700 LOC incl. tests. The probe is no longer print-only in `claim_batch`: a Refused
-// verdict decides the batch exit (`NoSpans` -> 2, any other refusal -> 1), through
-// `claim_batch`'s `partition_exit_flags`, its call site in `main`, and the
-// `a_refused_partition_joins_the_batch_exit` test. Those are scaffold members too: they go
-// at deletion with the probe, and removing the probe while they stand fails to compile.
+// verdict decides the batch exit (`NoSpans` -> 2, any other refusal -> 1), through the
+// third parameter of `claim_batch`'s `batch_exit_code` (an already-admitted declaration; no
+// new one), its call site in `main`, and the `a_refused_partition_joins_the_batch_exit` test.
+// At deletion the parameter, call-site argument and test go with the probe, and removing the
+// probe while they stand fails to compile.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
