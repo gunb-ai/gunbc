@@ -345,9 +345,6 @@ fn node_accepted_in(index: Map<String, List<RoadmapAcceptanceReceipt>>, rn: Road
 // without updating the pin; witness tests compare prior history to mutated history for the deletion
 // arms.
 
-type AcceptanceNodeReopensActiveFrontier {}
-type AcceptanceNodeRemainsSuperseded {}
-
 // The revocation disposition names the FRONTIER CONSEQUENCE, not the supersession fact.
 // SupersededLine already owns terminal standing and `by`. AcceptanceNodeRemainsSuperseded is
 // deliberately payload-free: it says the revoked receipt stays off the active frontier because the

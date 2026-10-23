@@ -1,0 +1,9 @@
+module test.fixture.union_member_shadow.provider
+
+import std.types { Int }
+
+// A type a consumer imports and then also spells as a bare union member: the imported half of the
+// shadowing shape. Declared once, here.
+type UmsLeaf {
+  n: Int
+}

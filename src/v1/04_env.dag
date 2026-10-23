@@ -1252,6 +1252,18 @@ type UnitVariantPhantomLookup
   | UnitVariantPhantomAbsent
   | UnitVariantPhantomEvidenceUnavailable
 
+// A union's bare member is a fresh unit variant, never a reference to a type (type position resolves
+// types first, so a variant sharing a visible type's spelling is unreachable there). The spelling
+// naming a type declaration visible in the declaring module is therefore two meanings for one name
+// (DESIGN section 3); resolve refuses it at the member span, which is also what makes a marker for
+// that spelling impossible to reach the emitter.
+fn type_declaration_visible_with_spelling(env: TypeEnv, name: String) -> Bool {
+  match lookup_binding_by_name(env: env, name: name) {
+    Present { value: binding } => binding_declares_name(binding: binding, name: name, source_indices: env.source_indices)
+    Absent => false
+  }
+}
+
 fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitVariantPhantomLookup {
   if !env.unit_variant_index_observed {
     UnitVariantPhantomEvidenceUnavailable

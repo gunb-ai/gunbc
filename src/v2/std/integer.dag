@@ -320,44 +320,44 @@ fn ordering_invert(ordering: Ordering) -> Ordering {
 }
 
 type StandardIntegerType
-  = Int128
-  | Int64
-  | Int32
-  | Int16
-  | Int8
-  | UInt128
-  | UInt64
-  | UInt32
-  | UInt16
-  | UInt8
+  = SignedWidth128
+  | SignedWidth64
+  | SignedWidth32
+  | SignedWidth16
+  | SignedWidth8
+  | UnsignedWidth128
+  | UnsignedWidth64
+  | UnsignedWidth32
+  | UnsignedWidth16
+  | UnsignedWidth8
 
 fn integer_standard_integer_type_signedness(standard_integer_type: StandardIntegerType) -> Signedness {
   match standard_integer_type {
-    Int128 => Signed
-    Int64 => Signed
-    Int32 => Signed
-    Int16 => Signed
-    Int8 => Signed
-    UInt128 => Unsigned
-    UInt64 => Unsigned
-    UInt32 => Unsigned
-    UInt16 => Unsigned
-    UInt8 => Unsigned
+    SignedWidth128 => Signed
+    SignedWidth64 => Signed
+    SignedWidth32 => Signed
+    SignedWidth16 => Signed
+    SignedWidth8 => Signed
+    UnsignedWidth128 => Unsigned
+    UnsignedWidth64 => Unsigned
+    UnsignedWidth32 => Unsigned
+    UnsignedWidth16 => Unsigned
+    UnsignedWidth8 => Unsigned
   }
 }
 
 fn integer_standard_integer_type_width_bits(standard_integer_type: StandardIntegerType) -> Int {
   match standard_integer_type {
-    Int128 => 128
-    Int64 => 64
-    Int32 => 32
-    Int16 => 16
-    Int8 => 8
-    UInt128 => 128
-    UInt64 => 64
-    UInt32 => 32
-    UInt16 => 16
-    UInt8 => 8
+    SignedWidth128 => 128
+    SignedWidth64 => 64
+    SignedWidth32 => 32
+    SignedWidth16 => 16
+    SignedWidth8 => 8
+    UnsignedWidth128 => 128
+    UnsignedWidth64 => 64
+    UnsignedWidth32 => 32
+    UnsignedWidth16 => 16
+    UnsignedWidth8 => 8
   }
 }
 
@@ -409,22 +409,22 @@ fn integer_machine_interval_spec(signedness: Signedness, width_bits: Int) -> Int
 // once per frame; this match is the projection from the type to its row.
 fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
   match standard_integer_type {
-    Int128 => int128_interval_spec
-    Int64 => int64_interval_spec
-    Int32 => int32_interval_spec
-    Int16 => int16_interval_spec
-    Int8 => int8_interval_spec
-    UInt128 => uint128_interval_spec
-    UInt64 => uint64_interval_spec
-    UInt32 => uint32_interval_spec
-    UInt16 => uint16_interval_spec
-    UInt8 => uint8_interval_spec
+    SignedWidth128 => int128_interval_spec
+    SignedWidth64 => int64_interval_spec
+    SignedWidth32 => int32_interval_spec
+    SignedWidth16 => int16_interval_spec
+    SignedWidth8 => int8_interval_spec
+    UnsignedWidth128 => uint128_interval_spec
+    UnsignedWidth64 => uint64_interval_spec
+    UnsignedWidth32 => uint32_interval_spec
+    UnsignedWidth16 => uint16_interval_spec
+    UnsignedWidth8 => uint8_interval_spec
   }
 }
 
 data integer_standard_integer_type_roster: List<StandardIntegerType> = [
-  Int128, Int64, Int32, Int16, Int8,
-  UInt128, UInt64, UInt32, UInt16, UInt8
+  SignedWidth128, SignedWidth64, SignedWidth32, SignedWidth16, SignedWidth8,
+  UnsignedWidth128, UnsignedWidth64, UnsignedWidth32, UnsignedWidth16, UnsignedWidth8
 ]
 
 // One standard integer type beside the interval node its spec projects to: the decoder's
