@@ -23,7 +23,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, fold_list_node }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, fold_list_node, NotADeclaration }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
@@ -56,7 +56,8 @@ fn probe_one_member_root_export(export_sym: Symbol) -> Node {
           kind: TypeNode { connective: Atom { identity: export_sym } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

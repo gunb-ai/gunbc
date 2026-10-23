@@ -1,6 +1,5 @@
 module v2.test.claim.body_lowering.arrow_body_form_semantic_helpers
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -47,6 +46,7 @@ import v2.std.node {
   ParameterReferenceKind,
   LexicalReferenceKind,
   resolved_reference_body_kind,
+  NotADeclaration
 }
 import v2.std.node_query { find_arrow_body_child }
 import std.optional { Optional, Present, optional_absent, optional_present }
@@ -274,8 +274,7 @@ fn arrow_body_form_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn arrow_body_form_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: arrow_body_form_eval_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: arrow_body_form_eval_facts_lookup }
   }
 }
 
@@ -283,7 +282,7 @@ fn arrow_body_form_eval_nullary_call_node(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
-    children: [Edge { label: Positional, target: callee }]
+    children: [Edge { label: Positional, target: callee, declaration: NotADeclaration }]
   }
 }
 
@@ -292,8 +291,8 @@ fn arrow_body_form_eval_unary_call_node(callee: Node, arg: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: arg }
+      Edge { label: Positional, target: callee, declaration: NotADeclaration },
+      Edge { label: Positional, target: arg, declaration: NotADeclaration }
     ]
   }
 }
@@ -303,9 +302,9 @@ fn arrow_body_form_eval_binary_call_node(callee: Node, left: Node, right: Node) 
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: callee, declaration: NotADeclaration },
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ]
   }
 }

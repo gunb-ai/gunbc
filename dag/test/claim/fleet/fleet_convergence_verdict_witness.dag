@@ -5,8 +5,9 @@ import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_enrollment { fleet_enrollments }
-import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_enrollment { fleet_enrollments, fleet_enrollment_refusals }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, EnrollmentRefused }
+import gunbc.fleet.fleet_host_backing { OwnedProvisioning, NoOutOfBand, InstalledViaVirtualMedia }
 import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
 import gunbc.host.host_converge { VerdictConverged, VerdictAbsent, Drifted }
 import gunbc.fleet.fleet_convergence_verdict {
@@ -14,6 +15,7 @@ import gunbc.fleet.fleet_convergence_verdict {
   FleetConvergenceVerdict,
   FleetConverged,
   FleetNotConverged,
+  FleetEnrollmentRefused,
   fleet_unobserved_cell_count,
   host_knob_standing,
   HostKnobStanding,
@@ -45,9 +47,10 @@ fn converged_receipt(host: String) -> ConvergeCliReceipt {
 // green, and the unobserved count is a positive number (the arc's honest progress
 // denominator). This witness is the named current defect made executable.
 test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
-  match fleet_convergence_verdict(enrollments: fleet_enrollments, receipts: no_receipts()) {
+  match fleet_convergence_verdict(enrollments: fleet_enrollments, refusals: fleet_enrollment_refusals, receipts: no_receipts()) {
     FleetNotConverged { standings: ss } => fleet_unobserved_cell_count(standings: ss) > 0
     FleetConverged { host_count: _ } => false
+    FleetEnrollmentRefused { refusals: _ } => false
   }
 }
 
@@ -56,18 +59,20 @@ test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
 // convergence — knob green never outvotes an unobserved required cell.
 test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool {
   let receipts = map(fleet_enrollments, e => converged_receipt(host: e.host as String))
-  match fleet_convergence_verdict(enrollments: fleet_enrollments, receipts: receipts) {
+  match fleet_convergence_verdict(enrollments: fleet_enrollments, refusals: fleet_enrollment_refusals, receipts: receipts) {
     FleetNotConverged { standings: _ } => true
     FleetConverged { host_count: _ } => false
+    FleetEnrollmentRefused { refusals: _ } => false
   }
 }
 
 // An empty enrollment is an observation gap, never a vacuously converged fleet.
 test fn empty_fleet_refuses_convergence() -> Bool {
   let empty: List<HostEnrollmentIntent> = []
-  match fleet_convergence_verdict(enrollments: empty, receipts: no_receipts()) {
+  match fleet_convergence_verdict(enrollments: empty, refusals: [], receipts: no_receipts()) {
     FleetNotConverged { standings: ss } => length(ss) == 0
     FleetConverged { host_count: _ } => false
+    FleetEnrollmentRefused { refusals: _ } => false
   }
 }
 
@@ -132,5 +137,24 @@ test fn knob_standing_with_only_foreign_receipts_is_unobserved() -> Bool {
   match host_knob_standing(host: "srv5" as HostIdentity, receipts: [converged_receipt(host: "srv6")]) {
     KnobUnobserved { host: _ } => true
     _ => false
+  }
+}
+
+// RED: a refused enrollment stops the line instead of vanishing from the verdict, naming the refusal. CONTROL: with
+// none, the verdict reads convergence as before. Unresolved at base with the rest of this witness (host_identity_adopt).
+test fn a_refused_enrollment_stops_the_fleet_convergence_verdict() -> Bool {
+  let refused = EnrollmentRefused { host: operator_host_srv1, provisioning: OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia } }
+  match fleet_convergence_verdict(enrollments: [], refusals: [refused], receipts: no_receipts()) {
+    FleetEnrollmentRefused { refusals: r } => length(r) == 1
+    FleetConverged { host_count: _ } => false
+    FleetNotConverged { standings: _ } => false
+  }
+}
+
+test fn without_a_refusal_the_verdict_reads_convergence() -> Bool {
+  match fleet_convergence_verdict(enrollments: [], refusals: [], receipts: no_receipts()) {
+    FleetEnrollmentRefused { refusals: _ } => false
+    FleetConverged { host_count: _ } => false
+    FleetNotConverged { standings: _ } => true
   }
 }

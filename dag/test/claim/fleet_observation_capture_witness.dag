@@ -10,9 +10,8 @@ import std.durable_compare_and_set {
   cas_generation, cas_generation_first,
   CasSlotObservationRefused,
   CasOutcome,
-  CasCommitted,
   CasStoreRefused,
-  CasSlotVersion,
+  CasAttempt, ExpectSlotAbsent, CasReadableAbsent, cas_decide_readable,
   CasUnreadableContentMissing,
   CasUnreadableReadRefused,
 }
@@ -302,6 +301,21 @@ fn t_envelope(
   }
 }
 
+// THE COMMITTED OUTCOME IS OBTAINED FROM THE FOLD, NOT AUTHORED. An absent slot with an
+// ExpectSlotAbsent attempt is the supplied hypothesis; cas_decide_readable is the real producer that
+// turns it into CasCommitted at the first generation, so no witness builds the success arm itself.
+fn t_committed_through_the_fold(payload: NonEmptyStr) -> CasOutcome<NonEmptyStr> {
+  cas_decide_readable(
+    attempt: CasAttempt {
+      key: "slot",
+      expected: ExpectSlotAbsent,
+      proposed: payload,
+      proposed_content: content_hash_of_value(value: payload),
+    },
+    readable: CasReadableAbsent,
+  )
+}
+
 // THE FIXTURE MINTS THROUGH THE REAL CONSTRUCTOR, not by authoring a standing. That is the whole
 // point of the repair: a receipt exists only because a compare-and-set committed something, and what
 // it attests is what the store committed. A fixture that built LocallyCommitted directly could still
@@ -309,14 +323,7 @@ fn t_envelope(
 // THE COMMIT FIXTURE GOES THROUGH THE REAL CONSTRUCTOR, and now it MUST: LocallyCommitted carries a
 // sealed DurableCommitProof, so a witness cannot author a committed standing at all.
 fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {
-  let outcome: CasOutcome<NonEmptyStr> = CasCommitted {
-    committed: CasSlotVersion {
-      generation: 1
-      content: content_hash_of_value(value: payload)
-      value: payload
-    }
-  }
-  local_commit_from_cas(outcome: outcome)
+  local_commit_from_cas(outcome: t_committed_through_the_fold(payload: payload))
 }
 
 // ── THE CENTRAL WALL ───────────────────────────────────────────────────────────────────────────
@@ -580,13 +587,7 @@ fn payloads_equal(left: CaptureChunk, right: CaptureChunk) -> Bool {
 // THE ONLY ROUTE TO LocallyCommitted IS A CAS COMMIT, and each store refusal keeps its own remedy
 // rather than collapsing to one failure.
 test fn w_commit_standing_comes_only_from_cas() -> Bool {
-  let good: CasOutcome<NonEmptyStr> = CasCommitted {
-    committed: CasSlotVersion {
-      generation: 1
-      content: content_hash_of_value(value: "chunk")
-      value: "chunk"
-    },
-  }
+  let good: CasOutcome<NonEmptyStr> = t_committed_through_the_fold(payload: "chunk")
   let missing: CasOutcome<NonEmptyStr> = CasStoreRefused {
     cause: CasSlotObservationRefused { cause: CasUnreadableContentMissing { referenced: content_hash_of_value(value: "absent") } }
   }
