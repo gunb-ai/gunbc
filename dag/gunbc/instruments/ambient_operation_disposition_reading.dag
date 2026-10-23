@@ -31,6 +31,8 @@ import gunbc.instruments.ambient_name_census_reading {
 // THE CLASSES, assigned in this order and exactly one per row:
 //   in-flight  the spelling is claimed by a change already under way (ambient_operation_in_flight); counted,
 //              never classified, so the work is not duplicated;
+//   kernel-grounding  the binding source is an `ambient:kernel_*` table: a kernel token or type spelling, not an
+//              operation; a separate class by the manager's ruling, no migration;
 //   C          the binding source is `generated`: the compiler minted the reference;
 //   D          the primitive-egress ledger (gunbc.primitive_egress.dispositions) records the spelling as
 //              observing or mutating something outside the value graph; the evidence is that row's
@@ -89,6 +91,8 @@ fn declaration_evidence(decl: String) -> String {
 fn classify_row(spelling: String, source: String, target: String, decls: List<String>) -> String {
   if count(ambient_operation_in_flight() |> filter(s => s == spelling)) != 0 {
     "in-flight\tin-flight\tclaimed by a change already under way; not classified here"
+  } else if starts_with(s: source, prefix: "ambient:kernel_") {
+    "kernel-grounding\toperator-ruling\tkernel grounding: the spelling is a kernel token or type spelling, not an operation; no migration (manager ruling, tidy-ant-251)"
   } else if source == "generated" {
     "C\tgenerated-source\tthe compiler minted this reference (binding source generated) and it binds " + target
   } else {
@@ -144,7 +148,7 @@ fn class_count(rows: List<String>, class: String) -> Int {
 }
 
 fn ambient_operation_summary(rows: List<String>) -> List<String> {
-  ["in-flight", "A", "B", "C", "D"] |> map(c => "disposition_summary\t" + c + "\t" + to_string(class_count(rows: rows, class: c)))
+  ["in-flight", "A", "B", "C", "D", "kernel-grounding"] |> map(c => "disposition_summary\t" + c + "\t" + to_string(class_count(rows: rows, class: c)))
 }
 
 // The reading, over the same run the ambient-name census reads. Its controls are that census's own
@@ -211,9 +215,10 @@ fn disposition_classifier_control_for(d: String) -> Optional<String> {
     + control_binding(name: "ctl_roster", source: "ambient:collection_roster", target: "ctl.decl.ctl_decl") + "\n"
     + control_binding(name: "ctl_named", source: "ambient:ctl_table", target: "ctl.none") + "\n"
     + control_binding(name: "ctl_missing", source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "ctl_kernel", source: "ambient:kernel_ctl", target: "kernel:ctl") + "\n"
   let rows = ambient_operation_rows(tree_stdout: stdout)
-  let got = control_class_of(rows: rows, spelling: "list_push") + "," + control_class_of(rows: rows, spelling: "ctl_gen") + "," + control_class_of(rows: rows, spelling: d) + "," + control_class_of(rows: rows, spelling: "ctl_roster") + "," + control_class_of(rows: rows, spelling: "ctl_named") + "," + control_class_of(rows: rows, spelling: "ctl_missing")
-  if got == "in-flight,C,D,A,A,B" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B" } }
+  let got = control_class_of(rows: rows, spelling: "list_push") + "," + control_class_of(rows: rows, spelling: "ctl_gen") + "," + control_class_of(rows: rows, spelling: d) + "," + control_class_of(rows: rows, spelling: "ctl_roster") + "," + control_class_of(rows: rows, spelling: "ctl_named") + "," + control_class_of(rows: rows, spelling: "ctl_missing") + "," + control_class_of(rows: rows, spelling: "ctl_kernel")
+  if got == "in-flight,C,D,A,A,B,kernel-grounding" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B,kernel-grounding" } }
 }
 
 fn disposition_response(tree_stdout: String) -> CliWireResponse {
