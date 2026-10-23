@@ -11153,8 +11153,15 @@ fn alias_chain_carrier(n: Node) -> Node {
 // children are the declaration's own members, so a record with as many fields as the declaration has
 // parameters is indistinguishable from an application by shape). The distinction is the node's own
 // item kind, set by the producer: a declaration node is a ModuleItemTypeDeclaration, a reference is not.
+// A declaration body (the declaration itself, or an application's expansion) has the declaration's
+// MEMBERS as children, not type arguments: pairing a formal's arguments with them binds a parameter to a
+// field (SortKeyed<T, K> against a body of two fields bound T to `key`), so the descent never pairs them.
+fn is_declaration_body(n: Node) -> Bool {
+  n.module_item_kind == ModuleItemTypeDeclaration
+}
+
 fn is_applied_declaration_carrier(n: Node) -> Bool {
-  n.connective == NoConnective && n.declaration != none && (n.children |> count) > 0 && n.module_item_kind != ModuleItemTypeDeclaration
+  n.connective == NoConnective && n.declaration != none && (n.children |> count) > 0 && !is_declaration_body(n: n)
 }
 
 fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
@@ -15061,7 +15068,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) {
+  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) && !is_declaration_body(n: actual) {
     unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
 }
