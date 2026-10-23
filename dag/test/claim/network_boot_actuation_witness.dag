@@ -37,6 +37,9 @@ import gunbc.provisioning.network_boot_actuation {
   network_boot_arm_actuator_steps,
   network_boot_attempt_actuation,
 }
+import gunbc.provisioning.provisioning_arm { ArmRefused, SeedBindingRefused }
+import gunbc.provisioning.altra_autoinstall_seed { TargetNotAdmitted, UnitKeyUnbound }
+import gunbc.machine_intake.subject { BoardSerialAbsent }
 import gunbc.firmware_network_boot_standing { Unobserved }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.optional { Present, Absent }
@@ -447,5 +450,25 @@ test fn a_refused_binding_withholds_the_attempt_instead_of_arming_it() -> Bool {
         intake_attempt: attempt_one,
         selection: select_target_disk(selector: serial_selector, observed: bay_population),
       ))
+  }
+}
+
+test fn a_refused_binding_carries_the_binders_blocker_typed() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: built } =>
+      match network_boot_attempt_actuation(
+        strategy: PxeOrUefiHttp,
+        evidence: full_evidence(),
+        attempt: attempt(unit: "unit-alpha"),
+        seed: built.seed,
+        target: target_refused_by_unbound_key(),
+        unit_key: unit_a_key,
+        intake_attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      ) {
+        ArmActuationWithheld { attempt: _, shape: ArmRefused { cause: SeedBindingRefused { blocker: TargetNotAdmitted { cause: UnitKeyUnbound { cause: BoardSerialAbsent } } } } } => true
+        _ => false
+      }
   }
 }

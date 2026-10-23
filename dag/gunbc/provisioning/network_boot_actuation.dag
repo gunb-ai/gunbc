@@ -22,8 +22,7 @@ import gunbc.provisioning.provisioning_arm {
   ArmedVirtualMedia,
   ArmUnobserved,
   ArmRefused,
-  ArmMissingEvidence,
-  SeedBindingNotObserved,
+  SeedBindingRefused,
   DeliveryStrategy,
   DeliveryEvidence,
   provisioning_arm_derive,
@@ -106,9 +105,9 @@ fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation
 // takes the raw seed, target, unit key, intake attempt and live disk selection, binds, and only then derives
 // the arm and actuates it. The strategy is a single parameter: one strategy per attempt, and a refused binding
 // is Withheld, never re-armed as the other delivery. `evidence.seed` is overwritten by the binding, so a
-// caller cannot present a seed that the binder did not mint for this attempt. A refused binding has no
-// ArmRefusalCause arm in provisioning_arm, so it is reported as SeedBindingNotObserved (no binding exists to
-// observe) and the binder's blocker is not carried; the attempt is then withheld either way.
+// caller cannot present a seed that the binder did not mint for this attempt. A refused binding is
+// Withheld as ArmRefused { SeedBindingRefused { blocker } }: the binder's own typed blocker survives to the
+// result, never degraded to an absence.
 fn network_boot_attempt_actuation(
   strategy: DeliveryStrategy,
   evidence: DeliveryEvidence,
@@ -132,7 +131,7 @@ fn network_boot_attempt_actuation(
         },
         attempt: attempt,
       ))
-    BindRefused { blocker: _ } =>
-      ArmActuationWithheld { attempt: attempt, shape: ArmUnobserved { missing: SeedBindingNotObserved } }
+    BindRefused { blocker: b } =>
+      ArmActuationWithheld { attempt: attempt, shape: ArmRefused { cause: SeedBindingRefused { blocker: b } } }
   }
 }
