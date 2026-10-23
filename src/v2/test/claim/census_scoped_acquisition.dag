@@ -1,12 +1,16 @@
 module v2.test.claim.census_scoped_acquisition
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { Cons, Empty, fold_list, list_find_first }
 import std.optional { Absent, Present }
+import extdeps.bazel.label { PackagePath }
+import extdeps.bazel.target_pattern { SubtreeTargets }
 import v2.compiler.source_root_eval {
   native_census_scoped_entries,
   native_census_substrate_entries,
+  native_lane_candidate_entries,
 }
+import v2.workflow.v2_native_route { native_route_live_control_module }
 import v2.compiler.module_acquisition {
   AcquiredModule,
   CensusAcquisition,
@@ -302,6 +306,42 @@ test fn the_union_never_drops_or_reorders_the_named_subjects() -> Bool {
       }
     Empty => false
   }
+}
+
+// THE DIVERGENCE RED (sleek-owl-397's condition): the route's acquisition entries carry the declared
+// substrate too. With the two builders apart (the pre-fix state), this reds: native_lane_candidate_entries
+// prepended ONLY the live control module and the pattern-selected population, so a module the ambient
+// primitive-authority tier reads from the loaded population was present for the census and absent for the
+// route -- the instrument could disagree with the lane it reports on, silently. The fleet route telemetry
+// (v2-native-route universe= over a subject whose closure omits the substrate) is the inhabitance pair:
+// this claim holds the join, the instrument shows the join inhabits the real route.
+test fn the_route_entries_carry_the_declared_substrate() -> Bool {
+  let entries = native_lane_candidate_entries(pattern: whole_v2_pattern(), population: ["std.fermi"])
+  all_names_in(entries: native_census_substrate_entries(), population: entries)
+    && count_item(entries: entries, name: "std.primitives") == 1
+}
+
+// ONE JOIN, BOTH BUILDERS: the census entries are the join over the subjects; the route entries are the
+// join over the route's own base. Neither path hand-lists a substrate, so the two populations cannot
+// drift apart module-by-module, and a pattern that selects NOTHING still carries the substrate on the
+// route (the join runs after selection) exactly as the census carries it with no subject naming it.
+test fn both_builders_join_the_same_substrate_once() -> Bool {
+  let census = native_census_scoped_entries(subjects: ["std.fermi", "extdeps.git.versioning"])
+  let route = native_lane_candidate_entries(
+    pattern: whole_v2_pattern(),
+    population: ["std.fermi", "extdeps.git.versioning"]
+  )
+  all_names_in(entries: native_census_substrate_entries(), population: census)
+    && all_names_in(entries: native_census_substrate_entries(), population: route)
+    && count_item(entries: census, name: "std.primitives") == 1
+    && count_item(entries: route, name: "std.primitives") == 1
+    // each builder keeps its own front: argv-order subjects on the census, the live control on the route
+    && match census { Cons { head: h, tail: _ } => h == "std.fermi"  Empty => false }
+    && match route { Cons { head: h, tail: _ } => h == native_route_live_control_module  Empty => false }
+}
+
+fn whole_v2_pattern() -> TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
 }
 
 fn all_names_in(entries: List<String>, population: List<String>) -> Bool {

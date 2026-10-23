@@ -2292,7 +2292,7 @@ fn native_lane_pattern_admits_module(pattern: TargetPattern, module_qn: String) 
 // receipt runs) and every candidate test module. Everything else the run reads is a module one of these
 // requests.
 fn native_lane_candidate_entries(pattern: TargetPattern, population: List<String>) -> List<String> {
-  Cons {
+  run_substrate_entries(base: Cons {
     head: native_route_live_control_module,
     tail: filter(
       xs: population,
@@ -2300,7 +2300,7 @@ fn native_lane_candidate_entries(pattern: TargetPattern, population: List<String
         name != native_route_live_control_module && native_lane_pattern_admits_module(pattern: pattern, module_qn: name)
       }
     )
-  }
+  })
 }
 
 // WHAT THE ACQUIRER HANDS BACK: the modules of the requested closure, verified exact (R9), and the
@@ -4519,16 +4519,28 @@ fn native_census_substrate_entries() -> List<String> {
   [primitive_contract_module_path()]
 }
 
-// THE ACQUISITION ENTRIES FOR A SCOPED CENSUS: the subject modules, in argv order, with every declared
-// substrate module appended once if no subject already names it. Split from the ingest so the inclusion is
-// one fact a claim can read without a host filesystem (the acquisition itself reads real files).
-fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
-  fold_list(xs: native_census_substrate_entries(), empty: subjects, cons: fn(acc, substrate) {
+// THE ONE SUBSTRATE JOIN: append each declared substrate module once when the base does not already name
+// it. Both acquisition consumers -- the scoped census (native_census_scoped_entries) and the native test
+// route (native_lane_candidate_entries) -- run THEIR POPULATION THROUGH THIS, so the two paths cannot
+// drift apart module-by-module: whatever the ambient primitive-authority tier reads from the loaded
+// population is present on both sides by construction. This is acquisition (what is read), never resolve
+// (what a name means): it can make a module be READ; it cannot bind or type anything (DESIGN 6b
+// boundary). A consumer needing another ambient tier adds it at native_census_substrate_entries, at the
+// one home, naming the tier -- never by hand-listing at a call site.
+fn run_substrate_entries(base: List<String>) -> List<String> {
+  fold_list(xs: native_census_substrate_entries(), empty: base, cons: fn(acc, substrate) {
     match list_find_first(xs: acc, predicate: fn(m) { m == substrate }) {
       Present { value: _ } => acc
       Absent => list_snoc_item(xs: acc, item: substrate)
     }
   })
+}
+
+// THE ACQUISITION ENTRIES FOR A SCOPED CENSUS: the subject modules, in argv order, with every declared
+// substrate module appended once if no subject already names it. Split from the ingest so the inclusion is
+// one fact a claim can read without a host filesystem (the acquisition itself reads real files).
+fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
+  run_substrate_entries(base: subjects)
 }
 
 // ONE ACQUISITION OVER EVERY SUBJECT: the entries are the subject modules UNION the declared substrate (see
