@@ -342,3 +342,17 @@ test fn lrj_locator_refinement_clause_has_a_sole_predicate_holds() -> Bool {
       }
   }
 }
+
+// LOCATOR 6: the discharge verdict per fixture, read before any rendering. Each names the reason the first
+// diagnostic carries, so a failing end-to-end claim splits into undischargeable / violated / not refused at all.
+test fn lrj_probe_holds_fixture_is_undischargeable_holds() -> Bool {
+  lrj_end_to_end_reason_is(subject: "v2.test.lrj_holds", reason: ^refinement_obligation_undischargeable)
+}
+
+test fn lrj_probe_violated_fixture_is_undischargeable_holds() -> Bool {
+  lrj_end_to_end_reason_is(subject: "v2.test.lrj_violated", reason: ^refinement_obligation_undischargeable)
+}
+
+test fn lrj_probe_holds_fixture_is_violated_holds() -> Bool {
+  lrj_end_to_end_reason_is(subject: "v2.test.lrj_holds", reason: ^refinement_predicate_violated)
+}
