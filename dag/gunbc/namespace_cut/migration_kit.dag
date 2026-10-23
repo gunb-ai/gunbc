@@ -107,3 +107,38 @@ fn reading_is_unbound(r: BindingReading) -> Bool {
 fn reading_is_bound_to(r: BindingReading, identity: String) -> Bool {
   match r { ReadBoundToDeclaration { target: t } => t == identity  _ => false }
 }
+
+// CHECK 3, RETIRED CONTRACT ABSENT: a source that imports the retired *_contract from std.primitives must add blocking
+// rows over a baseline once the row is retired (the import refuses: nothing resolves through it), while a CONTROL
+// contract that still exists adds none (the pairing positive: it proves the fixture can import a contract at all, so a
+// refusal is about the retired name and not the import shape). A row with no retired_contract has nothing to check.
+type ContractFinding
+  = ContractNoneRetired
+  | ContractAbsent
+  | ContractStillPresent
+  | ContractControlBroken
+  | ContractNotRunnable
+
+fn kit_contract_import_source(contract: String) -> String {
+  "module probe_migration_kit_contract\nimport std.types { Int }\nimport std.primitives { " + contract + " }\nfn probe() -> Int { 0 }\n"
+}
+
+fn kit_contract_finding(row: AmbientNameHome, control_contract: String) -> ContractFinding {
+  match row.retired_contract {
+    Absent => ContractNoneRetired
+    Present { value: retired } =>
+      match kit_blocking_count(source: kit_contract_import_source(contract: control_contract)) {
+        Present { value: control } =>
+          match kit_blocking_count(source: "module probe_migration_kit_contract\nimport std.types { Int }\nfn probe() -> Int { 0 }\n") {
+            Present { value: base } =>
+              match kit_blocking_count(source: kit_contract_import_source(contract: retired)) {
+                Present { value: probe } =>
+                  if control > base { ContractControlBroken } else { if probe > base { ContractAbsent } else { ContractStillPresent } }
+                Absent => ContractNotRunnable
+              }
+            Absent => ContractNotRunnable
+          }
+        Absent => ContractNotRunnable
+      }
+  }
+}
