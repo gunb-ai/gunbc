@@ -1,12 +1,14 @@
 module gunbc.recurring_failure_mode.a_refusal_prints_and_the_line_continues
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_refusal_prints_and_the_line_continues: RecurringFailureMode = RecurringFailureMode {
   identity: "a_refusal_prints_and_the_line_continues" as NonEmptyStr,
 
-  rung: RungUnread { cause: BlockerClassUnstated },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a Refused cost-partition verdict joining the claim_batch exit composition at precedence 1 over 2 over 0, landing after the pool_parse attribution fix so a healthy batch no longer prints Refused" } },
 
   receipts: [
     "**a refusal that fires while the line keeps running is an escape hatch with a typed label on it.** DESIGN section 5 (stop visibly): a refusal that fires stops the line, and a toggle that proceeds as if it had not fired is an escape hatch. The class is a verdict rendered as REFUSED on a diagnostic stream that no exit status, claim verdict or gate reads, so every consumer that looks at the exit code sees a green run beside a printed Refused.",
