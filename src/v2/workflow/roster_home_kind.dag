@@ -1,6 +1,6 @@
 module v2.workflow.roster_home_kind
 
-import std.algebra { FreeMonoid, fold_list }
+import std.algebra { FreeMonoid, fold_list, length, take_prefix }
 import std.types { Bool, List, String }
 import std.occurrence_identity {
   LabelPosition,
@@ -19,7 +19,8 @@ import v2.compiler.reference_site_collector {
   ScopedReferenceSite,
   SiteHeadBinding
 }
-import v2.lens.enforcement.standing_intent { whole_corpus_scope }
+import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
+import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 
 // THE POSITION-TO-HOME-KIND RULE (tidy-ant-251's roster correction on #14435, msg_66a5409b). A site needs its home's
 // import when its head is unbound AND its reference position is compatible with the KIND its home declaration declares
@@ -36,10 +37,14 @@ import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 // WHY THIS MODULE HOLDS IT, AND WHY IT IS THE SWEEP'S ONLY CORPUS READ. v2.workflow.roster_import_sweep has no
 // file-read primitive -- its sweep is pure over (path, text) for one file -- and the home's declared kind is a corpus
 // fact keyed by qualified name. v2.std.decl_index decl_facts_at is the one home for that question ("THE KEYED READ...
-// Both project one census"); this module is its only consumer on the roster route. The pool roots are READ from
-// v2.lens.enforcement.standing_intent whole_corpus_scope -- the repo's one corpus-scope row, the same input
-// v2.workflow.enforcement_live enforcement_corpus_facts hands decl_facts -- never repeated here, so no second table
-// decides which files can declare a roster home.
+// Both project one census"); this module is its only consumer on the roster route. The pool is the HOME MODULE'S OWN
+// STORAGE DIRECTORY, derived from the home's name by v2.compiler.source_authority module_file over
+// v2.cli.repository_layout repository_storage_layout (DESIGN 3: paths follow names, one way). The question is keyed by
+// <home>.<name>, and the layout says the one file that can be module <home>, so only that directory can hold the
+// declaration the compiler binds; a same-named module stored anywhere else is outside the layout and not compilable.
+// The pool was the whole corpus (dag, src/v1, src/v2) until Seat 7: gunbc run registers no census memo, so every keyed
+// read re-walked ~9k files (~226s each on srv1, against ~11s for dag/std, same row). A home whose name derives no file
+// gets an EMPTY pool, which reads zero rows and refuses as KindUnclassified -- never a widening back to the corpus.
 //
 // THE BINDING FACT STAYS WHERE IT WAS. site.head is v2.compiler.reference_site_collector's own classification and this
 // module reads it, never re-decides it (DESIGN 3). What was missing, and what this file adds, is only the
@@ -67,24 +72,23 @@ type HomeKindVerdict
 // verbatim KindMatched reading of roster_site_home_kind_verdict -- one authority, never two answers.
 fn roster_site_needs_home_import(
   site: ScopedReferenceSite,
-  home: String,
-  import_name: String,
+  side: HomeKindSide,
   imported_from_home: Bool
 ) -> Bool {
-  roster_site_home_kind_verdict(site: site, home: home, import_name: import_name, imported_from_home: imported_from_home) == KindMatched
+  roster_site_home_kind_verdict(site: site, side: side, imported_from_home: imported_from_home) == KindMatched
 }
 
 // THE VERDICT. The binding fact comes from the site as v2.compiler.reference_site_collector classified it; the position
-// from v2.compiler.occurrence_role; the KIND from v2.std.decl_index keyed by the home declaration identity. Only the
-// last can fail to decide, and only in KindUnclassified.
+// from v2.compiler.occurrence_role; the KIND is the row's HomeKindSide, read once per run by roster_home_side_read
+// (v2.std.decl_index keyed by the home declaration identity) and CARRIED here, never re-read per site. Only the kind can
+// fail to decide, and only in KindUnclassified.
 fn roster_site_home_kind_verdict(
   site: ScopedReferenceSite,
-  home: String,
-  import_name: String,
+  side: HomeKindSide,
   imported_from_home: Bool
 ) -> HomeKindVerdict {
   match site.head {
-    HeadLexicallyUnbound => position_verdict(position: site.position, home: home, import_name: import_name)
+    HeadLexicallyUnbound => position_verdict(position: site.position, side: side)
     // THE BINDING FACT, UNCHANGED FROM BEFORE THIS PR for a head the collector cannot decide. An undecided head is the
     // free name only when the import that made it undecided comes from the home the row claims (the sweep's own
     // roster_symbol_imported decides that, never this module); undecided for any other reason is free for NO position,
@@ -101,7 +105,7 @@ fn roster_site_home_kind_verdict(
       // counts exactly the call head. An imported head whose kind the census cannot answer decides KindUnclassified,
       // which the sweep refuses located -- refusing typed where kind cannot be answered, never defaulting to Matched.
       if imported_from_home {
-        position_verdict(position: site.position, home: home, import_name: import_name)
+        position_verdict(position: site.position, side: side)
       } else {
         KindNotAsked
       }
@@ -116,12 +120,11 @@ fn roster_site_home_kind_verdict(
 // home) -- one verdict authority, never two readings. With imported_from_home true, an exact-home-imported head at a
 // value/type position whose home the census cannot classify is KindUnclassified too (review 83367c: refuse typed where
 // kind cannot be answered, imported heads included); with false it is the pre-PR binding-only path for that row.
-fn roster_site_verdict_is_unclassified(site: ScopedReferenceSite, home: String, import_name: String, imported_from_home: Bool) -> Bool {
-  roster_site_home_kind_verdict(site: site, home: home, import_name: import_name, imported_from_home: imported_from_home) == KindUnclassified
+fn roster_site_verdict_is_unclassified(site: ScopedReferenceSite, side: HomeKindSide, imported_from_home: Bool) -> Bool {
+  roster_site_home_kind_verdict(site: site, side: side, imported_from_home: imported_from_home) == KindUnclassified
 }
 
-fn position_verdict(position: ReferencePosition, home: String, import_name: String) -> HomeKindVerdict {
-  let side = roster_home_declaration_side(home: home, import_name: import_name)
+fn position_verdict(position: ReferencePosition, side: HomeKindSide) -> HomeKindVerdict {
   match position {
     // A label or pattern tag asks the kind question of NOBODY: the rule itself answers no (KindNotAsked), so these
     // positions never refuse and never import. Only the positions the rule must ask about can report Unclassified.
@@ -152,7 +155,7 @@ fn type_ask_verdict(side: HomeKindSide) -> HomeKindVerdict {
 
 // The keyed census read, opened for the sweep and the controls: the corpus facts under <home>.<import_name>.
 fn roster_home_declarations(home: String, import_name: String) -> List<DeclFact> {
-  decl_facts_at(pool_roots: roster_corpus_pool_roots(), qualified_name: home + "." + import_name)
+  decl_facts_at(pool_roots: roster_home_pool_roots(home: home), qualified_name: home + "." + import_name)
 }
 
 // WHICH SIDE OF THE RULE A HOME'S DECLARATION SITS ON -- the ONE classification of the keyed census rows for
@@ -214,6 +217,26 @@ fn side_as_value(side: HomeKindSide) -> HomeKindSide {
   }
 }
 
+// THE KIND IS A PER-ROW FACT, SO IT IS READ ONCE PER ROW PER RUN AND CARRIED (DESIGN 2, materialization ladder step 1:
+// the same semantic fact demanded again is authored duplication to carry, not a cache obligation). The sweep reads one
+// RosterHomeSide per row when it starts and hands the table to every site fold; asking the census per site re-walked the
+// pool once per site per row (gunbc run registers no census memo), which is what kept a single-file run from finishing.
+type RosterHomeSide {
+  home: String
+  import_name: String
+  side: HomeKindSide
+}
+
+fn roster_home_side_read(home: String, import_name: String) -> RosterHomeSide {
+  RosterHomeSide { home: home, import_name: import_name, side: roster_home_declaration_side(home: home, import_name: import_name) }
+}
+
+// The carried side of <home>.<import_name>. A row the table does not hold reads SideNeither, so every site of it refuses
+// as KindUnclassified: a table that missed a row stops the line, located by home and name, and never re-reads.
+fn roster_home_side_of(sides: List<RosterHomeSide>, home: String, import_name: String) -> HomeKindSide {
+  fold_list(xs: sides, empty: SideNeither, cons: fn(acc, s) { if s.home == home && s.import_name == import_name { s.side } else { acc } })
+}
+
 // The two control-facing readings, each a single reading OF THE ONE classification (never a second pass over ItemKind).
 fn roster_home_declaration_is_type(home: String, import_name: String) -> Bool {
   match roster_home_declaration_side(home: home, import_name: import_name) {
@@ -233,15 +256,23 @@ fn roster_home_declaration_is_value(home: String, import_name: String) -> Bool {
   }
 }
 
-// THE POOL ROOTS ARE READ, NOT REPEATED (see the header): the same ScopeRoster.roots the enforcement census reads.
-fn roster_corpus_pool_roots() -> List<String> {
-  whole_corpus_scope.roots
+// THE POOL IS THE HOME'S STORAGE DIRECTORY (see the header): the directory of the one file the layout assigns <home>.
+fn roster_home_pool_roots(home: String) -> List<String> {
+  match module_file(layout: repository_storage_layout(), name: home) {
+    ModuleFileDerived { file: f } => [roster_parent_directory(path: repository_path_of_module_file(file: f))]
+    ModuleNameUnderivable { name: _, cause: _ } => []
+  }
 }
 
-// The roots the census was read under, for a failure message: a home missing under one root list is a different fact
-// from a home missing under all of them, and the reader must be able to tell which.
-fn roster_corpus_pool_roots_text() -> String {
-  fold_list(xs: roster_corpus_pool_roots(), empty: "", cons: fn(acc, r) { acc + r + " " })
+fn roster_parent_directory(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  fold_list(xs: take_prefix(xs: segments, n: length(xs: segments) - 1), empty: "", cons: fn(acc, seg) { if acc == "" { seg } else { acc + "/" + seg } })
+}
+
+// The roots a home's census was read under, for a failure message: a home missing from its own directory is a
+// different fact from a home whose name derives no directory at all, and the reader must be able to tell which.
+fn roster_home_pool_roots_text(home: String) -> String {
+  fold_list(xs: roster_home_pool_roots(home: home), empty: "", cons: fn(acc, r) { acc + r + " " })
 }
 
 // THE WITNESS, asked for only when a count disagrees: every recorded site as its position, its head and its scope path,

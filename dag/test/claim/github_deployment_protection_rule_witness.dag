@@ -47,16 +47,17 @@ import extdeps.external_authority { external_model_scope_citations }
 import extdeps.github.deployment_protection_rule {
   DeploymentProtectionRuleReview,
   review_endpoint_path_built_for,
-  BuiltReviewPath,
-  BuiltReviewPathOk,
-  BuiltReviewPathRefused,
-  ReviewPathSegment,
+  BuiltRoutePath,
+  BuiltRoutePathOk,
+  BuiltRoutePathRefused,
+  RoutePathSegment,
   OwnerSegment,
   RepoSegment,
   RunIdSegment,
+  EnvironmentSegment,
   RunIdIsNotPositive,
   HostileSegment,
-  review_path_build_refusal_name,
+  route_path_build_refusal_name,
   review_endpoint_path,
   ReviewState,
   Approved,
@@ -288,7 +289,7 @@ test fn a_review_without_an_environment_or_a_state_cannot_be_built() -> Bool {
 // produces, the segments it refuses, and its agreement with the pinned template.
 test fn the_built_route_is_the_pinned_template_with_its_values_substituted() -> Bool {
   match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: GitHubWorkflowRunId { value: 35447067113 }) {
-    BuiltReviewPathOk { path: built } =>
+    BuiltRoutePathOk { path: built } =>
       // THE WHOLE ROUTE, EQUAL TO upstream's template with the three values substituted. There is
       // deliberately no anchor-CONTAINMENT helper here (R1, deleted): containment over three literals is
       // weaker than this equality and lived on the consumer side, where it could not fail.
@@ -297,23 +298,23 @@ test fn the_built_route_is_the_pinned_template_with_its_values_substituted() -> 
         // the template it was checked against really is the citation's route, braces and all
         && ((review_endpoint_path as String)
           == "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/deployment_protection_rule")
-    BuiltReviewPathRefused { hostile_segment: _ } => false
+    BuiltRoutePathRefused { hostile_segment: _ } => false
   }
     // A DIFFERENT RUN MOVES ONLY THE RUN-ID POSITION. Two routes differing somewhere else — a suffix
     // appended, an anchor dropped — is exactly what the old substring check could not see.
     && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: GitHubWorkflowRunId { value: 35447067114 }) {
-          BuiltReviewPathOk { path: other } =>
+          BuiltRoutePathOk { path: other } =>
             (other as String)
               == "/repos/gunb-ai/gunbc/actions/runs/35447067114/deployment_protection_rule"
-          BuiltReviewPathRefused { hostile_segment: _ } => false
+          BuiltRoutePathRefused { hostile_segment: _ } => false
         })
     // THE SAME RUN ON A DIFFERENT REPOSITORY IS A DIFFERENT ROUTE — the fact that made "which repository
     // did we address?" unanswerable when the path arrived from a caller.
     && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "other-repo", run_id: GitHubWorkflowRunId { value: 35447067113 }) {
-          BuiltReviewPathOk { path: other } =>
+          BuiltRoutePathOk { path: other } =>
             (other as String)
               == "/repos/gunb-ai/other-repo/actions/runs/35447067113/deployment_protection_rule"
-          BuiltReviewPathRefused { hostile_segment: _ } => false
+          BuiltRoutePathRefused { hostile_segment: _ } => false
         })
 }
 
@@ -323,13 +324,14 @@ test fn the_built_route_is_the_pinned_template_with_its_values_substituted() -> 
 // difference between "your config is wrong" and a report somebody can act on.
 test fn the_builder_refuses_a_segment_that_would_change_which_endpoint_is_called() -> Bool {
   match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc/../other", run_id: GitHubWorkflowRunId { value: 35447067113 }) {
-    BuiltReviewPathRefused { hostile_segment: seg } =>
+    BuiltRoutePathRefused { hostile_segment: seg } =>
       match seg {
         RepoSegment { value: v } => (v as String) == "gunbc/../other"
         OwnerSegment { value: _ } => false
         RunIdSegment { value: _ } => false
+        EnvironmentSegment { value: _ } => false
       }
-    BuiltReviewPathOk { path: _ } => false
+    BuiltRoutePathOk { path: _ } => false
   }
     // the owner half too, so the refusal is not an accident of one field
     && (match review_endpoint_path_built_for(
@@ -337,19 +339,20 @@ test fn the_builder_refuses_a_segment_that_would_change_which_endpoint_is_called
           repo: "gunbc",
           run_id: GitHubWorkflowRunId { value: 35447067113 }
         ) {
-          BuiltReviewPathRefused { hostile_segment: seg } =>
+          BuiltRoutePathRefused { hostile_segment: seg } =>
             match seg {
               OwnerSegment { value: v } => (v as String) == "gunb-ai/.."
               RepoSegment { value: _ } => false
+              EnvironmentSegment { value: _ } => false
               RunIdSegment { value: _ } => false
             }
-          BuiltReviewPathOk { path: _ } => false
+          BuiltRoutePathOk { path: _ } => false
         })
     // a run id that is not a positive number was never handed out upstream; a route built with one would
     // answer 404 and be mistaken for "the run is gone" — AND IT MUST BLAME THE RUN, NOT THE OWNER, which
     // is the difference between a report somebody can act on and one that sends them to the wrong config.
     && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: GitHubWorkflowRunId { value: 0 }) {
-          BuiltReviewPathRefused { refusal: r, hostile_segment: seg } =>
+          BuiltRoutePathRefused { refusal: r, hostile_segment: seg } =>
             (match r {
                RunIdIsNotPositive {  } => true
                HostileSegment {  } => false
@@ -358,19 +361,20 @@ test fn the_builder_refuses_a_segment_that_would_change_which_endpoint_is_called
                    RunIdSegment { value: v } => v.value == 0
                    OwnerSegment { value: _ } => false
                    RepoSegment { value: _ } => false
+                   EnvironmentSegment { value: _ } => false
                  })
               // the refusal text says the run id, not the owner
-              && ((review_path_build_refusal_name(refusal: r) as String)
+              && ((route_path_build_refusal_name(refusal: r) as String)
                 == "the run id is not a positive number")
-          BuiltReviewPathOk { path: _ } => false
+          BuiltRoutePathOk { path: _ } => false
         })
     && (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "gunbc", run_id: GitHubWorkflowRunId { value: -7 }) {
-          BuiltReviewPathRefused { refusal: r, hostile_segment: _ } =>
+          BuiltRoutePathRefused { refusal: r, hostile_segment: _ } =>
             match r {
               RunIdIsNotPositive {  } => true
               HostileSegment {  } => false
             }
-          BuiltReviewPathOk { path: _ } => false
+          BuiltRoutePathOk { path: _ } => false
         })
 }
 
@@ -1046,4 +1050,20 @@ test fn the_plan_is_registered_in_the_authority_registry() -> Bool {
     && (all_plans
         |> filter(p => (p.slug as String) == "ntfy-deployment-gate-approval")
         |> fold(init: "", f: (acc, p) => if acc == "" { p.title } else { acc })) != ""
+}
+
+// A BRACE IN A REVIEW-PATH SEGMENT IS REFUSED (new with the one segment check): the value is substituted
+// into the template, so a repo spelled as a placeholder would be filled a second time into a route nobody
+// named. Before the one check, only the read paths refused it and the review path built it.
+test fn a_brace_in_a_review_path_segment_is_refused_by_name() -> Bool {
+  (match review_endpoint_path_built_for(owner: "gunb-ai", repo: "\{run_id\}", run_id: GitHubWorkflowRunId { value: 35447067113 }) {
+     BuiltRoutePathRefused { hostile_segment: RepoSegment { value: v } } => (v as String) == "\{run_id\}"
+     BuiltRoutePathRefused { hostile_segment: _ } => false
+     BuiltRoutePathOk { path: _ } => false
+   })
+  && (match review_endpoint_path_built_for(owner: "gunb-\{repo\}", repo: "gunbc", run_id: GitHubWorkflowRunId { value: 35447067113 }) {
+        BuiltRoutePathRefused { hostile_segment: OwnerSegment { value: _ } } => true
+        BuiltRoutePathRefused { hostile_segment: _ } => false
+        BuiltRoutePathOk { path: _ } => false
+      })
 }
