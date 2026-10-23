@@ -1,6 +1,7 @@
 module gunbc.ci.ci_spec
 
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+import gunbc.claim_executor_cli { claim_executor_relative_path }
 
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
@@ -171,6 +172,7 @@ import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
+import extdeps.rust.cargo { cargo_default_release_dir }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -578,10 +580,13 @@ fn ci_release_build_line() -> String {
 fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
   let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
   let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
+  // The release dir comes from cargo's default-layout home, as in ci_release_artifact_word; with the
+  // shell var as build_root the emitted text is byte-identical, so the fleet pack key does not move.
+  let release_dir = cargo_default_release_dir(build_root: "$ROOT")
   join([
-    "rm -rf ", dir, " && \"$ROOT/target/release/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
+    "rm -rf ", dir, " && \"", release_dir, "/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
     " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
-    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"$ROOT/target/release/", bin.name, "\"",
+    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"", release_dir, "/", bin.name, "\"",
   ], "")
 }
 
@@ -652,7 +657,12 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
 fn ci_release_artifact_word(name: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [
     bash_build_word_var(name: "ROOT"),
-    bash_build_word_lit(text: concat("/target/release/", name)),
+    // The literal is derived from cargo's default-layout home (extdeps.rust.cargo), not
+    // re-spelled: this word is where the CI release-artifact check reads its binaries from, so a
+    // hand-written join here is the one leaf that could compile green while pointing the floor's
+    // verify at a directory cargo no longer uses. The bash-word medium keeps ROOT as a var node;
+    // only the constant segment comes from the fn (empty build_root -> "/target").
+    bash_build_word_lit(text: concat(cargo_default_release_dir(build_root: ""), concat("/", name))),
   ])
 }
 
@@ -4093,7 +4103,7 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
 // run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  "target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2"
+  concat(claim_executor_relative_path(), " --regen-round-cost --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {

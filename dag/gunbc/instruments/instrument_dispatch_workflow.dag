@@ -43,6 +43,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_with_redir, bash_build_word_cmdsubst, bash_build_pipe, bash_build_and_then, bash_build_assign,
   bash_build_exit, bash_build_if_from_stmts, bash_build_subshell_from_stmts,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // ONE OPERATOR-DISPATCHED RUN OF ONE ROSTERED INSTRUMENT, ON THE FLEET, AND NOTHING ELSE.
 //
@@ -435,7 +436,7 @@ fn instrument_dispatch_statements() -> List<Node> {
           inner: bash_build_subshell_from_stmts(stmts: [
             bash_build_with_redir_to_file(
               inner: bash_build_command_with_words(words: [
-                bash_build_word_lit(text: "target/release/gunbc"),
+                bash_build_word_lit(text: concat(cargo_default_release_dir_rel, "/gunbc")),
                 bash_build_word_lit(text: "test"),
                 bash_build_word_var(name: "INSTRUMENT_LABEL"),
               ]),
