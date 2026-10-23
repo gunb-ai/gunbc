@@ -603,8 +603,9 @@ test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
   ephemeral && persistent && garbage && widened
 }
 
-// THE SAME FILE HOLDS THE NAME THE LISTENER REGISTERED UNDER, and the cap bracket joins the organization
-// roster on it. A fleet listener is registered through a JIT mint, which mints a NEW suffixed name per job
+// THE SAME FILE HOLDS THE NAME THE LISTENER REGISTERED UNDER, which is the identity the cap bracket is being
+// changed to join the organization roster on (today it joins on the slot's bare name, which no fleet listener
+// ever registered under). A fleet listener is registered through a JIT mint, which mints a NEW suffixed name per job
 // (srv3-02-1792746455-1106408), so the file's AgentName and the slot's bare name are different facts and
 // only the file's is a current identity. These controls hold the two apart: a file that carries no
 // AgentName answers ABSENT, which is not the slot name, not an empty name, and not a wildcard.

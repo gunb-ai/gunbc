@@ -33,7 +33,7 @@ import extdeps.github.actions_runner { actions_runner_registration_file_name }
 import extdeps.transports.shell { ShellProcessExited }
 // THE HARNESS IS THE BRACKET WITNESS'S OWN, imported rather than cloned: the frame that seals the fleet ssh
 // execution context and consumes the scripted answers is one authority, and a second copy of it could drift
-// from the route the bracket actually walks.
+// from the route this read walks -- and from the one the bracket will walk when its join lands.
 import test.claim.runner.runner_host_cap_bracket_witness {
   bracket_run, Leg, shell_ok, ledger_of, count_containing, BracketRunReturned,
 }
@@ -81,7 +81,8 @@ test fn the_read_asks_the_host_for_the_slot_s_registration_file_by_path() -> Boo
 }
 
 // THE POSITIVE CONTROL: the name the host holds comes back suffixed and untouched, though the bare slot
-// name appears nowhere in it. This is the identity the cap bracket joins the organization roster on.
+// name appears nowhere in it. This is the identity the cap bracket will join the organization roster on
+// once its join lands; at this head the bracket still joins on the bare slot name.
 test fn the_host_s_minted_name_is_returned_untouched_though_the_slot_name_is_bare() -> Bool {
   let r = bracket_run(
     legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
@@ -102,8 +103,8 @@ test fn the_host_s_minted_name_is_returned_untouched_though_the_slot_name_is_bar
 
 // A STALE MINT IS NOT THE CURRENT ONE, and the reader is what proves it: it returns the name the host
 // answered with, never a name it built from the slot. The refusal of an answer that is not on the roster is
-// the bracket's (witnessed in runner_host_cap_bracket_witness), and it can only be that refusal because
-// this read hands over the stale name unchanged instead of a current-looking one.
+// the bracket's, in the change that introduces that join, and it can only be that refusal because this
+// read hands over the stale name unchanged instead of a current-looking one.
 test fn an_earlier_mint_is_returned_as_itself_and_never_as_a_current_name() -> Bool {
   match bracket_run(
     legs: [registration_leg(instance: "srv3-02", name: witness_stale_name)],
@@ -119,8 +120,8 @@ test fn an_earlier_mint_is_returned_as_itself_and_never_as_a_current_name() -> B
 // read the file, the bytes are not the file, and a file that holds no AgentName. None may fall back to the
 // slot's bare name, and none is reported as an idle slot.
 // ONE SHAPE OF THE REFUSAL, asked of three different host failures. A refusal must name the slot it failed
-// on: a bracket that could not say which slot it could not read would leave an operator with nothing to act
-// on, and a refusal that answered with the slot's bare name instead would put that name on the roster join.
+// on: a reader that could not say which slot it could not read would leave an operator with nothing to act
+// on, and a refusal that answered with the slot's bare name instead would hand that name to the roster join.
 fn refuses_naming_the_slot(leg: Leg) -> Bool {
   match bracket_run(
     legs: [leg],
@@ -152,7 +153,8 @@ test fn a_registration_file_without_an_agent_name_names_the_member_it_is_missing
 }
 
 // ADDRESSED BY UNIT, WHICH IS HOW THE BRACKET AND THE OBSERVE RECEIPT BOTH SPEAK: the instance inside the
-// unit addresses the file, so the receipt and the bracket cannot derive different slots from one unit.
+// unit addresses the file, so the receipt and the future bracket consumer cannot derive different slots
+// from one unit -- which is why that change is expected to call this function rather than re-derive.
 test fn a_unit_is_read_to_the_registration_its_own_instance_holds() -> Bool {
   match bracket_run(
     legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],

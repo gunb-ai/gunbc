@@ -545,9 +545,12 @@ fn read_slot_registration_over(target: SshTarget, context: FleetSshExecutionCont
 // instance inside it is what addresses the registration file. An unparseable unit yields a refusal that
 // names the unit and costs NO leg: there is no slot whose tree to open, and no fallback name to join on.
 //
-// ONE AUTHORITY FOR BOTH CALLERS. The cap bracket joins the organization roster on this identity, and the
-// fleet-converge observe receipt renders it, so both must derive the instance the same way or the receipt
-// could report an identity the bracket would not have joined on. It is one function for that reason.
+// ONE AUTHORITY, SO A LATER CALLER CANNOT DERIVE A DIFFERENT SLOT. Today the fleet-converge observe receipt
+// is its only caller (gunbc.runner.runner_host_file_converge.runner_host_current_registration_text), and the
+// cap bracket does NOT yet call it: the bracket still joins the organization roster on the slot's bare name,
+// which is a defect tracked with this work and fixed in the follow-up change that introduces the bracket's
+// roster join on the CURRENT identity. When that change lands it must call THIS function rather than derive
+// the instance again, or the receipt could report an identity the bracket would not have joined on.
 type UnitRegistrationReading
   = UnitRegistrationRead { unit: NonEmptyStr, instance: NonEmptyStr, name: NonEmptyStr }
   | UnitRegistrationUnreadable { unit: NonEmptyStr, cause: String }
