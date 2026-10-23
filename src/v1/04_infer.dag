@@ -7531,13 +7531,13 @@ fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
 // test.claim.non_text_cast_into_text_wall_witness holds the five REDs, the GREENs, and the RED that a
 // user-declared type SPELLED Int is not the kernel Int.
 //
-// KEYED ON IDENTITY, NEVER ON SPELLING (DESIGN section 4). The four kernel sources are read by their
-// mint provenance (node_is_kernel_mint_named over the resolved node), the NonEmptyStr target by the
-// declaration its type reference resolves to (type_reference_declaration_ref, the same read the nominal-source wall makes of this node; whose by-binding fallbacks the reading variant lacks). A corpus type is
-// not a kernel mint and is not refused here: a type that happens to be named Int falls to the general
-// out-of-domain question the stall below owns. A binder typed std.nat Nat reaches infer as the kernel primitive Nat (srv1 probe: method
-// lookup reports receiver Primitive(Nat), and no declaration reference), so it is a kernel mint like the other four, read by
-// mint provenance; it is outside is_dag_cast_domain_type, so nothing else refuses it.
+// KEYED ON IDENTITY, NEVER ON SPELLING (DESIGN section 4). Int, Float, Bool and Unit are read by their
+// mint provenance (node_is_kernel_mint_named over the resolved node). Nat is not a kernel mint: a binder
+// typed std.nat Nat is an authored reference, so it is read by the declaration the reference resolves to
+// (type_node_names_declaration), as is the NonEmptyStr target; both use type_reference_declaration_ref,
+// the same read the nominal-source wall makes of this node. A corpus type is not a kernel mint and is
+// not refused here: a type that happens to be named Int falls to the general out-of-domain question the
+// stall below owns.
 // The check needs the TypeEnv, so it runs at the ExprCast arm beside validate_cast rather than inside it.
 //
 // WHY A LEAF HERE AND NOT A TABLE ROW (DESIGN section 6b, root generalization). The earliest
@@ -7570,11 +7570,7 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
         && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
         let si = scope.type_env.source_indices
         let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
-        [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name), make_error_node(diagnostic: InternalError { message: concat("NATPROBE-IF name=", src_node.name, " file=", (match src_node.ident_span { Present { value: sp } => sp.file, Absent => "<none>" })), span: span }, module_name: scope.module_name)]
-      } else if type_node_names_declaration(n: target_type, wanted: decl_ref(module_path: "std.types", decl_name: "NonEmptyStr"), scope: scope) {
-        let probe_file = match src_node.ident_span { Present { value: sp } => sp.file, Absent => "<no ident_span>" }
-        let probe_ref = match type_reference_declaration_ref(n: src_node, source_indices: scope.type_env.source_indices, env: scope.type_env) { Present { value: d } => concat(d.module_path as String, ".", d.decl_name as String), Absent => "<no ref>" }
-        [make_error_node(diagnostic: InternalError { message: concat("NATPROBE target=", match type_reference_declaration_ref(n: target_type, source_indices: scope.type_env.source_indices, env: scope.type_env) { Present { value: td } => concat(td.module_path as String, ".", td.decl_name as String), Absent => "<no target ref>" }, " name=", src_node.name, " file=", probe_file, " children=", to_string(src_node.children |> count), " ref=", probe_ref), span: span }, module_name: scope.module_name)]
+        [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
       } else { [] }
     _ => []
   }
