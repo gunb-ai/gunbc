@@ -97,7 +97,7 @@ data shah_trivial_source: String = "module shape_arm_probe\n\nfn f() -> Int {\n 
 // constructor value at an Int formal. The candidate test runs for real on this door, so a green
 // harness must read the label here. A constructor value, not a literal: literals route through the
 // literal elaboration tables (infer.dag:4806ff) and can answer a different reason.
-data shah_control_source: String = "module shape_arm_probe\n\ndata Flag\n  = On\n\nfn takes(x: Int) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  takes(On)\n}\n"
+data shah_control_source: String = "module shape_arm_probe\n\ntype Flag\n  = On\n\nfn takes(x: Int) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  takes(On)\n}\n"
 
 // THE FIXTURE (kept from v1 for continuity with the srv1 reading): formal T<T>, applied to 1. Per
 // the header analysis its label -- if still the label -- is earned at the honest door, not the arm.
@@ -106,7 +106,7 @@ data shah_shape_source: String = "module shape_arm_probe\n\nfn g<T>(x: T<T>) -> 
 // THE B PROBE: nullary constructor value at its OWN generic's formal. Nope inhabits Opt<T> for
 // every T, so no honest candidate test can answer no_candidate; a refusal carrying the label here
 // can only have come from the :5222 mint that skips the test.
-data shah_b_source: String = "module shape_arm_probe\n\ndata Opt<T>\n  = Nope\n  | Yep { value: T }\n\nfn g<T>(x: Opt<T>) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  g(Nope)\n}\n"
+data shah_b_source: String = "module shape_arm_probe\n\ntype Opt<T>\n  = Nope\n  | Yep { value: T }\n\nfn g<T>(x: Opt<T>) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  g(Nope)\n}\n"
 
 // (1) plumbing pin.
 test fn harness_trivial_module_is_accepted() -> Bool {
