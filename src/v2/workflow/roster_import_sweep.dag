@@ -12,7 +12,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 // route); the head's binding fact is v2.compiler.reference_site_collector's own. This module matches on neither, so it
 // imports no variant name of theirs (review 82610: import what you match, and only that).
 import v2.compiler.reference_site_collector { ScopedReferenceSite, collect_scoped_module_reference_sites }
-import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_declaration_is_type, roster_home_declaration_is_value, roster_corpus_pool_roots_text }
+import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_declaration_is_type, roster_home_declaration_is_value, roster_home_pool_roots_text }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.extdeps.languages.dag {
@@ -891,7 +891,7 @@ fn roster_label_plan(
     root: normalized_root,
     imported: list_map(xs: imported, f: fn(b) { b.binding })
   ).sites
-  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_site_is_free(site: st, row: row, imported_from_home: roster_symbol_imported(imported: imported, row: row)) && roster_spelling_is(qn: st.site.spelling, call: row.call) { n + 1 } else { n } })
+  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_is_free(site: st, row: row, imported_from_home: roster_symbol_imported(imported: imported, row: row)) { n + 1 } else { n } })
   let heads = roster_primary_heads(parse_root: parse_root, call: row.call)
   if length(xs: heads) != free {
     LabelsAmbiguous
@@ -1136,7 +1136,7 @@ fn roster_sites_count(sites: FreeMonoid<ScopedReferenceSite>, row: RosterHeadRow
     xs: sites,
     empty: 0,
     cons: fn(n, s) {
-      if roster_site_is_free(site: s, row: row, imported_from_home: false) && roster_spelling_is(qn: s.site.spelling, call: row.call) { n + 1 } else { n }
+      if roster_spelling_is(qn: s.site.spelling, call: row.call) && roster_site_is_free(site: s, row: row, imported_from_home: false) { n + 1 } else { n }
     }
   )
 }
@@ -2147,7 +2147,7 @@ fn roster_kind_control(name: String, text: String, row: RosterHeadRow, expected:
     Absent => "CONTROL-FAIL " + name + ": the specimen did not normalize\n"
     Present { value: sites } =>
       let wanted = fold_list(xs: sites, empty: 0, cons: fn(n, st) {
-        if roster_site_is_free(site: st, row: row, imported_from_home: false) && roster_spelling_is(qn: st.site.spelling, call: row.call) { n + 1 } else { n }
+        if roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_is_free(site: st, row: row, imported_from_home: false) { n + 1 } else { n }
       })
       if wanted == expected { "" } else {
         "CONTROL-FAIL " + name + ": " + int_to_decimal_string(value: wanted) + " sites of " + row.call + " want the " + roster_qn_text(qn: row.home)
@@ -2192,7 +2192,7 @@ fn roster_control_census_knows_the_homes() -> String {
     + (if !roster_home_declaration_is_value(home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name) { "" } else { "; " + type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " ALSO reads a VALUE declaration" })
     + (if roster_home_declaration_is_value(home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads no value declaration (a typed `data` constant is a value)" })
     + (if !roster_home_declaration_is_type(home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads a TYPE declaration" })
-  if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over " + roster_corpus_pool_roots_text() + ")\n" }
+  if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over the home directories " + roster_home_pool_roots_text(home: roster_qn_text(qn: type_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: value_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: data_row.home)) + ")\n" }
 }
 
 // WAVE 2'S HOMES ARE TYPES TO THE CENSUS. std.types List/Map/Set are ALIASED type declarations
