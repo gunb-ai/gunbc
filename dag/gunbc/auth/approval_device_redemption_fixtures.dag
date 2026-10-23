@@ -5,7 +5,7 @@ import std.algebra { list_append }
 import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
-import gunbc.auth.approval_google_enrolment { google_enrolment_transcript }
+import gunbc.auth.approval_google_enrolment { google_enrolment_transcript, google_enrolment_nonce }
 import extdeps.apple.app_attest { AttestKeyId }
 import gunbc.auth.approval_device_wire {
   DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid, PushRegistration,
@@ -120,6 +120,7 @@ fn enrolment_vector_json(v: EnrolmentVector) -> JsonValue {
       json_kv(key: "point_b64url", value: json_string(s: v.point_b64url as String)),
     ])),
     json_kv(key: "expected", value: json_string(s: enrolment_expected(v: v) as String)),
+    json_kv(key: "nonce", value: json_string(s: google_enrolment_nonce(transcript: enrolment_expected(v: v)) as String)),
   ])
 }
 
