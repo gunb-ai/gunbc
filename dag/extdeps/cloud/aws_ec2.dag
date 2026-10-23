@@ -77,11 +77,48 @@ data aws_ec2_g7e_product_page: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "aws.amazon.com/ec2/instance-types/g7e/" }
 }
 
+data aws_ec2_create_launch_template_version_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateLaunchTemplateVersion.html" }
+}
+
+data aws_ec2_describe_launch_template_versions_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeLaunchTemplateVersions.html" }
+}
+
+data aws_ec2_network_interface_specification_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_LaunchTemplateInstanceNetworkInterfaceSpecificationRequest.html" }
+}
+
+data aws_ec2_iam_instance_profile_specification_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_LaunchTemplateIamInstanceProfileSpecificationRequest.html" }
+}
+
+data aws_ec2_describe_subnets_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSubnets.html" }
+}
+
+data aws_ec2_describe_security_groups_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSecurityGroups.html" }
+}
+
+data aws_ec2_describe_vpc_endpoints_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeVpcEndpoints.html" }
+}
+
+data aws_ec2_spot_interruption_event_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-instance-termination-notices.html#ec2-spot-instance-interruption-warning-event" }
+}
+
+// THE SUBJECT IS THE SERVICE, not its version: aws_ec2_api_version below is the revision fact of the
+// Query API these shapes are read at (DESIGN 3; extdeps.external_authority ExternalModelScope carries no
+// revision).
+data amazon_ec2_api: NonEmptyStr = "Amazon EC2 API"
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.cloud.aws_ec2",
-      decl_name: "aws_ec2_api_version",
+      decl_name: "amazon_ec2_api",
       field: WholeDeclaration
     }
   },
@@ -98,6 +135,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     aws_ec2_spot_interruption_notices_page,
     aws_ec2_instance_lifecycle_page,
     aws_ec2_g7e_product_page,
+    aws_ec2_create_launch_template_version_page,
+    aws_ec2_describe_launch_template_versions_page,
+    aws_ec2_network_interface_specification_page,
+    aws_ec2_iam_instance_profile_specification_page,
+    aws_ec2_describe_subnets_page,
+    aws_ec2_describe_security_groups_page,
+    aws_ec2_describe_vpc_endpoints_page,
+    aws_ec2_spot_interruption_event_page,
   ]
 }
 
@@ -225,16 +270,30 @@ type AwsEc2Instance {
   tags: List<AwsEc2Tag>
 }
 
-// Reservation. owner_id is the account id; it is part of the wire shape and is never written into the
-// corpus as data (plan section 4).
+// GroupIdentifier: a security group as a reservation or an interface names it.
+type AwsEc2GroupIdentifier {
+  group_id: NonEmptyStr
+  group_name: String
+}
+
+// Reservation (reservationId, ownerId, groupSet, instancesSet). owner_id is the account id; it is part of
+// the wire shape and is never written into the corpus as data (plan section 4).
 type AwsEc2Reservation {
   reservation_id: NonEmptyStr
   owner_id: NonEmptyStr
+  groups: List<AwsEc2GroupIdentifier>
   instances: List<AwsEc2Instance>
 }
 
+// RunInstances answers a Reservation AT THE ROOT (RunInstances reference, Response Elements:
+// reservationId, ownerId, groupSet, instancesSet, requesterId), so the response IS that shape and is not
+// wrapped. requester_id is set only when another service launched on the caller's behalf.
 type AwsEc2RunInstancesResponse {
-  reservation: AwsEc2Reservation
+  reservation_id: NonEmptyStr
+  owner_id: NonEmptyStr
+  requester_id: String?
+  groups: List<AwsEc2GroupIdentifier>
+  instances: List<AwsEc2Instance>
 }
 
 // ---- TerminateInstances ----------------------------------------------------------------------------
@@ -345,11 +404,33 @@ type AwsEc2DescribeInstanceTypeOfferingsResponse {
 
 // ---- DescribeInstanceTypes -------------------------------------------------------------------------
 
+// GpuDeviceMemoryInfo {SizeInMiB}.
+type AwsEc2GpuDeviceMemoryInfo {
+  size_in_mib: Mebibyte
+}
+
+// GpuDeviceInfo {Name, Manufacturer, Count, MemoryInfo}.
 type AwsEc2GpuDeviceInfo {
   name: NonEmptyStr
   manufacturer: NonEmptyStr
   count: Int
-  memory_size_in_mib: Mebibyte
+  memory_info: AwsEc2GpuDeviceMemoryInfo
+}
+
+// GpuInfo {Gpus, TotalGpuMemoryInMiB}.
+type AwsEc2GpuInfo {
+  gpus: List<AwsEc2GpuDeviceInfo>
+  total_gpu_memory_in_mib: Mebibyte
+}
+
+// VCpuInfo, the member the screen reads (DefaultVCpus); the quota is counted in vCPUs.
+type AwsEc2VCpuInfo {
+  default_vcpus: Int
+}
+
+// MemoryInfo {SizeInMiB}.
+type AwsEc2MemoryInfo {
+  size_in_mib: Mebibyte
 }
 
 type AwsEc2DiskInfo {
@@ -367,16 +448,17 @@ type AwsEc2InstanceStorageInfo {
 // Sizes on this wire are integers in the unit the member name states (MiB, decimal GB); each is typed
 // with that std.measure carrier, so the live answer and the curated g7e table below hold one fact in one
 // form. Counts (vCPUs, GPUs, disks) stay Int.
-// InstanceTypeInfo, the members the screen reads. instance_storage is absent for an EBS-only type: the
-// /cache requirement (plan section 3) refuses such a type by this member, not by its name.
+// InstanceTypeInfo, the members the screen reads, NESTED AS THE API NESTS THEM (VCpuInfo, MemoryInfo,
+// GpuInfo, InstanceStorageInfo). gpu_info is absent for a type with no GPU, instance_storage_info for an
+// EBS-only type: the /cache requirement (plan section 3) refuses such a type by this member, not by its
+// name.
 type AwsEc2InstanceTypeInfo {
   instance_type: NonEmptyStr
-  default_vcpus: Int
-  memory_size_in_mib: Mebibyte
-  gpus: List<AwsEc2GpuDeviceInfo>
-  total_gpu_memory_in_mib: Mebibyte?
+  v_cpu_info: AwsEc2VCpuInfo
+  memory_info: AwsEc2MemoryInfo
+  gpu_info: AwsEc2GpuInfo?
   instance_storage_supported: Bool
-  instance_storage: AwsEc2InstanceStorageInfo?
+  instance_storage_info: AwsEc2InstanceStorageInfo?
   supported_usage_classes: List<NonEmptyStr>
 }
 
@@ -411,15 +493,35 @@ type AwsEc2MetadataOptions {
   http_put_response_hop_limit: Int
 }
 
+// LaunchTemplateIamInstanceProfileSpecificationRequest: by ARN or by name. The instance role is what reads
+// the per-instance SSM parameter and the regional S3 weights bucket (plan section 3).
+type AwsEc2IamInstanceProfileSpecification
+  = AwsEc2IamInstanceProfileByArn { arn: NonEmptyStr }
+  | AwsEc2IamInstanceProfileByName { name: NonEmptyStr }
+
+// LaunchTemplateInstanceNetworkInterfaceSpecificationRequest, the members the template sets: the subnet
+// (and so the VPC and availability zone) and the security groups ride on the primary interface.
+type AwsEc2NetworkInterfaceSpecification {
+  device_index: Int
+  subnet_id: NonEmptyStr
+  groups: List<NonEmptyStr>
+  associate_public_ip_address: Bool
+  delete_on_termination: Bool
+}
+
 // RequestLaunchTemplateData, the members the flex template sets. user_data is base64 on the wire and
 // is readable through DescribeInstanceAttribute by any principal holding that action, so it carries no
-// secret (plan section 3).
+// secret (plan section 3). The security groups are carried ONLY on the network interface: the API refuses
+// SecurityGroupIds beside NetworkInterfaces that name groups, so that pair has no member here and the
+// conflicting request is unwritable. A subnet is per availability zone, so a template whose interface
+// names a subnet launches only in that zone: the template is per (region, AZ) candidate.
 type AwsEc2LaunchTemplateData {
   image_id: NonEmptyStr
   block_device_mappings: List<AwsEc2BlockDeviceMapping>
   user_data: String
   metadata_options: AwsEc2MetadataOptions
-  security_group_ids: List<NonEmptyStr>
+  iam_instance_profile: AwsEc2IamInstanceProfileSpecification
+  network_interfaces: List<AwsEc2NetworkInterfaceSpecification>
   instance_initiated_shutdown_behavior: NonEmptyStr
 }
 
@@ -441,6 +543,122 @@ type AwsEc2CreateLaunchTemplateResponse {
   launch_template: AwsEc2LaunchTemplate
 }
 
+// ---- CreateLaunchTemplateVersion and DescribeLaunchTemplateVersions (the version readback) ----------
+
+// A new image digest or user-data is a new VERSION of the one template, not a new template. The target is
+// the template by id or by name (no version: the version is what this call creates).
+type AwsEc2LaunchTemplateTarget
+  = AwsEc2LaunchTemplateTargetById { launch_template_id: NonEmptyStr }
+  | AwsEc2LaunchTemplateTargetByName { launch_template_name: NonEmptyStr }
+
+type AwsEc2CreateLaunchTemplateVersionRequest {
+  target: AwsEc2LaunchTemplateTarget
+  version_description: String
+  launch_template_data: AwsEc2LaunchTemplateData
+  client_token: NonEmptyStr
+}
+
+// LaunchTemplateVersion, the members the readback compares: the version number the launch will name and
+// the data it holds, which must equal the data the loop rendered or the launch refuses.
+type AwsEc2LaunchTemplateVersion {
+  launch_template_id: NonEmptyStr
+  launch_template_name: NonEmptyStr
+  version_number: Int
+  default_version: Bool
+  launch_template_data: AwsEc2LaunchTemplateData
+}
+
+type AwsEc2CreateLaunchTemplateVersionResponse {
+  launch_template_version: AwsEc2LaunchTemplateVersion
+}
+
+// DescribeLaunchTemplateVersions, asked for exact version numbers (never $Latest at readback: the
+// readback is of the version the launch will name).
+type AwsEc2DescribeLaunchTemplateVersionsRequest {
+  target: AwsEc2LaunchTemplateTarget
+  versions: List<NonEmptyStr>
+  next_token: String?
+}
+
+type AwsEc2DescribeLaunchTemplateVersionsResponse {
+  launch_template_versions: List<AwsEc2LaunchTemplateVersion>
+  next_token: String?
+}
+
+// ---- The network substrate the launch depends on (read, never created by the loop) ------------------
+
+// A candidate's subnet, its security groups and the VPC endpoints that route to S3, SSM and KMS are READ
+// and checked for coherence (one VPC, the subnet in the candidate's zone) before launch; an unread
+// substrate refuses the candidate (plan section 3). The serving port's reachability is a security group
+// rule the loop reads, not one it writes.
+type AwsEc2Subnet {
+  subnet_id: NonEmptyStr
+  vpc_id: NonEmptyStr
+  availability_zone: NonEmptyStr
+  map_public_ip_on_launch: Bool
+  tags: List<AwsEc2Tag>
+}
+
+type AwsEc2DescribeSubnetsRequest {
+  filters: List<AwsEc2Filter>
+  next_token: String?
+}
+
+type AwsEc2DescribeSubnetsResponse {
+  subnets: List<AwsEc2Subnet>
+  next_token: String?
+}
+
+// IpPermission, the members the port check reads: protocol, port range and the IPv4 ranges admitted.
+type AwsEc2IpRange {
+  cidr_ip: NonEmptyStr
+}
+
+type AwsEc2IpPermission {
+  ip_protocol: NonEmptyStr
+  from_port: Int?
+  to_port: Int?
+  ip_ranges: List<AwsEc2IpRange>
+}
+
+type AwsEc2SecurityGroup {
+  group_id: NonEmptyStr
+  group_name: String
+  vpc_id: NonEmptyStr
+  ip_permissions: List<AwsEc2IpPermission>
+  ip_permissions_egress: List<AwsEc2IpPermission>
+}
+
+type AwsEc2DescribeSecurityGroupsRequest {
+  group_ids: List<NonEmptyStr>
+  next_token: String?
+}
+
+type AwsEc2DescribeSecurityGroupsResponse {
+  security_groups: List<AwsEc2SecurityGroup>
+  next_token: String?
+}
+
+// VpcEndpoint, the members the route check reads: which service (com.amazonaws.<region>.s3, .ssm, .kms)
+// is reachable from which VPC, and the endpoint state. An instance with a public address reaches those
+// services without an endpoint; which route a candidate uses is the loop's coherence verdict, not here.
+type AwsEc2VpcEndpoint {
+  vpc_endpoint_id: NonEmptyStr
+  vpc_id: NonEmptyStr
+  service_name: NonEmptyStr
+  state: NonEmptyStr
+}
+
+type AwsEc2DescribeVpcEndpointsRequest {
+  filters: List<AwsEc2Filter>
+  next_token: String?
+}
+
+type AwsEc2DescribeVpcEndpointsResponse {
+  vpc_endpoints: List<AwsEc2VpcEndpoint>
+  next_token: String?
+}
+
 // ---- Spot interruption notice (instance metadata and EventBridge) ----------------------------------
 
 // spot/instance-action in IMDS answers {action, time}; absent (HTTP 404) when no interruption is
@@ -460,6 +678,13 @@ type AwsEc2SpotInstanceActionNotice {
 data aws_ec2_imds_spot_instance_action_path: NonEmptyStr = "/latest/meta-data/spot/instance-action"
 
 data aws_ec2_spot_interruption_event_detail_type: NonEmptyStr = "EC2 Spot Instance Interruption Warning"
+
+// The EventBridge event's detail member (source aws.ec2): the instance and the action. The envelope
+// (time, region, resources) is EventBridge's, read by the subscription the plan names in PR 4.
+type AwsEc2SpotInterruptionWarningDetail {
+  instance_id: NonEmptyStr
+  instance_action: AwsEc2InstanceAction
+}
 
 // ---- g7e sizes as published -------------------------------------------------------------------------
 
