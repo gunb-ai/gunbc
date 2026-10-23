@@ -1743,12 +1743,67 @@ fn roster_controls_report() -> String {
         + roster_control_label_sites_disagree(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_pass2_clean(prepared: prepared, lex: dag_prepared_lex())
         + roster_kind_controls(prepared: prepared, lex: dag_prepared_lex())
+        + roster_rename_controls(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_positional_past_unreadable()
         + roster_control_edit_splices()
         + roster_control_generation()
         + roster_control_status_names()
         + roster_control_ancestor()
   }
+}
+
+// THE RENAME ROW'S CONTROLS, over the PRODUCTION map_get row (never a copy of it), so a change to the row is measured.
+// Positive: one write imports map_lookup, rewrites both heads and labels both arguments, including a call nested in
+// another's argument; pass 2 is Clean. Each refusal is the row's own: a named argument and a missing argument. A call spelling a
+// parameter binds is never a candidate (Clean), nor is a method spelling `x.map_get(...)`, which is not a primary head and is left alone.
+fn roster_rename_production_row() -> List<RosterHeadRow> {
+  fold_list(xs: roster_head_rows(), empty: [], cons: fn(acc, r) { if roster_row_renames_head(row: r) { list_snoc_item(xs: acc, item: r) } else { acc } })
+}
+
+fn roster_rename_outcome(text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  roster_sweep_text_rows(path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rename_production_row(), closures: roster_control_closures())
+}
+
+fn roster_rename_expect_refusal(name: String, text: String, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_rename_outcome(text: text, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } => if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
+    other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+  }
+}
+
+fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => match map_get(m, v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
+  let after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => match map_lookup(m: m, key: v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
+  let positive = match roster_applied(before: before, outcome: roster_rename_outcome(text: before, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL rename-positive: refused " + roster_refusal_text(reason: r) + "\n"
+    RosterApplyWritten { content: c } =>
+      if c != after {
+        "CONTROL-FAIL rename-positive: wrote unexpected text: " + c + "\n"
+      } else {
+        match roster_rename_outcome(text: c, prepared: prepared, lex: lex) {
+          RosterClean => ""
+          other => "CONTROL-FAIL rename-positive: pass 2 not Clean: " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+        }
+      }
+  }
+  let nested = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, Map<String, String>>, k: String) -> Optional<String> {\n  g(x: map_get(m, k), k: k)\n}\n"
+  let nested_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, Map<String, String>>, k: String) -> Optional<String> {\n  g(x: map_lookup(m: m, key: k), k: k)\n}\n"
+  let nested_check = match roster_applied(before: nested, outcome: roster_rename_outcome(text: nested, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL rename-in-argument: refused " + roster_refusal_text(reason: r) + "\n"
+    RosterApplyWritten { content: c } => if c == nested_after { "" } else { "CONTROL-FAIL rename-in-argument: wrote unexpected text: " + c + "\n" }
+  }
+  positive
+    + nested_check
+    + roster_rename_expect_refusal(name: "rename-named-argument", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(name: "rename-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
+    + match roster_rename_outcome(text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", prepared: prepared, lex: lex) {
+        RosterClean => ""
+        other => "CONTROL-FAIL rename-parameter-bound: " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+      }
+    + match roster_rename_outcome(text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", prepared: prepared, lex: lex) {
+        RosterClean => ""
+        other => "CONTROL-FAIL rename-method-spelling: " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+      }
 }
 
 // A HOME OTHER THAN std.algebra, in ONE write: pass 1 inserts `import std.host_text { chars }` after the last import AND
