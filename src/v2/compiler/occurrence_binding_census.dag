@@ -273,6 +273,7 @@ fn occurrence_binding_is_module_level(binding: OccurrenceBinding) -> Bool {
 // path `OccurrenceBinding::BoundAmbient` (E0533 in the emitted crate, PR #14112), and binding the
 // table keeps the pattern a struct pattern.
 fn ambient_table_is_module_level(table: AmbientBindingTable) -> Bool {
+// Workaround row: gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x); delete when the emitter keeps the braces.
   match table {
     AmbientKernelTypeSpelling => true
     AmbientKernelCanonicalSymbol => true

@@ -618,6 +618,7 @@ fn use_edges_of(deps: ValueUseDependencies) -> List<UseEdge> {
 fn not_derived_word(r: NotDerivedReason) -> String {
   match r {
     NotDerivedStanding { standing: _ } => "binder_standing_has_no_value"
+// Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
     ValuedUseNotLocated { value: _value, why: _ } => "valued_use_not_located"
     ValuedBinderSiteUnkeyed { value: _ } => "valued_binder_site_unkeyed"
     ValuedBinderNotLocated { value: _value, why: _ } => "valued_binder_not_located"
