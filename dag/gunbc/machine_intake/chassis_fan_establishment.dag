@@ -4,9 +4,9 @@ import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { rpm_count, sdr_undecoded_line_count_value }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
-import extdeps.bmc.ipmi_sdr { SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
+import extdeps.bmc.ipmi_sdr { SdrTemperaturePublication, TemperaturePublished, TemperatureSensorsSilent, TemperatureUndecodable, TemperatureNoSensorRows, SdrTypeLine, SdrEmptyReadingRow, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
-import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { ThermalObservation, ThermalRead, ThermalUnreadable, FanSensorObservation, FanSensorsRead, FanSensorsUnreadable, fan_failure_sensor_name }
 
 // WHETHER THE CHASSIS FANS SPIN, JUDGED OVER THE FANS THE UNIT IS FITTED WITH AND NO OTHER.
 //
@@ -48,6 +48,10 @@ type PostPowerFanRefusal
   | PostPowerThermalReadingUnrecognised { texts: List<String> }
   | FanReadUnreadable
   | FanRowsUndecoded { texts: List<String> }
+  // A FANn_Failure discrete sensor row that is not observed in a NOT-asserted shape. The asserted spelling has not been observed on this
+  // controller, so this arm refuses ANYTHING it cannot read as not-asserted (an empty reading with status ok, or reading `No Reading`);
+  // when an asserted row is seen, it gets its own constructor and this arm keeps the remainder.
+  | FanFailureSensorNotNominal { text: String }
   | FittedHeaderMissing { header: NonEmptyStr }
   | FittedHeaderDuplicated { header: NonEmptyStr }
   | FittedHeaderStatusRefused { header: NonEmptyStr, status: NonEmptyStr }
@@ -143,6 +147,18 @@ fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
   }
 }
 
+// A FAILURE SENSOR ADMITS ONLY AS OBSERVED NOT-ASSERTED: an empty reading cell with status ok (the powered shape of
+// artifacts/bmc/mtcollins1-32dimm/06-sdr.txt), or the decoded reading `No Reading` (the host-off shape, run 39053311400).
+fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<SdrEmptyReadingRow>) -> PostPowerFanRefusal? {
+  match failure_rows.filter(r => (r.status as String) != "ok").first() {
+    Present { value: r } => Present { value: FanFailureSensorNotNominal { text: r.text } }
+    Absent => match lines.filter(l => fan_failure_sensor_name(name: l.name as String) && (l.reading_text as String) != "No Reading").first() {
+      Present { value: l } => Present { value: FanFailureSensorNotNominal { text: join([l.name as String, " | ", l.status as String, " | ", l.reading_text as String], "") } }
+      Absent => Absent
+    }
+  }
+}
+
 // THE THERMAL STANDING IS CONSUMED, NOT DISCARDED (side-chat hold 2026-10-19). Thermal is established only by a read that
 // published at least one decoded temperature AND left no undecoded row. A silent pre-POST sensor list
 // (TemperatureSensorsSilent), an undecodable or empty one, an unreadable read, and any undecoded row refuse: none acquires a
@@ -166,11 +182,14 @@ fn thermal_refusal(thermal: ThermalObservation) -> PostPowerFanRefusal? {
 fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPowerFanRefusal? {
   match fans {
     FanSensorsUnreadable => Present { value: FanReadUnreadable }
-    FanSensorsRead { lines: lines, undecoded_lines: u } =>
+    FanSensorsRead { lines: lines, undecoded_lines: u, failure_rows: f } =>
       if u.length() > 0 {
         Present { value: FanRowsUndecoded { texts: u } }
       } else {
-        first_fitted_header_refusal(lines: lines, headers: fitted_set_headers(fitted: fitted))
+        match first_failure_sensor_refusal(lines: lines, failure_rows: f) {
+          Present { value: r } => Present { value: r }
+          Absent => first_fitted_header_refusal(lines: lines, headers: fitted_set_headers(fitted: fitted))
+        }
       }
   }
 }
