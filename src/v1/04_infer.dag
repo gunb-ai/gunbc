@@ -8960,15 +8960,30 @@ fn chain2_class(t: Node, scope: InferScope) -> String {
   else { "" }
 }
 
-fn chain2_arg_classes(func: String, c: Node, scope: InferScope) -> List<String> {
-  match c.inferred {
-    Present { value: Resolved { node: t } } =>
-      let direct = chain2_class(t: t, scope: scope)
-      let elems = if func == "join" && authored_name_at(source_indices: scope.type_env.source_indices, node: t) == "List" {
-        t.children |> map(ch => chain2_class(t: child_type_node(ch: ch), scope: scope))
-      } else { [] }
-      concat([direct], elems) |> filter(k => k != "")
-    _ => []
+fn chain2_value_type(c: Node) -> Node? {
+  let v = arg_value(n: c)
+  match v.inferred { Present { value: Resolved { node: _ } } => Present { value: expression_value_type(e: v) }  _ => Absent }
+}
+
+fn chain2_has_host_text(args: List<Node>, scope: InferScope) -> Bool {
+  args |> any(c => match chain2_value_type(c: c) {
+    Present { value: _ } => match argument_text_representation(value: arg_value(n: c), type_env: scope.type_env) { HostText => true  _ => false }
+    Absent => false
+  })
+}
+
+fn chain2_arg_classes(func: String, idx: Int, c: Node, host: Bool, scope: InferScope) -> List<String> {
+  match chain2_value_type(c: c) {
+    Present { value: t } =>
+      if func == "join" && idx == 0 {
+        if authored_name_at(source_indices: scope.type_env.source_indices, node: t) == "List" {
+          t.children |> map(ch => chain2_class(t: child_type_node(ch: ch), scope: scope)) |> filter(k => k != "")
+        } else { [] }
+      } else {
+        if func == "concat" && !host { [] }
+        else { [chain2_class(t: t, scope: scope)] |> filter(k => k != "") }
+      }
+    Absent => []
   }
 }
 
@@ -8980,7 +8995,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
     _ => ""
   }
   if fname == "concat" || fname == "join" {
-    let classes = r.typed.children |> flat_map(c => chain2_arg_classes(func: fname, c: c, scope: scope))
+    let host = chain2_has_host_text(args: r.typed.children, scope: scope)
+    let classes = r.typed.children |> enumerate |> flat_map(pr => chain2_arg_classes(func: fname, idx: pr.first, c: pr.second, host: host, scope: scope))
     let diags = classes |> map(k => inference_error(message: concat("CHAIN2CENSUS ", fname, " ", k), span: texpr.span, module_name: scope.module_name))
     InferResult { typed: r.typed, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_of_diagnostics(diagnostics: diags)) }
   } else { r }
