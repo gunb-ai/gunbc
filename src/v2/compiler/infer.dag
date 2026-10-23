@@ -8464,11 +8464,11 @@ fn infer_record_construct_pattern(type_path: QualifiedName, type_params: List<Sy
     kind: TypeNode { connective: Instantiation },
     children: fold(
       type_params,
-      init: [Edge { label: Positional, target: declaration_reference_node(qn: type_path, occurrence_id: OccurrenceSynthetic) }],
+      init: [Edge { label: Positional, target: declaration_reference_node(qn: type_path, occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }],
       f: fn(edges, binder) {
         list_snoc_item(
           xs: edges,
-          item: Edge { label: Positional, target: Node { kind: TypeNode { connective: Atom { identity: binder } }, children: [], occurrence_id: OccurrenceSynthetic } }
+          item: Edge { label: Positional, target: Node { kind: TypeNode { connective: Atom { identity: binder } }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }
         )
       }
     ),
