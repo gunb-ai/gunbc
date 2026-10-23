@@ -26,6 +26,5 @@ data wet_witness_premise_read_from_the_runner_it_happens_to_land_on: RecurringFa
   evidence: [
     decl_ref(module_path: "gunbc.spark.host_privileged_apply", decl_name: "spark_pair_privileged_leg"),
     decl_ref(module_path: "gunbc.fabric.fabric_event_log_host", decl_name: "event_log_store_for_host"),
-    decl_ref(module_path: "test.claim.approval_ntfy_access_readback_wet_witness", decl_name: "the_root_refuses_before_minting_on_this_host_by_real_execution"),
   ],
 }

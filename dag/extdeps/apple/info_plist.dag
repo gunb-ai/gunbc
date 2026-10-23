@@ -82,6 +82,7 @@ type InfoPlistKey
   | CFBundleDisplayNameKey
   | UIBackgroundModesKey
   | UISupportedInterfaceOrientationsKey
+  | CFBundleURLTypesKey
   | AppDefinedKey { name: String }
 
 fn info_plist_key_token(k: InfoPlistKey) -> String {
@@ -91,6 +92,7 @@ fn info_plist_key_token(k: InfoPlistKey) -> String {
     CFBundleDisplayNameKey => "CFBundleDisplayName"
     UIBackgroundModesKey => "UIBackgroundModes"
     UISupportedInterfaceOrientationsKey => "UISupportedInterfaceOrientations"
+    CFBundleURLTypesKey => "CFBundleURLTypes"
     AppDefinedKey { name: n } => n
   }
 }
@@ -106,6 +108,7 @@ fn info_plist_key_reference(k: InfoPlistKey) -> Uri {
     CFBundleDisplayNameKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/cfbundledisplayname")
     UIBackgroundModesKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/uibackgroundmodes")
     UISupportedInterfaceOrientationsKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/uisupportedinterfaceorientations")
+    CFBundleURLTypesKey => apple_doc(locator: "developer.apple.com/documentation/bundleresources/information-property-list/cfbundleurltypes")
     AppDefinedKey { name: _ } => extdeps_external_authority_anchor.uri
   }
 }
@@ -154,4 +157,12 @@ data all_interface_orientations: List<InterfaceOrientation> = [PortraitOrientati
 
 fn supported_orientations_entry(orientations: List<InterfaceOrientation>) -> PlistEntry {
   info_entry(k: UISupportedInterfaceOrientationsKey, value: PlistArray { elements: map(orientations, o => PlistString { value: interface_orientation_token(o: o) }) })
+}
+
+// CFBundleURLTypes: each element is a dictionary whose CFBundleURLSchemes lists the schemes the app
+// handles. The only consumer is the Google sign-in redirect, whose scheme is the reversed client id.
+fn url_scheme_entry(scheme: String) -> PlistEntry {
+  info_entry(k: CFBundleURLTypesKey, value: PlistArray { elements: [
+    PlistDictionary { entries: [plist_entry(key: "CFBundleURLSchemes", value: PlistArray { elements: [PlistString { value: scheme }] })] }
+  ] })
 }
