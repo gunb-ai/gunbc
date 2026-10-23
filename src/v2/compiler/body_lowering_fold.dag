@@ -5362,25 +5362,6 @@ fn body_lower_transform_call(operator: Node, args: List<Edge>) -> Node {
   )
 }
 
-// A `name(args)` CALL NODE IS NOT A SYNTHETIC ONE. It is the semantic form of the authored call
-// text, so it stands for that text and takes its occurrence -- v2.std.node node_lowered_from, closed
-// at the root with close_lowered_image exactly as the where-predicate call does (:1238) and as the
-// index-read twin derives its operator (:7199). The bare node_synthetic this replaces made every
-// census fatal anchored on a primary call UNLOCATABLE: v2.compiler.source_root_eval
-// native_census_owner_key answers Absent for OccurrenceSynthetic, so the anchor could never enter
-// the loci map, and the row fell to FileRefusalAtUnresolvedNode with occurrence null. The callee
-// spine and the argument nodes are NOT this image: they were lowered from their own authored texts
-// at their own occurrences, and close_lowered_image stops at a node carrying another source.
-fn body_lower_primary_call_node(operator: Node, args: List<Edge>, source: Node) -> Node {
-  close_lowered_image(
-    root: node_lowered_from(
-      kind: ComputationNode { behavior: Transform },
-      children: list_append(left: [Edge { label: Positional, target: operator, declaration: NotADeclaration }], right: args),
-      source: source
-    )
-  )
-}
-
 fn body_lower_arg_operand_read(arg_capture: Node) -> OperandRefRead {
   match body_lower_find_captured(root: arg_capture, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => body_lower_operand_ref_read(node: expr)
@@ -6407,10 +6388,9 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
                     f: fn(args) {
                       outcome_accepted(
                         value: optional_present(
-                          value: body_lower_primary_call_node(
+                          value: body_lower_transform_call(
                             operator: callee_atom,
-                            args: args,
-                            source: stripped
+                            args: args
                           )
                         )
                       )
@@ -7258,20 +7238,13 @@ fn body_lower_is_node(operand: Node, arm: Node) -> Node {
 }
 
 fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
-  // The signature ALREADY NAMED the source and the body dropped it -- the same occurrence loss as
-  // the primary call above, one line deeper in the same builder family. The `as` keyword node is
-  // synthesized text (it is spelled, not part of the authored construct's identity), so it stays
-  // synthetic; the cast node itself stands for the authored suffix and takes its occurrence.
-  close_lowered_image(
-    root: node_lowered_from(
-      kind: ComputationNode { behavior: Transform },
-      children: [
-        Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_as } }, children: []), declaration: NotADeclaration },
-        Edge { label: Positional, target: operand, declaration: NotADeclaration },
-        cast_target_edge(target_type: target_type)
-      ],
-      source: source
-    )
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_as } }, children: []), declaration: NotADeclaration },
+      Edge { label: Positional, target: operand, declaration: NotADeclaration },
+      cast_target_edge(target_type: target_type)
+    ]
   )
 }
 
