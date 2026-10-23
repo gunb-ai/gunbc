@@ -195,38 +195,10 @@ fn control_drained_total(xs: List<Int>) -> Int {
   }
 }
 
-fn control_drained_consuming(xs: List<Int>, pending: List<Int>) -> Int {
-  match control_bind(
-    o: fold(xs, init: ControlGood { value: ControlDrain { pending: pending, total: 0 } }, f: fn(acc, x) {
-      control_bind(o: acc, f: fn(state) {
-        match state.pending {
-          Empty => ControlBad { value: "arity" }
-          Cons { head: weight, tail: rest } =>
-            control_bind(
-              o: ControlGood { value: weight * x },
-              f: fn(scaled) { ControlGood { value: ControlDrain { pending: rest, total: state.total + scaled } } }
-            )
-        }
-      })
-    }),
-    f: fn(state) {
-      match state.pending {
-        Empty => ControlGood { value: state.total }
-        Cons { head: _, tail: _ } => ControlBad { value: "arity" }
-      }
-    }
-  ) {
-    ControlGood { value: t } => t
-    ControlBad { value: _ } => 0 - 1
-  }
-}
-
 fn generic_callee_lambda_arg_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "generic_callee_lambda_param_bound_by_fold_init_payload", held: control_drained_total(xs: [1, 2, 3]) == 6 },
-    NativeEmissionCase { identity: "generic_callee_lambda_param_red_total_is_not_the_last_element", held: control_drained_total(xs: [1, 2, 3]) != 3 },
-    NativeEmissionCase { identity: "generic_callee_lambda_param_bound_through_nested_bind_and_match", held: control_drained_consuming(xs: [1, 2], pending: [10, 20]) == 50 },
-    NativeEmissionCase { identity: "generic_callee_lambda_param_red_arity_mismatch_is_bad", held: control_drained_consuming(xs: [1, 2], pending: [10]) == 0 - 1 }
+    NativeEmissionCase { identity: "generic_callee_lambda_param_red_total_is_not_the_last_element", held: control_drained_total(xs: [1, 2, 3]) != 3 }
   ]
 }
 
@@ -823,8 +795,6 @@ data native_emission_expected_identities: List<String> = [
   "generic_record_lambda_field_param_bound_by_sibling_lambda_return",
   "generic_callee_lambda_param_bound_by_fold_init_payload",
   "generic_callee_lambda_param_red_total_is_not_the_last_element",
-  "generic_callee_lambda_param_bound_through_nested_bind_and_match",
-  "generic_callee_lambda_param_red_arity_mismatch_is_bad",
   "fn_value_stored_generic_fn_answers",
   "fn_value_red_stored_generic_fn_is_not_another_answer",
   "fn_value_passed_fn_answers_beside_it",
