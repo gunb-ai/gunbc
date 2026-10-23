@@ -1,12 +1,14 @@
 module gunbc.recurring_failure_mode.a_step_carries_a_script_that_reads_env_the_step_never_binds
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_step_carries_a_script_that_reads_env_the_step_never_binds: RecurringFailureMode = RecurringFailureMode {
   identity: "a_step_carries_a_script_that_reads_env_the_step_never_binds" as NonEmptyStr,
 
-  rung: RungUnread { cause: BlockerClassUnstated },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the token-mint prelude declares the environment variables its script reads and a generated step derives its env bindings from that declaration, so a step carrying the prelude cannot omit a binding it reads" } },
 
   receipts: [
     "**a generated workflow step carries a script that reads an environment variable the step's own env never binds, so the step dies at run time with an unbound-variable error** (INVALID STATE: a RunStep whose run text reads $VAR while its env omits VAR; HARM: the step refuses before doing any work, found only by running the workflow). The script and the env are two facts of one step with no join between them.",
