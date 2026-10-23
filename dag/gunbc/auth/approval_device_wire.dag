@@ -902,6 +902,11 @@ data approval_device_enrollment_path_prefix: NonEmptyStr = "/approve/device/enro
 // without a new enrolment. The token is inside the assertion's client data, so an assertion made
 // for one token cannot carry another. The body is { auth, push }: the same read authentication
 // beside the registration the client data framed.
+// The operator's two routes (ruling of clever-eagle-893, 2026-10-23): list every enrolment, and revoke one
+// by id. The id travels as a path segment exactly as the readback route's does.
+data approval_devices_list_path: NonEmptyStr = "/approve/devices" as NonEmptyStr
+data approval_device_revoke_path_prefix: NonEmptyStr = "/approve/devices/revoke/" as NonEmptyStr
+
 data approval_device_push_path: NonEmptyStr = "/approve/device/push" as NonEmptyStr
 data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1" as NonEmptyStr
 

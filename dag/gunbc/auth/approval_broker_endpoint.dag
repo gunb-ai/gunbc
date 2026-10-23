@@ -9,7 +9,7 @@ import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, 
 import gunbc.serve_liveness { serve_liveness_path }
 import extdeps.shell
 import std.optional { Present, Absent }
-import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
+import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix, approval_device_revoke_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
 // ONE FACT, FOUR READERS. The four approval paths are read by the broker's route table
@@ -46,6 +46,7 @@ data approval_broker_store_receipt_path_template: NonEmptyStr = join([approval_b
 // four fixed routes are the wire's literals. Every device operation is a POST.
 data approval_device_request_path_template: NonEmptyStr = join([approval_device_request_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
 data approval_device_enrollment_path_template: NonEmptyStr = join([approval_device_enrollment_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
+data approval_device_revoke_path_template: NonEmptyStr = join([approval_device_revoke_path_prefix as String, "\{segment\}"], "") as NonEmptyStr
 
 // ── The broker's own listener ────────────────────────────────────────────────────────────────
 // A SEPARATE PORT IS WHAT MAKES THE SEPARATE PROCESS OBSERVABLE. Two units with two MainPIDs that
