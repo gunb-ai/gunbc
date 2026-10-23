@@ -549,3 +549,26 @@ test fn the_dedicated_worker_arm_is_the_only_source_of_subtree_legs() -> Bool {
   count(subtree_legs_for(spec: deployment_spec_srv1())) == 0
     && count(subtree_legs_for(spec: lab_spec())) > 0
 }
+
+// THE REALIZED FOLD STOPS AT THE PREMISE LEG, BY ITS STEP NAME (the ruling's wet requirement, taken DRY).
+// msg_dd453af6 asked the refusals to prove "the run stopping at the premise leg, by its step name". That is a
+// PROPERTY OF THE FOLD, not of a live git: deploy_apply_run_legs halts at the FIRST failing leg and reports
+// deploy_apply_leg_step(that leg). The premise seeds the group (index 0), and its ApplyLegDiagnosedCommand
+// dispatches its command through the command PORT (the diagnosis runs only after the command fails). So
+// driving the lab subtree plan through a command-port that refuses typed argv before any command
+// (EmitArtifactThenThinRun -- the same production-arm refusal the C1/C2 adapter claims already use) must halt
+// at step "git-worker-subtree-premise" with legs_run == 0 and the transport's own refusal in the reason.
+// This is the honest wet requirement WITHOUT the wet blast radius: routing the ADMITS through the realized
+// fold would also run the root belt/unit legs (systemctl, unit installs) against the qualification host,
+// which is why the per-state admits stay direct-argv in the wet witness and only this halt-at-step fact is
+// proven here through the fold. The ports drive only the command leg (the premise is leg 0), so reusing the
+// srv1-shaped transport-refusing ports is sound -- their spec feeds the ensure/root ports that are never
+// reached when the premise stops the run at index 0.
+test fn the_realized_fold_stops_at_the_premise_leg_by_its_step_name() -> Bool {
+  let legs = subtree_legs_for(spec: lab_spec())
+  match deploy_apply_run_legs(legs: legs, ports: refusing_production_ports()) {
+    ApplyRunFailed { step: s, reason: r, legs_run: n } =>
+      n == 0 && s == "git-worker-subtree-premise" && string_contains(s: r, pattern: "EmitArtifactThenThinRun")
+    ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+}
