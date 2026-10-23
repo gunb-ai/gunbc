@@ -6,6 +6,8 @@ import std.decimal { ExactDecimal }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.measure { Gigabyte, Gibibyte, Bandwidth, gigabyte, gibibyte, bandwidth }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // AMAZON EC2, THE CONTROL-PLANE CALLS THE FLEX LOOP USES, at EC2 API version 2016-11-15 (the Query API
 // version every current EC2 action is published under). Read 2026-10-23 from the Amazon EC2 API Reference
@@ -100,6 +102,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data aws_ec2_api_version: NonEmptyStr = "2016-11-15"
+
+// DECLARED FRONTIER (DESIGN 3c): nothing imports this module yet. Its consumer is the AWS supplier row of
+// the flex loop, PR 4 of gunbc.plans.flex_supplier_generalization (the offer screen reads
+// DescribeInstanceTypes / DescribeSpotPriceHistory / DescribeInstanceTypeOfferings, the roster reads
+// DescribeInstances, the write builds RunInstances / TerminateInstances); the launch template of PR 3
+// consumes CreateLaunchTemplate and the interruption-notice members.
+data aws_ec2_flex_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when product.fabric imports extdeps.cloud.aws_ec2 for the flex AWS supplier row (gunbc.plans.flex_supplier_generalization PR 3 launch template and PR 4 loop row) and a Plan-mode pass executes over these shapes.")
 
 data aws_ec2_quote_currency: CurrencyCode = Usd
 
@@ -451,28 +460,30 @@ data aws_ec2_spot_interruption_event_detail_type: NonEmptyStr = "EC2 Spot Instan
 
 // ---- g7e sizes as published -------------------------------------------------------------------------
 
-// The g7e product page's size table, transcribed 2026-10-23 in its own units (GPU memory GB, memory GiB,
-// instance storage GB of local NVMe, network and EBS bandwidth Gbps). These are the page's figures, not a
+// The g7e product page's size table, transcribed 2026-10-23, each figure in the std.measure carrier of
+// the unit the page states: GPU memory and local NVMe in decimal GB (Gigabyte; the page writes NVMe as
+// TB, 1.9 TB = 1900 GB), host memory in GiB (Gibibyte), network and EBS bandwidth in Gbps (Bandwidth,
+// bits per second). These are the page's figures, not a
 // DescribeInstanceTypes answer; the loop screens on the live AwsEc2InstanceTypeInfo and these rows are its
 // cited expectation. ebs_bandwidth_up_to marks the page's "Up to" figure (burstable).
 type AwsEc2G7eSize {
   instance_type: NonEmptyStr
   gpu_count: Int
-  gpu_memory_gb: Int
+  gpu_memory: Gigabyte
   vcpus: Int
-  memory_gib: Int
+  memory: Gibibyte
   local_nvme_disks: Int
-  local_nvme_total_gb: Int
-  network_gbps: Int
-  ebs_gbps: Int
+  local_nvme_total: Gigabyte
+  network_bandwidth: Bandwidth
+  ebs_bandwidth: Bandwidth
   ebs_bandwidth_up_to: Bool
 }
 
 data aws_ec2_g7e_sizes: List<AwsEc2G7eSize> = [
-  AwsEc2G7eSize { instance_type: "g7e.2xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory_gb: 96, vcpus: 8, memory_gib: 64, local_nvme_disks: 1, local_nvme_total_gb: 1900, network_gbps: 50, ebs_gbps: 5, ebs_bandwidth_up_to: true },
-  AwsEc2G7eSize { instance_type: "g7e.4xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory_gb: 96, vcpus: 16, memory_gib: 128, local_nvme_disks: 1, local_nvme_total_gb: 1900, network_gbps: 50, ebs_gbps: 8, ebs_bandwidth_up_to: false },
-  AwsEc2G7eSize { instance_type: "g7e.8xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory_gb: 96, vcpus: 32, memory_gib: 256, local_nvme_disks: 1, local_nvme_total_gb: 1900, network_gbps: 100, ebs_gbps: 16, ebs_bandwidth_up_to: false },
-  AwsEc2G7eSize { instance_type: "g7e.12xlarge" as NonEmptyStr, gpu_count: 2, gpu_memory_gb: 192, vcpus: 48, memory_gib: 512, local_nvme_disks: 1, local_nvme_total_gb: 3800, network_gbps: 400, ebs_gbps: 25, ebs_bandwidth_up_to: false },
-  AwsEc2G7eSize { instance_type: "g7e.24xlarge" as NonEmptyStr, gpu_count: 4, gpu_memory_gb: 384, vcpus: 96, memory_gib: 1024, local_nvme_disks: 2, local_nvme_total_gb: 7600, network_gbps: 800, ebs_gbps: 50, ebs_bandwidth_up_to: false },
-  AwsEc2G7eSize { instance_type: "g7e.48xlarge" as NonEmptyStr, gpu_count: 8, gpu_memory_gb: 768, vcpus: 192, memory_gib: 2048, local_nvme_disks: 4, local_nvme_total_gb: 15200, network_gbps: 1600, ebs_gbps: 100, ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.2xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory: gigabyte(count: 96), vcpus: 8, memory: gibibyte(count: 64), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 1900), network_bandwidth: bandwidth(count: 50000000000), ebs_bandwidth: bandwidth(count: 5000000000), ebs_bandwidth_up_to: true },
+  AwsEc2G7eSize { instance_type: "g7e.4xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory: gigabyte(count: 96), vcpus: 16, memory: gibibyte(count: 128), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 1900), network_bandwidth: bandwidth(count: 50000000000), ebs_bandwidth: bandwidth(count: 8000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.8xlarge" as NonEmptyStr, gpu_count: 1, gpu_memory: gigabyte(count: 96), vcpus: 32, memory: gibibyte(count: 256), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 1900), network_bandwidth: bandwidth(count: 100000000000), ebs_bandwidth: bandwidth(count: 16000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.12xlarge" as NonEmptyStr, gpu_count: 2, gpu_memory: gigabyte(count: 192), vcpus: 48, memory: gibibyte(count: 512), local_nvme_disks: 1, local_nvme_total: gigabyte(count: 3800), network_bandwidth: bandwidth(count: 400000000000), ebs_bandwidth: bandwidth(count: 25000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.24xlarge" as NonEmptyStr, gpu_count: 4, gpu_memory: gigabyte(count: 384), vcpus: 96, memory: gibibyte(count: 1024), local_nvme_disks: 2, local_nvme_total: gigabyte(count: 7600), network_bandwidth: bandwidth(count: 800000000000), ebs_bandwidth: bandwidth(count: 50000000000), ebs_bandwidth_up_to: false },
+  AwsEc2G7eSize { instance_type: "g7e.48xlarge" as NonEmptyStr, gpu_count: 8, gpu_memory: gigabyte(count: 768), vcpus: 192, memory: gibibyte(count: 2048), local_nvme_disks: 4, local_nvme_total: gigabyte(count: 15200), network_bandwidth: bandwidth(count: 1600000000000), ebs_bandwidth: bandwidth(count: 100000000000), ebs_bandwidth_up_to: false },
 ]
