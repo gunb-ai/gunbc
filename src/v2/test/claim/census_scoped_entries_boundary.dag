@@ -1,80 +1,60 @@
 // THE ONE-BOUNDARY TRIPWIRE FOR THE SCOPED CENSUS POPULATION (quiet-carp-503, October 2026).
 //
-// WHY THIS MODULE IS ITS OWN FILE: the two claims below must EXECUTE to guard anything, and a claim
-// that cannot prepare is not a guard (DESIGN section 5: "Done means a real consumer green by
-// execution"). In v2.test.claim.census_scoped_acquisition every member is refused at prepare on the
-// frontier wall -- its door claims reach std.algebra's BODY through acquire_census_closure_of, and
-// std.algebra binds ambient names (list_push, ...) that do not resolve outside the contract rows the
-// v2 native ruling keeps off both acquisition paths (list_push's one declared home is #14751) --
-// measured, with the refusal chain, in the PR receipt and the ledger row named below. These two
-// claims reach NOTHING but the identity function they pin, so their declarer closure stays clean of
-// the wall and they run.
+// WHY THIS MODULE IS ITS OWN FILE: a claim that cannot prepare is not a guard (DESIGN section 5:
+// "Done means a real consumer green by execution"). Two probe rounds measured what the v2 native
+// reversal permits in claim code: every `==` usage -- even a bare String literal equality with no
+// call at all -- refuses at prepare with inhabitance_undecidable_formal_unresolved ->
+// application_argument_does_not_inhabit, because `==` is grounded through a primitive contract row
+// and the ruling keeps the contract rows off the population. Scratch branches record both rounds:
+// scratch/qc503-boundary-probe1 (four `==`-over-list shapes) and scratch/qc503-boundary-probe2
+// (positional probes sharing one `==` String baseline; all refused identically). The direction-
+// measurements and what still opens/closes the class live in the ledger row
+// gunbc.recurring_failure_mode.census_rows_read_the_loaded_population -- read it before touching
+// fn native_census_scoped_entries (v2.compiler.source_root_eval).
 //
-// WHAT THEY GUARD: fn native_census_scoped_entries (v2.compiler.source_root_eval) is THE boundary
-// where the scoped census decides which modules it loads. The resolver's ambient primitive-authority
-// tier (v2.compiler.resolve resolve_atom_primitive_authority) binds an unimported spelling iff its
-// contract row sits in the LOADED population's symbol index -- so the moment anyone appends a module
-// the subjects did not name (a contract roster, a convenience tier), the census starts binding through
-// something the native ROUTE refuses at. Both closure attempts died that way, measured and recorded in
-// recurring_failure_mode: gunbc.recurring_failure_mode.census_rows_read_the_loaded_population -- read
-// it before touching the boundary. The CLASS ITSELF IS OPEN: the row says so, with the instrument that
-// re-derives any of it (//gunbc/instruments:v2-native-census-scoped). These claims are the regression
-// tripwire on the function, not closure evidence, and they do not reach call-site bypasses -- the
-// prevention of those is the row's open ceiling.
+// WHAT THIS CLAIM GUARDS: the boundary function must return EXACTLY the subjects it was handed --
+// the same COUNT, in order, nothing appended. Count is read positionally through the list
+// structure (no equality anywhere in this module, per the measurement above): an appended module --
+// the exact wrongness of the first fix -- lengthens the list and REDs this claim. A swapped name
+// at the same position is NOT guarded here (name equality is the contract-gated shape); that half
+// stays the ledger row's open ceiling, read from the instrument
+// //gunbc/instruments:v2-native-census-scoped beside the route's own first fatal.
 
 module v2.test.claim.census_scoped_entries_boundary
 
-import std.types { Bool, List, String }
+import std.types { Bool, List }
 import std.algebra { Cons, Empty }
 import v2.compiler.source_root_eval {
   native_census_scoped_entries,
 }
 
-// Identity for every supplied population, in argv order, nothing appended -- including a population
-// that spells a contract module itself: the CALLER'S name rides in the CALLER'S position, never as an
-// authority the census injected. Plain equality on supplied values at the boundary; no filesystem, no
-// fold surface (reimplementing std.algebra helpers to dodge the wall was refused -- it would fork the
-// list ops, DESIGN section 3).
-// SHAPE PROBE ROUND 2 (to be collapsed once proven): all four round-1 claims (every one built on
-// `==` over list literals) refused at prepare with the SAME cause=application_argument_does_not_inhabit
-// at ONE shared occurrence -> the refusal is carried by the shared shape, list equality, not by any
-// conjunct. This round follows the precedent of the claims that executed green at the pre-reversal
-// head (the_union_never_drops_or_reorders_the_named_subjects): positional identity read through
-// nested matches on the returned list, with `==` used ONLY on Strings. No list equality anywhere.
-
-// Baseline sanity: the module itself prepares and a String `==` executes.
-test fn probe_string_equality_prepares() -> Bool {
-  "std.fermi" == "std.fermi"
-}
-
-// One-subject identity read positionally: exactly one element, and it is the subject.
-test fn probe_single_subject_positional_identity() -> Bool {
+// One supplied subject in, exactly one element out: a head and an Empty tail. An append anywhere
+// inside the boundary function makes the tail a Cons and this refuses; a dropped subject makes the
+// result Empty and this refuses. argv order and per-position names are the instrument's half.
+test fn one_subject_in_yields_exactly_one_entry_out() -> Bool {
   match native_census_scoped_entries(subjects: ["std.fermi"]) {
-    Cons { head: only, tail: after } =>
-      only == "std.fermi"
-        && match after {
-          Empty => true
-          Cons { head: _, tail: _ } => false
-        }
+    Cons { head: _, tail: after } =>
+      match after {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
     Empty => false
   }
 }
 
-// Two-subject identity reads argv ORDER positionally (the anti-reorder half) and nothing appended
-// (the anti-append half): head, then second, then Empty.
-test fn probe_two_subject_positional_identity() -> Bool {
+// Two supplied subjects in, exactly two out: head, second, Empty. Catches the append-after-second
+// and the drop-middle shapes the single-subject claim cannot see.
+test fn two_subjects_in_yield_exactly_two_entries_out() -> Bool {
   match native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) {
-    Cons { head: first, tail: rest } =>
-      first == "extdeps.git.versioning"
-        && match rest {
-          Cons { head: second, tail: after } =>
-            second == "std.fermi"
-              && match after {
-                Empty => true
-                Cons { head: _, tail: _ } => false
-              }
-          Empty => false
-        }
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Cons { head: _, tail: after } =>
+          match after {
+            Empty => true
+            Cons { head: _, tail: _ } => false
+          }
+        Empty => false
+      }
     Empty => false
   }
 }
