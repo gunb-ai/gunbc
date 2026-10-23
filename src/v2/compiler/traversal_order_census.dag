@@ -509,8 +509,8 @@ fn trav_has_fn(index: Map<String, TraversalFnFact>, key: String) -> Bool {
   }
 }
 
-fn trav_closure(root: String, index: Map<String, TraversalFnFact>) -> TravClosure {
-  fold_list(xs: trav_rounds(), empty: TravClosure { reached: map_insert(m: empty_map(), key: root, value: true), frontier: [root] }, cons: fn(c, r) {
+fn trav_closure(root: String, index: Map<String, TraversalFnFact>, facts: List<TraversalFnFact>) -> TravClosure {
+  fold_list(xs: facts, empty: TravClosure { reached: map_insert(m: empty_map(), key: root, value: true), frontier: [root] }, cons: fn(c, r) {
     trav_closure_round(c: c, index: index)
   })
 }
@@ -572,7 +572,9 @@ fn traversal_census_join(
   })
   let unowned = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
     if trav_has_fn(index: index, key: s.root) {
-      fold_list(xs: trav_unowned(stage: s, closure: trav_closure(root: s.root, index: index), facts: facts, owned: owned), empty: acc, cons: fn(a, u) { list_snoc_item(xs: a, item: concat("unowned_module ", u)) })
+      let closure = trav_closure(root: s.root, index: index, facts: facts)
+      let settled = if is_empty(xs: closure.frontier) { acc } else { list_snoc_item(xs: acc, item: concat("closure_did_not_settle ", s.stage)) }
+      fold_list(xs: trav_unowned(stage: s, closure: closure, facts: facts, owned: owned), empty: settled, cons: fn(a, u) { list_snoc_item(xs: a, item: concat("unowned_module ", u)) })
     } else {
       acc
     }
