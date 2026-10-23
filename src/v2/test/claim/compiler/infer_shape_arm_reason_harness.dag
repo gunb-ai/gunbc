@@ -1,0 +1,116 @@
+module v2.test.claim.compiler.infer_shape_arm_reason_harness
+
+// SEAT 16, SCRATCH HARNESS (never-merge branch). The witness module proved the shape arm's
+// application_argument label appears NOWHERE in the chain for the generic-formal instantiation
+// fixture on main, while the fatal is not any of the five named candidates probed individually
+// (srv1 run at f8f8a6dd555e / 823b3b7690b0). Guessing more symbols one claim at a time is the
+// wrong loop; this harness prints the fatal instead. It follows the corpus's own accepted pattern
+// (v2.test.claim.rigid_binder_leaf rbl_reason :54: assemble a carried source through
+// assemble_program_from_ingest, infer, and project diagnostics_fatal_reason through
+// symbol_lexeme into a String an equality asserts). Each claim below asserts the reason is NOT
+// some specific symbol, so a srv1 failure line names the actual fatal: the assertion diff shows
+// expected vs actual on the offending string. One run answers what the chain says.
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+
+data shah_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^shape_arm_harness_artifact,
+  file_path: "src/v2/pilot/shape_arm_harness_pilot.dag"
+}
+
+data shah_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^shape_arm_harness_std_artifact,
+  file_path: "src/v2/pilot/shape_arm_harness_std_pilot.dag"
+}
+
+fn shah_assemble(src: String, subject: List<Symbol>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+        artifact: shah_std_artifact,
+        compilation_unit: ^shape_arm_harness_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: shah_artifact,
+          compilation_unit: ^shape_arm_harness_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn shah_reason(src: String) -> String {
+  match shah_assemble(src: src, subject: [^shape_arm_probe]) {
+    Rejected { diagnostics: d } => concat("assemble:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+      }
+  }
+}
+
+// THE FIXTURE, in SOURCE, mirroring the accepted claim's tree (infer_application_argument_inhabitance_witness
+// inhabitance_generic_formal_tree): a declared type parameter T, a generic function whose formal is
+// an INSTANTIATION of T (the wrapper keeps the route on the generic-formal judge -- a bare T formal
+// binds instead), applied to the Int literal 1. If this accepts, the documented shape-arm refusal has
+// no source syntax; if it refuses, the failure line names the reason.
+data shah_shape_source: String = "module shape_arm_probe\n\nfn g<T>(x: T<T>) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  g(1)\n}\n"
+
+// CONTROL for the same harness: the documented non-inhabiting generic refusal that DOES carry the
+// label today (the accepted claim's ground instantiation, T := Int against Int) must read as the
+// label, proving the harness prints the right thing for a known-good input.
+data shah_control_source: String = "module shape_arm_probe\n\nfn g<T>(x: T) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  g(1)\n}\n"
+
+// THE READOUT CLAIMS. Each asserts a SPECIFIC string is not the reason. The srv1 run's failing lines
+// print the actual -- one pass names every fatal. The first claim is the whole question in one line:
+// is the fixture accepted at all?
+test fn harness_shape_fixture_is_not_accepted() -> Bool {
+  shah_reason(src: shah_shape_source) != "ACCEPTED"
+}
+
+test fn harness_shape_fatal_is_not_the_label_itself() -> Bool {
+  shah_reason(src: shah_shape_source) != "infer:application_argument_does_not_inhabit"
+}
+
+test fn harness_shape_fatal_is_not_undecidable_argument_type_not_derived() -> Bool {
+  shah_reason(src: shah_shape_source) != "infer:inhabitance_undecidable_argument_type_not_derived"
+}
+
+test fn harness_shape_fatal_is_not_unbound_symbol() -> Bool {
+  shah_reason(src: shah_shape_source) != "assemble:resolve_reason_unbound_symbol"
+  && shah_reason(src: shah_shape_source) != "infer:resolve_reason_unbound_symbol"
+}
+
+test fn harness_shape_fatal_is_not_undecidable_generic_formal() -> Bool {
+  shah_reason(src: shah_shape_source) != "infer:inhabitance_undecidable_generic_formal"
+}
+
+// THE CONTROL CLAIM: the known-good ground refusal reads as the label through this harness. If THIS
+// fails, the harness (or its lexeme printing) is the instrument at fault, not the program.
+test fn harness_control_reads_the_label() -> Bool {
+  shah_reason(src: shah_control_source) == "infer:application_argument_does_not_inhabit"
+}
