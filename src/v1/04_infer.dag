@@ -7557,24 +7557,24 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
   }
 }
 
-fn is_non_text_kernel_cast_source(n: Node) -> Bool {
+fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
   node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
     || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
-    || node_is_kernel_mint_named(n: n, name: "Nat")
+    || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
 }
 
 fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       if type_node_names_declaration(n: target_type, wanted: decl_ref(module_path: "std.types", decl_name: "NonEmptyStr"), scope: scope)
-        && is_non_text_kernel_cast_source(n: src_node) {
+        && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
         let si = scope.type_env.source_indices
         let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
         [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
       } else if authored_name_at(source_indices: scope.type_env.source_indices, node: src_node) == "Nat" {
         let probe_file = match src_node.ident_span { Present { value: sp } => sp.file, Absent => "<no ident_span>" }
         let probe_ref = match type_reference_declaration_ref(n: src_node, source_indices: scope.type_env.source_indices, env: scope.type_env) { Present { value: d } => concat(d.module_path as String, ".", d.decl_name as String), Absent => "<no ref>" }
-        [make_error_node(diagnostic: InternalError { message: concat("NATPROBE name=", src_node.name, " file=", probe_file, " children=", to_string(src_node.children |> count), " ref=", probe_ref), span: span }, module_name: scope.module_name)]
+        [make_error_node(diagnostic: InternalError { message: concat("NATPROBE target=", match type_reference_declaration_ref(n: target_type, source_indices: scope.type_env.source_indices, env: scope.type_env) { Present { value: td } => concat(td.module_path as String, ".", td.decl_name as String), Absent => "<no target ref>" }, " name=", src_node.name, " file=", probe_file, " children=", to_string(src_node.children |> count), " ref=", probe_ref), span: span }, module_name: scope.module_name)]
       } else { [] }
     _ => []
   }
