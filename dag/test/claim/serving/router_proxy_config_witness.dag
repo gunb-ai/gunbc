@@ -1,25 +1,63 @@
 module test.claim.serving.router_proxy_config_witness
 
-import std.types { String, Bool }
+import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.serving.router_proxy_config { router_proxy_config }
+import extdeps.proxy.openresty {
+  NginxDirective, Simple, Block, LuaPhaseHook, AuthzCapture, StreamEndCallout, render_nginx_directives,
+  proxy_next_upstream_directive, ProxyNextUpstreamOff,
+}
+import gunbc.serving.router_proxy_config { router_proxy_directives, router_proxy_config }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn cfg() -> String { router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002) }
+fn rows() -> List<NginxDirective> { router_proxy_directives(listen_port: 8443, authz_port: 9001, stream_end_port: 9002) }
+
+// Does any directive anywhere in the tree satisfy the predicate on (name, args)?
+fn tree_has_simple(ds: List<NginxDirective>, name: String, first_arg: String) -> Bool {
+  any(ds, d => match d {
+    Simple { name: n, args: a } => n == name && count(a) > 0 && first(a) == first_arg
+    Block { name: _, args: _, body: b } => tree_has_simple(ds: b, name: name, first_arg: first_arg)
+    LuaPhaseHook { phase: _, hook: _ } => false
+  })
+}
+
+fn tree_has_block(ds: List<NginxDirective>, name: String) -> Bool {
+  any(ds, d => match d {
+    Simple { name: _, args: _ } => false
+    Block { name: n, args: _, body: b } => n == name || tree_has_block(ds: b, name: name)
+    LuaPhaseHook { phase: _, hook: _ } => false
+  })
+}
+
+fn tree_hooks(ds: List<NginxDirective>, want_authz: Bool) -> Int {
+  fold(ds, init: 0, f: (acc, d) => acc + match d {
+    Simple { name: _, args: _ } => 0
+    Block { name: _, args: _, body: b } => tree_hooks(ds: b, want_authz: want_authz)
+    LuaPhaseHook { phase: _, hook: h } => match h {
+      AuthzCapture { location: _, upstream_header: _, permit_header: _, refuse_status: _ } => if want_authz then 1 else 0
+      StreamEndCallout { host: _, port: _, path: _, permit_variable: _ } => if want_authz then 0 else 1
+    }
+  })
+}
 
 test fn the_upstream_comes_only_from_the_authz_answer() -> Bool {
-  string_contains(cfg(), "proxy_pass http://$up;") && !string_contains(cfg(), "upstream ") && !string_contains(cfg(), "least_conn")
+  tree_has_simple(ds: rows(), name: "proxy_pass", first_arg: "http://$up") && !tree_has_block(ds: rows(), name: "upstream")
 }
 
-test fn retries_and_buffering_are_off() -> Bool {
-  string_contains(cfg(), "proxy_next_upstream off;") && string_contains(cfg(), "proxy_buffering off;") && string_contains(cfg(), "proxy_request_buffering off;")
+test fn retries_and_buffering_are_off_as_typed_rows() -> Bool {
+  tree_has_simple(ds: rows(), name: "proxy_next_upstream", first_arg: "off")
+    && tree_has_simple(ds: rows(), name: "proxy_buffering", first_arg: "off")
+    && tree_has_simple(ds: rows(), name: "proxy_request_buffering", first_arg: "off")
 }
 
-test fn a_refused_authz_answer_never_forwards() -> Bool {
-  string_contains(cfg(), "if res.status ~= 200 then return ngx.exit(503) end")
+test fn one_authz_hook_and_one_stream_end_hook() -> Bool {
+  tree_hooks(ds: rows(), want_authz: true) == 1 && tree_hooks(ds: rows(), want_authz: false) == 1
 }
 
-test fn stream_end_is_permit_gated_and_ports_come_from_arguments() -> Bool {
-  string_contains(cfg(), "if ngx.var.permit == '' then return end") && string_contains(cfg(), "127.0.0.1:8443") && string_contains(cfg(), "'127.0.0.1', 9002") && string_contains(cfg(), "127.0.0.1:9001/authz")
+// The rendering is a function of the rows: the off-switch row renders to its directive line, and
+// moving a port changes the text and nothing else.
+test fn rendering_follows_the_rows() -> Bool {
+  render_nginx_directives(rows: [proxy_next_upstream_directive(v: ProxyNextUpstreamOff)]) == "proxy_next_upstream off;\n"
+    && router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002) == render_nginx_directives(rows: rows())
+    && router_proxy_config(listen_port: 8444, authz_port: 9001, stream_end_port: 9002) != router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)
 }
