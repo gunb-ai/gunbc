@@ -6,10 +6,11 @@ import extdeps.http.server {
   ServedRouteTable,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route, http_extension_field_name, serve_response_header_wire,
+  serve_select_route, http_extension_field_name, serve_typed_arm_header_names, serve_response_header_wire,
   HttpExtensionFieldNameAdmitted, HttpExtensionFieldNameRefused, ServeResponseHeaderField,
 }
 import extdeps.uri_path { path_param_value }
+import std.unicode.scalar { ascii_uppercase }
 import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_response, approval_broker_marker_in_text,
   approval_broker_marked_body, BrokerBodyMarked, BrokerMarkerRefused,
@@ -556,4 +557,17 @@ test fn the_field_name_refuses_a_framing_field_and_a_non_token() -> Bool {
     HttpExtensionFieldNameRefused { cause: _ } => true
   }
   framing && folded && spaced && empty && typed_arm && location
+}
+
+fn field_name_is_refused(label: String) -> Bool {
+  match http_extension_field_name(label: label) {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+}
+
+test fn every_typed_arm_field_name_is_refused_in_any_case() -> Bool {
+  let names = serve_typed_arm_header_names()
+  (names |> count) == 3
+    && all(names, n => field_name_is_refused(label: n) && field_name_is_refused(label: ascii_uppercase(s: n)))
 }

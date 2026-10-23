@@ -340,7 +340,7 @@ type ServeHttpResponse {
 //
 // RESPONSE HEADERS RIDE THE WIRE AS TYPED (name, value) PAIRS, in WRITE ORDER: the name is a
 // label String -- built from ServeResponseHeader below, whose only open arm is admitted by
-// serve_response_header_field, which refuses a framing header the seed owns (Content-Length,
+// http_extension_field_name, which refuses a framing header the seed owns (Content-Length,
 // Content-Type, Connection, Transfer-Encoding) -- and the seed renders "Name: value" itself. The value is the handler's datum;
 // that it carries no CR, LF or NUL is the realization boundary's refusal (a value is external
 // data -- a return path, a session id -- not a name the model can close over).

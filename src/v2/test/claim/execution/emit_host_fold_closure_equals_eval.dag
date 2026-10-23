@@ -1,6 +1,5 @@
 module v2.test.claim.execution.emit_host_fold_closure_equals_eval
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import v2.compiler.emit_host {
@@ -114,8 +113,7 @@ fn emit_fold_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
 fn emit_fold_eval_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: emit_fold_eval_composed_facts },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: emit_fold_eval_composed_facts }
   }
 }
 
