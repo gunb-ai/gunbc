@@ -584,11 +584,11 @@ data fixture_runner_registration_persistent: String = "{\"AgentId\":\"2\",\"Agen
 
 test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
   let ephemeral = match actions_runner_registration_decode(raw: fixture_runner_registration_ephemeral) {
-    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => true
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: _ } => true
     _ => false
   }
   let persistent = match actions_runner_registration_decode(raw: fixture_runner_registration_persistent) {
-    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => true
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: _ } => true
     _ => false
   }
   let garbage = match actions_runner_registration_decode(raw: "not json") {

@@ -34,9 +34,9 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit }
+import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, }
 import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire }
-import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
+import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -2779,6 +2779,7 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     context_receipt,
                     runner_job_user_uid_reading_line(reading: uid_reading),
+                    runner_host_current_registration_line(mode: mode, target: subject.target, context: context, units: subject.desired_units),
                     join(map(withheld, w => join(["withheld subject=", w.subject as String, " cause=", w.cause as String, "\n"], "")), ""),
                     runner_host_file_run_text(run: run),
                   ], "")
@@ -2807,6 +2808,41 @@ fn runner_host_file_observe_ci_wet() -> ProcessExit
 fn runner_host_file_converge_ci_wet() -> ProcessExit
 {
   runner_host_file_ci_wet(mode: RunnerHostFilesApply)
+}
+
+// THE CURRENT REGISTRATION IDENTITY EACH SLOT'S LISTENER IS RUNNING UNDER, read from the host by the
+// BRACKET'S OWN READ (gunbc.runner.runner_host_cap_bracket.slot_registration_reading_over) over the same
+// administrator-over-fleet-SSH edge the bracket uses. This line exists because the cap bracket joins the
+// organization roster on this identity by exact equality, and a bracket that cannot name what it reads
+// cannot be trusted to withhold correctly: a fleet listener registers under a JIT-minted suffix
+// (srv3-02-1792728034-201414), never under the slot's own name, and the suffix changes per job.
+//
+// It is rendered in the receipt of EVERY mode, observe included, because in observe mode it is the whole
+// point: this is the field an operator reads to see, from the host, which registration the bracket would
+// join on -- and the live proof, from a real srv3/srv4 host, that the host actually holds the suffixed
+// shape the controls supply. A slot whose identity cannot be read appears as an unreadable naming the unit;
+// the read never falls back to the slot's name, so neither does the receipt.
+// THE MODE DECISION, SEPARATED FROM THE READ. The identity is asked of the host in OBSERVE mode only. In
+// observe mode nothing else in this route asks who is registered, so the receipt is the only place an
+// operator can see the identity the cap bracket WOULD join on -- and the live record, from a real host, of
+// what that read yields. In apply mode the bracket reads the identity itself during the cap phase and puts
+// it in its own verdict, so a second read here would be a redundant leg on the way to a WRITE, with the
+// receipt reading the host after writes had already landed.
+fn runner_host_current_registration_line(mode: RunnerHostFileConvergeMode, target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> String {
+  match mode {
+    RunnerHostFilesObserveOnly => runner_host_current_registration_text(target: target, context: context, units: units)
+    RunnerHostFilesApply => ""
+  }
+}
+
+fn runner_host_current_registration_text(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> String {
+  join(map(units, u => match slot_current_registration_over_unit(target: target, context: context, unit: u) {
+    UnitRegistrationRead { unit: un, instance: _, name: n } => join(["slot-registration unit=", un as String, " agent_name=", n as String, "\n"], "")
+    // only two answers are reachable from this read: it asks the host for every unit it is given. A slot
+    // that is not running an idle listener still answers with what its tree holds, which is what an
+    // operator wants here; the bracket's OWN pass is what decides not to consult the roster for it.
+    UnitRegistrationUnreadable { unit: un, cause: c } => join(["slot-registration unit=", un as String, " UNREADABLE ", c, "\n"], "")
+  }), "")
 }
 
 // THE FINALIZER OF THE CAP BRACKET, RUN AFTER THE CONVERGE STEP WHATEVER ITS FATE (the workflow step is
