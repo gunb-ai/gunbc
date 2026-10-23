@@ -89,6 +89,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.std.verification {
   EqualsClaim,
@@ -135,8 +136,8 @@ data eval_two_literal: Node = Node {
 data eval_add_subgraph_node: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: eval_two_literal },
-    Edge { label: Positional, target: eval_two_literal }
+    Edge { label: Positional, target: eval_two_literal, declaration: NotADeclaration },
+    Edge { label: Positional, target: eval_two_literal, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

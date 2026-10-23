@@ -1,0 +1,139 @@
+module gunbc.machine_intake.bmc_recovery_route_frontier
+
+// THE RECOVERY ROUTE'S TWO ABSENCES ARE ROSTERED HERE, NOT IN PROSE.
+//
+// gunbc.machine_intake.bmc_recovery_route models the in-band recovery route end to end and refuses
+// correctly, but two things around it do not exist yet:
+//
+//   * no production caller runs it (every arrival step passes `locked: none`; only
+//     test.claim.machine_intake.machine_intake_bmc_recovery_route_witness supplies a standing), and
+//   * no production root acquires the unit hold the reset interlock's premise describes.
+//
+// Both were previously stated only in `//` text, which is what two reviews called out under DESIGN
+// §3c ("consumed by a named later change (a declared frontier, with its trigger)") and §4c ("an
+// annotation is never evidence that a machine claim holds"). A frontier row is the carrier those
+// sections name, and it is read by a fold: gunbc.dissolution_census folds
+// gunbc.census_closure_frontier.census_closure_frontier_rows(), and a row whose bound trigger
+// APPEARS is reported as fired, which makes that fold refuse. So the deferral cannot quietly outlive
+// the work it defers: adding the missing consumer or the missing pairing control turns the census red
+// until the row is deleted. Prose has no such teeth, which is the whole argument for this module.
+//
+// Both triggers are named by DeclarationRef, and both name declarations that DO NOT EXIST. That is
+// deliberate: the ref is the contract for what has to be added, and std.dissolution reports a
+// not-yet-present DeclarationAppears trigger as pending rather than as a pass.
+import std.dissolution { bound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+
+// THE NAMED CONSUMER THAT HAS TO ARRIVE, with the capability it must exercise. The name is the
+// trigger, so the day someone wires the captured specimen into the arrival fold they do not get to
+// forget this row: the census refuses until it is deleted.
+//
+// What satisfies it is spelled out because "wired it up" is not a capability. The entry must:
+//   1. mint an InBandRecoveryStanding for the captured unit (altrad8ud-1l2t-6) out of receipts that
+//      were actually filed -- the in-band channel bytes (02_inband_channel.txt) and the post-reset
+//      readback bytes (04_post_reset_readback.txt), each with its EvidenceRef and capture band;
+//   2. pass it to gunbc.machine_intake.arrival_converge's access_discover as `locked:` for THAT step,
+//      so the standing's subject and the step's subject are the same unit and neither
+//      AccessDiscoverRecoveryStandingForAnotherUnit nor AccessDiscoverCredentialUnknownRecoveryRouteAvailable
+//      is being exercised by a fixture alone; and
+//   3. be reached from the arrival fold itself, not from a witness.
+//
+// NOT satisfied by: a production caller that keeps passing `locked: none`; a witness constructing the
+// standing (a witness is not a consumer); or naming the unit in a roster nobody folds.
+fn bmc_recovery_route_consumer_frontier_rows() -> List<FrontierRow> {
+  [
+    frontier_row_decl(
+      ref: decl_ref(
+        module_path: "gunbc.machine_intake.bmc_recovery_route",
+        decl_name: "converge_in_band_recovery",
+      ),
+      reason: "the fold and its route module have no production consumer: git grep shows every caller of gunbc.machine_intake.arrival_converge's access_discover passes locked: none, and the only caller supplying a real InBandRecoveryStanding is test.claim.machine_intake.machine_intake_bmc_recovery_route_witness. The route is honest about being un-consumed -- the recorded specimen (altrad8ud-1l2t-6) is a DIFFERENT unit from mtjade1, which is why no live caller exists -- but the deferral has to be a row a fold reads, not a comment",
+      dissolution: bound_dissolution(
+        ref: decl_ref(
+          module_path: "gunbc.machine_intake.arrival_converge",
+          decl_name: "altrad8ud_1l2t_6_arrival_entry",
+        ),
+      ),
+    ),
+  ]
+}
+
+// THE PAIRING CONTROL THAT HAS TO ARRIVE. gunbc.auth.privileged_effect_census rosters one durable
+// exclusive hold per unit as the interlock on Redfish Manager.ResetToDefaults, and this route is the
+// only site that actuates it. Today the fold takes both write admissions as PARAMETERS and never
+// acquires the hold itself, so the census cannot roster a root for it (it rostered converge_in_band_recovery
+// as holding one and that was a lie about the code, now removed). This row is the obligation to add
+// the missing pairing, and its trigger names the declaration whose appearance is the evidence.
+//
+// What satisfies it:
+//   1. a fold in gunbc.machine_intake.bmc_recovery_route that acquires the unit's durable hold through
+//      gunbc.host.managed_host_unit_hold's unit_hold_acquire BEFORE admitting either privileged write,
+//      and carries the resulting proof to both admissions -- not beside them;
+//   2. both admissions refusing a proof that names a different unit than the route's subject, so a
+//      ResetAll cannot be actuated on a chassis another run is driving;
+//   3. the census interlock for admit_recovery_manager_reset_to_defaults rostering THIS fold in
+//      hold_owning_roots, so the pairing is checked by the census and not just asserted here; and
+//   4. a refusal naming whoever else holds the unit, taken from the store's own words.
+//
+// NOT satisfied by: a caller that acquires the hold and passes `none`-style admissions, by a Bool
+// "acquires a hold" flag on a row, or by this module's own text.
+fn bmc_recovery_route_pairing_frontier_rows() -> List<FrontierRow> {
+  [
+    frontier_row_decl(
+      ref: decl_ref(
+        module_path: "gunbc.machine_intake.bmc_recovery_route",
+        decl_name: "admit_recovery_manager_reset_to_defaults",
+      ),
+      reason: "no production root acquires the durable unit hold that this site's interlock premise describes: converge_in_band_recovery receives the password and reset admissions as parameters and calls neither gunbc.host.managed_host_unit_hold's acquire nor either admission, so the census rostered an empty root list and the hold is asserted by prose only. The obligation is the fold that pairs subject, hold proof and admission",
+      dissolution: bound_dissolution(
+        ref: decl_ref(
+          module_path: "gunbc.machine_intake.bmc_recovery_route",
+          decl_name: "recover_in_band_route_under_unit_hold",
+        ),
+      ),
+    ),
+  ]
+}
+
+// THE SUCCESS SIDE HAS NO CONSUMER, AND THAT IS AN OBLIGATION, NOT A SENTENCE. The proof arm
+// (InBandRecoveryOutcome's RecoveryRouteProofComplete) is what the route ends in, and its .bound join is
+// the fact the factory-login path would need. Today nothing takes it: git grep shows
+// gunbc.tools.bmc_onboard imports nothing from this route and matches nothing from it, and
+// gunbc.machine_intake.arrival_converge consumes only the route's REFUSAL (recovery_route_unavailability,
+// which maps the proof arm to `none`); no fold reads .bound. The module used to claim the arm "re-enters
+// onboarding" -- that text is deleted, and this row replaces it, because a deferral a fold reads is the
+// honest form (DESIGN §3c) while prose is not evidence that a machine claim holds (§4c).
+//
+// What satisfies it:
+//   1. a fold in gunbc.tools.bmc_onboard that takes the standing's proof arm and drives the factory login
+//      with bound.controller -- exercising the join, not ignoring it;
+//   2. that path continuing into the BmcSecure standing / credential rotation the login unlocks, so the
+//      proof buys the unit something;
+//   3. a pairing control: the consumer refusing a standing whose bound join names a unit other than the
+//      one it is onboarding (the same crossed-identity class blocker 2 closed at the bind, closed again
+//      at consumption); and
+//   4. the fold reached from arrival, so recovery actually changes what the fleet does with the unit.
+//
+// NOT satisfied by: the witness claim that matches the arm, by this module's text, or by the arrival-entry
+// frontier row above -- that one covers the fold, not the success side's consumer.
+fn bmc_recovery_route_onboarding_consumer_frontier_rows() -> List<FrontierRow> {
+  [
+    frontier_row_decl(
+      // THE CARRIER THE MISSING CONSUMER WOULD TAKE. Subjected as the outcome TYPE, not the arm: arms of
+      // a sum are not declarations the corpus walk indexes (decl_facts yields types, fns, data), and the
+      // row has to name something a fold can actually resolve. The reason below scopes the obligation to
+      // the success side; the refusal arms of the same type do have a consumer (arrival_converge).
+      ref: decl_ref(
+        module_path: "gunbc.machine_intake.bmc_recovery_route",
+        decl_name: "InBandRecoveryOutcome",
+      ),
+      reason: "the route's success side has no production consumer: gunbc.tools.bmc_onboard imports nothing from the route and arrival_converge consumes only the refusals, so no fold exercises the proof arm's .bound join through factory login and rotation. The obligation is the consuming fold, declared here so the census counts the gap instead of the module asserting a re-entry it does not perform",
+      dissolution: bound_dissolution(
+        ref: decl_ref(
+          module_path: "gunbc.tools.bmc_onboard",
+          decl_name: "factory_login_from_recovery_route_proof",
+        ),
+      ),
+    ),
+  ]
+}
