@@ -55,7 +55,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value,
   service_config_field_for_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
-  has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
+  has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable, ArgumentsResolved,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
@@ -11167,6 +11167,7 @@ fn is_applied_declaration_carrier(n: Node) -> Bool {
 fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
   let carries_resolved_target = match n.inferred {
     Present { value: Resolved { node: _ } } => is_applied_declaration_carrier(n: n)
+    Present { value: ArgumentsResolved } => is_applied_declaration_carrier(n: n)
     _ => false
   }
   if carries_resolved_target && is_user_generic_use_site(n: n, env: env) {
@@ -15309,7 +15310,7 @@ fn substitute_generics_resolved(n: Node, subst: Map<String, Node>, source_indice
 
 fn generics_substituted_cache_dropped(inferred: InferredNode?) -> InferredNode? {
   match inferred {
-    Present { value: Resolved { node: _ } } => none
+    Present { value: Resolved { node: _ } } => Present { value: ArgumentsResolved }
     _ => inferred
   }
 }
