@@ -1,0 +1,103 @@
+module v2.test.claim.compiler.infer_loop_carrier_at_expected_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.types { Bool, String }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE LOOP CARRIER IS JOINED AT THE DECLARED EXPECTED TYPE (v2.compiler.infer infer_loop_fixpoint_carrier;
+// gunbc.recurring_failure_mode fold_accumulator_typed_from_init_not_from_the_expected_type). A fold seeded by an
+// open optional took its carrier from that seed and required every body to equal it, so the result never inhabited
+// a declared optional return -- the std.keyed_row keyed_row_find shape. Every control runs the real route: assemble,
+// resolve, infer. std.algebra and v2.std.collection are stubs so the fixture does not depend on the real std.algebra
+// resolving (it does not yet: N7 root std.algebra). The seed is `Absent`, not `none`, so the claim is about the
+// carrier rule and not about `none` lowering (a separate gap, ruled out for keyed_row by an init: Absent census).
+//
+// POSITIVE: the keyed_row_find shape, generic in K and V, is accepted. RED: a body that does NOT inhabit the declared
+// carrier (Present { value: 1 } where KRow<K, V>? is declared) still refuses -- judging bodies by inhabitance at the
+// expected type must not widen what a fold may return. CONTROL: the concrete shape is accepted too.
+
+data ilc_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_loop_carrier_artifact, file_path: "src/v2/pilot/ilc_pilot.dag" }
+data ilc_collection_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_loop_carrier_collection_artifact, file_path: "src/v2/pilot/ilc_collection_pilot.dag" }
+data ilc_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_loop_carrier_algebra_artifact, file_path: "src/v2/pilot/ilc_algebra_pilot.dag" }
+data ilc_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_loop_carrier_std_artifact, file_path: "src/v2/pilot/ilc_std_pilot.dag" }
+
+fn ilc_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^infer_loop_carrier_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ilc_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      ilc_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\nimport v2.std.collection { List }\n\ntype KRow<K, V> {\n  row_key: K\n  value: V\n}\n\n", body), artifact: ilc_artifact),
+      ilc_witness(src: osd_std_optional(), artifact: ilc_std_artifact),
+      ilc_witness(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: ilc_collection_artifact),
+      ilc_witness(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: ilc_algebra_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn ilc_infer_accepted(r: Outcome<ResolvedTree>) -> Bool {
+  match r {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn ilc_infer_refused(r: Outcome<ResolvedTree>) -> Bool {
+  match r {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+fn ilc_generic_find() -> Outcome<ResolvedTree> {
+  ilc_assemble(body: "fn find<K, V>(rows: List<KRow<K, V>>, wanted: K, key_eq: fn(K, K) -> Bool) -> KRow<K, V>? {\n  fold(rows, init: Absent, f: fn(acc, row) {\n    if key_eq(row.row_key, wanted) { Present { value: row } } else { acc }\n  })\n}\n")
+}
+
+fn ilc_generic_off_carrier() -> Outcome<ResolvedTree> {
+  ilc_assemble(body: "fn find<K, V>(rows: List<KRow<K, V>>, wanted: K, key_eq: fn(K, K) -> Bool) -> KRow<K, V>? {\n  fold(rows, init: Absent, f: fn(acc, row) {\n    if key_eq(row.row_key, wanted) { Present { value: 1 } } else { acc }\n  })\n}\n")
+}
+
+fn ilc_concrete_find() -> Outcome<ResolvedTree> {
+  ilc_assemble(body: "fn find(rows: List<KRow<Int, String>>, wanted: Int) -> KRow<Int, String>? {\n  fold(rows, init: Absent, f: fn(acc, row) {\n    if row.row_key == wanted { Present { value: row } } else { acc }\n  })\n}\n")
+}
+
+test fn ilc_generic_absent_seeded_fold_inhabits_the_declared_optional_return() -> Bool {
+  ilc_infer_accepted(r: ilc_generic_find())
+}
+
+test fn ilc_a_body_off_the_declared_carrier_still_refuses() -> Bool {
+  ilc_infer_refused(r: ilc_generic_off_carrier())
+}
+
+test fn ilc_concrete_absent_seeded_fold_is_accepted() -> Bool {
+  ilc_infer_accepted(r: ilc_concrete_find())
+}
