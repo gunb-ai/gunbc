@@ -122,46 +122,86 @@ fn pair_adjacency(edges: List<OrderEdge>) -> Map<Int, List<Int>> {
   })
 }
 
-// Is `target` reachable from `start` along orders? Fuel is the edge count, so the walk is bounded.
-fn pair_reaches(adj: Map<Int, List<Int>>, frontier: List<Int>, target: Int, fuel: Int) -> Bool {
+// The nodes reachable from `frontier` along orders, each visited ONCE. A frontier that kept duplicates
+// would re-walk every path of a body whose orders form chained diamonds (exponential in the diamonds),
+// so a node enters `next` only when it is not yet in `seen`. Fuel is the edge count: each productive round
+// adds at least one new node, so the walk is bounded.
+type PairFrontier {
+  next: List<Int>
+  seen: Map<Int, Bool>
+}
+
+fn pair_reach_set(adj: Map<Int, List<Int>>, frontier: List<Int>, seen: Map<Int, Bool>, fuel: Int) -> Map<Int, Bool> {
   if fuel < 0 {
-    false
+    seen
   } else {
-    if fold_list(xs: frontier, empty: false, cons: fn(hit, n) { hit || (n == target) }) {
-      true
-    } else {
-      let next = fold_list(xs: frontier, empty: Empty, cons: fn(acc, n) {
-        match map_lookup(m: adj, key: n) {
-          Present { value: tos } => fold_list(xs: tos, empty: acc, cons: fn(a, t) { list_snoc_item(xs: a, item: t) })
-          Absent => acc
-        }
-      })
-      if length(xs: next) == 0 { false } else { pair_reaches(adj: adj, frontier: next, target: target, fuel: fuel - 1) }
-    }
+    let step = fold_list(xs: frontier, empty: PairFrontier { next: Empty, seen: seen }, cons: fn(st, n) {
+      match map_lookup(m: adj, key: n) {
+        Present { value: tos } => fold_list(xs: tos, empty: st, cons: fn(s2, t) {
+          match map_lookup(m: s2.seen, key: t) {
+            Present { value: _ } => s2
+            Absent => PairFrontier { next: list_snoc_item(xs: s2.next, item: t), seen: map_insert(m: s2.seen, key: t, value: true) }
+          }
+        })
+        Absent => st
+      }
+    })
+    if length(xs: step.next) == 0 { step.seen } else { pair_reach_set(adj: adj, frontier: step.next, seen: step.seen, fuel: fuel - 1) }
   }
 }
 
-fn pair_ordered(adj: Map<Int, List<Int>>, a: Int, b: Int, fuel: Int) -> Bool {
-  pair_reaches(adj: adj, frontier: list_snoc_item(xs: Empty, item: a), target: b, fuel: fuel)
-    || pair_reaches(adj: adj, frontier: list_snoc_item(xs: Empty, item: b), target: a, fuel: fuel)
+fn pair_reach_has(reach: Map<Int, Map<Int, Bool>>, from: Int, to: Int) -> Bool {
+  match map_lookup(m: reach, key: from) {
+    Present { value: seen } =>
+      match map_lookup(m: seen, key: to) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
-fn pair_exclusive(exclusive: List<OrderEdge>, a: Int, b: Int) -> Bool {
-  fold_list(xs: exclusive, empty: false, cons: fn(hit, e) { hit || ((e.from == a) && (e.to == b)) || ((e.from == b) && (e.to == a)) })
+fn pair_ordered(reach: Map<Int, Map<Int, Bool>>, a: Int, b: Int) -> Bool {
+  pair_reach_has(reach: reach, from: a, to: b) || pair_reach_has(reach: reach, from: b, to: a)
 }
 
-// The per-body reducer. Cost is per body (sites^2 over reaching sites only), never over a module.
+// Exclusive arms indexed once per body, both directions, so a pair is a lookup, not a scan of the list.
+fn pair_exclusive_index(exclusive: List<OrderEdge>) -> Map<Int, List<Int>> {
+  fold_list(xs: exclusive, empty: empty_map(), cons: fn(m, e) {
+    let with_from = match map_lookup(m: m, key: e.from) {
+      Present { value: tos } => map_insert(m: m, key: e.from, value: list_snoc_item(xs: tos, item: e.to))
+      Absent => map_insert(m: m, key: e.from, value: list_snoc_item(xs: Empty, item: e.to))
+    }
+    match map_lookup(m: with_from, key: e.to) {
+      Present { value: froms } => map_insert(m: with_from, key: e.to, value: list_snoc_item(xs: froms, item: e.from))
+      Absent => map_insert(m: with_from, key: e.to, value: list_snoc_item(xs: Empty, item: e.from))
+    }
+  })
+}
+
+fn pair_exclusive(index: Map<Int, List<Int>>, a: Int, b: Int) -> Bool {
+  match map_lookup(m: index, key: a) {
+    Present { value: others } => fold_list(xs: others, empty: false, cons: fn(hit, o) { hit || (o == b) })
+    Absent => false
+  }
+}
+
+// The per-body reducer. Cost is per body (one reach set per reaching site, then sites^2 lookups), never over a module.
 fn body_effect_pairs(facts: BodyEffectFacts) -> BodyPairs {
   let adj = pair_adjacency(edges: facts.orders)
   let fuel = length(xs: facts.orders)
+  let excl = pair_exclusive_index(exclusive: facts.exclusive)
+  let reach = fold_list(xs: facts.sites, empty: empty_map(), cons: fn(m, s) {
+    map_insert(m: m, key: s.occurrence, value: pair_reach_set(adj: adj, frontier: list_snoc_item(xs: Empty, item: s.occurrence), seen: empty_map(), fuel: fuel))
+  })
   let seed = BodyPairs { pairs: Empty, exclusive_pairs: Empty }
   fold_list(xs: facts.sites, empty: seed, cons: fn(acc, a) {
     fold_list(xs: facts.sites, empty: acc, cons: fn(inner, b) {
       if a.occurrence < b.occurrence {
-        if pair_exclusive(exclusive: facts.exclusive, a: a.occurrence, b: b.occurrence) {
+        if pair_exclusive(index: excl, a: a.occurrence, b: b.occurrence) {
           BodyPairs { pairs: inner.pairs, exclusive_pairs: list_snoc_item(xs: inner.exclusive_pairs, item: ExclusivePairRow { module: facts.module, function: facts.function, first: a, second: b }) }
         } else {
-          if pair_ordered(adj: adj, a: a.occurrence, b: b.occurrence, fuel: fuel) {
+          if pair_ordered(reach: reach, a: a.occurrence, b: b.occurrence) {
             inner
           } else {
             BodyPairs { pairs: list_snoc_item(xs: inner.pairs, item: EffectPairRow { module: facts.module, function: facts.function, first: a, second: b, resource_standing: AliasUnknown }), exclusive_pairs: inner.exclusive_pairs }
