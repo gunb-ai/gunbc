@@ -2,10 +2,11 @@ module gunbc.namespace_cut.migration_kit
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
-import std.algebra { length }
+import std.algebra { length, list_at_optional }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, census_blocking_rows, census_total_count }
 import gunbc.compile_census_probe { ProbeCensusRows, census_rows_for }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome }
+import gunbc.instruments.ambient_name_census_reading { binding_lines, field_at }
 
 // THE NAMESPACE-MIGRATION ACCEPTANCE KIT (Seat 13). The proof shape every ambient-to-declared move repeats,
 // as ONE verdict over ONE row of gunbc.namespace_cut.ambient_name_home (name, home, retired_contract): a wave
@@ -70,4 +71,39 @@ fn kit_import_differential(row: AmbientNameHome) -> KitFinding {
       }
     Absent => KitNotRunnable { cause: "census not runnable on the baseline source" as NonEmptyStr }
   }
+}
+
+// THE LOCATED-RECORD JUDGE (checks 1 and 2 as an identity join, not a count): over the census's printed lines for the
+// fixture module (gunbc.instruments.ambient_name_census_reading), the row for THIS spelling in THIS module is read for
+// its source and target. `binding\t<module>\t<spelling>\t<ordinal>\t<source>\t<target>\t<locus>` is resolve's one
+// binding record; `binding_unbound\t<module>\t<spelling>\t<locus>` is a refused occurrence. No row at all is
+// BindingNotReached, never read as clean.
+type BindingReading
+  = ReadBoundToDeclaration { target: String }
+  | ReadBoundAmbient { source: String, target: String }
+  | ReadUnbound
+  | ReadNotReached
+
+fn binding_reading(stdout: String, module: String, spelling: String) -> BindingReading {
+  let rows = binding_lines(stdout: stdout) |> filter(l => (field_at(line: l, index: 1) == module) && (field_at(line: l, index: 2) == spelling))
+  match first(rows) {
+    Present { value: l } =>
+      if field_at(line: l, index: 4) == "declared" { ReadBoundToDeclaration { target: field_at(line: l, index: 5) } }
+      else { ReadBoundAmbient { source: field_at(line: l, index: 4), target: field_at(line: l, index: 5) } }
+    Absent =>
+      match first(split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_unbound\t" + module + "\t" + spelling + "\t"))) {
+        Present { value: _ } => ReadUnbound
+        Absent => ReadNotReached
+      }
+  }
+}
+
+// Check 1 holds when the unimported occurrence is Unbound; check 2 when the imported one is bound to exactly the
+// row's declaration identity (home + "." + name) -- spelling-equal paths of another module do not satisfy it.
+fn reading_is_unbound(r: BindingReading) -> Bool {
+  match r { ReadUnbound => true  _ => false }
+}
+
+fn reading_is_bound_to(r: BindingReading, identity: String) -> Bool {
+  match r { ReadBoundToDeclaration { target: t } => t == identity  _ => false }
 }
