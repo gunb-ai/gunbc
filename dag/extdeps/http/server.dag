@@ -483,23 +483,29 @@ fn serve_response_headers_wire(headers: List<ServeResponseHeader>) -> List<Serve
 }
 
 fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
-  ServeWireResponse {
-    status: r.status,
-    content_type_label: media_type_wire_label(m: r.content_type),
-    body: r.body,
-    headers: serve_response_headers_wire(headers: r.headers),
-  }
+  serve_wire_response_with_headers(r: r, headers: r.headers)
 }
 
 // THE PROJECTION WITH HEADERS: the same record with the header lines attached in the caller's
 // order; the no-header projection above is this fold at the empty list, so the two spellings
 // cannot drift.
 fn serve_wire_response_with_headers(r: ServeHttpResponse, headers: List<ServeResponseHeader>) -> ServeWireResponse {
-  ServeWireResponse {
-    status: r.status,
-    content_type_label: media_type_wire_label(m: r.content_type),
-    body: r.body,
-    headers: serve_response_headers_wire(headers: headers),
+  let wire = serve_response_headers_wire(headers: headers)
+  let unsettable = wire |> filter(h => !serve_header_name_is_settable(name: h.name))
+  if (unsettable |> count) > 0 {
+    ServeWireResponse {
+      status: 500,
+      content_type_label: "text/plain; charset=utf-8",
+      body: "a response header named a framing header or a non-token; refused at the wire projection\n",
+      headers: [],
+    }
+  } else {
+    ServeWireResponse {
+      status: r.status,
+      content_type_label: media_type_wire_label(m: r.content_type),
+      body: r.body,
+      headers: wire,
+    }
   }
 }
 

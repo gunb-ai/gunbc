@@ -8,6 +8,7 @@ import extdeps.http.server {
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
   serve_select_route, serve_response_header_field, serve_response_header_wire,
   ServeResponseHeaderFieldAdmitted, ServeResponseHeaderFieldRefused,
+  ServeResponseHeaderField, ServeHttpResponse, serve_wire_response_with_headers,
 }
 import extdeps.uri_path { path_param_value }
 import gunbc.auth.approval_broker_marker {
@@ -545,4 +546,12 @@ test fn the_field_arm_refuses_a_framing_header_and_a_non_token_name() -> Bool {
     ServeResponseHeaderFieldRefused { reason: _ } => true
   }
   framing && folded && spaced && empty
+}
+
+// RED control for the construction bypass: the extension arm built DIRECTLY with a framing name
+// (skipping serve_response_header_field) is refused at the wire projection, not written.
+test fn a_directly_built_framing_header_is_refused_at_the_wire_projection() -> Bool {
+  let r = ServeHttpResponse { status: 200, content_type: application_json_utf8, body: "{}", headers: [] }
+  let w = serve_wire_response_with_headers(r: r, headers: [ServeResponseHeaderField { name: "Content-Length", value: "0" }])
+  w.status == 500 && (w.headers |> count) == 0
 }

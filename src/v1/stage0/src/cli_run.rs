@@ -18507,8 +18507,9 @@ fn serve_write_response(
 /// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
 /// verbatim: this seam keeps no per-header table. Framing headers are refused where the extension
 /// arm is constructed (`serve_response_header_field`); here a name that is not a token and a value
-/// carrying CR, LF or NUL are refused rather than written as a split header. None = wrong shape or
-/// refused name or value.
+/// carrying CR, LF or NUL are refused rather than written as a split header, and so is a
+/// framing header name (the four `serve_framing_header_names` lists, mirrored here as the
+/// realization boundary's own refusal). None = wrong shape or refused name or value.
 fn serve_wire_header_line(
     item: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -18529,6 +18530,16 @@ fn serve_wire_header_line(
         }
         _ => return None,
     };
+    if [
+        "content-length",
+        "content-type",
+        "connection",
+        "transfer-encoding",
+    ]
+    .contains(&name.to_ascii_lowercase().as_str())
+    {
+        return None;
+    }
     let value = match ctx.field(fields, "value") {
         Some(Value::Str(s)) if !s.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) => {
             s.to_string()
