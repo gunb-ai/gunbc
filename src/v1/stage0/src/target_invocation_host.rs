@@ -1877,16 +1877,29 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
         Ok(pair) => pair,
         Err(cause) => return unreached(cause),
     };
+    let kit_root = match write_root("kit", "ambient_census_kit_files") {
+        Ok(root) => root,
+        Err(cause) => return unreached(cause),
+    };
+    let kit_subjects = match call("ambient_census_kit_subjects")
+        .map_err(|c| c.to_string())
+        .and_then(|v| strings(&v, "ambient_census_kit_subjects"))
+    {
+        Ok(subjects) => subjects,
+        Err(cause) => return unreached(format!("ambient_census_kit_subjects: {cause}")),
+    };
     let mut subjects: Vec<String> = roster.clone();
     for (module, present) in &rewritten {
         if *present && !subjects.contains(module) {
             subjects.push(module.clone());
         }
     }
-    let (controls, union) = match cli_run::run_census_controls_and_subjects(
+    let (controls, union, kit) = match cli_run::run_census_controls_and_subjects(
         source_roots,
         &[vec![fixture_root], vec![unindexed_root]],
         &subjects,
+        &kit_root,
+        &kit_subjects,
     ) {
         Ok(runs) => runs,
         Err(cause) => return unreached(cause),
@@ -1918,16 +1931,20 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
         (Some("tree_stdout".to_string()), text(&tree_stdout)),
         (Some("tree_runs".to_string()), text(&tree_runs)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
+        (Some("kit_stdout".to_string()), text(&kit.stdout)),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        "ambient_name_census_standing",
+        "ambient_name_census_standing_with_kit",
         &args,
         true,
     ) {
-        Ok(value) => {
-            reader_standing_outcome(&ctx, &value, label_name, "ambient_name_census_standing")
-        }
+        Ok(value) => reader_standing_outcome(
+            &ctx,
+            &value,
+            label_name,
+            "ambient_name_census_standing_with_kit",
+        ),
         Err(cause) => unreached(format!("the reader failed: {cause}")),
     }
 }

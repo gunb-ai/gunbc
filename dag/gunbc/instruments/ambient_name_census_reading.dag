@@ -5,6 +5,7 @@ import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes, ambient_name_candidates }
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
 // emitted v2 compiler's census walk prints one `binding` line per module-level reference occurrence,
@@ -344,5 +345,58 @@ fn ambient_name_census_standing(
               }
           }
       }
+  }
+}
+
+// THE ACCEPTANCE KIT'S FIXTURE PAIR (gunbc.namespace_cut.migration_kit), censused as its own subjects. The census
+// fixture root cannot hold it (no std to bind a primitive-authority name against), so the host writes these modules
+// into a third root and runs census-scoped over them with the real source roots; their printed rows come back
+// prefixed `kit_fixture\t` (ambient_name_census_standing_with_kit) after every existing row, which stays byte-identical.
+// One pair per row: the name called with no import, and with `import <home> { <name> }`.
+fn ambient_census_kit_rows() -> List<AmbientNameHome> {
+  ambient_name_homes() + (ambient_name_candidates() |> filter(c => count(ambient_name_homes() |> filter(h => h.name == c.name)) == 0))
+}
+
+fn ambient_census_kit_module(row: AmbientNameHome, imported: Bool) -> String {
+  "examples.kit_" + row.name + (if imported { "_imported" } else { "_unimported" })
+}
+
+fn ambient_census_kit_source(row: AmbientNameHome, imported: Bool) -> String {
+  "module " + ambient_census_kit_module(row: row, imported: imported) + "\n"
+    + "import std.types { Int, List }\n"
+    + (if imported { "import " + row.home + " { " + row.name + " }\n" } else { "" })
+    + "fn probe(xs: List<Int>) -> List<Int> { " + row.name + "(xs, 1) }\n"
+}
+
+fn ambient_census_kit_files() -> List<AmbientCensusFixtureFile> {
+  ambient_census_kit_rows() |> flat_map(r => [
+    AmbientCensusFixtureFile { path: "examples/kit_" + r.name + "_unimported.dag", content: ambient_census_kit_source(row: r, imported: false) },
+    AmbientCensusFixtureFile { path: "examples/kit_" + r.name + "_imported.dag", content: ambient_census_kit_source(row: r, imported: true) }
+  ])
+}
+
+fn ambient_census_kit_subjects() -> List<String> {
+  ambient_census_kit_rows() |> flat_map(r => [ambient_census_kit_module(row: r, imported: false), ambient_census_kit_module(row: r, imported: true)])
+}
+
+// THE LABEL'S ANSWER PLUS THE KIT'S ROWS. The six-argument standing is unchanged (a second reader calls it); this wraps
+// it, so every existing row and the exit are exactly its own, and the kit run's rows follow under their own prefix.
+// A kit run that observed nothing prints no kit_fixture row, which the kit's consumer reads as not-runnable.
+fn ambient_name_census_standing_with_kit(
+  fixture_stdout: String,
+  fixture_status: Int,
+  unindexed_status: Int,
+  tree_stdout: String,
+  tree_runs: String,
+  rewritten: String,
+  kit_stdout: String
+) -> CliWireResponse {
+  let base = ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten)
+  let kit_lines = split(s: kit_stdout, delimiter: "\n")
+    |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unreached\t") || starts_with(s: l, prefix: "binding_module\t"))
+    |> map(l => "kit_fixture\t" + l)
+  match base {
+    CliWirePrintable { bytes: b, exit: e } => CliWirePrintable { bytes: b + (kit_lines |> join(separator: "\n")) + "\n", exit: e }
+    other => other
   }
 }

@@ -1,7 +1,7 @@
 module gunbc.namespace_cut.ambient_name_home
 
 import std.types { List, NonEmptyStr, String }
-import std.optional { Optional }
+import std.optional { Optional, optional_present }
 
 // THE ONE ROSTER OF AMBIENT NAMES AND THEIR DECLARED HOMES (NAMESPACE-XL waves; operator ruling
 // 2026-10-15: every name the corpus uses, the seed's "built-ins" included, is an ordinary declaration
@@ -41,4 +41,18 @@ type AmbientNameHome {
 // Empty until wave 1 adds its row: wave 0 lands the census and the diff, and moves no name.
 fn ambient_name_homes() -> List<AmbientNameHome> {
   []
+}
+
+// ROWS A WAVE HAS PROPOSED BUT NOT YET LANDED. The acceptance kit censuses a candidate's fixture pair exactly as it
+// does a landed row (ambient_census_kit_rows), so a candidate's checks read RED on main (its name still resolves
+// ambiently) and flip when the wave moves it. The wave that lands a candidate adds the row to ambient_name_homes()
+// and DELETES it here: a name present in both is read once, as the landed row.
+fn ambient_name_candidates() -> List<AmbientNameHome> {
+  [AmbientNameHome {
+    name: "list_push" as NonEmptyStr,
+    home: "std.algebra" as NonEmptyStr,
+    table: PrimitiveAuthorityTable,
+    origin: ExistingDeclaration,
+    retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr)
+  }]
 }

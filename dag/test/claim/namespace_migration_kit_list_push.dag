@@ -34,11 +34,13 @@ fn is_migrated(f: KitFinding) -> Bool { match f { KitMigrated => true  _ => fals
 // THE JUDGE AT ITS OWN INTERFACE, lines SUPPLIED in the census's printed format (the format is held by the
 // ambient-name-census fixture). Each RED is paired with its positive; the real-census inhabitance claim is the kit
 // label's, not this module's.
-data judge_module: String = "probe_migration_kit"
-data judge_declared: String = "binding\tprobe_migration_kit\tlist_push\t0\tdeclared\tstd.algebra.list_push\t5:3\n"
-data judge_other_home: String = "binding\tprobe_migration_kit\tlist_push\t0\tdeclared\tother.list_push\t5:3\n"
-data judge_ambient: String = "binding\tprobe_migration_kit\tlist_push\t0\tambient:primitive_authority\tstd.primitives.list_push\t5:3\n"
-data judge_unbound: String = "binding_unbound\tprobe_migration_kit\tlist_push\t5:3\n"
+data judge_module: String = "examples.kit_list_push_imported"
+data judge_unimported_module: String = "examples.kit_list_push_unimported"
+data judge_declared: String = "binding\texamples.kit_list_push_imported\tlist_push\t0\tdeclared\tstd.algebra.list_push\t5:3\n"
+data judge_other_home: String = "binding\texamples.kit_list_push_imported\tlist_push\t0\tdeclared\tother.list_push\t5:3\n"
+data judge_ambient: String = "binding\texamples.kit_list_push_imported\tlist_push\t0\tambient:primitive_authority\tstd.primitives.list_push\t5:3\n"
+data judge_ambient_unimported: String = "binding\texamples.kit_list_push_unimported\tlist_push\t0\tambient:primitive_authority\tstd.primitives.list_push\t5:3\n"
+data judge_unbound: String = "binding_unbound\texamples.kit_list_push_unimported\tlist_push\t5:3\n"
 
 test fn judge_declared_binds_exact_identity() -> Bool {
   reading_is_bound_to(r: binding_reading(stdout: judge_declared, module: judge_module, spelling: "list_push"), identity: "std.algebra.list_push")
@@ -54,7 +56,7 @@ test fn judge_ambient_is_not_bound_to_declaration() -> Bool {
 }
 
 test fn judge_unbound_is_unbound_and_no_row_is_not_reached() -> Bool {
-  reading_is_unbound(r: binding_reading(stdout: judge_unbound, module: judge_module, spelling: "list_push"))
+  reading_is_unbound(r: binding_reading(stdout: judge_unbound, module: judge_unimported_module, spelling: "list_push"))
     && !reading_is_unbound(r: binding_reading(stdout: "", module: judge_module, spelling: "list_push"))
 }
 
@@ -79,7 +81,7 @@ test fn identity_verdict_migrated_on_declared_import() -> Bool {
 }
 
 test fn identity_verdict_reads_ambient_as_not_refusing() -> Bool {
-  match kit_binding_finding(unimported_stdout: judge_ambient, imported_stdout: judge_declared, row: list_push_row()) { KitNoImportDoesNotRefuse => true  _ => false }
+  match kit_binding_finding(unimported_stdout: judge_ambient_unimported, imported_stdout: judge_declared, row: list_push_row()) { KitNoImportDoesNotRefuse => true  _ => false }
 }
 
 test fn identity_verdict_other_home_does_not_clear() -> Bool {

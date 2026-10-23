@@ -5100,11 +5100,18 @@ fn run_census_scoped_with(
 /// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
 /// say which subjects reach each member. One run per subject re-resolved every shared member once per
 /// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
+///
+/// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the kit's own root
+/// added to the source roots and the kit's fixture modules as its subjects
+/// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
+/// run so the union above, and every row it prints, is exactly what it was without the kit.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
-) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
+    kit_root: &str,
+    kit_subjects: &[String],
+) -> Result<(Vec<CensusInferRun>, CensusInferRun, CensusInferRun), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
@@ -5115,7 +5122,14 @@ pub fn run_census_controls_and_subjects(
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
     let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
-    Ok((controls, union))
+    let kit_labels: Vec<String> = kit_subjects
+        .iter()
+        .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+        .collect();
+    let mut kit_roots = source_roots.to_vec();
+    kit_roots.push(kit_root.to_string());
+    let kit = run_census_scoped_with(&preparation.binary_path, &kit_labels, &kit_roots)?;
+    Ok((controls, union, kit))
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
