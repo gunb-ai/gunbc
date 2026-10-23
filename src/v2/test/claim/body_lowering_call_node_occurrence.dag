@@ -153,3 +153,84 @@ test fn lowered_primary_call_node_is_not_synthetic() -> Bool {
       }
   }
 }
+
+// THE CAST SITE GETS ITS OWN DISCRIMINATING CLAIM (M3 msg_151dfd41 option A, DESIGN 5 'done means
+// executed'): the fix at body_lower_cast_node is load-bearing, so a regression there must go red in
+// this module. `1 as Int` in a block body routes through the same postfix fold; the lowered cast
+// node is a Transform whose FIRST positional child is the `as` keyword atom (body_lower_cast_node
+// builds [as-atom, operand, cast-target]), which no other lowered shape produces -- the call spine
+// above has its callee at slot 0, never `as`. Same three-claim shape as the primary call: RED =
+// locatable by the census; POSITIVES = still a Transform over its as-spine, and not synthetic.
+data lowered_cast_subject_source: String = "module wall.same\n\nfn castme(x: Int) -> Int {\n  x as Int\n}\n"
+
+fn lcn_is_as_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_as
+    _ => false
+  }
+}
+
+fn lcn_callee_is_as(n: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+    Present { value: op } => lcn_is_as_atom(n: op)
+    Absent => false
+  }
+}
+
+fn lcn_is_cast_over_int(n: Node) -> Bool {
+  lcn_is_transform(n: n) && lcn_callee_is_as(n: n)
+}
+
+fn lcn_cast_node_opt(tree: Node) -> Optional<Node> {
+  first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { lcn_is_cast_over_int(n: n) })
+}
+
+fn lowered_cast_tree() -> Optional<Node> {
+  match conserved_normalize_of_text(path: "body_lowering_call_node_occurrence_cast_file", text: lowered_cast_subject_source) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } => Present { value: lcn_root(tree: tree) }
+  }
+}
+
+// THE RED, cast site: without the close at body_lower_cast_node the cast root is OccurrenceSynthetic
+// and native_census_owner_key answers Absent, so this claim fails; with it the root keeps the
+// authored suffix's Minted identity and the claim passes.
+test fn lowered_cast_node_is_locatable_by_the_census() -> Bool {
+  match lowered_cast_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_cast_node_opt(tree: root) {
+        Absent => false
+        Present { value: cast } =>
+          match native_census_owner_key(node: cast) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// POSITIVE -- the cast still lowers to its semantic form: a Transform over the as-operator spine.
+test fn lowered_cast_still_lowers_to_a_transform_over_its_as_operator() -> Bool {
+  match lowered_cast_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_cast_node_opt(tree: root) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+// POSITIVE -- read off the identity itself, so a change to owner_key's table cannot mask a
+// regression at the cast site: the authored cast's semantic form must not claim no authored origin.
+test fn lowered_cast_node_is_not_synthetic() -> Bool {
+  match lowered_cast_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_cast_node_opt(tree: root) {
+        Absent => false
+        Present { value: cast } => lcn_is_not_synthetic(n: cast)
+      }
+  }
+}
