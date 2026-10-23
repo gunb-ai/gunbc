@@ -1,6 +1,6 @@
 module v2.test.claim.body_lowering.wave1_gate1_normalize_add_helpers
 
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
 import v2.compiler.normalize { normalize }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
@@ -44,7 +44,7 @@ fn wave1_gate1_find_arrow_in_module_children(root: Node) -> Optional<Node> {
 }
 
 fn wave1_gate1_normalized_module_from_source(source: String, file: Symbol) -> Optional<Node> {
-  match conserved_normalize_of_text(path: symbol_lexeme(sym: file), text: source, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: symbol_lexeme(sym: file), text: source) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: tree, diagnostics: _ } => Present { value: tree.root }
   }

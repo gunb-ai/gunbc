@@ -163,13 +163,11 @@ data export_signature_facts_host_scaffold_dissolution_trigger: Disposition = Sca
   }
 }
 
-fn logical_qualified_name_from_module(module_name: String, name: String) -> String {
-  let start = if module_name.starts_with(prefix: "v2.") { 3 } else { 0 }
-  let logical = module_name.substring(start: start, end: module_name.length())
-  if logical.length() == 0 {
+fn qualified_name_from_module(module_name: String, name: String) -> String {
+  if module_name.length() == 0 {
     name
   } else {
-    concat(logical, ".", name)
+    concat(module_name, ".", name)
   }
 }
 

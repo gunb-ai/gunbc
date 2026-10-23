@@ -26,6 +26,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.dependency { ActivationAlternative, ActivationDemand, SelectedByBranchSlot, SelectedByPattern }
 import v2.std.diagnostic { Accepted, Diagnostic, Locus, LocusAnchor, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.node {
+  NotADeclaration,
   Atom,
   Branch,
   BranchConditionSlot,
@@ -452,7 +453,8 @@ fn acd_atom(s: Symbol) -> Node {
 }
 
 fn acd_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, d, declaration: NotADeclaration
+eclaration: NotADeclaration }
 }
 
 fn acd_branch_of(children: List<Edge>) -> Node {
@@ -467,8 +469,8 @@ fn acd_arm(pattern: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
-      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -625,8 +627,8 @@ fn acd_arm_body_first(pattern: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body },
-      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern }
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -699,11 +701,13 @@ fn acd_conj_of(edges: List<Edge>) -> Node {
 }
 
 fn acd_pattern_edge(t: Symbol) -> Edge {
-  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t) }
+  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t), d, declaration: NotADeclaration
+eclaration: NotADeclaration }
 }
 
 fn acd_body_edge(t: Symbol) -> Edge {
-  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t) }
+  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t), d, declaration: NotADeclaration
+eclaration: NotADeclaration }
 }
 
 fn acd_arm_is_malformed(arm: Node) -> Bool {

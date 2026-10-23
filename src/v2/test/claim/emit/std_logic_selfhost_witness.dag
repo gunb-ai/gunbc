@@ -1,5 +1,7 @@
 module v2.test.claim.emit.std_logic_selfhost_witness
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -11,7 +13,7 @@ fn sl_conj(children: List<Edge>) -> Node {
   Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic }
 }
 
-fn sl_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+fn sl_pos(target: Node) -> Edge { Edge { label: Positional, target: target, declaration: NotADeclaration } }
 
 fn sl_nil() -> Node { sl_conj(children: []) }
 
@@ -34,7 +36,7 @@ fn sl_variant_block(variants: List<Node>) -> Node {
 }
 
 fn sl_named_edge(name: String, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn sl_coproduct_enum(variant_edges: List<Edge>) -> Node {

@@ -294,6 +294,68 @@ data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
 ]
 
+// THE TWO IN-BAND RECOVERY WRITES, CLASSIFIED. Both are DeviceOnce: each actuation is one physical
+// occasion at one chassis, not a recurring control-plane operation, and neither is a read.
+//
+// THE PASSWORD WRITE, CLASSIFIED BY WHAT IT ACTUALLY DOES. Its subject says the write happens "so an
+// authenticated in-band session can be opened", and that sentence is the classification: the write puts a
+// password into one controller's ADMINISTRATOR account and thereby brings a device-scoped credential into
+// existence. So minted_reach is MintsResourceScopedCredential, not MintsNoCredential -- it was the row
+// that was wrong, not its `realized` field, and making the profile honest is what makes the
+// operator-approved capability the pattern selection derives rather than a grant the row then has to
+// explain away (DESIGN §3b: a divergence with no reason is the only red, because it forks the authority).
+//
+// ReversibleByReapply would have been the comfortable choice and is false here, for the same reason
+// route_qualification_effect above is classified irreversible: writing a password that the run then hands
+// to nobody, over a channel with no credential on either side, leaves an enabled account holding a secret
+// the run never stored. Setting the password again does not close the window in which anything on that
+// host's IPMI queue could have read it; the account's later removal by the reset is a different actuation,
+// not a reapply. So: irreversible, undischarged, which forces a witness -- and OperatorApprovedCapability
+// is what the selection admits for a witnessed, attended, device-scoped write.
+//
+// WHY "no -I option" IS GONE FROM THIS SENTENCE. ipmitool does not run with no interface: it defaults to
+// `open` (upstream configure.ac DEFAULT_INTF_NO_ENV), which is the OpenIPMI driver over /dev/ipmi0. The
+// passwordlessness that matters is that no credential appears on the command line and no network
+// authentication happens -- not the absence of an option, which was never true. Likewise the in-band
+// transport is named by its arm in extdeps.bmc.ipmi (InBandHostTransport), and SSIF is recorded where it
+// is a fact: the kernel module under /dev/ipmi0 in the capture, not the interface ipmitool was told to use.
+fn recovery_in_band_set_user_password_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "from the rescue host OS, over the in-band host interface (/dev/ipmi0, ipmi_ssif behind it, with no credential on the command line and no network authentication), write one temporary password to the BMC's ADMINISTRATOR account, so an authenticated in-band session can be opened against a controller whose existing password is unknown" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect {
+      what_is_lost: "an enabled ADMINISTRATOR account left holding a password this run never stored; the exposure window is not undone by setting the password again, and its later removal is a separate actuation rather than a reapply" as NonEmptyStr,
+    },
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// The reset is the destructive half, and its classification is what decides the authorization pattern.
+// ResetType=ResetAll -- the DMTF-published parameter name for this action, declared in
+// extdeps/bmc/redfish -- restores every user account, every password and the network
+// configuration to factory state on a board being brought into the fleet rather than serviced: nothing
+// re-applies the prior user table, so the loss is not undone by a reapply. Irreversible, therefore
+// OperatorApprovedCapability -- the operator approval on this write is not a courtesy, it is what the
+// characteristics force.
+fn recovery_manager_reset_to_defaults_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "against the BMC controller over Redfish, POST Manager.ResetToDefaults with ResetType=ResetAll, returning every account, password and the user table to factory state, on a board being brought into the fleet rather than serviced" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect {
+      what_is_lost: "the prior user table and every password on the controller: a reset to factory state cannot be reapplied to bring them back, which is exactly why this write cannot be used to install a credential of our own" as NonEmptyStr,
+    },
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
 // recurring, irreversible, standing-ruled Mt. Collins destructive controller effect.
 fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity: WorkloadIdentityStanding) -> PrivilegedEffect {
@@ -479,7 +541,49 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
   },
 ]
 
+// THE RULING THE RECOVERY RESET IS ACTUATED UNDER. The destructive half of bringing a locked BMC back
+// is not a standing the route carries of its own: it runs under a named operator ruling covering
+// exactly the reset site, and a RecoveryInBandRoute carries that ruling's declaration reference
+// (RecoveryInBandRoute::operator_approval) instead of a boolean saying "approved". The effect is
+// irreversible, which is what makes selection demand an approval rather than a federation grant; the
+// ruling's words state the terms the approval is filed against. No per-instance hold is claimed, so
+// this is an operator ruling and not a discharge: the route's own readback law stays in the recovery
+// module, where the standing that needs it is minted.
+data recovery_reset_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  // THE CHANNEL EACH WRITE TRAVELS IS STATED, BECAUSE THE TWO WRITES DO NOT TRAVEL THE SAME ONE. The
+  // captured bytes are the authority here, not convenience: 01_summary.txt records the reset as
+  // `POST .../Actions/Manager.ResetToDefaults` against the BMC, whose firmware required the body
+  // parameter spelled `ResetToDefaultsType` where DMTF publishes `ResetType` (01_summary.txt records both the
+  // 400 for the published spelling and the 200 for its own). That mismatch is a REPORTED OBSERVATION about
+  // this specimen and is quoted here as one; the spelling the interface publishes is unchanged by it (§3: an
+  // observation this repository makes is a receipt downstream, never a property of the upstream). The
+  // reset went to the controller's own LAN address (192.168.1.250 per the capture), so the reset went out-of-band over the management
+  // interface, and only the temporary password write used the in-band SSIF channel (01_summary.txt's
+  // "PRIVILEGED WRITE 1 -- set temp admin password over the in-band SSIF channel"). §4d: "Do not assert as
+  // deduced what is only inferred" -- and this text is what a per-effect operator approval is FILED
+  // AGAINST, so scoping the wipe to a channel it never used would have the operator approve a different
+  // actuation from the one being admitted. §3: the ruling and the effect row it governs may not name
+  // different channels for the same write.
+  ruling_text: "an arrival unit whose BMC ADMINISTRATOR password is unknown and whose rescue host OS is reachable may be returned to factory state by Redfish Manager.ResetToDefaults (ResetType=ResetAll, the arm DMTF publishes as returning every account and password to factory state) issued over the BMC's out-of-band management interface, one unit at a time, under a per-effect operator approval filed against this ruling; the in-band system interface is used only to write the temporary Administrator password, never for the reset; the route may not use the reset to install a credential of its own and terminates by handing the factory credential to the existing factory-login-then-rotate path" as NonEmptyStr,
+  effect_subject: "recovery reset: Redfish Manager.ResetToDefaults ResetType=ResetAll over the BMC's out-of-band management interface, on one arrival unit's BMC controller" as NonEmptyStr,
+  // THE HOLD IS THE SEALED PROOF, NOT THE ACQUIRE FUNCTION. Both other interlocked rulings in this file
+  // name gunbc.host.managed_host_unit_hold::UnitHoldProof, and the premise below says so: the two
+  // admission gates refuse unless the UnitHoldProof they are handed names the same unit. Naming
+  // unit_hold_acquire here would have the ruling interlock a call site, which is what the refusal
+  // position is for (the mtcollins rows put unit_hold_acquire in `refusal:`); the witness claim
+  // the_reset_interlock_rosters_no_root_the_fold_cannot_show reads this field as the proof type and was
+  // red, correctly.
+  interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof") },
+}
+
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    hold: privileged_effect_interlock_hold(interlock: recovery_reset_operator_ruling.interlock),
+    refusal: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    premise: "WHEN A ROOT EXISTS IT MUST ACQUIRE THE HOLD BEFORE EITHER WRITE. The two admission gates refuse unless the UnitHoldProof they are handed names the SAME unit as the recovery subject, so a ResetAll cannot be actuated on a chassis another run is driving. No production root is rostered, because none exists yet: converge_in_band_recovery receives both admissions as PARAMETERS and calls neither gunbc.host.managed_host_unit_hold's acquire nor either admission, so rostering it as a hold-owning root would be the census attesting to a pairing the code does not perform. The obligation is rostered as a frontier row -- gunbc.machine_intake.bmc_recovery_route_frontier's bmc_recovery_route_pairing_frontier_rows, whose bound trigger is the fold that pairs subject, hold proof and admission -- and the roster is filled in when that fold lands. This follows the runner_qualification_dispatch precedent, which rostered an empty root list for the same reason and named its owed root in the premise" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
+  },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
     hold: privileged_effect_interlock_hold(interlock: runner_lifecycle_operator_ruling.interlock),
@@ -848,17 +952,13 @@ fn manual_srv1_root_effect(subject: NonEmptyStr, step: HumanIntervention) -> Pri
   }
 }
 
-// OPEN POLICY QUESTION, deliberately NOT census rows. These steps declare FleetOnce and mint host-root
-// reach, so select_authorization_pattern leaves the approved capability and the administrator edge
-// incomparable (SelectionNeedsPolicy). A row would be SiteNotDecidable, and every_census_site_is_decidable
-// holds the roster at zero, so the effects are listed here for the claim that pins the open question:
-// it goes RED the day a policy lands, at which point they become rows with a reason.
-fn open_policy_srv1_root_step_effects() -> List<PrivilegedEffect> {
-  [
-    manual_srv1_root_effect(step: approval_ntfy_account_intervention(), subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
-    manual_srv1_root_effect(step: approval_ntfy_server_install_intervention(), subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
-    manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention(), subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
-  ]
+// THE srv1 ROOT STEPS THE OPERATOR RUNS BY HAND AND THE PER-DISPATCH ENVIRONMENT GATE. Operator ruling
+// 2026-10-22 (gunbc.design_ruling one_approval_route_for_every_privileged_action): host-root reach that a
+// human can attend is approved through the broker route alone, so each row selects
+// OperatorApprovedCapability and diverges because the realization is a person or a GitHub click.
+data srv1_root_step_by_hand_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the effect is a host-root write on srv1 that the operator performs by hand over ssh from rendered instructions; the operator ruling of 2026-10-22 names the approval broker route as its only approval, and no authority adapter requests a capability for it, so the instruction text is the only record that it happened" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the step's entry point files an access_request (gunbc.auth.access_request) for its re-derived effect and the host-root write executes only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability) delivered by the iOS approval app, with post-apply readback. NOT satisfied by modeling the instruction or by the administrator edge" as NonEmptyStr),
 }
 
 fn manual_operator_api_effect(subject: NonEmptyStr, step: HumanIntervention, cause: NonEmptyStr, reach: MintedCredentialReach) -> PrivilegedEffect {
@@ -895,6 +995,41 @@ fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> Priv
 }
 
 data privileged_effect_census: List<PrivilegedEffectSite> = [
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_account_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_account_intervention(), subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_server_install_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_server_install_intervention(), subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_subscriber_grant_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention(), subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  // The per-dispatch gate: each fleet-converge dispatch of a srv1 root-mutation job waits on a reviewer
+  // click in the srv1-production environment. A human attends it, so it recurs per operator request.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_srv1_root_mutation_environment"),
+    effect: PrivilegedEffect {
+      subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), a required reviewer approves the whole job in the srv1-production GitHub environment" as NonEmptyStr,
+      frequency: EveryOperatorRequest,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+      minted_reach: MintsHostRootReach,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
+  },
   PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_approval",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
@@ -902,7 +1037,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
 
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
+    site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "live_deploy_apply_helper_grant_on_host"),
     effect: PrivilegedEffect {
       subject: "on every broker release, install one exact NOPASSWD grant letting the operator's account run that release's root-owned ntfy runtime-observe helper as gunbc-ntfy, replacing the previous release's grant" as NonEmptyStr,
       frequency: EveryProvision,
@@ -1207,6 +1342,29 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "plan_bmc_account_action"),
     effect: bmc_secure_account_rotation_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  // THE TWO IN-BAND RECOVERY WRITES (gunbc.machine_intake.bmc_recovery_route). A locked BMC is
+  // brought back by two writes made from the machine's own rescue OS, and both are classified here
+  // rather than described in prose: the temporary Administrator password that makes an authenticated
+  // in-band session possible, and the ResetToDefaults that wipes the unknown password. The reset is
+  // the destructive half -- ResetAll returns every account, every password and the user table to
+  // factory state on a board being inducted. Both rows realize the operator-approved capability, but for
+  // DIFFERENT forces that each row states in its own profile: the reset by its irreversibility, the
+  // password write by the credential it brings into existence and cannot withdraw by reapplying. Neither
+  // row is claiming a pattern the other's effect forced. recovery_reset_operator_ruling states the ruling
+  // the run acts under; the recovery route refuses its handoff without the post-reset readback (its own
+  // domain law), so neither row can realize a pattern its effect rules out.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write"),
+    effect: recovery_in_band_set_user_password_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    effect: recovery_manager_reset_to_defaults_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
