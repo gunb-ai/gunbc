@@ -14,12 +14,13 @@ import std.optional { Optional, Present, Absent }
 // THE SEAL PROBES RUN THROUGH THE CORPUS'S OWN HARNESS, never a hand-rolled compiler call: it reports
 // blocking diagnostics by class AND subject, so a probe can name WHICH mint refused rather than merely
 // that something refused.
-import gunbc.compile_census_probe { blocking_subject_count_for, census_rows_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_rows_for, census_verdict, census_verdict_all }
+import std.process { ProcessExit }
 import gunbc.compile_diagnostic_census { census_count_at_key, censuses_differ_by_exactly_the_target_key }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 // THE FRONTIER IS WITNESSED, NOT ASSERTED IN PROSE: the witness reads the bound triggers and
 // states what their status is TODAY, so the day the probe lands, this is the thing that changes.
-import std.dissolution { DissolutionPending, DissolutionFired }
+import std.dissolution { DissolutionCondition, DissolutionPending, DissolutionFired, DissolutionUnbound, unbound_dissolution }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ObservedByReceipt, TranscribedUncited }
@@ -2232,17 +2233,44 @@ data lawful_verdict_source: String = verdict_probe_hdr + "\nfn honest_observatio
 
 fn sole_ctor_count(source: String) -> Int {
   match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "SoleConstructorViolation") {
-    // Absent means the census could not run, and 0 rows is how a probe that never ran reports. A wall
-    // proven by a probe that never compiled is not a wall, so an unrunnable census is a FAIL, never a
-    // pass -- the reason this helper returns Int and the tests compare against >= 1 rather than != 0.
+    // Absent means the census could not run AT ALL, and 0 rows is how a probe that never ran reports, so
+    // unrunnable is a FAIL, never a pass. WHAT THIS ARM DOES NOT CATCH: a source that DOES run but carries
+    // an unrelated blocking error -- an unresolved import is exactly one. The census runs, reports
+    // Present{0}, zero rows of the wanted class, and a lawful-side `== 0` asks for exactly zero. Measured
+    // on #14590: misspelling one import in verdict_probe_hdr left this witness green, lawful checks
+    // included. NO COUNT ESTABLISHES IMPORT RESOLUTION, in either direction: an observed census can
+    // report zero rows of the wanted class while the source has unrelated errors, so zero does not
+    // establish successful compilation and the lawful `== 0` can be satisfied by a failure -- and a
+    // hostile `>= 1` can be satisfied WHILE an unrelated import defect coexists with the real violation,
+    // because violations are collected per source and an import error does not suppress them. Neither
+    // zero nor positive counts say WHERE a name resolved from. What DOES guard the header is the textual
+    // module-and-symbol pin in the argument-spine test below -- drift detection only: it catches a typo,
+    // a deletion, or a retarget to a module that does not even declare the name. It is LEXICAL, so it
+    // does NOT establish resolved provenance; the frontier row
+    // firmware_network_boot_probe_resolution_frontier records that residual gap. No witness
+    // demonstrates the fooled guard today: the check that would distinguish it (resolved identity of
+    // the use) is exactly the capability that frontier names, so an embedded 'look-alike header that
+    // still passes the substring' witness would only restate the substring semantics over hand-written
+    // literals. The honest form of that limit is the frontier row, not a tautological witness.
     Present { value: n } => n
     Absent => 0 - 1
   }
 }
 
-// WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused and the lawful pair
-// over the SAME imports must be clean -- without that pair, "the probe refused" is indistinguishable
-// from "the probe never compiled". OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
+// WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused, and the lawful pair
+// over the SAME imports must be clean. CAREFUL, measured not argued: neither side's COUNT proves
+// import resolution. The lawful pair ALONE does not separate 'refused correctly' from 'never
+// compiled' -- an observed census can report zero rows of the wanted class while the source has
+// unrelated errors; zero does not establish successful compilation, and `== 0` is
+// satisfied by exactly such a zero. And the hostile side's `>= 1` does not certify the imports either: it
+// requires a violation to be PRESENT, and a real violation coexists with an unrelated import defect
+// (violations are collected per source; an import error does not suppress them), so a hostile source
+// could carry a broken import and still legitimately count 1. What the counts DO establish is the
+// seal verdict under a compilable source; what guards the header against silent drift is the textual
+// substring pin on the shared header in the argument-spine test -- drift detection, NOT a resolution
+// check: it narrows how the header can drift silently and does not prove where the name resolves to
+// (the frontier row firmware_network_boot_probe_resolution_frontier records that residual gap).
+// OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
 // row that reddens it: THIS test is reddened by deleting `sole_constructor` from the `ReadyEvidence`
 // record -- both hostile sources contain a `ReadyEvidence` literal, so unsealing it takes both counts to
 // zero. It is NOT the row that owns the conclusion seal: `forge_ready_source` would still be refused for
@@ -2422,23 +2450,34 @@ test fn the_probe_differs_from_its_control_by_exactly_the_target_key() -> Bool {
   }
 }
 
-test fn no_foreign_module_may_call_the_verdict_mint_directly() -> Bool {
-  blocking_subject_count_for(
-    source: direct_mint_source,
-    wanted_class: "ConstructorCallAdmissionRefused",
-    wanted_subject: "prepare",
-  ) >= 1
-    && blocking_subject_count_for(
-      source: lawful_import_source,
-      wanted_class: "ConstructorCallAdmissionRefused",
-      wanted_subject: "prepare",
-    ) == 0
+test fn no_foreign_module_may_call_the_verdict_mint_directly() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(
+        source: direct_mint_source,
+        wanted_class: "ConstructorCallAdmissionRefused",
+        wanted_subject: "prepare",
+      ),
+      holds: fn(n) { n >= 1 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: lawful_import_source,
+        wanted_class: "ConstructorCallAdmissionRefused",
+        wanted_subject: "prepare",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
     // THE REAL CONTROL, not the import-only one above: same builders, same literals, ungated call.
-    && blocking_subject_count_for(
-      source: lawful_call_source,
-      wanted_class: "ConstructorCallAdmissionRefused",
-      wanted_subject: "prepare",
-    ) == 0
+    census_verdict(
+      census: blocking_subject_census(
+        source: lawful_call_source,
+        wanted_class: "ConstructorCallAdmissionRefused",
+        wanted_subject: "prepare",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
+  ])
 }
 
 // THE CENSUS DOES NOT SEE UNBOUND NAMES, so the probe's own vocabulary is pinned by text instead.
@@ -2462,6 +2501,17 @@ test fn the_probe_and_its_control_still_exercise_every_argument_builder() -> Boo
     && string_contains(verdict_probe_hdr, "available_network_options,")
     && string_contains(verdict_probe_hdr, "network_option_existence,")
     && string_contains(verdict_probe_hdr, "admissible_readiness_for,")
+    // TEXTUAL DRIFT GUARD on the relocated symbol's import line, not a proof of provenance. It pins the
+    // exact module-and-symbol substring so a typo, a deletion, or a retarget to a module that never declares
+    // the name reddens this test -- the drift modes a census cannot see at all (row R2G2: deleting an import
+    // name changed no count). It CANNOT establish WHERE SecureBootUnobserved resolves: string_contains is a
+    // substring check: a header carrying the pinned text only inside a // comment plus a real import from
+    // a look-alike module still satisfies it. That residual limit is tracked as the typed
+    // frontier firmware_network_boot_probe_resolution_frontier, not claimed closed here.
+    && string_contains(
+      verdict_probe_hdr,
+      "import gunbc.secure_boot_observation { SecureBootUnobserved }",
+    )
     && string_contains(direct_mint_source, "boot_option(reference:")
     && string_contains(direct_mint_source, "boot_order_entry(reference:")
     && string_contains(direct_mint_source, "join_head_to_options(")
@@ -3759,4 +3809,43 @@ test fn an_unexpected_http_status_survives_to_the_final_refusal_with_its_status(
     Refused { cause: FirmwareReadRefused { refusal: UnexpectedHttpStatus { status: st, detail: _ } }, gaps: _ } => st == 500
     _ => false
   }
+}
+
+
+// THE RESIDUAL GAP, TYPED (option B): resolved declaration identity of a use inside
+// an EMBEDDED STRING source is not exposed to a claim witness today. The machinery
+// that computes a mention's declaring module exists (v2.compiler.resolution_provenance
+// ::resolve_reference_provenance) but consumes parsed Nodes from the acquired module
+// corpus, not a source string; the census host op that DOES take a string returns only
+// diagnostic_class + subject_name. So the capability is a future op (string source ->
+// resolved QualifiedName), and its name is not known yet -- binding a BoundDissolution
+// trigger to a declaration nobody has named would report Pending forever and look like
+// honest tracking while nothing could discharge it (the lesson already recorded on the
+// seam's own consumer frontier). unbound_dissolution reports DissolutionUnbound: no
+// declaration discharges this yet, stated plainly rather than dressed as a pending trigger.
+data firmware_network_boot_probe_resolution_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DISSOLVE-ON: a claim-witness-reachable readback maps an embedded probe source String to the QualifiedName each named use resolves to, consumable from .dag. When it lands, replace the textual substring guard in the_probe_and_its_control_still_exercise_every_argument_builder with an assertion that verdict_probe_hdr's SecureBootUnobserved resolves to gunbc.secure_boot_observation -- the drift modes a substring cannot distinguish, where a comment-only canonical import plus a real look-alike import still satisfy the guard. Acceptance for the replacement: canonical AND multiline spellings GREEN; a comment-only import RED; missing or look-alike RED. Candidate home for the op: the resolved-provenance path in v2.compiler.resolution_provenance (resolve_reference_provenance), given a source-string entry point.",
+)
+
+// THE GAP IS OPEN AND STAYS OPEN UNTIL A REAL READBACK LANDS -- not silently Pending,
+// not falsely Fired. WHAT THIS ROW CATCHES, stated to the rung it establishes: this
+// assertion discriminates THIS ROW'S ARM. A row secretly bound to a trigger reports
+// DissolutionPending (empty corpus) or DissolutionFired (a corpus naming the trigger)
+// -- never DissolutionUnbound -- so dressing the gap as a satisfiable-looking trigger
+// reddens it; the M2 mutation row in the PR evidence executes exactly that. WHAT IT
+// CANNOT CATCH: the semantics of unbound_dissolution itself -- the constructor returns
+// DissolutionUnbound for any non-empty description, so this test is an arm check on the
+// row, not a test of the std constructor. That is the honest denominator for a row whose
+// whole job is to say 'nothing here discharges this yet'.
+test fn probe_resolution_frontier_is_open_not_secretly_satisfiable() -> Bool {
+  frontier_status(
+    condition: firmware_network_boot_probe_resolution_frontier,
+    present_decls: [],
+  )
+    == DissolutionUnbound
+    && frontier_status(
+      condition: firmware_network_boot_probe_resolution_frontier,
+      present_decls: [decl_ref(module_path: "gunbc.secure_boot_observation", decl_name: "SecureBootObservation")],
+    )
+    == DissolutionUnbound
 }

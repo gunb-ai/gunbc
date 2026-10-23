@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_probe_whose_unit_never_ran_is_scored_as_the_forbidden_effect_refused
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data a_probe_whose_unit_never_ran_is_scored_as_the_forbidden_effect_refused: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_probe_whose_unit_never_ran_is_scored_as_the_forbidden_effect_refused" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a negative probe (the forbidden write must be refused) reads any nonzero exit status as the refusal, so a unit that never executed the command counts as refused. HARM: the discriminating RED of gunbc.rung_drop.user_manager_worker_write_boundary_unenforced passed vacuously (silent wrongness, DESIGN section 5; rung inflation, section 4b). DISTINGUISHING FACTS: srv1 systemd 255 user manager exits 218 EXIT_CAPABILITIES in exec setup for the worker shape with EmptyCapabilityBoundingSet, about 20ms, before touch ran; only the positive control failed. Sibling instance in flight: the launcher cells scoring no drain answer as refused (PR 14619).",
+
+    "RUNG NOW: mitigatable. The direct probes read never-ran, wrote, refused (touch's own status with the path absent) or inconclusive separately, and the refused claim requires a same-shape allowed touch to run. Executed evidence: test.claim.roadmap.sandbox_touch_reading_witness. CEILING: a probe's verdict cannot be structurally forced to carry the command's own status; a typed outcome per probe is the attainable form. NEXT TRIGGER: can climb after one grounding: a shared typed probe-outcome (ran / never-ran) in the claim surface so every negative probe must consume it; census the other negative probes first (root generalization, DESIGN section 6b).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.roadmap.sandbox_touch_reading", decl_name: "sandbox_touch_reading_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.systemd.service_exec", decl_name: "exec_setup_failure_of_status", field: WholeDeclaration },
+  ],
+}

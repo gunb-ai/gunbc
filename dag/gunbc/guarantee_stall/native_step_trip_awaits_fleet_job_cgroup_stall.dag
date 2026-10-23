@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall
 
 import std.types { String, List }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // A STALL, NOT A DROP (DESIGN section 4b(2) against 4b(3)): the per-step compiler trip the
 // 2026-10-09 ruling asked for -- the step's own cgroup bound at gunbc.emitted_subject_build_gate
@@ -30,7 +31,7 @@ data native_step_trip_awaits_fleet_job_cgroup_stall: GuaranteeStall = GuaranteeS
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
-    grounding: "a job-owned, memory-bounded cgroup on every fleet runner: the runner unit delegated (Delegate=yes with DelegateSubgroup= so the unit's own processes leave the delegated root), a per-job cgroup staged at native_step_memory_trip with no swap by the root JIT wrapper before setpriv (gunbc.runner.runner_lifecycle runner_lifecycle_jit_wrapper_path), and the governor's UnnecessaryLimitAlreadyBinds arm reading that bound as the step's own -- or the job user able to create the leaf itself. Applied to hosts by converge, which is the operator's effect; the fact that flips is gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership"
+    grounding: GroundingUndeclared
   },
   population: BoundedPopulation {
     members: [

@@ -441,7 +441,7 @@ fn runner_slot_privileged_operations(
 data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.compound_call_argument_value_refused_as_unread
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data compound_call_argument_value_refused_as_unread: RecurringFailureMode = RecurringFailureMode {
   identity: "compound_call_argument_value_refused_as_unread" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a call argument whose value is compound -- a nested call, a record literal, a caret symbol, a parenthesised group or a list literal -- refuses its WHOLE MODULE at normalize as body_lowering_reason_call_argument_unread** (INVALID STATE: v2.compiler.body_lowering_fold body_lower_call_arg_value reads every argument value with the operand reader alone; after gunbc#12145 stopped that reader narrowing a sequence to its left element, those shapes answer Absent, and the Absent becomes the module-wide refusal).",

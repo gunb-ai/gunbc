@@ -15,7 +15,7 @@ import std.repair_input_origin {
 }
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration,
-  never_type_declaration, never_eliminator_declaration
+  never_type_declaration, never_eliminator_declaration, never_projection_declarations
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
@@ -3354,7 +3354,7 @@ fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZ
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
           if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !inner |> any(m => m.name == vname)
+            && !(inner |> any(m => m.name == vname))
             && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
             concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
           } else { inner }
@@ -6707,7 +6707,9 @@ fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
 
 fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
   let here = decl_ref(module_path: module_path, decl_name: name)
-  if declaration_ref_eq(a: here, b: never_eliminator_declaration) {
+  if declaration_ref_eq(a: here, b: never_eliminator_declaration)
+    || (never_projection_declarations |> any(d => declaration_ref_eq(a: here, b: d)))
+  {
     "#[allow(unreachable_code)]\n"
   } else {
     ""
@@ -6769,43 +6771,136 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
   }
 }
 
-fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>, variant_to_enum: Map<String, String>) -> String {
+// ONE DECISION PER (IMPORT MODULE, NAME), DECIDED ONCE AND READ MANY. The use-line planner asked
+// the same question of the same name at every candidate parent and every defining module:
+// `find_variant_parent_in_module` re-walked the import module's items once per candidate parent,
+// `reexport_variant_parent_in_import_module` re-walked the reexport chain the same way, and
+// `is_import_graph_type_name` re-decided the marker/variant classification inside each filter that
+// consulted them. None of these walks depends on the loop variable -- only on (import_module, name)
+// -- so each is computed once per name into this table and read by lookup at every site. This is
+// not a cache: the table is built per call and dies with it; no answer is retained across calls or
+// compilations (section 5 preamble -- share a twice-computed value, never add a cache). Single
+// authority: the arms live only in `classify_import_name`, which stores the answers of
+// `is_import_graph_type_name`, `find_variant_parent_in_module`,
+// `reexport_variant_parent_in_import_module` and `find_variant_parent` and re-states no dispatch of
+// its own; the name's variant-parent lookup and the parent loops became readers of the row instead
+// of re-derivers of it.
+//
+// WHY THE SHARED ROW DELETES DEMAND AND CHANGES NO ANSWER. Each stored field is exactly what the
+// call it replaces consumed: `local_parent` replaces every `find_variant_parent_in_module` call at
+// its sites (computed for EVERY name, because the parent loops consult it for every name before any
+// short-circuit); `reexport_parent` is computed only when the local walk misses, which is the
+// identical call pattern every existing site uses (each matched local first and consulted reexport
+// only in the Absent arm); `variant_parent` stores the full parent chain the per-name lookup ran,
+// arms in the same order; `is_graph_type` stores the answer of the classification the
+// filters re-ran. The reads are byte-for-byte the same comparisons against the same values.
+type ImportNameClassification {
+  is_graph_type: Bool
+  local_parent: String?
+  reexport_parent: String?
+  variant_parent: String
+}
+
+fn classify_import_name(n: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, imported_enums: List<String>, import_module_enums: List<String>) -> ImportNameClassification {
   if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: variant_to_enum) {
-    ""
+    ImportNameClassification { is_graph_type: true, local_parent: none, reexport_parent: none, variant_parent: "" }
   } else if import_module_enums |> any(e => e == n) {
-    ""
+    ImportNameClassification { is_graph_type: false, local_parent: none, reexport_parent: none, variant_parent: "" }
   } else {
-    match find_variant_parent_in_module(
-      variant_name: n,
-      module_name: import_module,
-      typed_modules: typed_modules,
-      source_indices: source_indices,
-    module_index: module_index) {
-      Present { value: parent } => parent
-      Absent =>
-        match reexport_variant_parent_in_import_module(
-          variant_name: n,
-          import_module: import_module,
-          registry: registry,
-          type_summaries: type_summaries,
-          typed_modules: typed_modules,
-          export_sets: export_sets,
-          source_indices: source_indices,
-        module_index: module_index) {
-          Present { value: parent } => parent
-          Absent =>
-            match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
-              Present { value: parent } => parent
-              Absent =>
-                match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: import_module_enums) {
-                  Present { value: parent } => parent
-                  Absent => ""
-                }
-            }
-        }
+    let local_parent = find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let reexport_parent = match local_parent {
+      Present { value: _ } => none
+      Absent => reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
     }
+    let variant_parent = match local_parent {
+      Present { value: parent } => parent
+      Absent => match reexport_parent {
+        Present { value: parent } => parent
+        Absent => match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: imported_enums) {
+          Present { value: parent } => parent
+          Absent => match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: import_module_enums) {
+            Present { value: parent } => parent
+            Absent => ""
+          }
+        }
+      }
+    }
+    ImportNameClassification { is_graph_type: false, local_parent: local_parent, reexport_parent: reexport_parent, variant_parent: variant_parent }
   }
 }
+
+// THE WALKS THE PER-PARENT LOOPS DEMAND ON EVERY NAME. When at least one variant parent exists,
+// the parent-existence and representative loops consult `find_variant_parent_in_module` and
+// `reexport_variant_parent_in_import_module` for EVERY kept name -- including names the classifier
+// above gated off, whose rows carry none for those fields -- so their rows are extended with the
+// real walks, each computed once per name instead of once per (name, parent) pair. The reexport
+// walk keeps the call pattern every site has: consulted only when the local walk misses. With no
+// variant parent the parent loops are vacuous and the extension table stays empty: the gated rows
+// then answer reads that never happen, which is the demand this deletes.
+fn extend_import_name_walks(row: ImportNameClassification, n: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> ImportNameClassification {
+  let local_parent = find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+  let reexport_parent = match local_parent {
+    Present { value: _ } => none
+    Absent => reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+  }
+  ImportNameClassification { is_graph_type: row.is_graph_type, local_parent: local_parent, reexport_parent: reexport_parent, variant_parent: row.variant_parent }
+}
+
+// THE READERS OF THE ROWS. The tables are built over every name the planner keeps, so a miss is a
+// caller that outgrew the table rather than a name with no answer; each reader recomputes through
+// the one authority in its Absent arm, which keeps every read total without a second copy of any
+// decision.
+fn import_name_is_graph_type(n: String, classifications: Map<String, ImportNameClassification>, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, imported_enums: List<String>, import_module_enums: List<String>) -> Bool {
+  match map_get(classifications, n) {
+    Present { value: row } => row.is_graph_type
+    Absent => classify_import_name(n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums).is_graph_type
+  }
+}
+
+fn import_name_variant_parent(n: String, classifications: Map<String, ImportNameClassification>, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, imported_enums: List<String>, import_module_enums: List<String>) -> String {
+  match map_get(classifications, n) {
+    Present { value: row } => row.variant_parent
+    Absent => classify_import_name(n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums).variant_parent
+  }
+}
+
+fn import_name_local_parent(n: String, parent_walks: Map<String, ImportNameClassification>, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, imported_enums: List<String>, import_module_enums: List<String>) -> String? {
+  match map_get(parent_walks, n) {
+    Present { value: row } => row.local_parent
+    Absent => extend_import_name_walks(row: classify_import_name(n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums), n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index).local_parent
+  }
+}
+
+fn import_name_reexport_parent(n: String, parent_walks: Map<String, ImportNameClassification>, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, imported_enums: List<String>, import_module_enums: List<String>) -> String? {
+  match map_get(parent_walks, n) {
+    Present { value: row } => row.reexport_parent
+    Absent => extend_import_name_walks(row: classify_import_name(n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums), n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index).reexport_parent
+  }
+}
+
+// THE MODULE RENDERING OF A DIRECT NAME, DECIDED ONCE PER NAME. The direct-line region asked
+// `graph_type_import_module_filename` once to group by module and again inside every group, and
+// `graph_type_import_module_path` once more per rendered name; all three reads take the same
+// arguments and therefore have one answer per name. The table's key set is exactly the names read.
+type ImportNameRendering {
+  defining_filename: String
+  owner_path: String
+}
+
+fn classify_import_name_rendering(n: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> ImportNameRendering {
+  ImportNameRendering {
+    defining_filename: graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index),
+    owner_path: graph_type_import_module_path(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+  }
+}
+
+fn import_name_rendering(n: String, renderings: Map<String, ImportNameRendering>, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> ImportNameRendering {
+  match map_get(renderings, n) {
+    Present { value: row } => row
+    Absent => classify_import_name_rendering(n: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+  }
+}
+
 
 // A DECLARED RESOURCE IS NOT A HOST-REALIZED KERNEL SCALAR. A resource has no type node of its own, so
 // the env resolves its name to a bare leaf carrying a kernel identity span, which is exactly the shape
@@ -6986,8 +7081,12 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     []
   } else {
     let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
+    let imported_enums = non_marker_names |> filter(n => import_module_enums |> any(e => e == n))
+    let classifications = deduped_names |> fold(init: empty_map(), f: (acc, n) =>
+      map_insert(acc, n, classify_import_name(n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums))
+    )
     let top_level = non_marker_names |> filter(n =>
-      if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) {
+      if import_name_is_graph_type(n: n, classifications: classifications, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
         true
       } else if is_known_variant(variant_to_enum: emit_info.variant_to_enum, name: n) {
         import_module_enums |> any(e => e == n)
@@ -6997,13 +7096,23 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
         false
       } else { true }
     )
-    let imported_enums = non_marker_names |> filter(n => import_module_enums |> any(e => e == n))
     let all_parents = non_marker_names |> map(n =>
-      import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, variant_to_enum: emit_info.variant_to_enum)
+      import_name_variant_parent(n: n, classifications: classifications, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums)
     ) |> filter(p => p != "")
     let parent_list = unique_strings(items: all_parents)
+    // THE PER-NAME WALKS THE PARENT LOOPS DEMAND. Built once per name, read per (name, parent)
+    // pair at every existence/representative site. Skipped when no name has a variant parent: with
+    // an empty parent_list the loops that read these rows are vacuous, so building them would be
+    // the same unread demand this lane deletes.
+    let parent_walks = if parent_list |> count == 0 {
+      empty_map()
+    } else {
+      deduped_names |> fold(init: empty_map(), f: (acc, n) =>
+        map_insert(acc, n, extend_import_name_walks(row: classify_import_name(n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums), n: n, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index))
+      )
+    }
     let non_variant_top = top_level |> filter(n =>
-      if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, variant_to_enum: emit_info.variant_to_enum) != "" {
+      if import_name_variant_parent(n: n, classifications: classifications, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
         false
       } else if is_known_variant(variant_to_enum: emit_info.variant_to_enum, name: n)
         && authored_import_binds_provider_declaration(name: n, import_module: import_module, module_env: module_env, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == false {
@@ -7015,12 +7124,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
 
     let local_parent_names = parent_list |> filter(p =>
       deduped_names |> any(n =>
-        match find_variant_parent_in_module(
-          variant_name: n,
-          module_name: import_module,
-          typed_modules: typed_modules,
-          source_indices: source_indices,
-        module_index: module_index) {
+        match import_name_local_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
           Present { value: found } => found == p
           Absent => false
         }
@@ -7030,38 +7134,36 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
       direct_names |> all(n => n != p)
     ) |> filter(p =>
       deduped_names |> any(n =>
-        match find_variant_parent_in_module(
-          variant_name: n,
-          module_name: import_module,
-          typed_modules: typed_modules,
-          source_indices: source_indices,
-        module_index: module_index) {
+        match import_name_local_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
           Present { value: found } => found == p
           Absent => false
         }
       ) == false
     )
     let merged_direct_names = unique_strings(items: concat(direct_names, local_parent_names))
+    let renderings = merged_direct_names |> fold(init: empty_map(), f: (acc, n) =>
+      map_insert(acc, n, classify_import_name_rendering(n: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index))
+    )
     let direct_mods = unique_strings(items: merged_direct_names |> map(n =>
-      graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+      import_name_rendering(n: n, renderings: renderings, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index).defining_filename
     ))
     let direct_lines = direct_mods |> flat_map(def_mod =>
       let group = merged_direct_names |> filter(n =>
-        graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == def_mod
+        import_name_rendering(n: n, renderings: renderings, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index).defining_filename == def_mod
       )
       if group |> count > 0 {
         let names_str = group |> map(n =>
-          emit_import_name(owner_module: graph_type_import_module_path(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index), n: n, registry: registry)
+          emit_import_name(owner_module: import_name_rendering(n: n, renderings: renderings, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index).owner_path, n: n, registry: registry)
         ) |> join(separator: ", ")
         [RustUseLine { target_module: def_mod, text: concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};") }]
       } else { [] }
     )
     let parent_defining_mods = unique_strings(items: remote_parent_list |> map(p =>
       let rep_variant = deduped_names |> filter(n =>
-        match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+        match import_name_local_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
           Present { value: found } => found == p
           Absent =>
-            match reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+            match import_name_reexport_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
               Present { value: found } => found == p
               Absent => false
             }
@@ -7075,10 +7177,10 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     let parent_main_lines = parent_defining_mods |> flat_map(def_mod =>
       let group = remote_parent_list |> filter(p =>
         let rep_variant = deduped_names |> filter(n =>
-          match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+          match import_name_local_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
             Present { value: found } => found == p
             Absent =>
-              match reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+              match import_name_reexport_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
                 Present { value: found } => found == p
                 Absent => false
               }
@@ -7100,15 +7202,15 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
-        } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) {
+        } else if import_name_is_graph_type(n: n, classifications: classifications, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
           false
         } else if import_module_enums |> any(e => e == n) {
           false
         } else {
-          match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+          match import_name_local_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
             Present { value: found } => found == parent
             Absent =>
-              match reexport_variant_parent_in_import_module(variant_name: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+              match import_name_reexport_parent(n: n, parent_walks: parent_walks, import_module: import_module, typed_modules: typed_modules, registry: registry, type_summaries: type_summaries, export_sets: export_sets, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum, imported_enums: imported_enums, import_module_enums: import_module_enums) {
                 Present { value: found } => found == parent
                 Absent =>
                   match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: [parent]) {
@@ -12819,7 +12921,7 @@ fn is_collection_typed_expr(texpr: Node, source_indices: Map<String, NewlineInde
 
 // A zero-field literal of a coproduct VARIANT is a TAG REFERENCE, not a construction --
 // the frontend already sanctions exactly this shape (04_infer.dag
-// zero_field_variant_tag_reference_frontier_note, operator Ruling 1a). The variant is named
+// payload_arm_tag_reference_waiver_results, gunbc.rung_drop payload_arm_tag_reference_hollow_value). The variant is named
 // statically, so its discriminant is a compile-time constant and the lowering folds to that
 // name. Constructing an instance in order to read a name it already has is the redundant
 // second representation DESIGN section 2 forbids -- and for a variant carrying required
@@ -14122,14 +14224,15 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
 
   let sharing = language_spec(target: Rust).sharing
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
-  let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
-  let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
-  let closure_params = if elem_type_str == "_" {
-    "|a, b|"
+  let e_clone = apply_type_template1(template: sharing.clone_value, arg0: "__e")
+  let decorate_param = if elem_type_str == "_" {
+    "|__e|"
   } else {
-    concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
+    concat("|__e: ", elem_type_str, "|")
   }
-  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }"))
+  // Decorate, stable sort on the stored key, undecorate: the supplied selector runs once per
+  // element (it is pure), not twice per comparison; canonical_key_cmp and the tie order are unchanged.
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __keyed: Vec<_> = ", iter_str, ".map(", decorate_param, " { let __k = (", sort_key_fn, ")(", e_clone, "); (__k, __e) }).collect(); __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0)); __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>() }"))
 }
 
 // The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
@@ -16219,7 +16322,6 @@ fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferSc
       let planned = lit.children |> map(f =>
         let f_name = field_init_node_name_at(n: f, source_indices: si)
         let f_value = field_init_node_value(n: f)
-        let stored = emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         let direct_rc = match record_field_storage(f_name: f_name, f_value: f_value, summary_name: tn, ctor_name: tn, scope: scope, shared_types: shared_types, emit_info: emit_info) {
           StoredDirectRc => true
           StoredPromotedToSome => false
@@ -16241,7 +16343,10 @@ fn dying_literal_plan(lit: Node, registry: Map<String, ItemInfo>, scope: InferSc
                 })
               }
             }
-          Absent => DyingLitField { name: f_name, shape: DyingPlain { stored: stored } }
+          // The field render runs only on the arm that reads it (DESIGN §2, deleted demand): a
+          // nested field's renders are its DyingLitInit ones above, computed from the INNER
+          // type/name - the outer render was built and discarded for every nested field.
+          Absent => DyingLitField { name: f_name, shape: DyingPlain { stored: emit_stored_record_field(f: f, resolved_type: rt, outer_type_name: Present { value: tn }, summary_name: tn, ctor_name: tn, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) } }
         }
       )
       Present { value: DyingLitPlan { struct_name: tn, fields: planned } }
@@ -20603,7 +20708,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_census_residual_rows,", "\n",
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
       "    native_census_cause_group_rows, native_census_closure_index, native_census_roots_ranked,", "\n",
-      "    native_demand_census_output,", "\n",
+      "    native_demand_census_output, native_decl_ref_census_output,", "\n",
       "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,", "\n",
       "    NativeCensusScope, NativeCensusScoped,", "\n",
       "    census_module_obligation_rows, census_scoped_run_record, census_comparable_record, census_comparable_diff,", "\n",
@@ -20976,6 +21081,22 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let reads = read_census_ingest(source_roots);", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
       "    let output = native_demand_census_output(ingest);", "\n",
+      "    for line in output.lines.iter() \{", "\n",
+      "        println!(\"{}\", line);", "\n",
+      "    \}", "\n",
+      "    std::process::exit(output.exit as i32);", "\n",
+      "\}", "\n",
+      "", "\n",
+      "// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (v2.compiler.source_root_eval native_decl_ref_census_output).", "\n",
+      "// The fold decides every line and the exit; this function only reads the ingest, prints and exits.", "\n",
+      "fn run_decl_ref_census(source_roots: &[String]) \{", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
+      "    let reads = read_census_ingest(source_roots);", "\n",
+      "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
+      "    let output = native_decl_ref_census_output(ingest);", "\n",
       "    for line in output.lines.iter() \{", "\n",
       "        println!(\"{}\", line);", "\n",
       "    \}", "\n",
@@ -21939,6 +22060,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensusResolve \{ .. \} => run_census_resolve(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverDeclRefCensus \{ .. \} => run_decl_ref_census(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, subjects_rest, against, .. \} => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",

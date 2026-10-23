@@ -1,7 +1,8 @@
 module gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_floor
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // After the roster-referenced roll-up `emit_ingest_typescript_same_language_round_trip_holds` was
@@ -19,17 +20,11 @@ data typescript_same_language_round_trip_leaves_off_required_floor: RungDrop = R
 
   declared: "2026-09-17",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: [
-      "v2.test.claim.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_parse_bridge_holds",
-      "v2.test.claim.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_source_emit_round_trip_holds",
-      "v2.test.claim.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_discriminates_on_real_tree",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "v2.test.claim.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_parse_bridge_holds", tail: ["v2.test.claim.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_source_emit_round_trip_holds", "v2.test.claim.execution.emit_ingest_typescript_same_language_round_trip.typescript_same_language_discriminates_on_real_tree"] } },
     restoration_trigger: "THE CAPABILITY, not a re-add of the identities: a required-floor claim can inhabit TypeScript parse_tree_to_target_model_bridge and same-language cross_language_compile on the acceptance path UNDER the NewWitnessTier eval-step budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, without grandfathering and without expected-red enrolment of a passing identity. Observed at retirement: those two identities (and the discriminator if it is a test fn) are planned test fns, reach a verdict on a required run, and measure at or under that derived budget. Re-adding them over budget, or adding them to floor_grandfathered_roster, does not retire this row.",
-  }
+  } }
 }

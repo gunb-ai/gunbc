@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_wall_conjunct_requires_a_class_no_producer
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data a_wall_conjunct_requires_a_class_no_producer_can_emit: RecurringFailureMode = RecurringFailureMode {
   identity: "a_wall_conjunct_requires_a_class_no_producer_can_emit" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "INVALID STATE: a wall carries a non-emptiness conjunct over a derived population — `length(xs: roster()) > 0`, a `count > 0`, a `both sides present` pair — whose CLASS has no producer anywhere in the tree. The class is not merely unpopulated today; nothing constructs it. The wall is therefore not red-as-in-broken and not red-as-in-awaiting-a-row: it is unsatisfiable until a producer exists, and it will keep reading as slop debt in the ledger until someone either manufactures a specimen to satisfy it or identifies the missing PRODUCER as the actual trigger.",

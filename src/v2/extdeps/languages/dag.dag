@@ -148,7 +148,8 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   lex_rules_literal_for_class,
   char_kernel_type_node,
   symbol_kernel_type_node,
-  IntLiteralUnwired,
+  ListIntroductionUnwired,
+  IntLiteralDecimal,
   ProducedDeclUnwired,
   CanonicalOperation,
   ConcreteSyntaxToken,
@@ -170,6 +171,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   canonical_operation_op_ge,
   canonical_operation_op_eq,
   canonical_operation_op_ne,
+  canonical_operation_op_not,
   target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
@@ -449,6 +451,8 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_div())
   } else if surface_token == ^dag_token_kw_as {
     outcome_accepted(canonical_operation_op_coerce())
+  } else if surface_token == ^dag_token_bang {
+    outcome_accepted(canonical_operation_op_not())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
@@ -747,6 +751,7 @@ fn dag_lex_rules_except_braces() -> List<LexRule> {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_false, text: "false"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_where, text: "where"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_as, text: "as"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_is, text: "is"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_return, text: "return"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_nominal_opaque, text: "nominal_opaque"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_sole_constructor, text: "sole_constructor"),
@@ -1033,13 +1038,13 @@ fn dag_grammar_keyword_terminal() -> GrammarExpr {
 // readers take as pair.left -- and no choice row is added beside the name (the overlap roster those
 // productions were cleared to stays at zero).
 //
-// THE BARE `NAME =` SUGAR CARRIES NO GUARD, AND THE REASON IS MEASURED. A statement's alternatives are
+// THE BARE `NAME =` SUGAR GUARDS ONLY THE WORD THE FIRST SET REACHES. A statement's alternatives are
 // dispatched by FIRST set, and a not-predicate is transparent to that set, so the let_sugar alternative's
-// first set is the value-name tokens and a statement that begins with a keyword never reaches it: a guard
-// there could not fire (a bare `loop = 1` refuses as parse_g0_tokens_remain at the keyword, measured).
-// It still refuses -- the binder reads the reference production, which admits no other keyword -- but
-// unnamed. NEXT TRIGGER, the capability: FIRST-set computation that sees through a refusal guard, at which
-// point this form takes dag_grammar_value_name_before(follow: `=`) like the others.
+// first set is the value-name tokens: `none` is an identifier token and reaches the guard, but a keyword
+// token never does (a bare `loop = 1` refuses as parse_g0_tokens_remain at the keyword, measured), so for
+// a keyword the form still refuses unnamed -- the binder reads the reference production. NEXT TRIGGER, the
+// capability: FIRST-set computation that sees through a refusal guard, at which point every keyword
+// takes this guard by name.
 //
 // IT FIRES ONLY WHERE THE KEYWORD CAN ONLY BE A BINDER. RefuseOnMatch stops the whole parse, and a pattern
 // is probed ahead of every match-arm statement and a `node NAME` sugar ahead of an expression statement,
@@ -1048,6 +1053,23 @@ fn dag_grammar_keyword_terminal() -> GrammarExpr {
 // nothing else can follow, so that guard is unconditional. `true` and `false` are literal PATTERNS, so the
 // field-pattern guard does not refuse them.
 fn dag_grammar_value_name_keyword_terminal(admit_bool_literals: Bool) -> GrammarExpr {
+  if admit_bool_literals {
+    dag_grammar_value_name_keyword_tokens(admit_bool_literals: admit_bool_literals)
+  } else {
+    dag_grammar_choice(
+      left: dag_grammar_value_name_keyword_tokens(admit_bool_literals: admit_bool_literals),
+      right: dag_grammar_keyword_expr(lexeme: "none")
+    )
+  }
+}
+
+// `none` is an identifier TOKEN, not a keyword token class, but it is reserved the same way: the
+// none_literal production owns the word, so every binder position refuses it through this one terminal
+// (dag_absence_is_one_meaning) rather than through a second local check. A field LABEL is not read here.
+// The field-pattern VALUE position (admit_bool_literals: true) admits `none` as it admits `true` / `false`:
+// the corpus writes the absence pattern there, and a native pattern-position `none` is the declared
+// follow-up (ruling gunbc.design_ruling dag_absence_is_one_meaning), so that position is left as it was rather than refused.
+fn dag_grammar_value_name_keyword_tokens(admit_bool_literals: Bool) -> GrammarExpr {
   fold_list(
     xs: dag_binding_name_keyword_tokens(),
     empty: dag_grammar_terminal(token_class: ^dag_token_kw_import),
@@ -1080,11 +1102,24 @@ fn dag_grammar_value_name_guard(binder: GrammarExpr) -> GrammarExpr {
 
 // A value name whose binder role is fixed by the token after it.
 fn dag_grammar_value_name_before(follow: GrammarExpr) -> GrammarExpr {
+  dag_grammar_value_name_binder_before(name: dag_grammar_primary_name_expr(), follow: follow)
+}
+
+// The same guard over a binder that reads the identifier-only name production (an untyped fn parameter, an
+// arrow-lambda parameter), so every binder position shares ONE guard rather than a local check.
+fn dag_grammar_value_name_binder_before(name: GrammarExpr, follow: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_value_name_guard(
       binder: dag_grammar_sequence(left: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false), right: follow)
     ),
-    right: dag_grammar_primary_name_expr()
+    right: name
+  )
+}
+
+fn dag_grammar_value_name_ends_param() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_comma),
+    right: dag_grammar_terminal(token_class: ^dag_token_rparen)
   )
 }
 
@@ -1365,6 +1400,7 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
     ^dag_token_kw_false,
     ^dag_token_kw_where,
     ^dag_token_kw_as,
+    ^dag_token_kw_is,
     ^dag_token_kw_return,
     ^dag_token_kw_nominal_opaque,
     ^dag_token_kw_sole_constructor
@@ -1602,7 +1638,7 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
       )
     ),
     right: dag_grammar_sequence(
-      left: dag_grammar_primary_name_expr(),
+      left: dag_grammar_value_name_before(follow: dag_grammar_terminal(token_class: ^dag_token_eq)),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_eq),
         right: dag_grammar_nonterminal(production: ^dag_production_expr)
@@ -1847,7 +1883,12 @@ fn dag_grammar_expr_list_helper() -> GrammarExpr {
 }
 
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
-  dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name())
+  dag_grammar_comma_list_expr(
+    item: dag_grammar_sequence(
+      left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false)),
+      right: dag_grammar_ident_or_type_decl_modifier_name()
+    )
+  )
 }
 
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
@@ -1880,6 +1921,16 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_as),
     right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+  )
+}
+
+// `x is V` is a postfix step beside the cast: the arm V is spelled as one name and is only a
+// SOURCE SPELLING here. Resolving it against x's type declaration is elaboration's work, and the
+// resolved arm it produces has no row in this grammar, so no source text can spell it.
+fn dag_grammar_postfix_is_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_is),
+    right: dag_grammar_binding_name_terminal()
   )
 }
 
@@ -1917,7 +1968,10 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
         left: dag_grammar_postfix_dot_suffix_expr(),
         right: dag_grammar_choice(
           left: dag_grammar_postfix_as_suffix_expr(),
-          right: dag_grammar_postfix_index_suffix_expr()
+          right: dag_grammar_choice(
+            left: dag_grammar_postfix_is_suffix_expr(),
+            right: dag_grammar_postfix_index_suffix_expr()
+          )
         )
       )
     )
@@ -2031,11 +2085,22 @@ fn dag_grammar_string_template_expr() -> GrammarExpr {
   )
 }
 
+// `none` IS SYNTAX FOR ABSENCE (ruling gunbc.design_ruling dag_absence_is_one_meaning), its own production
+// rather than a name: the name alternative is guarded by a not-predicate over the word, the same
+// construction `requires` uses to keep a resource from being named `none`, so the word has exactly one
+// reading and no binding can shadow it. A literal terminal stamps the token class, not the word, so
+// only the production's emitted identity (^dag_surface_none_literal) says `none` was written. Lowering
+// is v2.compiler.body_lowering_fold body_lower_none_literal.
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_none_literal),
+    right: dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_primary_name_expr(),
-      right: dag_grammar_primary_ident_suffix_expr()
+      left: grammar_expr_not_predicate(element: dag_grammar_keyword_expr(lexeme: "none")),
+      right: dag_grammar_sequence(
+        left: dag_grammar_primary_name_expr(),
+        right: dag_grammar_primary_ident_suffix_expr()
+      )
     ),
     right: dag_grammar_choice(
       left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
@@ -2088,6 +2153,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
         )
       )
     )
+  )
   )
   )
 }
@@ -2149,8 +2215,17 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
 // (`R { true }` and `R { true s }` would name a value no reference can name, so the pun never reads them (the list is not a record; downstream refuses the leftover), like every
 // keyword, whatever follows it; dag_grammar_value_name_unconditional, the same production a reference reads).
 fn dag_grammar_field_init_pun_expr() -> GrammarExpr {
-  dag_grammar_value_name_unconditional()
+  dag_grammar_sequence(
+    left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_tokens(admit_bool_literals: false)),
+    right: dag_grammar_primary_name_expr()
+  )
 }
+
+// `none` IS NOT REFUSED HERE. It is an identifier TOKEN, in this alternative's first set, so a guard would
+// fire on every speculative record probe (`match x { none => .. }` probes `x { none`), and one keyed on the next
+// token is defeated by an omitted comma (`R { none x }`). The pun parses, and body lowering refuses a pun field
+// named `none` at the parsed pun's position (v2.compiler.body_lowering_fold body_lower_field_init_pun_edge,
+// body_lowering_reason_reserved_value_name_pun): the refusal has that one authority.
 
 // THE STRING KEY IS THE CLASS-STAMPED STRING TERMINAL -- the one string terminal, whose node carries
 // the literal's decoded value (gunbc#12759) -- never a second, spelling-stamped one.
@@ -2407,7 +2482,10 @@ fn dag_grammar_fn_literal_expr() -> GrammarExpr {
 fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_ident_or_type_decl_modifier_name(),
+      left: dag_grammar_value_name_binder_before(
+        name: dag_grammar_ident_or_type_decl_modifier_name(),
+        follow: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
+      ),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
         right: dag_grammar_arrow_lambda_body_expr()
@@ -2416,16 +2494,25 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
-        left: dag_grammar_ident_or_type_decl_modifier_name(),
+        left: dag_grammar_value_name_binder_before(
+          name: dag_grammar_ident_or_type_decl_modifier_name(),
+          follow: dag_grammar_terminal(token_class: ^dag_token_comma)
+        ),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_comma),
           right: dag_grammar_sequence(
-            left: dag_grammar_ident_or_type_decl_modifier_name(),
+            left: dag_grammar_value_name_binder_before(
+              name: dag_grammar_ident_or_type_decl_modifier_name(),
+              follow: dag_grammar_value_name_ends_param()
+            ),
             right: dag_grammar_sequence(
               left: dag_grammar_repeat(
                 element: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_comma),
-                  right: dag_grammar_ident_or_type_decl_modifier_name()
+                  right: dag_grammar_value_name_binder_before(
+                    name: dag_grammar_ident_or_type_decl_modifier_name(),
+                    follow: dag_grammar_value_name_ends_param()
+                  )
                 )
               ),
               right: dag_grammar_sequence(
@@ -3990,6 +4077,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_if_expr_expr(),
     emitted: ^dag_surface_if_expr
   )
+  let none_literal = dag_grammar_production(
+    name: ^dag_production_none_literal,
+    expression: dag_grammar_keyword_expr(lexeme: "none"),
+    emitted: ^dag_surface_none_literal
+  )
   let string_template = dag_grammar_production(
     name: ^dag_production_string_template,
     expression: dag_grammar_string_template_expr(),
@@ -4081,6 +4173,7 @@ fn dag_grammar_root() -> GrammarRoot {
       let_expr,
       expr,
       string_template,
+      none_literal,
       loop_expr,
       binary_expr,
       unary_expr,
@@ -6796,7 +6889,8 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^dag_token_kw_true,
       false_token: ^dag_token_kw_false
     },
-    int_literal_form: IntLiteralUnwired,
+    int_literal_form: IntLiteralDecimal { literal_token: ^dag_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: dag_block_evaluation_mode()
   }
 }

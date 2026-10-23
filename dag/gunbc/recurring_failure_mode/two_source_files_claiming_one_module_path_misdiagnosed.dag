@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.two_source_files_claiming_one_module_path_mi
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data two_source_files_claiming_one_module_path_misdiagnosed: RecurringFailureMode = RecurringFailureMode {
   identity: "two_source_files_claiming_one_module_path_misdiagnosed" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**two source files claiming one module path are not refused as that collision, and the native door reports a later unbound name instead** (INVALID STATE: either two files declare the same module path, or one walked root's layout maps two files onto one tree identity, and ingest continues. HARM: the operator sequences on `resolve_unbound_name_is_declared_elsewhere` at a real token in an innocent module -- DESIGN section 5 silent wrongness wearing a located diagnostic.",
@@ -32,6 +34,6 @@ data two_source_files_claiming_one_module_path_misdiagnosed: RecurringFailureMod
   evidence: [
     DeclarationRef { module_path: "v2.cli.repository_layout", decl_name: "repository_tree_of_root_argument", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.source_root_read", decl_name: "source_root_read", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.compiler.self_host.closure_emission", decl_name: "closure_census_duplicate_module_outcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.self_host.closure_emission", decl_name: "closure_duplicate_module_diagnostics", field: WholeDeclaration },
   ],
 }

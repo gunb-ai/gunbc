@@ -1,0 +1,279 @@
+module gunbc.live_deploy.retract_legs
+
+import std.types { String, NonEmptyStr, Int }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Cons, Empty, FreeSemigroup, list_append, non_empty_append, non_empty_singleton }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, ScopedRemovalSupported, ScopedRemovalUnsupported, ScopedRemovalUnobserved }
+import extdeps.version.semver { semver_version_label }
+import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove, EffectsReady, ApplyRefused, EffectsOrRefusal, membership_effects }
+import gunbc.owned_directory { owned_directory_path, owned_directory_member }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
+import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason }
+import gunbc.live_deploy.emit { deployment_retract_plan }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, DeploymentStep, DeploymentArtifactStep, ArtifactStep, Dependency,
+  ComposeOwned, UpsertOwned,
+  SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, ApprovalBrokerFrontDoor, AttemptUnitDrainPathUnit,
+  deployment_fabric_storage_door_socket, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
+  deployment_tailnet_door_unit_name, deployment_fabric_storage_unit_name,
+  deployment_attempt_unit_drain_path_unit_name, deployment_attempt_unit_drain_service_unit_path,
+  deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_credential_recovery_timer_unit_name,
+  deployment_retired_belt_timer_unit_name, deployment_retired_belt_timer_unit_path,
+  deployment_belt_answer_path_unit_path, deployment_belt_exit_drain_service_unit_path, deployment_belt_discovery_service_unit_path,
+  deployment_belt_credential_recovery_unit_path, deployment_belt_credential_recovery_timer_unit_path, deployment_belt_service_unit_path,
+  deployment_fleet_converge_timer_unit_name, deployment_fleet_converge_service_unit_path,
+  deployment_publication_path_unit_name, deployment_publication_timer_unit_name, deployment_publication_timer_unit_path, deployment_publication_service_unit_path,
+  deployment_tree_remote_unit_name, tree_sync_unit_path, deployment_slice_unit_path,
+}
+
+// THE RETRACT FOLD'S LEGS AS DATA, replacing the retract bash script. A
+// leg is one typed operation on the host; the runner (gunbc.host.host_effect_realize
+// realize_live_deploy_retract_on_host) turns each into a typed argv and folds the first failure into a
+// NotConverged naming that leg's step. There is no PipelineStep interpreter here: the legs are a closed
+// sum the runner matches totally, as W6's DarkLeg is.
+//
+// THE PLAN DECIDES EVERY REFUSAL BEFORE ANY LEG RUNS. The script's refusals were Decide fragments, and
+// compose_host_script dropped every Mutate when one was Refused, so a refused retract mutated nothing.
+// DeployRetractPlan keeps that: RetractPlanRefused carries the step and reason and no leg is returned
+// for the runner to start.
+type DeployRetractLeg
+  = RetractServeOff { endpoint: TailscaleServeEndpoint }
+  | RetractDisableIfLoaded { unit: NonEmptyStr }
+  | RetractRemoveForce { paths: FreeSemigroup<NonEmptyStr> }
+  | RetractRemoveEmptyDirectory { path: NonEmptyStr }
+  | RetractRemoveRecursive { path: NonEmptyStr }
+  | RetractDaemonReload
+  | RetractUnitGoneReadback { unit: NonEmptyStr }
+
+type DeployRetractPlan
+  = RetractPlanReady { legs: List<DeployRetractLeg> }
+  | RetractPlanRefused { step: String, reason: String }
+
+fn deploy_retract_leg_step(leg: DeployRetractLeg) -> String {
+  match leg {
+    RetractServeOff { endpoint: _ } => "tailscale-serve-off"
+    RetractDisableIfLoaded { unit: _ } => "disable-if-loaded"
+    RetractRemoveForce { paths: _ } => "remove-files"
+    RetractRemoveEmptyDirectory { path: _ } => "remove-empty-directory"
+    RetractRemoveRecursive { path: _ } => "remove-tree"
+    RetractDaemonReload => "daemon-reload"
+    RetractUnitGoneReadback { unit: _ } => "unit-gone-readback"
+  }
+}
+
+fn retract_semigroup_of(head: NonEmptyStr, rest: List<NonEmptyStr>) -> FreeSemigroup<NonEmptyStr> {
+  match rest {
+    Empty => non_empty_singleton(item: head)
+    Cons { head: h, tail: t } => non_empty_append(left: non_empty_singleton(item: head), right: retract_semigroup_of(head: h, rest: t))
+  }
+}
+
+fn retract_remove_files(head: NonEmptyStr, rest: List<NonEmptyStr>) -> DeployRetractLeg {
+  RetractRemoveForce { paths: retract_semigroup_of(head: head, rest: rest) }
+}
+
+fn retract_disable_legs(units: List<NonEmptyStr>) -> List<DeployRetractLeg> {
+  map(units, u => RetractDisableIfLoaded { unit: u })
+}
+
+fn retract_unit_teardown(units: List<NonEmptyStr>, head: NonEmptyStr, rest: List<NonEmptyStr>) -> List<DeployRetractLeg> {
+  concat(retract_disable_legs(units: units), [retract_remove_files(head: head, rest: rest), RetractDaemonReload])
+}
+
+fn retract_leftover_timer_legs(unit: NonEmptyStr, path: NonEmptyStr) -> List<DeployRetractLeg> {
+  [
+    RetractDisableIfLoaded { unit: unit },
+    retract_remove_files(head: path, rest: []),
+    RetractDaemonReload,
+    RetractUnitGoneReadback { unit: unit },
+  ]
+}
+
+fn retract_dispatch_root_paths(spec: DeploymentSpec) -> List<NonEmptyStr> {
+  map(
+    filter(xs: spec.directories, predicate: t =>
+      (owned_directory_member(t: t) as String) == (dashboard_dispatch_worktree_member as String)
+        || (owned_directory_member(t: t) as String) == (dashboard_attempt_state_member as String)),
+    t => owned_directory_path(t: t),
+  )
+}
+
+fn deploy_retract_artifact_plan(art: DeploymentArtifactStep, spec: DeploymentSpec) -> DeployRetractPlan {
+  match art.kind {
+    UpsertOwned { kind: TailscaleServeMapping } =>
+      RetractPlanReady { legs: [RetractServeOff { endpoint: spec.names.tailscale_serve_endpoint }] }
+    ComposeOwned { kind: FabricStorageServeMapping } =>
+      match deployment_fabric_storage_door_socket(spec: spec) {
+        Absent =>
+          RetractPlanRefused {
+            step: "fabric-storage-door",
+            reason: join(["live-deploy retract refused: the fabric storage door socket is unknown for instance ", spec.instance_id as String, ", so its serve mapping cannot be taken down"], ""),
+          }
+        Present { value: door_socket } =>
+          RetractPlanReady { legs: [RetractServeOff { endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket) }] }
+      }
+    UpsertOwned { kind: ApprovalBrokerFrontDoor } =>
+      RetractPlanReady { legs: map(deployment_approval_broker_front_door_endpoints(), e => RetractServeOff { endpoint: e }) }
+    ComposeOwned { kind: TailnetDoorServeUnit } =>
+      RetractPlanReady { legs: retract_unit_teardown(units: [deployment_tailnet_door_unit_name(names: spec.names)], head: art.path, rest: []) }
+    ComposeOwned { kind: FabricStorageServeUnit } =>
+      RetractPlanReady { legs: retract_unit_teardown(units: [deployment_fabric_storage_unit_name(names: spec.names)], head: art.path, rest: []) }
+    ComposeOwned { kind: SystemdUnit } =>
+      RetractPlanReady { legs: retract_unit_teardown(units: [spec.service.unit_name], head: art.path, rest: []) }
+    UpsertOwned { kind: BeltEventPathUnit } =>
+      RetractPlanReady {
+        legs: concat(
+          concat(
+            retract_disable_legs(units: [
+              deployment_belt_exit_path_unit_name(names: spec.names),
+              deployment_belt_answer_path_unit_name(names: spec.names),
+              deployment_belt_credential_recovery_timer_unit_name(names: spec.names),
+            ]),
+            retract_leftover_timer_legs(
+              unit: deployment_retired_belt_timer_unit_name(names: spec.names),
+              path: deployment_retired_belt_timer_unit_path(names: spec.names),
+            ),
+          ),
+          [
+            retract_remove_files(head: art.path, rest: [
+              deployment_belt_answer_path_unit_path(names: spec.names),
+              deployment_belt_exit_drain_service_unit_path(names: spec.names),
+              deployment_belt_discovery_service_unit_path(names: spec.names),
+              deployment_belt_credential_recovery_unit_path(names: spec.names),
+              deployment_belt_credential_recovery_timer_unit_path(names: spec.names),
+              deployment_belt_service_unit_path(names: spec.names),
+            ]),
+            RetractDaemonReload,
+          ],
+        ),
+      }
+    ComposeOwned { kind: FleetConvergeTimerUnit } =>
+      RetractPlanReady {
+        legs: retract_unit_teardown(
+          units: [deployment_fleet_converge_timer_unit_name(names: spec.names)],
+          head: art.path,
+          rest: [deployment_fleet_converge_service_unit_path(names: spec.names)],
+        ),
+      }
+    UpsertOwned { kind: PublicationHelperPathUnit } =>
+      RetractPlanReady {
+        legs: concat(
+          concat(
+            retract_disable_legs(units: [deployment_publication_path_unit_name(names: spec.names)]),
+            retract_leftover_timer_legs(
+              unit: deployment_publication_timer_unit_name(names: spec.names),
+              path: deployment_publication_timer_unit_path(names: spec.names),
+            ),
+          ),
+          [
+            retract_remove_files(head: art.path, rest: [deployment_publication_service_unit_path(names: spec.names)]),
+            RetractDaemonReload,
+          ],
+        ),
+      }
+    UpsertOwned { kind: AttemptUnitDrainPathUnit } =>
+      RetractPlanReady {
+        legs: retract_unit_teardown(
+          units: [deployment_attempt_unit_drain_path_unit_name(names: spec.names)],
+          head: art.path,
+          rest: [deployment_attempt_unit_drain_service_unit_path(names: spec.names)],
+        ),
+      }
+    UpsertOwned { kind: DeployedTreeRemoteUnit } =>
+      RetractPlanReady { legs: retract_unit_teardown(units: [deployment_tree_remote_unit_name(names: spec.names)], head: art.path, rest: []) }
+    UpsertOwned { kind: ServeBinary } =>
+      RetractPlanReady { legs: [retract_remove_files(head: art.path, rest: [])] }
+    ComposeOwned { kind: OidcConfigArtifact } =>
+      RetractPlanReady { legs: [retract_remove_files(head: art.path, rest: [])] }
+    UpsertOwned { kind: GunbcSourceTree } =>
+      RetractPlanReady {
+        legs: concat(
+          map(retract_dispatch_root_paths(spec: spec), p => RetractRemoveEmptyDirectory { path: p }),
+          [
+            retract_remove_files(head: tree_sync_unit_path(names: spec.names), rest: [
+              spec.names.tree_sync_env_path,
+              deployment_slice_unit_path(names: spec.names),
+            ]),
+            RetractDaemonReload,
+            RetractRemoveRecursive { path: art.path },
+          ],
+        ),
+      }
+  }
+}
+
+fn deploy_retract_effect_plan(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec) -> DeployRetractPlan {
+  match effect {
+    EffectRemove { from: step } =>
+      match step {
+        ArtifactStep { step: art } => deploy_retract_artifact_plan(art: art, spec: spec)
+        Dependency { step: _ } =>
+          RetractPlanRefused {
+            step: "dependency-teardown",
+            reason: "live-deploy retract refused: an EffectRemove of an ensured dependency reached the dispatch; a dependency is ensured, never torn down, so deployment_step_ownership or membership_effects is broken",
+          }
+      }
+    EffectReplace { from: _, to: _ } =>
+      RetractPlanRefused {
+        step: "replace",
+        reason: "live-deploy retract refused: an EffectReplace reached the dispatch, but the retract pole desires nothing, so no replace can arise; a non-degenerate observed provider landed without its realization being modeled",
+      }
+    EffectAdd { to: _ } =>
+      RetractPlanRefused {
+        step: "add",
+        reason: "live-deploy retract refused: an EffectAdd reached the dispatch, but the retract pole desires nothing, so no add can arise",
+      }
+  }
+}
+
+fn deploy_retract_effects_plan(effects: List<MemberEffect<DeploymentStep>>, spec: DeploymentSpec, legs: List<DeployRetractLeg>) -> DeployRetractPlan {
+  match effects {
+    Empty => RetractPlanReady { legs: legs }
+    Cons { head: e, tail: rest } =>
+      match deploy_retract_effect_plan(effect: e, spec: spec) {
+        RetractPlanRefused { step: s, reason: r } => RetractPlanRefused { step: s, reason: r }
+        RetractPlanReady { legs: more } => deploy_retract_effects_plan(effects: rest, spec: spec, legs: list_append(left: legs, right: more))
+      }
+  }
+}
+
+// The membership fold's verdict as a plan: any member teardown-refusal refuses the WHOLE retract.
+fn deploy_retract_membership_plan(membership: EffectsOrRefusal<DeploymentStep>, spec: DeploymentSpec) -> DeployRetractPlan {
+  match membership {
+    ApplyRefused { refusals: rs } =>
+      RetractPlanRefused {
+        step: "wholesale",
+        reason: join(["live-deploy retract refused WHOLESALE: the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown); the entire fold is refused rather than partially applied. refused-member-count=", to_string(count(rs))], ""),
+      }
+    EffectsReady { effects: es } => deploy_retract_effects_plan(effects: es, spec: spec, legs: [])
+  }
+}
+
+// THE RETRACT PLAN: lab plan, then the tailscale client capability, then the wholesale membership
+// refusal, then each effect's legs in retract order. Every refusal answers a RetractPlanRefused naming
+// its step.
+fn deploy_retract_plan_legs(spec: DeploymentSpec) -> DeployRetractPlan {
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: c } =>
+      RetractPlanRefused {
+        step: "lab-plan",
+        reason: join(["live-deploy retract refused: lab plan refused (", lab_plan_refusal_reason(cause: c) as String, ") (DESIGN 5: refuse, never widen)"], ""),
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match spec.target.tailscale_client {
+        ScopedRemovalUnsupported { observed: v } =>
+          RetractPlanRefused {
+            step: "tailscale-client",
+            reason: join(["live-deploy retract refused: this target's tailscale client is ", semver_version_label(v: v), ", below the 1.52 release that introduced scoped `serve <flags> off`. Removing the serve mapping would require the node-global reset, which destroys every other deployment's routing on this host (DESIGN 5: refuse, never widen)"], ""),
+          }
+        ScopedRemovalUnobserved { reason: r } =>
+          RetractPlanRefused {
+            step: "tailscale-client",
+            reason: join(["live-deploy retract refused: this target's tailscale client version is UNOBSERVED (", r, "), so whether scoped `serve <flags> off` exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)"], ""),
+          }
+        ScopedRemovalSupported { observed: _ } =>
+          deploy_retract_membership_plan(membership: membership_effects(plan: deployment_retract_plan(spec: spec)), spec: spec)
+      }
+  }
+}

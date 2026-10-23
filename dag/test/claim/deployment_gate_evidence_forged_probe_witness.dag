@@ -1,0 +1,470 @@
+module test.claim.deployment_gate_evidence_forged_probe_witness
+
+import std.types { String, Bool, Int }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key,
+  // EVERY CROSS-AXIS CLAIM HERE IS KEYED (class + subject_name + blocking), the exact form
+  // gunbc.compile_diagnostic_census documents and the form its annotations show. A class-only count
+  // is a property of the closure, not of the forgery: it goes green on any row of that class from
+  // any cause, including harness noise. Subjects below are the ones MEASURED on srv2 at this head
+  // (manager warm-crane-219, merge base 7251aa97df8; the PR changes no Rust), not guesses:
+  // a run's Int reaching a rule-carrier field is TypeMismatch at "Primitive(Int)"; a named foreign
+  // carrier reaching that field is DeclaredTypeNotInhabited at "record literal field 'id'"; an
+  // installation id bound to a rule-carrier ANNOTATION is TypeMismatch at
+  // "Product(GitHubAppInstallationId)".
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FORGED GATE EVIDENCE, ENROLLED AS EXECUTED REDS (§4b meta-obligation 1: the reported rung
+// equals the rung established by EXECUTED evidence, and rung inflation is worse than sitting low).
+//
+// gunbc.auth.deployment_gate_authorization claims that "remove the required reviewer from
+// srv1-production" cannot be performed without both arms of the gate having been witnessed on real
+// dispatches. Two mechanisms hold that claim up and they are checked separately here, because they
+// live in different places in the compiler and each can be widened without touching the other:
+//
+//   CONSTRUCTION  — sole_constructor on AcceptedRuleReviewReceipt, ObservedGateInstallation and
+//                   DeploymentGateTrialEvidence, refused as SoleConstructorViolation at the RECORD.
+//   ADMISSION     — admit_callers on mint_accepted_rule_review, observe_gate_installation and
+//                   observe_rule_ownership, refused as ConstructorCallAdmissionRefused at the CALLEE.
+//
+// THE EARLIER VERSION OF THIS FILE CHECKED ONLY THE FIRST, AND ONLY FOR LITERALS, which is what the
+// side chat's blocker 1 caught: sealing the carriers left their PRODUCERS open, and a producer takes
+// caller-supplied facts — so the seal was decor over the one route a real caller uses. A direct
+// literal is the easy forgery; handing fabricated inputs to an open mint is the one that works. Both
+// are attempted here, from a foreign module, on well-formed inputs.
+//
+// WHY A CONTROL, AND WHAT IT CONTROLS. The control source calls nothing and builds nothing; it reads
+// zero rows at every key below. Paired with the probe, the only difference along the axis under test is
+// the presence of the forgeries -- so a refusal can be attributed to the forgery rather than to
+// importing the module at all. A nonzero exit code or a total blocking count is deliberately NOT
+// asserted: a fixture that imports production modules never reads zero blocking rows, so a total would be
+// a check with no red in it.
+//
+// WHY THE CONTROL IMPORTS THE CONFINED NAMES RATHER THAN DROPPING THEM. Dropping them would make the
+// admission controls VACUOUS: a count of zero for a name the control never mentions proves nothing about
+// the boundary. So it imports every name the probe attacks and calls none -- which is also what makes the
+// pairing meaningful, since importing a confined name is demonstrably not itself a refusal (the head this
+// round started from already imported mint_accepted_rule_review and its control test read zero rows).
+// The sealed RECORD types are imported for the same reason: sealing confines CONSTRUCTION, not naming, so
+// importing one is exactly what makes its SoleConstructorViolation control worth reading.
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn probe_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(probe_source(name: "deployment_gate_evidence_forged_probe"))
+}
+
+fn control_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(harness_control_source)
+}
+
+fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: class, subject_name: subject, blocking: true)
+  }
+}
+
+// THE CONTROL: names the sealed records and the sealed mints, calls nothing, writes no literal. If
+// THIS reads a violation, everything the probe reports would be about importing the module rather
+// than about forging.
+data harness_control_source: String = "module probe_deployment_gate_harness_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { AcceptedRuleReviewReceipt, ObservedGateInstallation, DeploymentGateTrialEvidence, RemovalBoundaryStandingObservation, ObservedInstant, read_observed_instant, mint_accepted_rule_review, observe_gate_installation, observe_rule_ownership, observe_removal_boundary_standing, standing_from_join, admit_reviewer_removal }\nimport gunbc.auth.deployment_gate_operator_steps { AdmittedReviewerRemovalAct, ReviewerRemovalStepDecision, ReviewerRemovalReady, RemovalAdmitted, RemovalRefused, build_reviewer_removal_act }\nimport gunbc.auth.github_deployment_environment { GitHubEnvironmentProtectionSettings }\nimport extdeps.github.app { GitHubAppInstallationId, GitHubAppId }\nimport extdeps.github.deployment_protection_rule { EnabledDeploymentProtectionRule, RuleOwningApp, GitHubDeploymentProtectionRuleId }\nimport test.claim.deployment_gate_operator_steps_witness { receipt_for, admitted_pair, ready_act }\ndata control_row: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule { id: GitHubDeploymentProtectionRuleId { value: 1 }, node_id: \"DPPR_control\", enabled: true, app: RuleOwningApp { id: GitHubAppId { value: 2 }, slug: \"s\" } }\nfn label() -> String { \"control names the sealed records, imports the sealed mints and the witness proxies, BUILDS THE READBACK ROW CORRECTLY, calls nothing, and forges nothing\" }\n"
+
+test fn a_source_that_only_names_the_gate_types_forges_no_evidence() -> Bool {
+  refusals(c: control_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") == 0
+    && refusals(c: control_census(), class: "SoleConstructorViolation", subject: "ObservedGateInstallation") == 0
+    && refusals(
+         c: control_census(),
+         class: "ConstructorCallAdmissionRefused",
+         subject: "mint_accepted_rule_review",
+       ) == 0
+}
+
+// (a) THE REAL FORGERY: a foreign caller handing fabricated inputs to the review mint. This is the
+// red the seal was missing, and it is keyed by the CALLEE, which is what makes it a statement about
+// the admission rather than about the shape of the arguments.
+test fn a_foreign_call_to_the_review_mint_is_refused_at_the_callee() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "mint_accepted_rule_review",
+  ) >= 1
+}
+
+// (a2) THE RUN ID, PASSED WHERE A RULE ID BELONGS (review 83825, folded per warm-crane-219's split).
+// Both axes were `Int`, so feeding the RUN's digits to a rule-id slot compiled -- GitHub's own readback
+// type (EnabledDeploymentProtectionRule.id) took them as a rule's id, and the mint downstream compared
+// them digit-for-digit against the caller's claimed rule, two different upstream objects answering as
+// one. The rule id now has its own carrier beside the rule model (extdeps.github.deployment_protection_rule);
+// with it in place the probe's forged_rule_row_from_run_digits is refused AT THE RECORD for type.
+//
+// WHY THE ROW, NOT THE MINT (learned the hard way, so it is recorded rather than repeated). The first cut
+// forged the run id in the mint_accepted_rule_review requested_rule_id PARAMETER; it read zero rows,
+// because mint_accepted_rule_review is admit_callers-confined: a foreign call is refused by the
+// ADMISSION GATE before any argument is type-checked, so a wrong type at a confined callee hides
+// BEHIND the admission refusal -- the census sees ConstructorCallAdmissionRefused (the claim above) and
+// no type wall at all. The very mints this probe seals are the wrong place to witness a TYPE refusal.
+// The readback row is the right place: it is a plain record (the wire carries its digits, so it cannot
+// be sole_constructor-confined, exactly like GitHubAppInstallationId), nothing gates it, and its id is
+// what every downstream consumer (RuleIsNotTheOneRequested first) compares against. The carrier guards
+// the axis there.
+//
+// THE KEY IS MEASURED, NOT GUESSED: at a record-literal field, a reference to a named Int datum is
+// rendered TypeMismatch at subject "Primitive(Int)" -- the exact form gunbc.compile_diagnostic_census
+// documents, measured on srv2 at this head against this very probe file. Keying (class + subject +
+// blocking) is also what makes the claim a statement about THIS forgery: a class-only count would go
+// green on any TypeMismatch from any cause, including harness noise. The control half is keyed to zero
+// at the same key; it imports the row's type and the id carriers and BUILDS THE SAME ROW CORRECTLY
+// (rule-axis id, app-axis app), so it contributes this refusal by construction only if the forgery is
+// present. CensusNotRunnable reads negative from refusals(), so an unrunnable census fails the claim.
+//
+// DELETING THE CARRIER REDDENS THIS: the rule slot reverts to plain Int, forged_rule_row_from_run_digits
+// compiles, the row disappears, the keyed count drops to zero.
+test fn a_run_id_where_a_rule_id_belongs_is_refused_at_the_row() -> Bool {
+  refusals(c: probe_census(), class: "TypeMismatch", subject: "Primitive(Int)") >= 1
+    && refusals(c: control_census(), class: "TypeMismatch", subject: "Primitive(Int)") == 0
+}
+
+// (a3) THE CLOSEST NEIGHBOUR: AN INSTALLATION ID IN THE RULE-ID FIELD. The run digits above come from
+// a different KIND of value (an Int, what GitHub's wire carries); this forgery comes from the axis the
+// confusion would ACTUALLY take in typed code -- a sibling carrier, GitHubAppInstallationId, the same
+// { value: Int } shape in the same extdeps.github family. It is the claim that guards the FIELD's type:
+// retype EnabledDeploymentProtectionRule.id to GitHubAppInstallationId -- a plausible slip, both sides
+// still "an id", everything downstream keeps compiling -- and the line stops being an error, THIS claim
+// goes red. The annotation claim below does not see that mutation: it never touches the field.
+//
+// ONE MEASUREMENT THAT ALMOST LOST THIS CLAIM, stated because it is the general trap: when this forgery
+// was first counted by CLASS against a control that also named the production modules, every row it
+// read was harness baseline (UnresolvedType / UnlistedImportUse / DeclaredTypeNotInhabited from NAMING
+// modules), and the class-SET comparison hid a +1 count at the very key that matters. A blocking row is
+// not a refusal OF THE THING UNDER TEST unless the class AND subject say so; keying both sides is what
+// turns noise into a measurement. Measured on srv2 at this head (manager, merge base 7251aa97df8): the
+// named foreign carrier at the field gives DeclaredTypeNotInhabited at subject "record literal field
+// 'id'", n=1, blocking -- the carriers ARE nominal there. (An inline literal in the same slot is
+// refused as TypeMismatch instead; the host distinguishes a named reference from a literal, so the key
+// must name the forgery actually made.) The source is its own file, deployment_gate_carrier_axis_field
+// .dag, so the compiler's own diagnostics are readable; each cross-axis claim reads its own compiled
+// source, so a refusal is attributable to that forgery alone.
+fn field_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(probe_source(name: "deployment_gate_carrier_axis_field"))
+}
+
+test fn an_installation_id_where_a_rule_id_belongs_is_refused_at_the_field() -> Bool {
+  refusals(
+    c: field_census(),
+    class: "DeclaredTypeNotInhabited",
+    subject: "record literal field 'id'",
+  ) >= 1
+    && refusals(
+         c: control_census(),
+         class: "DeclaredTypeNotInhabited",
+         subject: "record literal field 'id'",
+       ) == 0
+}
+
+// (a4) THE ANNOTATION: an installation id bound directly to a name whose DECLARED type is the rule
+// carrier, with no record literal anywhere. Its job is CARRIER DISTINCTNESS, not the field: if
+// GitHubDeploymentProtectionRuleId and GitHubAppInstallationId were collapsed into one shared
+// GitHubId (both are plain { value: Int } records -- the shapes are identical and only the names
+// differ), THIS line would compile and the claim goes red. It is immune to the field-retype that (a3)
+// guards, because it never touches the field; each of the three claims reddens on exactly its own
+// mutation. Measured key (srv2, this head): TypeMismatch at "Product(GitHubAppInstallationId)", n=1;
+// the control reads zero at it.
+fn direct_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(probe_source(name: "deployment_gate_carrier_axis_direct"))
+}
+
+test fn an_installation_id_where_a_rule_id_belongs_is_refused_at_the_annotation() -> Bool {
+  refusals(
+    c: direct_census(),
+    class: "TypeMismatch",
+    subject: "Product(GitHubAppInstallationId)",
+  ) >= 1
+    && refusals(
+         c: control_census(),
+         class: "TypeMismatch",
+         subject: "Product(GitHubAppInstallationId)",
+       ) == 0
+}
+
+// (b) THE IDENTITY ROUTE. The installation observation is what turns a configuration claim into an
+// identity; if it were open, a caller could mint the identity and then the token, without GitHub
+// having confirmed anything about this repository.
+test fn a_foreign_call_to_the_installation_observation_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "observe_gate_installation",
+  ) >= 1
+}
+
+// (c) THE OWNERSHIP ROUTE, which is where an earlier model let a caller supply the App id outright.
+test fn a_foreign_call_to_the_ownership_observation_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "observe_rule_ownership",
+  ) >= 1
+}
+
+// (e) THE ACT, OBTAINED FROM A FOREIGN MODULE (side chat, blocker 3). This is the compile-time control
+// that says the removal act cannot be had except out of ReviewerRemovalReady: the builder is confined to
+// one caller inside its own module, and this probe is not that caller. It is a RED IN THE SAME SENSE as
+// (a)-(c) — a refusal class counted at a subject — and it is the one that did not exist before blocker 3,
+// because there was nothing to call: the act was a public row. A probe that only reads a row cannot
+// produce this refusal, which is exactly why the row had to go.
+test fn a_foreign_call_to_the_removal_act_builder_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "build_reviewer_removal_act",
+  ) >= 1
+}
+
+// THE CONTROL FOR (e): naming the builder must not itself read a refusal. Without this pair, (e) would be
+// a statement about importing the steps module at all.
+test fn naming_the_removal_act_builder_forges_nothing() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "build_reviewer_removal_act",
+  ) == 0
+}
+
+// (f) THE HAND-BUILT READY DECISION (side chat, blocker 1). Before this round the ready arm was a sum
+// over an open HumanIntervention, so any module holding genuine evidence could write Ready itself and
+// skip reviewer_removal_act_for's boundary comparison entirely. The payload is now a sealed record, so
+// the literal is refused AT THE RECORD; the intervention inside it is deliberately an open record, which
+// is what makes this a statement about the act rather than about the intervention.
+test fn a_hand_built_ready_decision_is_refused_at_the_sealed_act() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "AdmittedReviewerRemovalAct",
+  ) >= 1
+}
+
+// THE CONTROL FOR (f): naming the sealed act and the decision sum, writing no literal. Without this the
+// red above would be a statement about importing the steps module.
+test fn naming_the_sealed_act_forges_nothing() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "SoleConstructorViolation",
+    subject: "AdmittedReviewerRemovalAct",
+  ) == 0
+}
+
+// (g) THE WITNESS PROXIES (side chat, blocker 2). The mints were confined while the helpers that
+// FORWARD TO THEM were open, so the confine could never be accused: nobody had to call a mint. Each
+// proxy is counted at its OWN subject so a missing confine names which door was left open, and the
+// control below names all of them without calling any.
+test fn a_foreign_call_through_the_receipt_proxy_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "receipt_for",
+  ) >= 1
+}
+
+test fn a_foreign_call_through_the_trial_proxy_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "admitted_pair",
+  ) >= 1
+}
+
+test fn a_foreign_call_through_the_act_proxy_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "ready_act",
+  ) >= 1
+}
+
+// (h) THE STANDING'S DOOR (blocker 3's mint). A standing is what converts historical evidence into a
+// licence to weaken a boundary, so obtaining one must be as hard as obtaining a receipt.
+test fn a_foreign_call_to_the_standing_mint_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "observe_removal_boundary_standing",
+  ) >= 1
+}
+
+// (k) THE OPEN PROXY BESIDE THE CONFINED MINT (round-6 blocker 2). For four rounds the census attacked
+// observe_removal_boundary_standing and never once looked at standing_from_join, which consumed the join and
+// STAMPED THE STANDING. An open proxy beside a confined mint is a confined mint with the confine painted on
+// the wall: a foreign module holding a valid ProtectionOwnershipJoin could reach the helper and obtain a
+// standing, walking past both the mint and the clock door. RED today because the helper is unconfined and the
+// call is therefore ADMITTED -- which is what "the proxy was open" means in census terms.
+test fn a_foreign_call_to_the_standing_helper_is_refused_at_the_callee() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "standing_from_join",
+  ) >= 1
+}
+
+// ITS CONTROL: naming the helper and calling nothing is not a refusal, so the red above is about the CALL.
+test fn the_control_reports_no_admission_refusal_for_the_standing_helper() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "standing_from_join",
+  ) == 0
+}
+
+// (i) THE CLOCK'S DOOR, FROM OUTSIDE (the ruling's clock seal, one half). The door has an admitted
+// roster -- the stage-5 read and named fixtures -- so what is left to prove is that a stranger cannot
+// use it. If this ever reads zero, an outsider can obtain an instant and the freshness bound in blocker
+// 2 measures a number whoever called chose.
+test fn a_foreign_call_to_the_clock_door_is_refused() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "read_observed_instant",
+  ) >= 1
+}
+
+// (i) THE CLOCK'S DOOR, THE OTHER HALF: the value itself, written rather than read. A confined door that
+// can be walked around by writing the record is not a door. The text this probe writes IS a well-formed
+// UTC instant, so the only thing left that can refuse it is the seal.
+test fn a_forged_observed_instant_literal_is_refused_at_the_record() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "ObservedInstant",
+  ) >= 1
+}
+
+// THE CONTROLS FOR THE CLOCK PAIR. The control imports both names and writes no literal and calls
+// nothing, so a nonzero at either cannot be an artifact of importing the module -- the same pairing the
+// older seals use, one claim per name so a red says WHICH door.
+test fn the_control_reports_no_admission_refusal_for_the_clock_door() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "read_observed_instant",
+  ) == 0
+}
+
+test fn the_control_reports_no_violation_for_the_observed_instant_record() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "SoleConstructorViolation",
+    subject: "ObservedInstant",
+  ) == 0
+}
+
+// THE CONTROL FOR (g) AND (h): the control source imports every one of those four names and calls
+// nothing, so a nonzero at any of them cannot be an import artifact.
+// ONE CLAIM PER CONFINED NAME, rather than one conjunction of four. A single red over four names can
+// only say "something in here is wrong"; a red per name says WHICH, and the four names are four
+// different kinds of door (a receipt mint, a trial mint, an act mint, a standing mint). They are
+// separate control claims, so they are separate tests.
+test fn the_control_reports_no_admission_refusal_for_the_receipt_proxy() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "receipt_for",
+  ) == 0
+}
+
+test fn the_control_reports_no_admission_refusal_for_the_trial_proxy() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "admitted_pair",
+  ) == 0
+}
+
+test fn the_control_reports_no_admission_refusal_for_the_act_proxy() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "ready_act",
+  ) == 0
+}
+
+test fn the_control_reports_no_admission_refusal_for_the_standing_mint() -> Bool {
+  refusals(
+    c: control_census(),
+    class: "ConstructorCallAdmissionRefused",
+    subject: "observe_removal_boundary_standing",
+  ) == 0
+}
+
+// (d) AND THE LITERALS, still refused at the records. Kept as separate reds from (a)-(c) on purpose:
+// widening an admit_callers list would silence the admission refusals and leave these still biting.
+//
+// ONE TEST PER SEALED RECORD, not one test with both halves. They were a compound assertion, and the
+// manager's Q3 mutation (drop the seal from ObservedGateInstallation alone) was caught only because the
+// compound test happened to include it — a red that fires INCIDENTALLY is a red that will be blamed on
+// the wrong thing, or survive a future split. Each seal now owns its own named test, so "which seal is
+// load-bearing" has an answer in the test name.
+test fn a_forged_receipt_literal_is_refused_at_the_record() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "AcceptedRuleReviewReceipt",
+  ) >= 1
+}
+
+// THE IDENTITY LITERAL, on its own. ObservedGateInstallation is the value that decides WHICH
+// installation a token is minted from; unsealing it lets a caller write down an installation id, hand it
+// to the token path, and never ask GitHub which App is installed on this repository. The probe writes
+// exactly that literal (forged_identity), and this test is the statement that it is refused.
+test fn a_forged_observed_installation_literal_is_refused_at_the_record() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "ObservedGateInstallation",
+  ) >= 1
+    // and the control proves the refusal belongs to the forgery: naming the type forges nothing
+    && refusals(
+         c: control_census(),
+         class: "SoleConstructorViolation",
+         subject: "ObservedGateInstallation",
+       ) == 0
+}
+
+test fn a_forged_trial_pair_is_refused_at_the_record() -> Bool {
+  refusals(
+    c: probe_census(),
+    class: "SoleConstructorViolation",
+    subject: "DeploymentGateTrialEvidence",
+  ) >= 1
+}
+
+// THE SHAPE OF THE CLAIM, stated so a reader can see what is NOT claimed here. The removal mint
+// itself is reachable — it is exported and takes two Optionals — so this feature is rung 4 on
+// CONSTRUCTION (both mechanisms above) and a CHECKED MINT on coherence, which is what
+// admit_reviewer_removal's own comment says. What these rows establish is that no value of
+// AcceptedRuleReviewReceipt, ObservedGateInstallation or ObservedRuleOwnership crosses this boundary
+// unless the three admitted producers returned it, and those producers' reds (in
+// test.claim.deployment_gate_authorization_witness and
+// test.claim.deployment_gate_operator_steps_witness) are what tie a returned value to a call GitHub
+// actually accepted.
+test fn the_seal_is_on_the_carriers_and_on_the_mints() -> Bool {
+  refusals(c: probe_census(), class: "SoleConstructorViolation", subject: "AcceptedRuleReviewReceipt") >= 1
+    && refusals(
+         c: probe_census(),
+         class: "ConstructorCallAdmissionRefused",
+         subject: "mint_accepted_rule_review",
+       ) >= 1
+    && refusals(
+         c: control_census(),
+         class: "ConstructorCallAdmissionRefused",
+         subject: "mint_accepted_rule_review",
+       ) == 0
+}

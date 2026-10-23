@@ -50,6 +50,10 @@ pub use crate::std_coercion::{
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
+use crate::std_generated_provider::GeneratedProviderUnavailableCause::*;
+pub use crate::std_generated_provider::{
+    generated_provider_unavailable_message, GeneratedProviderUnavailableCause,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -641,6 +645,11 @@ pub enum CompilerDiagnostic {
         route: String,
         span: Rc<SourceSpan>,
     },
+    GeneratedProviderUnavailable {
+        declaration: Rc<DeclarationRef>,
+        cause: GeneratedProviderUnavailableCause,
+        span: Rc<SourceSpan>,
+    },
     AlgebraApplicationEvidenceUnavailable {
         receiver_type: String,
         argument_index: i64,
@@ -683,6 +692,10 @@ pub enum CompilerDiagnostic {
     },
     DuplicateModule {
         name: String,
+        span: Rc<SourceSpan>,
+    },
+    TypeAliasCycle {
+        members: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     DuplicateDeclaration {
@@ -1022,6 +1035,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { span: s, .. } => s.clone(),
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { span: s, .. } => s.clone(),
+        CompilerDiagnostic::GeneratedProviderUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
@@ -1031,6 +1045,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeAliasCycle { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateDeclaration { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingAnnotation { span: s, .. } => s.clone(),
         CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
@@ -1101,6 +1116,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text crossing with no implicit route: expected ".to_string(), e.clone()), ", got ".to_string()), g.clone()), " -- host text and a code-point sequence meet only through a declared conversion plan; call ".to_string()), r.clone()), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)".to_string()),
+    CompilerDiagnostic::GeneratedProviderUnavailable { declaration: d, cause: c, .. } => crate::std_generated_provider::generated_provider_unavailable_message(d.clone(), c.clone()),
     CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { position: p, .. } => v1_rt::concat(v1_rt::concat("text boundary unjudged at ".to_string(), p.clone()), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), v1_rt::concat(v1_rt::concat("' no longer matches what this module contains: the row declares ".to_string(), (d.clone()).to_string()), v1_rt::concat(" occurrence(s) and ".to_string(), (o.clone()).to_string()))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
@@ -1111,6 +1127,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::TypeAliasCycle { members: ms, .. } => v1_rt::concat("type alias cycle: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateDeclaration { module_name: m, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("duplicate declaration '".to_string(), n.clone()), "' in module '".to_string()), m.clone()), "' -- a second declaration of one name silently replaced the first".to_string()),
     CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
     CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
@@ -1269,6 +1286,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
+    CompilerDiagnostic::GeneratedProviderUnavailable { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
@@ -1298,6 +1319,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::DuplicateModule { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeAliasCycle { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),

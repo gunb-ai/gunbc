@@ -1,6 +1,7 @@
 module test.claim.argument_shape_at_a_declared_position_probe
 
-import gunbc.compile_census_probe { total_blocking_count_for, blocking_subject_count_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -96,8 +97,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // located and typed, and this row is green now and must stay green.
 data string_at_concrete_position_source: String = "module probe_string_at_concrete\nimport std.types { Bool, String, Map }\n\nfn take_map(m: Map<String, Bool>) -> Bool { true }\nfn probe() -> Bool { take_map(m: \"definitely not a map\") }\n"
 
-test fn a_string_at_a_concrete_position_is_refused() -> Bool {
-  blocking_subject_count_for(source: string_at_concrete_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)") >= 1
+test fn a_string_at_a_concrete_position_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: string_at_concrete_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)"), holds: fn(n) { n >= 1 }))
 }
 
 // THE DISCRIMINATING RED. An unapplied nullary function at that SAME concrete position. No
@@ -105,8 +106,8 @@ test fn a_string_at_a_concrete_position_is_refused() -> Bool {
 // argument's own shape. Observed today: accepted, zero blocking diagnostics.
 data function_at_concrete_position_source: String = "module probe_function_at_concrete\nimport std.types { Bool, String, Map }\nimport std.algebra { empty_map }\nfn take_map(m: Map<String, Bool>) -> Bool { true }\nfn probe() -> Bool { take_map(m: empty_map) }\n"
 
-test fn an_unapplied_function_at_a_concrete_position_is_refused() -> Bool {
-  total_blocking_count_for(source: function_at_concrete_position_source) >= 1
+test fn an_unapplied_function_at_a_concrete_position_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: function_at_concrete_position_source), holds: fn(n) { n >= 1 }))
 }
 
 // THE GENERIC ARM OF THE SAME PAIR, which is what discharges the sibling row's ceiling sentence:
@@ -114,8 +115,8 @@ test fn an_unapplied_function_at_a_concrete_position_is_refused() -> Bool {
 // accepted. Asserting refusal keeps this row from defending the deferral.
 data string_at_generic_position_source: String = "module probe_string_at_generic\nimport std.types { Bool, String, Map }\nimport std.algebra { map_insert }\nfn probe() -> Map<String, Bool> { map_insert(m: \"definitely not a map\", key: \"k\", value: true) }\n"
 
-test fn a_string_at_a_generic_position_is_refused() -> Bool {
-  blocking_subject_count_for(source: string_at_generic_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)") >= 1
+test fn a_string_at_a_generic_position_is_refused() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: string_at_generic_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)"), holds: fn(n) { n >= 1 }))
 }
 
 // THE SECOND POSITIVE CONTROL, and it is the one that keeps the three rows above from passing on a
@@ -123,6 +124,6 @@ test fn a_string_at_a_generic_position_is_refused() -> Bool {
 // it, an import typo or a renamed builtin would red every row above and read as the walls landing.
 data well_typed_source: String = "module probe_well_typed\nimport std.types { Bool, String, Map }\nimport std.algebra { empty_map, map_insert }\nfn probe() -> Map<String, Bool> { map_insert(m: empty_map(), key: \"k\", value: true) }\n"
 
-test fn the_well_typed_call_is_clean() -> Bool {
-  total_blocking_count_for(source: well_typed_source) == 0
+test fn the_well_typed_call_is_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: well_typed_source), holds: fn(n) { n == 0 }))
 }

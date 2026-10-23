@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall
 
 import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // WHY THIS IS A STALL AND NOT A DECLARED DROP, stated first because the wrong carrier was the
 // first thing proposed for it. A gunbc.rung_drop records a REGRESSION -- a class that held a rung
@@ -81,7 +82,7 @@ data axis_list_re_enumerates_its_variant_type_stall: GuaranteeStall = GuaranteeS
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {
-    grounding: "constructor enumeration for a declared coproduct: a fold over the variants of a coproduct TYPE, not over an authored list of them, so an axis list is derived rather than written",
+    grounding: GroundingUndeclared,
   },
   population: BoundedPopulation {
     members: [

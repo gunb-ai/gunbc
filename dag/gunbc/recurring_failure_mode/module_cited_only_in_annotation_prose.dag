@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.module_cited_only_in_annotation_prose
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data module_cited_only_in_annotation_prose: RecurringFailureMode = RecurringFailureMode {
   identity: "module_cited_only_in_annotation_prose" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a module named only in annotation prose is not cited, so it can be absent from the tree while the citing module lands, and it can land while remaining unconsumed** (INVALID STATE: an Accepted program writes a dotted module path inside a leading `//` block and a reader treats that as the DESIGN section 3 citation. DESIGN section 4c erases annotations before every semantic pass, so the name is not a `DeclarationRef`, not an import, and not a consumer. THE TWO HARMS ARE ONE MECHANISM SEEN FROM TWO ENDS. At the citing end, gunbc#10733 merged `gunbc.runner.runner_host_filtered_egress` while its annotations named `gunbc.runner.runner_guest_egress_attempt`, a module the repository did not contain -- the cited-symbol check could not fire because it never saw the text. At the cited end, gunbc#10818 then added that module and two siblings as files nobody imported, which is DESIGN section 3c dangling: a declaration whose only route is a human reading a comment.",
