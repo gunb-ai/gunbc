@@ -649,11 +649,37 @@ fn node_edge_equal_ignoring_provenance(x: Edge, y: Edge) -> Bool {
   (x.label == y.label) && node_equal_ignoring_provenance(a: x.target, b: y.target)
 }
 
-// node_same_occurrence: the two are the same authored occurrence with the same content. Occurrence
-// ids are minted unique per authored node and all synthetic nodes share one, so this is the identity
-// question for authored nodes and degrades to the structural one for synthetic nodes, as `==` did.
+// node_same_occurrence: the two are the same authored occurrence. Derived `==` compared the occurrence id at
+// EVERY node of both trees (and Edge.declaration, which is provenance outside content); this keeps the
+// every-node occurrence comparison and drops only the declaration, so a node rebuilt with the same root id
+// but a rewritten descendant is NOT the same occurrence. Occurrence ids are minted unique per authored
+// node and all synthetic nodes share one, so for synthetic nodes it degrades to the structural question,
+// as `==` did.
 fn node_same_occurrence(a: Node, b: Node) -> Bool {
-  (a.occurrence_id == b.occurrence_id) && node_equal_ignoring_provenance(a: a, b: b)
+  (a.occurrence_id == b.occurrence_id)
+    && (a.kind == b.kind)
+    && node_edges_same_occurrence(xs: a.children, ys: b.children)
+}
+
+fn node_edges_same_occurrence(xs: List<Edge>, ys: List<Edge>) -> Bool {
+  match xs {
+    Empty =>
+      match ys {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: x, tail: xrest } =>
+      match ys {
+        Empty => false
+        Cons { head: y, tail: yrest } =>
+          node_edge_same_occurrence(x: x, y: y)
+            && node_edges_same_occurrence(xs: xrest, ys: yrest)
+      }
+  }
+}
+
+fn node_edge_same_occurrence(x: Edge, y: Edge) -> Bool {
+  (x.label == y.label) && node_same_occurrence(a: x.target, b: y.target)
 }
 
 type Node {
