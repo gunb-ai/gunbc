@@ -398,14 +398,6 @@ data reverse_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-data list_push_contract: PrimitiveContract = {
-  name: "list_push",
-  work: "1",
-  output_size: "n + 1",
-  certainty: Amortized,
-  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log n" }
-}
-
 data append_contract: PrimitiveContract = {
   name: "append",
   work: "m",
@@ -818,7 +810,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     get_contract,
     max_by_contract,
     reverse_contract,
-    list_push_contract,
     append_contract,
     skip_contract,
     take_contract,

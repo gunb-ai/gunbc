@@ -179,8 +179,8 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
 // `list_push` is FreeMonoid's own snoc: the one declared home of the primitive single-item append.
 // Its template row is `free_monoid_collection_templates` list_push; this fn is the importable
 // callable for it, so a caller reaches it by `import std.algebra { list_push }` and not through the
-// ambient primitive tier. std.algebra imports neither std.primitives nor std.types (a cycle), so the
-// realization contract std.primitives list_push_contract binds the seam without naming it. Realization:
+// ambient primitive tier; the std.primitives list_push_contract row that admitted the bare name is
+// retired. std.algebra imports neither std.primitives nor std.types (a cycle). Realization:
 // HostRealizedSeam self-call (rt_function_registry list_push), selected by this declaration's
 // projection row.
 fn list_push<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
