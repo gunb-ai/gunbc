@@ -2,10 +2,14 @@ module gunbc.recurring_failure_mode.a_foreign_uid_is_handed_a_path_it_cannot_rea
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_foreign_uid_is_handed_a_path_it_cannot_reach_or_a_manager_creates_one_its_consumer_cannot_use: RecurringFailureMode = RecurringFailureMode {
   identity: "a_foreign_uid_is_handed_a_path_it_cannot_reach_or_a_manager_creates_one_its_consumer_cannot_use" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the host's account and directory convergence modeled end to end (gunbc.fleet.fleet_posix_accounts reading back its own result) so the traversal observation is a modeled receipt rather than a spawn-time stat, and the manager-created log target pre-created owned by its consumer (ExecStartPre in the systemd property model) so the creation is constructed from the consumer's requirement rather than judged against it" } },
 
   receipts: [
     "INVALID STATE (two directions of one boundary, a path and an identity that cannot meet): (1) a unit whose User= is a foreign uid is handed a path under an ancestor that uid cannot traverse; (2) the system manager creates a path on the unit's behalf (the ExecStopPost record, a StandardOutput append target) with an owner and mode its consumer, a different principal, cannot use. HARM: (1) systemd fails the unit before it runs, status=200/CHDIR, and the worker never executes; (2) the exit record is root:root 0755 and the drain, as the service user, gets EACCES renaming it inbox -> queued, so the record can never leave the inbox. Both were silent until the unit ran. DISTINGUISHING FACT: WRE-1 changed the producer's identity (user manager to a system unit with a foreign User=) and nothing re-derived what each consumer needs of what the producer creates or hands over; the corpus had established traversal for exactly one directory, attempts/, never its ancestors.",
