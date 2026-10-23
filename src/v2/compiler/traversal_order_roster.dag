@@ -55,8 +55,8 @@ type TraversalDisposition {
 
 // One row per stage of the M2V path. `root` is the stage's entry declaration, a DeclarationRef the compiler resolves (a root naming nothing real is unwritable), from which the census
 // derives the stage's closure (the declarations it can reach inside traversal_closure_scope), so a helper
-// module factored out of a stage later cannot be invisible: a module in a closure that no stage lists in
-// `modules` refuses the census as unowned. The module whose every traversal is censused is the root's own module_path, derived, never a second spelling.
+// module factored out of a stage later cannot be invisible: a module in a closure that is no stage root's
+// module_path refuses the census as unowned. The module whose every traversal is censused is the root's own module_path, derived, never a second spelling.
 type TraversalStage {
   stage: String
   root: DeclarationRef
