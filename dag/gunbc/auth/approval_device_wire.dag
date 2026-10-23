@@ -10,6 +10,8 @@ import extdeps.apple.apns { ApnsCustomKey, ApnsEnvironment, ApnsDevelopment, Apn
 import extdeps.apple.app_attest { AttestKeyId }
 import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
+import extdeps.ietf.http_semantics { HttpMethod, POST }
+import extdeps.uri_path { PathTemplate, PathParamBinding, LiteralToken, ParamToken, render_path_template }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
 import gunbc.auth.wire_strict_reader { WireAdmission, admission_of }
@@ -933,6 +935,63 @@ data approval_device_enrollment_path_prefix: NonEmptyStr = "/approve/device/enro
 // beside the registration the client data framed.
 data approval_device_push_path: NonEmptyStr = "/approve/device/push" as NonEmptyStr
 data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1" as NonEmptyStr
+
+// ── The route table ─────────────────────────────────────────────────────────────────
+// POLICY, ONE ROW PER ROUTE: route X uses method M with request body type B in media type T. The
+// method token, the Content-Type field name and the media type are IETF/IANA facts owned by
+// extdeps.ietf.http_semantics and extdeps.http.server; a row only SELECTS among them. Authentication
+// rides in the body (never a header), so every device operation is a POST of JSON.
+// A prefix route (a PathTemplate ending in one ParamToken) names the fixed part of a path whose last segment is an
+// encoded identity (path_segment).
+type ApprovalDeviceRoute {
+  path_template: PathTemplate
+  method: HttpMethod
+}
+
+data approval_device_path_segment: String = "segment"
+
+// A fixed route is one literal; a prefix route is its literal then ONE ParamToken (the encoded
+// identity, path_segment). The two shapes are PathTemplate's own, not a flag on the row.
+fn approval_device_fixed_template(path: NonEmptyStr) -> PathTemplate {
+  PathTemplate { tokens: [LiteralToken { text: path as String }] }
+}
+
+fn approval_device_prefix_template(prefix: NonEmptyStr) -> PathTemplate {
+  PathTemplate { tokens: [LiteralToken { text: prefix as String }, ParamToken { name: approval_device_path_segment }] }
+}
+
+// One named row per route: the server binds a handler to the ROW, so a bound route cannot be absent
+// from the table by construction. Body type, media type and Content-Type name rows return with
+// their first reader (the Swift client and vector generator), not before.
+data approval_device_enrol_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_enrol_path), method: POST }
+data approval_device_pending_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_pending_path), method: POST }
+data approval_device_request_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_prefix_template(prefix: approval_device_request_path_prefix), method: POST }
+data approval_device_redeem_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_redeem_path), method: POST }
+data approval_device_enrollment_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_prefix_template(prefix: approval_device_enrollment_path_prefix), method: POST }
+data approval_device_push_route: ApprovalDeviceRoute = ApprovalDeviceRoute { path_template: approval_device_fixed_template(path: approval_device_push_path), method: POST }
+
+data approval_device_routes: List<ApprovalDeviceRoute> = [
+  approval_device_enrol_route, approval_device_pending_route, approval_device_request_route,
+  approval_device_redeem_route, approval_device_enrollment_route, approval_device_push_route,
+]
+
+// The served path template of a route: a prefix route takes one ParamToken segment, a fixed route
+// is its literal. The one spelling, read by the server's route table and by its witness.
+fn approval_device_route_template(r: ApprovalDeviceRoute) -> String {
+  render_path_template(template: r.path_template, params: [PathParamBinding { name: approval_device_path_segment, value: "\{segment\}" }])
+}
+
+// The route's identity: its template with the identity segment left empty, which is the path
+// constant the table covers.
+fn approval_device_route_path(r: ApprovalDeviceRoute) -> String {
+  render_path_template(template: r.path_template, params: [PathParamBinding { name: approval_device_path_segment, value: "" }])
+}
+
+// The route constants the table must cover, as an identity join target.
+data approval_device_route_paths: List<NonEmptyStr> = [
+  approval_device_enrol_path, approval_device_pending_path, approval_device_request_path_prefix,
+  approval_device_redeem_path, approval_device_enrollment_path_prefix, approval_device_push_path,
+]
 
 fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Timestamp, push: PushRegistration) -> NonEmptyStr {
   framed(fields: [approval_device_push_protocol as String, approval_device_push_path as String, enrollment_id as String, requested_at, push_update_json(p: push)])

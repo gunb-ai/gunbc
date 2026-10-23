@@ -3,6 +3,8 @@ module extdeps.http.server
 import extdeps.uri_path { PathTemplate, PathParamBinding }
 import std.types { HttpStatus, Port, List, NonEmptyStr, Bool, String }
 import std.nat { Nat }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.uri_path {
@@ -605,13 +607,27 @@ fn serve_build_route_table<H>(specs: List<ServedRouteSpec<H>>) -> ServedRouteTab
   match first_refusal {
     Present { value: refusal } => refusal
     Absent =>
-      ServedRouteTableBuilt {
-        table: ServedRouteTable {
-          routes: rows |> flat_map(r => match r {
-            ServedRouteRowBuilt { route: rt } => [rt]
-            ServedRouteRowRefused { raw: _, segment: _, reason: _ } => []
-          })
-        }
+      match keyed_roster_build(incomings: map(specs, spec => served_route_key_row(spec: spec)), key_eq: served_route_key_eq) {
+        KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: d } =>
+          ServedRouteTableBuildRefused { raw: d.value.raw, segment: http_method_label(method: d.value.method), reason: "duplicate route: the same method and path literal is served twice, so dispatch would resolve by first match" }
+        KeyedRosterBuilt { rows: _ } =>
+          ServedRouteTableBuilt {
+            table: ServedRouteTable {
+              routes: rows |> flat_map(r => match r {
+                ServedRouteRowBuilt { route: rt } => [rt]
+                ServedRouteRowRefused { raw: _, segment: _, reason: _ } => []
+              })
+            }
+          }
       }
   }
 }
+
+// A served route's identity is its (method, path literal): the keyed-roster writable-authority
+// construction refuses a second spec for the same identity rather than letting dispatch pick the
+// first (DESIGN 5; std.keyed_roster).
+fn served_route_key_row<H>(spec: ServedRouteSpec<H>) -> KeyedRow<String, ServedRouteSpec<H>> {
+  KeyedRow { row_key: concat(http_method_label(method: spec.method), concat(" ", spec.raw)), value: spec }
+}
+
+fn served_route_key_eq(a: String, b: String) -> Bool { a == b }

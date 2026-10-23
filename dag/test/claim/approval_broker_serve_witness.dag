@@ -18,7 +18,11 @@ import gunbc.auth.approval_broker_marker {
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
-  approval_broker_route_specs,
+  approval_broker_route_specs, device_route_specs_over, approval_broker_route_table_build,
+  device_route_specs,
+  device_route_specs_over,
+  device_route_handlers,
+  DeviceRouteHandlerBinding,
   approval_broker_route_table_build,
   approval_broker_respond,
   approval_broker_respond_as,
@@ -29,11 +33,13 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission_under, approval_writer_authority, approval_writer_process,
 }
-import extdeps.http.server { ServeHttpResponse }
+import extdeps.http.server { ServeHttpResponse, ServedRouteSpec, http_method_label, serve_build_route_table }
+import gunbc.site.brand { site_favicon_path }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
   approval_broker_submit_path,
+  approval_broker_store_receipt_path_template,
   approval_broker_status_path_template,
   approval_broker_confirm_path_prefix,
   approval_broker_listen_port,
@@ -41,6 +47,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_status_url,
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
+import gunbc.auth.approval_device_wire { approval_device_routes, ApprovalDeviceRoute, approval_device_push_path, approval_device_route_template, approval_device_route_path }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -109,11 +116,46 @@ test fn approval_broker_table_selects_the_six_device_routes_as_posts() -> Bool {
 // receipt is minted from the broker's decision store and nowhere else, and it is a separate POST so
 // that bearer authority over store writes never rides the public status GET.
 test fn approval_broker_table_carries_no_other_route() -> Bool {
-  count(approval_broker_route_specs()) == 11
+  served_routes_equal_declared(specs: approval_broker_route_specs(), declared: declared_broker_route_keys())
     && match approval_broker_route_table_build() {
-      ServedRouteTableBuilt { table: t } => count(t.routes) == 11
+      ServedRouteTableBuilt { table: t } => count(t.routes) == count(approval_broker_route_specs())
       ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     }
+}
+
+// The declared set: the six approval/site routes by name, and every device route read from
+// approval_device_routes. No count is copied from the tree.
+fn route_key(method: HttpMethod, raw: String) -> String {
+  join([http_method_label(method: method), raw], " ")
+}
+
+fn declared_broker_route_keys() -> List<String> {
+  concat([
+    route_key(method: GET, raw: site_favicon_path),
+    route_key(method: GET, raw: approval_broker_confirm_path_template as String),
+    route_key(method: POST, raw: approval_broker_decide_path_template as String),
+    route_key(method: POST, raw: approval_broker_submit_path as String),
+    route_key(method: GET, raw: approval_broker_status_path_template as String),
+    route_key(method: POST, raw: approval_broker_store_receipt_path_template as String),
+  ], approval_device_routes |> map(r => route_key(method: r.method, raw: approval_device_route_template(r: r))))
+}
+
+fn served_routes_equal_declared(specs: List<ServedRouteSpec<ApprovalBrokerHandler>>, declared: List<String>) -> Bool {
+  let served = specs |> map(sp => route_key(method: sp.method, raw: sp.raw))
+  all(declared, k => length(xs: served |> filter(x => x == k)) == 1)
+    && all(served, k => length(xs: declared |> filter(x => x == k)) == 1)
+}
+
+test fn approval_broker_extra_served_spec_is_refused() -> Bool {
+  !served_routes_equal_declared(
+    specs: concat(approval_broker_route_specs(), [ServedRouteSpec { method: GET, raw: "/extra", handler: DevicePushUpdateHandler }]),
+    declared: declared_broker_route_keys())
+}
+
+test fn approval_broker_missing_served_spec_is_refused() -> Bool {
+  !served_routes_equal_declared(
+    specs: approval_broker_route_specs() |> filter(sp => sp.method != PUT && sp.raw != approval_device_push_path as String),
+    declared: declared_broker_route_keys())
 }
 
 // A METHOD THE PAIR DOES NOT DEFINE IS 405 WITH THE ALLOWED SET, not a 404 and not a decision.
@@ -445,4 +487,55 @@ test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
     body: "",
   )
   r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}
+
+// THE SERVER CONSUMES THE ROUTE TABLE: the six device specs carry exactly the methods in
+// approval_device_routes, so there is one authority for the method. The RED changes the table's
+// methods and the served specs change with it; a copy of the method in this file would not.
+test fn device_served_methods_are_the_route_table_methods() -> Bool {
+  count(device_route_specs()) == count(approval_device_routes)
+    && all(approval_device_routes, r => count(device_route_specs() |> filter(sp => sp.method == r.method && sp.raw == approval_device_route_template(r: r))) == 1)
+}
+
+test fn device_served_method_follows_a_changed_table_row() -> Bool {
+  count(device_route_specs_over(bindings: device_route_handlers |> map(b => DeviceRouteHandlerBinding { route: ApprovalDeviceRoute { path_template: b.route.path_template, method: PUT }, handler: b.handler }))
+    |> filter(s => s.method == PUT)) == count(approval_device_routes)
+}
+
+// A BOUND ROUTE IS A TABLE ROW, AND EVERY ROW IS BOUND: the binding holds the row itself, so a binding
+// cannot name a route outside the table (construction); a row left without a binding is caught only
+// by this identity join (path grain), which is mechanically preventive, not structural. REDs: a
+// dropped and a duplicated binding both refuse.
+fn bound_routes_cover_table(bindings: List<DeviceRouteHandlerBinding>) -> Bool {
+  all(approval_device_routes, r => count(bindings |> filter(b => approval_device_route_path(r: b.route) == approval_device_route_path(r: r))) == 1)
+    && all(bindings, b => count(approval_device_routes |> filter(r => approval_device_route_path(r: r) == approval_device_route_path(r: b.route))) == 1)
+}
+
+test fn device_bound_routes_are_exactly_the_table_rows() -> Bool {
+  bound_routes_cover_table(bindings: device_route_handlers)
+}
+
+test fn device_binding_dropped_is_refused() -> Bool {
+  !bound_routes_cover_table(bindings: device_route_handlers |> filter(b => approval_device_route_path(r: b.route) != (approval_device_push_path as String)))
+}
+
+test fn device_binding_duplicated_is_refused() -> Bool {
+  !bound_routes_cover_table(bindings: concat(device_route_handlers, device_route_handlers |> filter(b => approval_device_route_path(r: b.route) == (approval_device_push_path as String))))
+}
+
+// THROUGH THE PRODUCTION BUILDER (serve_build_route_table), not a witness-side join: a second binding
+// for the same (method, path) refuses with the path named; the full broker table builds clean.
+test fn duplicated_device_binding_is_refused_by_the_route_table_builder() -> Bool {
+  let dup = concat(device_route_handlers, device_route_handlers |> filter(b => approval_device_route_path(r: b.route) == (approval_device_push_path as String)))
+  match serve_build_route_table(specs: device_route_specs_over(bindings: dup)) {
+    ServedRouteTableBuildRefused { raw: r, segment: s, reason: _ } => r == approval_device_route_template(r: approval_device_push_route) && s == "POST"
+    ServedRouteTableBuilt { table: _ } => false
+  }
+}
+
+test fn full_broker_table_builds_clean() -> Bool {
+  match approval_broker_route_table_build() {
+    ServedRouteTableBuilt { table: _ } => true
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
+  }
 }

@@ -1,7 +1,8 @@
 module test.claim.approval_device_wire_witness
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List }
+import std.algebra { length }
 import std.measure { byte_size }
 import extdeps.apple.apns { ApnsStatusUnlisted, apns_refusal_class }
 import extdeps.crypto.signature {
@@ -11,12 +12,14 @@ import extdeps.crypto.signature {
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_device_wire {
   framed, device_redemption_signing_input, enrolment_transcript, DeviceRedemptionSigningInput, RedemptionChallenge,
-  approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
+  approval_device_audience, approval_device_push_path, ApprovalDeviceRoute, approval_device_routes, approval_device_route_paths, approval_device_route_path, MobileIos, MobileAndroid, device_read_client_data,
   EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
   WireDecoded, WireRefused, enrolment_request_json, decode_enrolment_request, signed_redemption_json, decode_signed_redemption,
   push_update_json, decode_push_update, ReadAuthentication, read_authentication_json, decode_read_request, PushUpdateRequest, push_update_request_json, decode_push_update_request, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
 }
 import extdeps.apple.apns { ApnsProduction }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.http.server { http_method_label }
 import gunbc.auth.approval_device_redemption_fixtures { refusal_vectors, RefusalVector }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
@@ -229,6 +232,27 @@ test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
     WireRefused { at: a, cause: _ } => a as String == "push.kind"
     WireDecoded { value: _ } => false
   }
+}
+
+// THE ROUTE TABLE IS AN IDENTITY JOIN OVER THE ROUTE CONSTANTS: every route path has exactly one row
+// and every row names a route path, so a route added without a row (or a row for a route that does not
+// exist) is refused. The join takes its rows as an argument so the RED below runs the same function.
+fn approval_device_routes_cover(rows: List<ApprovalDeviceRoute>, paths: List<NonEmptyStr>) -> Bool {
+  all(paths, p => length(xs: rows |> filter(r => approval_device_route_path(r: r) == (p as String))) == 1)
+    && all(rows, r => length(xs: paths |> filter(p => (p as String) == approval_device_route_path(r: r))) == 1)
+}
+
+test fn witness_every_device_route_has_exactly_one_row() -> Bool {
+  approval_device_routes_cover(rows: approval_device_routes, paths: approval_device_route_paths)
+}
+
+test fn witness_a_route_without_a_row_is_refused() -> Bool {
+  !approval_device_routes_cover(rows: approval_device_routes |> filter(r => approval_device_route_path(r: r) != (approval_device_push_path as String)), paths: approval_device_route_paths)
+}
+
+// The method token the app spells today, read from the IETF row.
+test fn witness_device_routes_are_posts() -> Bool {
+  all(approval_device_routes, r => r.method == POST) && http_method_label(method: POST) == "POST"
 }
 
 // The refusal vectors the app's XCTest is joined to: each is refused, the fcm kind with the provider
