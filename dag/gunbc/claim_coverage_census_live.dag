@@ -111,7 +111,7 @@ fn claim_coverage_composed_standing(wet: ClaimCoverageStanding, s1: S1Standing) 
     S1Unread { reason: cause } => []
   }
   let findings = concat(wet_reason, s1_channel)
-  if !is_empty(findings) {
+  if !is_emptyX(findings) {
     // A finding dominates. With an unread input beside it, the cause travels as a further reason: the exit is
     // already decided by the finding, and the reader still needs to know which input could not be read.
     let unread_note = match s1 {
