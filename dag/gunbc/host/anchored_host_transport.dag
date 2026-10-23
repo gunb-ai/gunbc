@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -99,7 +101,9 @@ data mtcollins1_host_key_read_obligation: NonEmptyStr = "scan mtcollins1 at sshd
 // this module prepares the command and refuses to invent the result. Fabricating a public half (DESIGN
 // 4d: no value without an observation behind it) would mint an anchor able to accept a wrong key forever,
 // the exact defect an anchor exists to close. So production reads an absent anchor today, and every
-// production transport to mtcollins1 refuses at AnchoredBindingAnchorAbsent. When the key exists, the
+// transport ROUTED through anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent (the
+// witness pins that). Production folds do not route through it yet -- that gap is carried by
+// anchored_host_transport_frontier_rows with its trigger, not hidden here. When the key exists, the
 // transcription lands here as Present { value: anchored_host_trusted_row(...) } -- through the admitted
 // mint below, which is the only door and makes the standing unskippable.
 data mtcollins1_anchored_host_row: AnchoredHostRow = AnchoredHostRow {
@@ -178,6 +182,41 @@ fn anchored_host_trusted_row(
   }
 
 // ── 2. The binding: host_bound_transport_of first, then the host's own trust tests ────────────────
+
+// §3c: the anchored binding and the gated readback are CONSUMED BY A NAMED LATER CHANGE, not dangling and
+// not consumed-in-this-change (review 85051, correctly): no production fold yet routes a FleetSsh transport
+// to mtcollins1 through anchored_host_transport_of, and nothing starts sshd pointing at the delivered key --
+// the RAM image has no sshd in this slice at all (gunbc.runner.runner_host_first_boot_receipt
+// unobserved_after_first_boot: "no network or sshd exists in this slice"). These rows state that honestly
+// with the trigger that retires each, and they stand in the census-closure registry
+// (gunbc.census_closure_frontier); this module's witness pins they are well-formed and registered (the
+// network_boot_manifest_broker pattern). Until they dissolve, production transports to mtcollins1 do NOT
+// pass through this module, and the honest claim is only: any transport ROUTED through
+// anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent today -- not that every production
+// transport does.
+data anchored_host_transport_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_of"),
+    reason: "anchored_host_transport_of is called only by this module's witness and by anchored_host_transport_against; no production fold routes a FleetSsh transport to an anchored host through it, so no live transport is host-authenticated yet and unanchored binding through host_bound_transport_of remains the only production path",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a production fold that sends traffic to an anchored host calls anchored_host_transport_of with that host's FleetSsh transport and the presented line from a live readback, and refuses the leg on any non-Bound arm; a witness claim does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet"),
+    reason: "the gated readback is prepared and GATED: it is called only by the witness (wet arms never execute) and no workflow dispatches it, so no presented key has ever been read back and every production anchor stays Absent",
+    dissolution: unbound_dissolution(
+      description: "dissolves when, on a live boot of mtcollins1 with merry-fox-82's relayed go, this wet arm executes its Present branch over the real transport and the printed presented line is recorded through the real dispatch (lost_boot_sweep_effect_pairing_frontier) and transcribed into the anchor through anchored_host_trusted_row; a simulated Present does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "host_credential_custody_row"),
+    reason: "the Mtcollins1SshHostKey arm delivers /run/gunbc-ssh/ssh_host_ed25519_key under custody, but nothing in this diff consumes the placed file: the RAM image has no sshd in this slice (gunbc.runner.runner_host_first_boot_receipt unobserved_after_first_boot), so the delivery is the precondition of a consumer, not its proof",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the boot route for mtcollins1 starts sshd with HostKey pointing at exactly the custody-placed path and a live boot's presented key is read back and matched (the read obligation on this module's anchor row); a placement receipt alone does not fire this"
+    )
+  ),
+]
 
 type AnchoredHostBinding
   = AnchoredBindingBound { bound: HostBoundTransport }
@@ -381,8 +420,9 @@ fn anchored_host_key_scan_argv_text(row: AnchoredHostRow) -> String {
 // snappy-koi-83 (the lost-boot mode stays GATED the same way). When the go lands, the printed evidence is
 // what discharges the anchor's read obligation, and recording it must go through the real dispatch
 // (lost_boot_sweep_effect_pairing_frontier -- the pairing obligation #14738 left open). THE FRONTIER IS
-// SAID, NOT HIDDEN: until a live boot runs, no executed evidence stands behind the anchor and every
-// production transport to the anchored host refuses at AnchoredBindingAnchorAbsent.
+// SAID, NOT HIDDEN: until a live boot runs, no executed evidence stands behind the anchor, and any
+// transport routed through anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent. Production
+// does not route through it yet -- anchored_host_transport_frontier_rows carries that with its trigger.
 fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
   match anchored_host_row_for(host: host) {
     Absent => join(["scan refused: ", anchored_host_binding_refusal_reason(b: AnchoredBindingAnchorAbsent { cause: join(["no anchored row exists for ", host as String], "") }), "\n"], "")
