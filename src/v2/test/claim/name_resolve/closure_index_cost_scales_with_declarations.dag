@@ -1,0 +1,65 @@
+module v2.test.claim.name_resolve.closure_index_cost_scales_with_declarations
+
+import v2.compiler.source_root_eval { native_test_context_from_ingest }
+import v2.compiler.name_resolve { closure_declarations_demand }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.types { Bool, List }
+import std.algebra { Cons }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the cost of v2.compiler.name_resolve closure_declarations_demand over a closure of N
+// modules of three declarations each. The closure publishes and observes PER MODULE, so the work it
+// owes grows with the declarations, N x 3, once. Handing each module the whole closure's rows made
+// it N x (3N) comparisons. The claim's value is its eval_steps at the two sizes below, read by
+// claim_batch (eval steps are host-independent): the repair is that the step count grows by about 2x
+// from cix_small to cix_double, not 4x. The Bool asserts the route's answer (one outcome per module)
+// so the measured work is the real closure fold and not a refused context.
+//
+// THIS IS AN INHABITANCE CLAIM FOR THE ROUTE AND A MEASUREMENT HOOK FOR THE COST: no assertion here
+// bounds the steps; the floor's per-identity eval-step budget is what gates them.
+
+fn cix_marks(i: Int) -> String {
+  if i <= 0 { "" } else { concat("x", cix_marks(i: i - 1)) }
+}
+
+fn cix_source(i: Int) -> String {
+  concat("module cixm", concat(cix_marks(i: i), "\n\ntype Unit = | U\nfn f(x: Unit) -> Unit { x }\nfn g(x: Unit) -> Unit { f(x: x) }\n"))
+}
+
+fn cix_read(i: Int) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: cix_source(i: i), fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^cix_module, file_path: concat("src/v2/test/fixture/cix/m", concat(cix_marks(i: i), ".dag")) },
+    compilation_unit: ^cix_module,
+    source_root: DagTree
+  }
+}
+
+fn cix_ingest(n: Int) -> List<DagSourceReadWitness> {
+  if n <= 0 { [] } else { Cons { head: cix_read(i: n), tail: cix_ingest(n: n - 1) } }
+}
+
+fn cix_observed_modules(n: Int) -> Int {
+  match native_test_context_from_ingest(ingest: cix_ingest(n: n)) {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: c, diagnostics: _ } =>
+      match c.resolution {
+        Rejected { diagnostics: _ } => -1
+        Accepted { value: shared, diagnostics: _ } => length(xs: closure_declarations_demand(shared: shared).module_outcomes)
+      }
+  }
+}
+
+test fn cix_small() -> Bool { cix_observed_modules(n: 8) == 8 }
+
+test fn cix_double() -> Bool { cix_observed_modules(n: 16) == 16 }
+
+test fn cix_quad() -> Bool { cix_observed_modules(n: 32) == 32 }
