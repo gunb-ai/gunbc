@@ -1,6 +1,7 @@
 module gunbc.provisioning.network_boot_actuation
 
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
 import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeChainloaderBuildReceipt }
 import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
@@ -134,4 +135,22 @@ fn network_boot_attempt_actuation(
     BindRefused { blocker: b } =>
       ArmActuationWithheld { attempt: attempt, shape: ArmRefused { cause: SeedBindingRefused { blocker: b } } }
   }
+}
+
+// THE PRODUCTION CONSUMER OF network_boot_attempt_actuation DOES NOT EXIST YET. No module on main calls
+// provisioning_arm_derive or network_boot_arm_actuator_steps outside the two frontiers that name them, so
+// there is no boundary to wire it into today; the only caller is its witness. The consumer is the
+// install-attempt record step that opens one attempt for a unit (S9a, the mtcollins1 control netboot, is the
+// first wet user and is gated on the srv4 readback). That step must call this entry and never
+// provisioning_arm_derive or network_boot_arm_actuator_steps directly, or the seed is no longer always
+// minted by the sealed binder. The name below is coined here, as S5 coined network_boot_arm_actuator_steps:
+// it is read off no existing module. Discharge-by-name proves only that the declaration exists, never that it
+// calls this entry, so Fired would still not mean the binder is on the production path; that check stays
+// with the review of the step that introduces it.
+data network_boot_attempt_actuation_consumer_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: network_boot_attempt_actuation_consumer_ref() },
+}
+
+fn network_boot_attempt_actuation_consumer_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.provisioning.network_boot_install_attempt", decl_name: "network_boot_install_attempt_step")
 }

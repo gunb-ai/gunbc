@@ -36,6 +36,7 @@ import gunbc.provisioning.network_boot_actuation {
   ArmActuationWithheld,
   network_boot_arm_actuator_steps,
   network_boot_attempt_actuation,
+  network_boot_attempt_actuation_consumer_ref,
 }
 import gunbc.provisioning.provisioning_arm { ArmRefused, SeedBindingRefused }
 import gunbc.provisioning.altra_autoinstall_seed { TargetNotAdmitted, UnitKeyUnbound }
@@ -471,4 +472,8 @@ test fn a_refused_binding_carries_the_binders_blocker_typed() -> Bool {
         _ => false
       }
   }
+}
+
+test fn the_attempt_entry_frontier_names_the_install_attempt_step() -> Bool {
+  network_boot_attempt_actuation_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_install_attempt", decl_name: "network_boot_install_attempt_step")
 }
