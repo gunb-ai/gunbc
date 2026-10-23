@@ -38,7 +38,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   content_hash,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
@@ -67,7 +68,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn add_body_fold_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn add_body_fold_add_operator_row_minus() -> Node {

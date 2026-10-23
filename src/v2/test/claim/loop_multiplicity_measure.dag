@@ -1,5 +1,7 @@
 module v2.test.claim.loop_multiplicity_measure
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -15,8 +17,8 @@ fn lmm_loop_with_measure(measure: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) },
-      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
+      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit), declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -26,7 +28,7 @@ fn lmm_loop_without_measure() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) }
+      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -36,8 +38,8 @@ fn lmm_conj_measure(a: Node, b: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^lmm_dim_left }, target: a },
-      Edge { label: Authored { name: ^lmm_dim_right }, target: b }
+      Edge { label: Authored { name: ^lmm_dim_left }, target: a, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^lmm_dim_right }, target: b, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -174,10 +176,11 @@ test fn nested_unproven_loop_still_poisons_the_fold() -> Bool {
   let outer = Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: inner },
+      Edge { label: Positional, target: inner, declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: lmm_atom(s: ^dag_loop_measure_sym)
+        target: lmm_atom(s: ^dag_loop_measure_sym),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
