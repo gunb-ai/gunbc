@@ -194,22 +194,37 @@ fn candidate_named(spelling: String) -> Optional<DeclaredCandidate> {
   first(declared_callable_candidates |> filter(c => c.spelling == spelling))
 }
 
-// The candidate column: the declaration identity and signature, or `none`.
-fn candidate_text(spelling: String, source: String, decls: List<String>) -> String {
+// The one resolution of "which declared callable implements this spelling, and did the census print it": the
+// candidate column and the class/basis/evidence verdict both read this value, so they cannot disagree.
+type CandidateResolution
+  = NoCandidate
+  | VerifiedCandidate { decl: String }
+  | UnverifiedCandidate { module: String, name: String }
+
+fn resolve_candidate(spelling: String, source: String, decls: List<String>) -> CandidateResolution {
   if source == "ambient:collection_roster" {
     match candidate_named(spelling: spelling) {
-      Absent => "none"
+      Absent => NoCandidate
       Present { value: c } =>
         match declaration_at_path(decls: decls, path: c.module + "." + c.name) {
-          Present { value: d } => declaration_evidence(decl: d)
-          Absent => c.module + "." + c.name + " (UNVERIFIED: declaration row not printed by the census; signature unread)"
+          Present { value: d } => VerifiedCandidate { decl: d }
+          Absent => UnverifiedCandidate { module: c.module, name: c.name }
         }
     }
   } else {
     match declaration_named(decls: decls, name: spelling) {
-      Present { value: d } => declaration_evidence(decl: d)
-      Absent => "none"
+      Present { value: d } => VerifiedCandidate { decl: d }
+      Absent => NoCandidate
     }
+  }
+}
+
+// The candidate column: the declaration identity and signature, or `none`.
+fn candidate_text(res: CandidateResolution) -> String {
+  match res {
+    NoCandidate => "none"
+    VerifiedCandidate { decl: d } => declaration_evidence(decl: d)
+    UnverifiedCandidate { module: m, name: n } => m + "." + n + " (UNVERIFIED: declaration row not printed by the census; signature unread)"
   }
 }
 
@@ -217,14 +232,14 @@ fn verdict(class: DispositionClass, basis: DispositionBasis, evidence: String) -
   DispositionVerdict { class: class, basis: basis, evidence: evidence }
 }
 
-fn classify_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
+fn classify_row(spelling: String, source: String, target: String, res: CandidateResolution) -> DispositionVerdict {
   match disposition_claim_for(spelling: spelling) {
     Present { value: c } => verdict(class: DispositionInFlight, basis: BasisInFlight, evidence: "claimed by " + claim_change_text(c: c) + "; ends when the spelling resolves to a declaration (checked: a stale claim refuses the reading)")
-    Absent => classify_unclaimed_row(spelling: spelling, source: source, target: target, decls: decls)
+    Absent => classify_unclaimed_row(spelling: spelling, source: source, target: target, res: res)
   }
 }
 
-fn classify_unclaimed_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
+fn classify_unclaimed_row(spelling: String, source: String, target: String, res: CandidateResolution) -> DispositionVerdict {
   if starts_with(s: source, prefix: "ambient:kernel_") {
     verdict(class: DispositionKernelGrounding, basis: BasisManagerDirection, evidence: "kernel grounding: the spelling is a kernel token or type spelling, not an operation; no migration")
   } else if source == "generated" {
@@ -232,26 +247,21 @@ fn classify_unclaimed_row(spelling: String, source: String, target: String, decl
   } else {
     match egress_observing_trigger(spelling: spelling) {
       Present { value: next } => verdict(class: DispositionD, basis: BasisEgressEvidence, evidence: "primitive_egress row observes or mutates outside the value graph; retirement trigger: " + next)
-      Absent => classify_declared_row(spelling: spelling, source: source, target: target, decls: decls)
+      Absent => classify_declared_row(source: source, target: target, res: res)
     }
   }
 }
 
-fn classify_declared_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
-  if source == "ambient:collection_roster" {
-    match candidate_named(spelling: spelling) {
-      Present { value: c } =>
-        match declaration_at_path(decls: decls, path: c.module + "." + c.name) {
-          Present { value: d } => verdict(class: DispositionA, basis: BasisDeclaredCandidate, evidence: "the roster row " + target + " is a template, not a callable; the printed declaration " + declaration_evidence(decl: d) + " is the candidate (name from the manager's table; argument types not compared)")
-          Absent => verdict(class: DispositionA, basis: BasisManagerDirection, evidence: "UNVERIFIED: " + c.module + "." + c.name + " is named by manager direction as the declared callable, but the census printed no declaration row for it (" + c.module + " is a refused declarer), so no executed evidence confirms it; trigger: derive the candidate when " + c.module + " resolves")
-        }
-      Absent => verdict(class: DispositionB, basis: BasisHeuristicNoNameMatch, evidence: "none in the N7 closure: the roster row " + target + " is a template, not a callable declaration")
-    }
-  } else {
-    match declaration_named(decls: decls, name: spelling) {
-      Present { value: d } => verdict(class: DispositionA, basis: BasisHeuristicNameMatch, evidence: "declaration " + declaration_evidence(decl: d) + " (name match only; argument types are not compared)")
-      Absent => verdict(class: DispositionB, basis: BasisHeuristicNoNameMatch, evidence: "none in the N7 closure")
-    }
+fn classify_declared_row(source: String, target: String, res: CandidateResolution) -> DispositionVerdict {
+  let roster = source == "ambient:collection_roster"
+  match res {
+    VerifiedCandidate { decl: d } =>
+      if roster { verdict(class: DispositionA, basis: BasisDeclaredCandidate, evidence: "the roster row " + target + " is a template, not a callable; the printed declaration " + declaration_evidence(decl: d) + " is the candidate (name from the manager's table; argument types not compared)") }
+      else { verdict(class: DispositionA, basis: BasisHeuristicNameMatch, evidence: "declaration " + declaration_evidence(decl: d) + " (name match only; argument types are not compared)") }
+    UnverifiedCandidate { module: m, name: n } => verdict(class: DispositionA, basis: BasisManagerDirection, evidence: "UNVERIFIED: " + m + "." + n + " is named by manager direction as the declared callable, but the census printed no declaration row for it (" + m + " is a refused declarer), so no executed evidence confirms it; trigger: derive the candidate when " + m + " resolves")
+    NoCandidate =>
+      if roster { verdict(class: DispositionB, basis: BasisHeuristicNoNameMatch, evidence: "none in the N7 closure: the roster row " + target + " is a template, not a callable declaration") }
+      else { verdict(class: DispositionB, basis: BasisHeuristicNoNameMatch, evidence: "none in the N7 closure") }
   }
 }
 
@@ -275,6 +285,7 @@ fn ambient_operation_rows(tree_stdout: String) -> List<DispositionRow> {
     let source = field_at(line: k, index: 0)
     let spelling = field_at(line: k, index: 1)
     let target = field_at(line: k, index: 2)
+    let res = resolve_candidate(spelling: spelling, source: source, decls: decls)
     let modules = distinct_lines(lines: match map_get(mods, k) { Present { value: xs } => xs  Absent => [] })
     DispositionRow {
       spelling: spelling
@@ -283,8 +294,8 @@ fn ambient_operation_rows(tree_stdout: String) -> List<DispositionRow> {
       call_sites: match map_get(sites, k) { Present { value: n } => n  Absent => 0 }
       modules: count(modules)
       in_closure: in_closure_modules(modules: modules, attribution: attribution)
-      candidate: candidate_text(spelling: spelling, source: source, decls: decls)
-      verdict: classify_row(spelling: spelling, source: source, target: target, decls: decls)
+      candidate: candidate_text(res: res)
+      verdict: classify_row(spelling: spelling, source: source, target: target, res: res)
     }
   })
 }
