@@ -2249,7 +2249,7 @@ pub(crate) fn compile_fixture_rendering_nothing(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
         Rc::new(
-            v1_compiler_artifact::RustModuleRenderSelection::RenderSelectedMirrors {
+            crate::v1_compiler_artifact::RustModuleRenderSelection::RenderSelectedMirrors {
                 basenames: Rc::new(Vec::new()),
             },
         ),
