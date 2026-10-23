@@ -1,0 +1,135 @@
+module v2.test.claim.compiler.zz_discharge_real_route_probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { ObligatedInferredTree, RefinementObligation }
+import v2.compiler.refinement_discharge { discharge_refinement_obligations }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model, dag_type_atom_node }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.node { Node, ComputationNode, Transform, positional_child_target_nodes, node_subtree_nodes }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PROBE (not for landing): does a predicate call written in source, resolved by the production fold,
+// give discharge an evaluable application? Discriminates a fixture artifact in refinement_discharge's
+// rdt_* claims (inline Arrow callee, DeclarationReferenceWithoutPath) from a real producer gap.
+data zz_true_source: String = "module v2.test.zzpd_t\n\nfn zz_pd(x: Int) -> Bool { true }\n\ndata zz_v: Bool = zz_pd(1)\n"
+
+data zz_false_source: String = "module v2.test.zzpd_f\n\nfn zz_pd(x: Int) -> Bool { false }\n\ndata zz_v: Bool = zz_pd(1)\n"
+
+fn zz_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data zz_ingest: SourceRootIngest = [
+  zz_read(source: zz_true_source, id: ^zz_t_read, unit: ^zz_t_cu, path: "src/v2/test/fixture/zz_discharge/t.dag"),
+  zz_read(source: zz_false_source, id: ^zz_f_read, unit: ^zz_f_cu, path: "src/v2/test/fixture/zz_discharge/f.dag")
+]
+
+fn zz_resolve(subject: String) -> Outcome<ResolvedTree> {
+  match module_roots_from_source_root_ingest(ingest: zz_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+// The one source call: a Transform whose callee child is a resolved declaration reference.
+fn zz_call(tree: ResolvedTree) -> Optional<Node> {
+  fold(node_subtree_nodes(root: tree.root), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match n.kind {
+          ComputationNode { behavior: Transform } =>
+            match positional_child_target_nodes(node: n) {
+              Cons { head: callee, tail: _ } =>
+                match declaration_reference_path_optional(node: callee) {
+                  Present { value: _ } => optional_present(value: n)
+                  Absent => acc
+                }
+              Empty => acc
+            }
+          _ => acc
+        }
+    }
+  })
+}
+
+fn zz_obligated(subject: String) -> Optional<ObligatedInferredTree> {
+  match zz_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: r, diagnostics: _ } =>
+      match zz_call(tree: r) {
+        Absent => optional_absent()
+        Present { value: app } =>
+          match infer(tree: r) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: t, diagnostics: _ } =>
+              optional_present(value: ObligatedInferredTree {
+                root: t.root,
+                facts: t.facts,
+                arm_resolutions: t.arm_resolutions,
+                obligations: [RefinementObligation { site: app, application: app, target: dag_type_atom_node(identity: ^zz_refinement) }]
+              })
+          }
+      }
+  }
+}
+
+test fn zz_real_route_call_found_true() -> Bool {
+  match zz_resolve(subject: "v2.test.zzpd_t") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } => match zz_call(tree: r) { Present { value: _ } => true  Absent => false }
+  }
+}
+
+test fn zz_real_route_obligated_present_true() -> Bool {
+  match zz_obligated(subject: "v2.test.zzpd_t") { Present { value: _ } => true  Absent => false }
+}
+
+test fn zz_real_route_true_predicate_admits() -> Bool {
+  match zz_obligated(subject: "v2.test.zzpd_t") {
+    Absent => false
+    Present { value: t } => match discharge_refinement_obligations(t: t) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
+  }
+}
+
+test fn zz_real_route_false_predicate_refuses_violated() -> Bool {
+  match zz_obligated(subject: "v2.test.zzpd_f") {
+    Absent => false
+    Present { value: t } => match discharge_refinement_obligations(t: t) { Accepted { value: _, diagnostics: _ } => false  Rejected { diagnostics: d } => d.head.reason == ^refinement_predicate_violated }
+  }
+}
+
+test fn zz_real_route_false_predicate_refuses_undischargeable() -> Bool {
+  match zz_obligated(subject: "v2.test.zzpd_f") {
+    Absent => false
+    Present { value: t } => match discharge_refinement_obligations(t: t) { Accepted { value: _, diagnostics: _ } => false  Rejected { diagnostics: d } => d.head.reason == ^refinement_obligation_undischargeable }
+  }
+}
