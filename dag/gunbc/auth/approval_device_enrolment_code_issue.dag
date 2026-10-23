@@ -14,9 +14,9 @@ import extdeps.systemd.systemd_run {
 }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.util_linux_setpriv { setpriv_reuid_regid_argv }
-import extdeps.systemd { MemoryMax, MemoryHigh }
+import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax }
 import std.measure { byte_size_count }
-import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high }
+import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high, live_deploy_slice_memory_swap_max }
 import extdeps.tools.env { env_prefixed_argv }
 import std.env_binding { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
@@ -105,7 +105,10 @@ fn enrolment_code_issue_ssh_target(host: NonEmptyStr) -> SshTargetResolution {
 // session binds no such limit. The scope is a system-manager transient scope (extdeps.systemd.systemd_run
 // systemd_run_system_scope_command) around the account drop below. A user
 // scope would need that account's session bus, which the elevated command lacks. The bounds are the
-// broker's own slice rows (gunbc.live_deploy.slice_bounds approval_broker_slice_memory_max and _high).
+// broker's own slice rows (gunbc.live_deploy.slice_bounds approval_broker_slice_memory_max and _high),
+// with swap forbidden (live_deploy_slice_memory_swap_max): the seed admits an observed cgroup as a
+// bound only when some level sets memory.swap.max to 0, and without it the scope read as
+// chain-unbounded and refused UserSessionAbsent (fleet-converge run 39909665104).
 // The verb resolves the broker's routes closure, the same program the broker boots, so the same
 // measured demand bounds it. It gets its OWN scope rather than joining the broker's slice, because
 // joining would split one budget between the running broker and this run and put the broker at risk.
@@ -113,6 +116,7 @@ fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
   [
     NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: approval_broker_slice_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: MemoryHigh, value: to_string(byte_size_count(b: approval_broker_slice_memory_high)) as NonEmptyStr },
+    NamedUnitSetting { property: MemorySwapMax, value: to_string(byte_size_count(b: live_deploy_slice_memory_swap_max)) as NonEmptyStr },
   ]
 }
 
