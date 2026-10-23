@@ -2028,6 +2028,8 @@ fn roster_kind_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> Str
     + roster_kind_control(name: "data-home-in-type-position", text: roster_kind_specimen_data_in_type(), row: roster_kind_data_row(), expected: 0, prepared: prepared, lex: lex)
     + roster_kind_control(name: "unclassifiable-home-is-not-free", text: roster_kind_specimen_aliased_type(), row: roster_kind_unclassified_row(), expected: 0, prepared: prepared, lex: lex)
     + roster_kind_unclassified_control(name: "unclassified-home-refuses", text: roster_kind_specimen_aliased_type(), row: roster_kind_unclassified_row(), prepared: prepared, lex: lex)
+    + roster_kind_unclassified_control(name: "out-of-home-declaration-refuses", text: roster_kind_specimen_value_call(), row: roster_kind_out_of_home_row(), prepared: prepared, lex: lex)
+    + roster_kind_unclassified_control(name: "underivable-home-refuses", text: roster_kind_specimen_value_call(), row: roster_kind_underivable_home_row(), prepared: prepared, lex: lex)
     + roster_kind_control(name: "wave-two-list-imports", text: roster_kind_specimen_aliased_type(), row: roster_kind_wave_two_list_row(), expected: 3, prepared: prepared, lex: lex)
     + roster_kind_control(name: "classified-home-flips-to-row", text: roster_kind_specimen_aliased_type(), row: roster_kind_classified_flipped_row(), expected: 3, prepared: prepared, lex: lex)
     + roster_kind_clean_control(name: "classified-home-imports", text: roster_kind_specimen_aliased_type(), row: roster_kind_classified_flipped_row(), prepared: prepared, lex: lex)
@@ -2124,6 +2126,19 @@ fn roster_kind_specimen_called_parameter() -> String {
 // declarations. Built at the same boundary the real rows are: the dotted home is read into a QualifiedName.
 fn roster_kind_type_row() -> RosterHeadRow {
   RosterHeadRow { call: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] }
+}
+
+// THE HOME-DIRECTORY POOL PAIR (Seat 7). The home kind is read from the home module's own storage directory, so a name
+// declared only OUTSIDE that directory must refuse, located, rather than vanish into a Clean. The twin of each is
+// value-home-in-value-position: the same specimen and spelling, whose real home std.host_text declares chars and so
+// counts 1. std.roster_seat7_absent_home derives dag/std/roster_seat7_absent_home.dag, whose directory holds no chars of
+// that module (chars is std.host_text's); std.9underivable derives no file at all, so its pool is empty.
+fn roster_kind_out_of_home_row() -> RosterHeadRow {
+  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.roster_seat7_absent_home"), labels: [] }
+}
+
+fn roster_kind_underivable_home_row() -> RosterHeadRow {
+  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.9underivable"), labels: [] }
 }
 
 fn roster_kind_value_row() -> RosterHeadRow {
