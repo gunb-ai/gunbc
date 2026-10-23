@@ -1988,7 +1988,7 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
 // the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
 // type is the InferBinderType row its references read, never a fact about the key atom.
 fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
-  key == edge && match key.target.kind {
+  key.label == edge.label && key.target == edge.target && match key.target.kind {
     TypeNode { connective: Atom { identity: _ } } => true
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
