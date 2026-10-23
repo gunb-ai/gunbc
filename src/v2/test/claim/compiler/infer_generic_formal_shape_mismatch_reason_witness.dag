@@ -107,6 +107,55 @@ fn aai_generic_application(declared: Node, argument: Node) -> Node {
   )
 }
 
+// THE SHAPE ARM'S INPUT, and why no other arm is available. The callee declares one variable T and
+// its one formal is `x: T<-->', an Instantiation headed by the declared variable -- the shape the
+// ACCEPTED claim v2.test.claim.compiler.infer_application_argument_inhabitance_witness builds in
+// inhabitance_generic_formal_tree (:107, via inhabitance_generic_formal_tree_over :121) and asserts
+// at :253 refuses with application_argument_does_not_inhabit; that accepted claim is the standing
+// witness that this fixture reaches the arm on the native lane. The instance-less formal is not a
+// bare variable Atom, so infer_judge_formals (:5001-5006) sends it to infer_judge_generic_formal
+// rather than deciding it (a BARE Atom T would bind an instance instead -- the Instantiation wrapper
+// is what keeps it on the generic route). The argument is the Int literal 1, whose derived type is
+// the Int Atom (infer_literal_value_type, DagCanonicalIntLiteral => dag_binding_type_int). In
+// infer_match_generic_formal (:4302): :4303 cannot fire (infer_type_variable_binder :4289 demands
+// kind Atom with no children; the formal is an Instantiation); :4311 fires, the produced is an Atom,
+// so :4330 (`TypeNode { connective: _ }` produced against an Instantiation formal) is the arm --
+// :4316/:4318/:4320 need an Instantiation produced. refinement_declared_carrier
+// (infer_match_generic_formal_or_carrier :4501) offers nothing for a plain Int Atom over the empty
+// index. So this refusal is the SHAPE arm's and nothing else. THE ONE THING THIS FIXTURE MUST NOT
+// DO: name a head that is not a type parameter and not a resolvable declaration. The judge
+// alias-normalizes formal and produced at :4954 BEFORE matching; an unresolvable head is refused
+// upstream and the fatal never reaches the arm -- that is what an earlier version of this claim,
+// headed `Box<T>`, measured: (A) failed while (B)/(C)/(D), which never traverse that normalizer,
+// passed.
+fn aai_shape_mismatch_tree() -> Node {
+  aai_generic_application(
+    declared: aai_declared_formal(),
+    argument: dag_int_literal_fixture_one()
+  )
+}
+
+// THE FORMAL AS WRITTEN: an Instantiation of the declared variable -- exactly the declaration the
+// ACCEPTED claim v2.test.claim.compiler.infer_application_argument_inhabitance_witness
+// (inhabitance_generic_formal_tree :107) puts on this arm and whose refusal it asserts at :253; the
+// head is the type parameter itself, which is what makes it resolvable on this route. The mint's
+// declared field is built FROM THIS NODE at infer.dag:4958 (infer_declared_type_denotation of
+// infer_type_instantiated(formal.declared, instances)), and both rewrites are children-preserving
+// (infer_declared_type_denotation :4111 rebuilds each node's kind with its children; no instance
+// touches T) -- so the obligation's declared and this node are the same tree, and (B) measures the
+// refusal's own pair because both read this one constructor.
+fn aai_declared_formal() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^aai_type_param_t)
+      }
+    ]
+  )
+}
+
 fn aai_box_of(operand: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
@@ -114,25 +163,6 @@ fn aai_box_of(operand: Node) -> Node {
       Edge { label: Positional, target: dag_type_atom_node(identity: ^aai_type_box) },
       Edge { label: Positional, target: operand }
     ]
-  )
-}
-
-// THE SHAPE ARM'S INPUT, and why no other arm is available. The callee declares one variable T and
-// its one formal is `x: Box<T>`. The instance-less formal mentions a variable the callee declares
-// and its instance still mentions it, so v2.compiler.infer infer_judge_formals (:4996-5003) routes
-// it to infer_judge_generic_formal rather than deciding it. The argument is the Int literal 1, whose
-// derived type is the Int Atom (infer_literal_value_type :1865, DagCanonicalIntLiteral =>
-// dag_binding_type_int). In infer_match_generic_formal (:4302): :4303 does not fire (the formal is
-// `Box<T>`, not the bare variable); :4311 fires (an Instantiation formal) and the produced is an
-// Atom, so :4330 (`TypeNode { connective: _ }` produced against an Instantiation formal) is the arm
-// -- head inequality (:4320) and arity (:4316) are unreachable, and the binder arm cannot bind T to
-// the Atom because T never stands alone as a formal. refinement_declared_carrier
-// (infer_match_generic_formal_or_carrier :4501) offers nothing for a plain Int Atom over the empty
-// index. So this refusal is the SHAPE arm's and nothing else.
-fn aai_shape_mismatch_tree() -> Node {
-  aai_generic_application(
-    declared: aai_box_of(operand: dag_type_atom_node(identity: ^aai_type_param_t)),
-    argument: dag_int_literal_fixture_one()
   )
 }
 
@@ -144,8 +174,9 @@ test fn generic_formal_shape_mismatch_refuses_application_argument_does_not_inha
   }
 }
 
-// THE PAIR THE REFUSAL REPORTS, AS AN OBLIGATION. declared:Box<T> comes from
-// infer_declared_type_denotation applied to formal.declared (infer.dag:4958); produced is the
+// THE PAIR THE REFUSAL REPORTS, AS AN OBLIGATION. declared:the `T<0>` instantiation comes from
+// infer_declared_type_denotation applied to infer_type_instantiated(formal.declared, instances)
+// (infer.dag:4958) -- no instance touches T, so it is the formal as written; produced is the
 // literal's derived Int Atom; produced_declared_carrier is Absent exactly as
 // infer_declared_type_obligation (:4547) computes it for an unrefined produced type over the empty
 // index; type_variables is the callee's [T] (:4958, type_params).
@@ -153,7 +184,7 @@ fn aai_shape_obligation() -> DeclaredTypeObligation {
   DeclaredTypeObligation {
     position: PositionDirectCallArgument,
     parameter_identity: ^aai_param_x,
-    declared: aai_box_of(operand: dag_type_atom_node(identity: ^aai_type_param_t)),
+    declared: aai_declared_formal(),
     produced: dag_type_atom_node(identity: ^dag_binding_type_int),
     produced_declared_carrier: Absent,
     application: dag_int_literal_fixture_one(),
