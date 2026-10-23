@@ -1,5 +1,7 @@
 module v2.test.claim.loop_infer_iteration
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // FLAG C witness (body-lowering design, operator-signed): the refinement-shaped case stands in for
@@ -25,9 +27,9 @@ fn loop_infer_two_stage_loop_node(first: Node, second: Node, measure: Node) -> N
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: first },
-      Edge { label: Positional, target: second },
-      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
+      Edge { label: Positional, target: first, declaration: NotADeclaration },
+      Edge { label: Positional, target: second, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -37,8 +39,8 @@ fn loop_infer_one_stage_loop_node(stage: Node, measure: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: stage },
-      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
+      Edge { label: Positional, target: stage, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -119,7 +121,7 @@ test fn loop_infer_missing_measure_is_refused() -> Bool {
   let body = Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
