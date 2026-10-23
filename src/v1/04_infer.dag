@@ -15261,13 +15261,12 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
         Absent => n
       }
     _ =>
-  let nm = type_node_label(n: n, source_indices: source_indices)
-  let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
-  if is_bare {
-    match map_get(subst, nm) {
-      Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
-      Absent => n
-    }
+  // A leaf type name is never a substitution key: a type parameter is substituted only through its
+  // declaration-parameter identity (the TypeVariable arm above), so a leaf whose spelling happens to
+  // equal a parameter's name (a field label, an unrelated type) is left as authored.
+  let is_leaf = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
+  if is_leaf {
+    n
   } else {
 
     let new_children = n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices))
