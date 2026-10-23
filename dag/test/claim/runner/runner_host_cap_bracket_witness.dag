@@ -884,7 +884,12 @@ test fn the_name_the_host_yields_is_the_join_key_even_when_it_carries_another_sl
   // control uses), NOT through the registration name. A roster-busy refusal quotes no name -- it reports
   // the disagreement between the roster and the cgroup -- and an assertion on a string the bracket does
   // not print is a control that fails for the wrong reason.
-  step_word(r: idle) == concat("drained:1 certified=", u(n: "01") as String, "=", minted(n: "01", tag: slot_current_mint_tag))
+  // THE DISCRIMINATING ASSERTION OF THIS CONTROL. Slot 01's listener registered under slot 02's minted
+  // name (that is the host answer the legs carry), so the record the bracket certifies must pair
+  // SLOT 01'S UNIT with SLOT 02'S REGISTRATION -- the name the join actually used. A bracket that
+  // re-derived a name for the unit instead of carrying the host's answer would render srv3-01's own mint
+  // here and pass a count-only check; asserting slot 01's mint would have demanded exactly that bug.
+  step_word(r: idle) == concat("drained:1 certified=", u(n: "01") as String, "=", minted(n: "02", tag: slot_current_mint_tag))
     && string_contains(s: step_word(r: busy), pattern: "not-closed: ")
     && string_contains(s: step_word(r: busy), pattern: "the readings disagree")
     // The busy refusal NAMES the registration the roster answered busy: a refusal that reports only a
