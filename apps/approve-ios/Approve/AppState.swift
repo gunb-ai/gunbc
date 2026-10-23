@@ -152,7 +152,8 @@ final class AppState: ObservableObject {
             let grant: EnrolmentGrant
             do { grant = try await client.enrolGoogle(submission) }
             catch WireError.transport { grant = try await client.enrolGoogle(submission) }   // identical body, once
-            try apply(.signedIn(.newKey)   // signIn always creates a fresh key, enrolled: EnrolledDevice(
+            // signIn always creates a fresh key, so the sign-in registered a NEW key.
+            try apply(.signedIn(.newKey), enrolled: EnrolledDevice(
                 enrollment_id: grant.enrollment_id, decision_key_blob: key.dataRepresentation,
                 attest_key_id: attestKeyId, forwarded_apns_token: nil), push: registration(client.config, token))
         } catch {

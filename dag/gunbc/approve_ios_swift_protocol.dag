@@ -14,7 +14,8 @@ import std.types { NonEmptyStr }
 import extdeps.crypto.signature { EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth }
 import gunbc.auth.approval_device_wire {
   approval_redemption_protocol, approval_device_read_protocol, approval_device_push_protocol,
-  approval_device_audience, signature_suite_wire, public_key_encoding_wire, signature_encoding_wire
+  approval_device_audience, signature_suite_wire, public_key_encoding_wire, signature_encoding_wire,
+  google_enrolment_refusal_kinds, google_enrolment_refusal_wire_label
 }
 import gunbc.auth.approval_google_enrolment { approval_google_enrolment_protocol }
 import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client }
@@ -63,7 +64,7 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
   [
     sw_doc(c: ["gunbc.auth.approval_device_wire MobilePlatform, spelled by platform_wire."], d: sw_enum(n: "MobilePlatform", i: [sw_t(n: "String")], m: [sw_cases(n: ["ios", "android"])])),
     sw_doc(c: ["gunbc.auth.approval_capability ProposedDecision, spelled by proposed_decision_name."], d: sw_enum(n: "ProposedDecision", i: [sw_t(n: "String")], m: [sw_cases(n: ["approve", "deny"])])),
-    sw_doc(c: ["gunbc.auth.approval_device_wire EnrolmentRefusalWire, spelled by enrolment_refusal_wire_label."], d: sw_enum(n: "EnrolmentRefusalKind", i: [sw_t(n: "String"), sw_t(n: "CaseIterable")], m: [sw_cases(n: ["code_not_issued", "code_already_used", "code_expired", "store_unreadable", "attestation_refused", "attestation_for_other_bytes", "android_unrealized"])])),
+    sw_doc(c: ["gunbc.auth.approval_device_wire GoogleEnrolmentRefusalWire, spelled by google_enrolment_refusal_wire_label: every label the enrol route may refuse with. The app acts on none of them (any refusal leaves the phone signed out); the list is the admitted set the refusal decoder checks."], d: sw_enum(n: "GoogleEnrolmentRefusal", i: [], m: [sw_static_let(n: "labels", e: sw_arr(e: map(google_enrolment_refusal_kinds(), k => sw_str(s: google_enrolment_refusal_wire_label(k: k) as String))))])),
     SwiftCommentedDecl {
       comments: [
         SwiftDocLineComment { text: "extdeps.crypto.signature VerifyingKey. The suite and encoding travel explicitly" },
