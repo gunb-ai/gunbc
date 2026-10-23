@@ -164,10 +164,56 @@ fn ambient_operation_disposition_standing(
     CliWireUnprintable { cause: c } => CliWireUnprintable { cause: c }
     CliWirePrintable { bytes: b, exit: x } =>
       match x {
-        ExitSuccess => disposition_response(tree_stdout: tree_stdout)
+        ExitSuccess =>
+          match disposition_classifier_control_failure() {
+            Present { value: why } => CliWirePrintable { bytes: b, exit: ExitFailure { code: 1, reason: why } }
+            Absent => disposition_response(tree_stdout: tree_stdout)
+          }
         ExitFailure { code: _, reason: _ } => CliWirePrintable { bytes: b, exit: x }
       }
   }
+}
+
+fn observing_runtime_name() -> Optional<String> {
+  match first(primitive_evidence_rows() |> filter(e => match e.external_subject { ObservesOrMutates { operation: _, subject: _, provider: _, ambient_realization: _ } => true  NoExternalSubject => false  ExternalSubjectUnestablished { detail: _ } => false })) {
+    Present { value: e } => Present { value: primitive_identity_runtime_name(identity: e.identity) }
+    Absent => Absent
+  }
+}
+
+fn control_binding(name: String, source: String, target: String) -> String {
+  "binding\tctl.mod\t" + name + "\t0\t" + source + "\t" + target + "\t1:1"
+}
+
+fn control_class_of(rows: List<String>, spelling: String) -> String {
+  match first(rows |> filter(r => field_at(line: r, index: 1) == spelling)) {
+    Present { value: r } => field_at(line: r, index: 7)
+    Absent => "missing-row"
+  }
+}
+
+// THE CLASSIFIER'S OWN DISCRIMINATING CONTROL: a synthetic census stdout holding one spelling per class, whose
+// answer is known by construction (the D spelling is read from the egress ledger itself, so it cannot go stale).
+// A shifted tab index in row_key or in the class column makes a spelling land in the wrong class, and the
+// reading refuses (exit 1) instead of printing a well-formed table of wrong rows.
+fn disposition_classifier_control_failure() -> Optional<String> {
+  match observing_runtime_name() {
+    Absent => Present { value: "the egress ledger has no observing row, so the D control has no spelling" }
+    Present { value: d } => disposition_classifier_control_for(d: d)
+  }
+}
+
+fn disposition_classifier_control_for(d: String) -> Optional<String> {
+  let stdout = "binding_declaration\tctl.decl\tctl_decl\tfn\t() -> Int\nbinding_declaration\tctl.decl\tctl_named\tfn\t() -> Int\n"
+    + control_binding(name: "list_push", source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "ctl_gen", source: "generated", target: "ctl.gen") + "\n"
+    + control_binding(name: d, source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "ctl_roster", source: "ambient:collection_roster", target: "ctl.decl.ctl_decl") + "\n"
+    + control_binding(name: "ctl_named", source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "ctl_missing", source: "ambient:ctl_table", target: "ctl.none") + "\n"
+  let rows = ambient_operation_rows(tree_stdout: stdout)
+  let got = control_class_of(rows: rows, spelling: "list_push") + "," + control_class_of(rows: rows, spelling: "ctl_gen") + "," + control_class_of(rows: rows, spelling: d) + "," + control_class_of(rows: rows, spelling: "ctl_roster") + "," + control_class_of(rows: rows, spelling: "ctl_named") + "," + control_class_of(rows: rows, spelling: "ctl_missing")
+  if got == "in-flight,C,D,A,A,B" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B" } }
 }
 
 fn disposition_response(tree_stdout: String) -> CliWireResponse {
