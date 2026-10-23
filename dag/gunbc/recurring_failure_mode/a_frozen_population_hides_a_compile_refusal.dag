@@ -1,4 +1,4 @@
-module gunbc.recurring_failure_mode.a_frozen_population_hides_a_declaration_the_index_never_held
+module gunbc.recurring_failure_mode.a_frozen_population_hides_a_compile_refusal
 
 // WHY THIS ROW IS ENROLLED HERE AND NOT ONLY IN THE DROP PR. The two rows named below sat in the
 // frozen population of `gunbc.witness.witness_deferral_freeze` while both were red. stern-bat-401's
@@ -11,8 +11,8 @@ import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
-data a_frozen_population_hides_a_declaration_the_index_never_held: RecurringFailureMode = RecurringFailureMode {
-  identity: "a_frozen_population_hides_a_declaration_the_index_never_held" as NonEmptyStr,
+data a_frozen_population_hides_a_compile_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_frozen_population_hides_a_compile_refusal" as NonEmptyStr,
 
   rung: RungUnread { cause: BlockerClassUnstated },
 
