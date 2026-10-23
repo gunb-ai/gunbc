@@ -1,5 +1,7 @@
 module v2.test.lens_complexity.while_external_condition
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -18,7 +20,7 @@ data while_loop_body_leaf: Node = Node {
 data while_external_condition_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: while_loop_body_leaf }
+    Edge { label: Positional, target: while_loop_body_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

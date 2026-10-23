@@ -66,6 +66,7 @@ import v2.std.node {
   StructuralLabel,
   edge_is_core,
   is_positional,
+  NotADeclaration
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -101,7 +102,7 @@ fn edge_is_type_body(e: Edge) -> Bool {
 
 // THE ONE PRODUCER of the edge on an Arrow (consumed by v2.compiler.body_lowering_fold).
 fn type_params_edge(conj: Node) -> Edge {
-  Edge { label: core_edge_label(marker: TypeParamsEdge), target: conj }
+  Edge { label: core_edge_label(marker: TypeParamsEdge), target: conj, declaration: NotADeclaration }
 }
 
 // A GENERIC TYPE DECLARATION'S TARGET IS A WRAPPER BESIDE ITS MEMBER, NEVER A MEMBER WITH ITS
@@ -115,8 +116,8 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
-      Edge { label: core_edge_label(marker: TypeBodyEdge), target: member }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: TypeBodyEdge), target: member, declaration: NotADeclaration }
     ]
   )
 }
@@ -154,8 +155,8 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
-      Edge { label: core_edge_label(marker: TypeAliasEdge), target: aliased }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: TypeAliasEdge), target: aliased, declaration: NotADeclaration }
     ]
   )
 }
@@ -168,7 +169,7 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
 fn type_opaque_wrapper(binders: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders }]
+    children: [Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration }]
   )
 }
 
@@ -630,7 +631,7 @@ fn type_binder_target_of(binders: Node, name: Symbol) -> Optional<Node> {
 
 // THE ONE PRODUCER of the edge.
 fn cast_target_edge(target_type: Node) -> Edge {
-  Edge { label: core_edge_label(marker: CastTargetEdge), target: target_type }
+  Edge { label: core_edge_label(marker: CastTargetEdge), target: target_type, declaration: NotADeclaration }
 }
 
 fn edge_is_cast_target(e: Edge) -> Bool {
@@ -663,7 +664,7 @@ fn cast_target_optional(n: Node) -> Optional<Node> {
 
 // THE ONE PRODUCER of the edge.
 fn type_annotation_edge(annotation: Node) -> Edge {
-  Edge { label: core_edge_label(marker: TypeAnnotationEdge), target: annotation }
+  Edge { label: core_edge_label(marker: TypeAnnotationEdge), target: annotation, declaration: NotADeclaration }
 }
 
 // 🟡 dissolve-on: edge labels on behavior nodes becoming a closed coproduct owned by v2.std.node, the

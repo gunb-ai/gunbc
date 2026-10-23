@@ -38,7 +38,8 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  fold_node
+  fold_node,
+  NotADeclaration
 }
 import v2.std.text { String, string_eq }
 
@@ -61,7 +62,7 @@ fn wall_conj(children: List<Edge>) -> Node {
 }
 
 fn wall_wrap(n: Node) -> Node {
-  wall_conj(children: [Edge { label: Positional, target: n }])
+  wall_conj(children: [Edge { label: Positional, target: n, declaration: NotADeclaration }])
 }
 
 // DISCRIMINATOR, body route: residue standing directly in an operand slot is refused, located.
@@ -69,8 +70,8 @@ test fn body_route_refuses_an_empty_conj_operand() -> Bool {
   let site = Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: wall_atom(id: ^skeleton_route_callee) },
-      Edge { label: Positional, target: wall_conj(children: []) }
+      Edge { label: Positional, target: wall_atom(id: ^skeleton_route_callee), declaration: NotADeclaration },
+      Edge { label: Positional, target: wall_conj(children: []), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -200,8 +201,8 @@ test fn argument_value_read_refuses_a_wrapped_unprojected_value() -> Bool {
 fn wall_call(callee: Symbol, args: List<Node>) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: fold(args, init: [Edge { label: Positional, target: wall_atom(id: callee) }], f: fn(acc, a) {
-      list_snoc_item(xs: acc, item: Edge { label: Positional, target: a })
+    children: fold(args, init: [Edge { label: Positional, target: wall_atom(id: callee), declaration: NotADeclaration }], f: fn(acc, a) {
+      list_snoc_item(xs: acc, item: Edge { label: Positional, target: a, declaration: NotADeclaration })
     }),
     occurrence_id: OccurrenceSynthetic
   }

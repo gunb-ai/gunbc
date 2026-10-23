@@ -51,6 +51,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   content_hash,
+  NotADeclaration
 }
 import v2.std.compilers.target_model {
   OwnershipAtFunctionReturn,
@@ -200,7 +201,8 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_outcome } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -208,7 +210,8 @@ fn sg2_mode2_outcome_node_source_type() -> Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_node } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

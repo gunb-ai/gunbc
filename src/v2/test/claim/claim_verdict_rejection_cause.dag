@@ -22,6 +22,7 @@ import v2.std.node {
   node_synthetic,
   ArrowBodyEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.verdict { SemanticMismatch, Verdict }
 
@@ -39,12 +40,13 @@ fn claim_verdict_cause_ill_formed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_domain) },
-      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return) },
-      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return) },
+      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_domain), declaration: NotADeclaration },
+      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return), declaration: NotADeclaration },
+      Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: ArrowBodyEdge),
-        target: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+        target: node_synthetic(kind: TypeNode { connective: Disj }, children: []),
+        declaration: NotADeclaration
       }
     ]
   )
