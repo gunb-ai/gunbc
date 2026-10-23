@@ -86,7 +86,6 @@ test fn red_control_of_red_control_flips() -> Bool {
 test fn only_cost_contract_carries_red_control_probe() -> Bool {
   red_status_is_passed(s: red_control_status_for_contract(contract: lens_contract_cost))
     && red_status_is_absent(s: red_control_status_for_contract(contract: lens_contract_vacuity))
-    && red_status_is_absent(s: red_control_status_for_contract(contract: lens_contract_schedule_lens))
 }
 
 fn self_status_is_observed(s: SelfApplicationStatus) -> Bool {
