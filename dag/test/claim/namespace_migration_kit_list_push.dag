@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr }
 import std.optional { optional_present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
-import gunbc.namespace_cut.migration_kit { KitFinding, KitMigrated, kit_import_differential }
+import gunbc.namespace_cut.migration_kit { KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable, kit_import_differential }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -26,4 +26,18 @@ test fn list_push_is_migrated_by_declaration_import() -> Bool {
     KitMigrated => true
     _ => false
   }
+}
+
+// WHICH FINDING FIRES, as separate probes: the executed reading on main says refuse-vs-ambient by which of
+// these is true (exactly one is). Not claims about the end state.
+test fn probe_list_push_no_import_does_not_refuse() -> Bool {
+  match kit_import_differential(row: list_push_row()) { KitNoImportDoesNotRefuse => true  _ => false }
+}
+
+test fn probe_list_push_import_does_not_clear() -> Bool {
+  match kit_import_differential(row: list_push_row()) { KitImportDoesNotClear => true  _ => false }
+}
+
+test fn probe_list_push_census_not_runnable() -> Bool {
+  match kit_import_differential(row: list_push_row()) { KitNotRunnable { cause: _ } => true  _ => false }
 }
