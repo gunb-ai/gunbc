@@ -132,3 +132,14 @@ test fn hp_c7_open_beside_open_resolves() -> Bool { match hp_c7_open_beside_open
 fn hp_c8_let_annot() -> Outcome<ResolvedTree> { ers_assemble(body: "fn t() -> Int? {\n  let x: Int? = if true { Absent } else { Present { value: 1 } }\n  x\n}\n") }
 test fn hp_c8_let_annot_probe_not_hit() -> Bool { !hp_hit(o: hp_c8_let_annot()) }
 test fn hp_c8_let_annot_resolves() -> Bool { match hp_c8_let_annot() { Rejected { diagnostics: _ } => false Accepted { value: _, diagnostics: _ } => true } }
+
+// POSITIVE CONTROL: the Cons (closed-success) arm is planted to refuse ^infer_held_arm_close_probe; close_hit true = this shape mints a held arm and closes it.
+fn hp_close_hit(o: Outcome<ResolvedTree>) -> Bool { ers_fatal_is(o: o, reason: ^infer_held_arm_close_probe) }
+test fn hp_c1_return_close_hit() -> Bool { hp_close_hit(o: hp_c1_return()) }
+test fn hp_c2_nested_close_hit() -> Bool { hp_close_hit(o: hp_c2_nested()) }
+test fn hp_c3_arg_close_hit() -> Bool { hp_close_hit(o: hp_c3_arg()) }
+test fn hp_c4_alias_close_hit() -> Bool { hp_close_hit(o: hp_c4_alias()) }
+test fn hp_c5_generic_close_hit() -> Bool { hp_close_hit(o: hp_c5_generic()) }
+test fn hp_c6_field_close_hit() -> Bool { hp_close_hit(o: hp_c6_field()) }
+test fn hp_c7_open_beside_open_close_hit() -> Bool { hp_close_hit(o: hp_c7_open_beside_open()) }
+test fn hp_c8_let_annot_close_hit() -> Bool { hp_close_hit(o: hp_c8_let_annot()) }
