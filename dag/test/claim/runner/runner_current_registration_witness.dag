@@ -91,7 +91,12 @@ test fn the_host_s_minted_name_is_returned_untouched_though_the_slot_name_is_bar
   // The ledger is read from the dispatcher's own route, so an argv that differed from the expected command
   // would answer as a client error and red this, rather than being quietly agreed with.
   let asked_once = match list_head(xs: ledger_of(r: r)) {
-    Present { value: cmd } => string_contains(s: cmd, pattern: "cat /opt/actions-runner/srv3-02/.runner") && count_containing(legs: ledger_of(r: r), needle: "systemctl") == 0
+    Present { value: cmd } =>
+      string_contains(s: cmd, pattern: "cat /opt/actions-runner/srv3-02/.runner")
+        // EXACTLY ONE command, and no elevated leg: a read that asked twice, or that reached for
+        // systemctl to open the file, is not the read this route is allowed to make.
+        && count_containing(legs: ledger_of(r: r), needle: "cat ") == 1
+        && count_containing(legs: ledger_of(r: r), needle: "systemctl") == 0
     Absent => false
   }
   match r {
@@ -209,7 +214,7 @@ test fn the_observe_receipt_reports_the_identity_and_apply_costs_no_leg() -> Boo
     _ => false
   }
   let applied_silent = match applied {
-    BracketRunReturned { value: text, legs: l, calls: _ } => text == "" && count_containing(legs: l, needle: "cat") == 0
+    BracketRunReturned { value: text, legs: l, calls: _ } => text == "" && count_containing(legs: l, needle: "cat ") == 0
     _ => false
   }
   line && applied_silent
