@@ -1,7 +1,7 @@
 module v2.test.claim.compiler.literal_refinement_judgment_witness
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { infer, infer_entries_for_tree, infer_gather_for_tree }
+import v2.compiler.infer { infer, infer_where_sole_predicate, infer_entries_for_tree, infer_gather_for_tree }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations, infer_and_discharge }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
@@ -19,6 +19,8 @@ import std.algebra { Empty, length }
 import std.types { Int }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.type_binder { refinement_declaration_of_node }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -307,4 +309,36 @@ test fn lrj_locator_plain_formal_literal_beside_a_refined_declaration_infers_hol
 
 test fn lrj_locator_refined_formal_literal_in_a_fn_body_infers_holds() -> Bool {
   lrj_infers(subject: "v2.test.lrj_fn_body")
+}
+
+// LOCATOR 5: the demand's lookups run on the REAL tree, one step each. If the declaration is found but the clause
+// has no sole predicate, infer_where_sole_predicate misreads the lowered shape; if it is not found, the path is wrong.
+fn lrj_refined_decl_found(subject: String) -> Bool {
+  match lrj_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      match symbol_index_lookup(index: r.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.lrj_one_arg.LrjNe")) {
+        Absent => false
+        Present { value: decl } => match refinement_declaration_of_node(decl: decl) { Absent => false  Present { value: _ } => true }
+      }
+  }
+}
+
+test fn lrj_locator_refined_declaration_is_found_and_read_as_refinement_holds() -> Bool {
+  lrj_refined_decl_found(subject: "v2.test.lrj_one_arg")
+}
+
+test fn lrj_locator_refinement_clause_has_a_sole_predicate_holds() -> Bool {
+  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      match symbol_index_lookup(index: r.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.lrj_one_arg.LrjNe")) {
+        Absent => false
+        Present { value: decl } =>
+          match refinement_declaration_of_node(decl: decl) {
+            Absent => false
+            Present { value: rd } => match infer_where_sole_predicate(where_clause: rd.where_clause) { Absent => false  Present { value: _ } => true }
+          }
+      }
+  }
 }
