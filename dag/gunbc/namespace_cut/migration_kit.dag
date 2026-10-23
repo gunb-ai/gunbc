@@ -150,3 +150,28 @@ fn kit_contract_finding(row: AmbientNameHome, control_contract: String) -> Contr
       }
   }
 }
+
+// CHECK 4, REALIZATION BY DECLARATION IDENTITY (the resolved_call_emission_identity_witness shape, as data): the imported
+// call must emit the host realization symbol, and must NOT emit a recursive call to the declaration's own emitted path
+// (the HostRealizedSeam self-call hazard, gunbc.recurring_failure_mode host_seam_self_call_diverges_when_its_arm_is_absent).
+// host_symbol and self_path are the row's REALIZATION facts, read from extdeps.languages.rust.emit rt_function_registry
+// and the module's emitted path; they are supplied by the wave, not invented here.
+fn kit_emit_identity_holds(row: AmbientNameHome, host_symbol: String, self_path: String) -> Bool {
+  compile_dag_rust_emit_check(
+    kit_call_source(row: row, imported: true),
+    "src/probe_migration_kit.rs",
+    [host_symbol],
+    [self_path]
+  )
+}
+
+// The pairing negative: the SAME call without the import must not select the declaration's emitted path (it is not
+// bound to it), so a emitter that selected by spelling would flip this and the positive together.
+fn kit_emit_unimported_does_not_select_declaration(row: AmbientNameHome, self_path: String) -> Bool {
+  compile_dag_rust_emit_check(
+    kit_call_source(row: row, imported: false),
+    "src/probe_migration_kit.rs",
+    [],
+    [self_path]
+  )
+}

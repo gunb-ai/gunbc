@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.optional { optional_present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
-import gunbc.namespace_cut.migration_kit { ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable, kit_import_differential }
+import gunbc.namespace_cut.migration_kit { kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable, kit_import_differential }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -81,4 +81,14 @@ test fn probe_contract_control_is_not_broken() -> Bool {
 
 test fn list_push_contract_is_absent() -> Bool {
   match kit_contract_finding(row: list_push_row(), control_contract: "concat_contract") { ContractAbsent => true  _ => false }
+}
+
+// CHECK 4 (host_symbol per the Rust realization of list_push, v1_rt::rc_list_push; self path crate::std_algebra::list_push(
+// per the emitted path convention in resolved_call_emission_identity_witness).
+test fn list_push_emits_host_realization_by_declaration_identity() -> Bool {
+  kit_emit_identity_holds(row: list_push_row(), host_symbol: "v1_rt::rc_list_push(", self_path: "crate::std_algebra::list_push(")
+}
+
+test fn list_push_unimported_does_not_select_the_declaration_path() -> Bool {
+  kit_emit_unimported_does_not_select_declaration(row: list_push_row(), self_path: "crate::std_algebra::list_push(")
 }
