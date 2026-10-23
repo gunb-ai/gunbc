@@ -46,9 +46,7 @@ import gunbc.auth.approval_broker_cutover {
   RouteClassAnsweredByNoBroker, RouteClassAnsweredByWrongFold,
   approval_broker_cutover_admission,
   approval_broker_cutover_stage_discharged,
-  install_readback_evidence, broker_install_readback_under, broker_install_readback_for,
-  InstallReadbackQuestion, DarkInstallQuestion, LiveUpgradeQuestion, DarkStageBrokerAlreadyHoldsWriterAuthority,
-  UpgradeReadbackWhileRoadmapStillWrites,
+  dark_install_release_discharged, dark_install_evidence,
   BrokerTreeReceiptRead, TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved,
   observe_broker_tree_receipt, TreeReceiptNotObserved, TreeIsNotTheCandidate,
   DarkUnitNotStarted,
@@ -77,8 +75,6 @@ data cutover_fixture_liveness_body: String = join([
 
 fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: DarkUnitNotStarted { detail: "no unit installed" as NonEmptyStr },
     expected_release: cutover_fixture_revision,
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
@@ -118,8 +114,6 @@ fn fixture_demand_reading() -> BrokerDemandReading {
 
 fn everything_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: DarkUnitListening { port: approval_broker_listen_port },
     expected_release: cutover_fixture_revision,
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: cutover_fixture_liveness_body)),
@@ -169,8 +163,6 @@ test fn cutover_refuses_every_stage_but_the_first_with_nothing_observed() -> Boo
 test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: full.dark,
     expected_release: full.expected_release,
     release_readback: full.release_readback,
@@ -197,8 +189,6 @@ test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bo
 test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: full.dark,
     expected_release: full.expected_release,
     release_readback: full.release_readback,
@@ -231,8 +221,6 @@ test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
 test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: full.dark,
     expected_release: full.expected_release,
     release_readback: full.release_readback,
@@ -266,8 +254,6 @@ test fn cutover_refuses_a_200_that_carries_no_broker_marker() -> Bool {
 test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: full.dark,
     expected_release: full.expected_release,
     release_readback: full.release_readback,
@@ -402,8 +388,6 @@ test fn the_slice_bound_derives_from_the_largest_incarnation() -> Bool {
 test fn a_correct_200_from_the_still_mounted_roadmap_refuses_the_retirement() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: full.dark,
     expected_release: full.expected_release,
     release_readback: full.release_readback,
@@ -437,8 +421,6 @@ test fn a_correct_200_from_the_still_mounted_roadmap_refuses_the_retirement() ->
 test fn cutover_refuses_a_unit_answering_on_an_unexpected_port() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: DarkUnitListening { port: 18085 },
     expected_release: full.expected_release,
     release_readback: full.release_readback,
@@ -466,8 +448,6 @@ test fn cutover_refuses_a_unit_answering_on_an_unexpected_port() -> Bool {
 test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: full.dark,
     expected_release: full.expected_release,
     release_readback: full.release_readback,
@@ -626,12 +606,11 @@ test fn front_door_repoint_installs_two_distinct_scoped_mounts() -> Bool {
 // cited as the receipt that the plan is consumed is worse than no check at all, and the function's
 // own annotation asserted the opposite of what it did.
 //
-// These four claims are the red that was missing. Each drives broker_install_readback_under --
+// These four claims are the red that was missing. Each drives dark_install_release_discharged --
 // the exact fold gunbc.live_deploy.apply calls -- with a reading the probe could actually return.
 
 fn dark_install_refuses(read: ServeLivenessRead) -> Bool {
-  match broker_install_readback_under(
-    authority: RoadmapWriter,
+  match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: read,
     tree_receipt: fixture_tree_receipt(),
@@ -675,9 +654,7 @@ test fn the_dark_install_refuses_a_body_that_is_not_the_liveness_document() -> B
 // THE POSITIVE CONTROL. Without it every claim above is satisfiable by a fold that refuses
 // everything -- which is the same defect as one that admits everything, wearing the other sign.
 test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
-  match broker_install_readback_for(
-    authority: RoadmapWriter,
-    question: DarkInstallQuestion,
+  match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: probe_answered(body: cutover_fixture_liveness_body),
     tree_receipt: fixture_tree_receipt(),
@@ -692,9 +669,7 @@ test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
 // to carry DarkUnitListening built from the port the deploy intended to use, which restated "we
 // asked systemd to start one" as "one is listening".
 test fn an_unanswered_probe_reports_the_unit_as_not_started() -> Bool {
-  let e = install_readback_evidence(
-    authority: RoadmapWriter,
-    question: DarkInstallQuestion,
+  let e = dark_install_evidence(
     listening_port: approval_broker_listen_port,
     read: serve_liveness_read_from_probe(success: false, body: "", error: "no route to host" as NonEmptyStr),
     expected_release: cutover_fixture_revision,
@@ -711,8 +686,6 @@ test fn an_unanswered_probe_reports_the_unit_as_not_started() -> Bool {
 test fn a_stage_may_be_admitted_and_undischarged() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
-    writer_authority: RoadmapWriter,
-    readback: DarkInstallQuestion,
     dark: full.dark,
     expected_release: full.expected_release,
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: "")),
@@ -822,8 +795,7 @@ fn liveness_body_naming(revision: NonEmptyStr) -> String {
 // admitted release is refused, and the refusal names both revisions so an operator can tell a
 // service that did not restart from one that came back on an older build.
 test fn a_broker_running_another_release_is_refused_by_the_readback() -> Bool {
-  match broker_install_readback_under(
-    authority: RoadmapWriter,
+  match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_other_release)),
     tree_receipt: fixture_tree_receipt(),
@@ -842,8 +814,7 @@ test fn a_broker_running_another_release_is_refused_by_the_readback() -> Bool {
 // THE POSITIVE CONTROL, and it is what stops the comparison being satisfiable by refusing every
 // readback: the SAME document naming THIS deploy's candidate is admitted.
 test fn a_broker_running_this_candidate_discharges_the_readback() -> Bool {
-  match broker_install_readback_under(
-    authority: RoadmapWriter,
+  match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
     tree_receipt: fixture_tree_receipt(),
@@ -879,8 +850,7 @@ test fn a_stale_tree_refuses_even_when_the_liveness_read_is_correct() -> Bool {
     body: join(["candidate_revision=", cutover_other_release as String, "\ninstalled_digest=aaaa\n"], ""),
     error: "no read error" as NonEmptyStr,
   )
-  match broker_install_readback_under(
-    authority: RoadmapWriter,
+  match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
     tree_receipt: stale,
@@ -902,8 +872,7 @@ test fn an_absent_tree_receipt_refuses_rather_than_being_skipped() -> Bool {
   let absent = observe_broker_tree_receipt(
     success: false, body: "", error: "no such file" as NonEmptyStr,
   )
-  match broker_install_readback_under(
-    authority: RoadmapWriter,
+  match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_fixture_revision)),
     tree_receipt: absent,
@@ -921,15 +890,13 @@ test fn an_absent_tree_receipt_refuses_rather_than_being_skipped() -> Bool {
 // broken launch argument, the other is a process that did not restart -- so they must not fold
 // together into one "release not established".
 test fn a_malformed_revision_and_a_wrong_revision_refuse_differently() -> Bool {
-  let malformed = broker_install_readback_under(
-    authority: RoadmapWriter,
+  let malformed = dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: "main" as NonEmptyStr)),
     tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   )
-  let wrong = broker_install_readback_under(
-    authority: RoadmapWriter,
+  let wrong = dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: observe_serve_liveness(body: liveness_body_naming(revision: cutover_other_release)),
     tree_receipt: fixture_tree_receipt(),
@@ -950,93 +917,56 @@ test fn a_malformed_revision_and_a_wrong_revision_refuse_differently() -> Bool {
   }
 }
 
-// ── THE POST-INSTALL READBACK IS SELECTED FROM THE POSTURE ──────────────────────────────────
-// fleet-converge run 39897344906: the unit was written, the broker restarted, /livez named the
-// installed release, and the stage still refused because the broker already held the store. These
-// claims pin the three postures of the one install route.
-fn selected_readback(authority: ApprovalWriterAuthority, read: ServeLivenessRead) -> CutoverAdmission {
-  broker_install_readback_under(
-    authority: authority,
-    listening_port: approval_broker_listen_port,
-    read: read,
-    tree_receipt: fixture_tree_receipt(),
-    expected_release: cutover_fixture_revision,
-  )
-}
-
-// LIVE WRITER, CORRECT RELEASE: the upgrade readback admits. This is the run that went RED.
-test fn a_live_writer_posture_selects_the_upgrade_readback_and_admits_the_installed_release() -> Bool {
-  match selected_readback(authority: BrokerWriter, read: probe_answered(body: cutover_fixture_liveness_body)) {
-    StageAdmitted { stage: _ } => true
-    StageRefused { stage: _, cause: _ } => false
+// ── THE INSTALL READBACK IS POSTURE-INDEPENDENT ─────────────────────────────────────────────
+// fleet-converge run 39897344906: the unit was written, the broker restarted and /livez named the
+// installed release, and the readback still refused because the broker already held the store.
+// This is the live-writer posture's upgrade readback (the posture row now holds BrokerWriter).
+test fn the_install_readback_admits_the_installed_release_under_the_live_writer_posture() -> Bool {
+  match approval_writer_authority {
+    BrokerWriter =>
+      match dark_install_release_discharged(
+        listening_port: approval_broker_listen_port,
+        read: probe_answered(body: cutover_fixture_liveness_body),
+        tree_receipt: fixture_tree_receipt(),
+        expected_release: cutover_fixture_revision,
+      ) {
+        StageAdmitted { stage: _ } => true
+        StageRefused { stage: _, cause: _ } => false
+      }
+    RoadmapWriter => false
   }
 }
 
-// THE RED CONTROL: the same inputs through the old (dark) question under a live writer refuse by
-// name. This is the pre-change behaviour of the install route, kept as the control that the
-// selection is what turns the run green.
-test fn the_old_dark_readback_refuses_the_live_writer_by_name() -> Bool {
-  match broker_install_readback_for(
-    authority: BrokerWriter,
-    question: DarkInstallQuestion,
+// THE READBACK STILL REFUSES A REAL UPGRADE FAILURE UNDER THE LIVE POSTURE: another release serving.
+test fn the_install_readback_still_refuses_another_release_under_the_live_writer_posture() -> Bool {
+  match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
-    read: probe_answered(body: cutover_fixture_liveness_body),
+    read: probe_answered(body: join([
+      "{\"live\":true,\"", running_release_revision_key,
+      "\":\"fedcba9876543210fedcba9876543210fedcba98\",\"bound_port\":8085}",
+    ], "")),
     tree_receipt: fixture_tree_receipt(),
     expected_release: cutover_fixture_revision,
   ) {
-    StageRefused { stage: _, cause: DarkStageBrokerAlreadyHoldsWriterAuthority } => true
-    other => false
-  }
-}
-
-// THE DARK POSTURE IS UNCHANGED: selection routes it to the dark readback, which admits.
-test fn a_dark_posture_still_selects_the_dark_readback() -> Bool {
-  match selected_readback(authority: RoadmapWriter, read: probe_answered(body: cutover_fixture_liveness_body)) {
-    StageAdmitted { stage: _ } => true
-    StageRefused { stage: _, cause: _ } => false
-  }
-}
-
-// THE UPGRADE READBACK IS A REAL READBACK, NOT A WAIVER: a live broker that serves another release,
-// answers nothing, or sits on a stale tree is refused.
-test fn the_upgrade_readback_refuses_a_stale_release_an_unanswered_unit_and_a_stale_tree() -> Bool {
-  let stale = probe_answered(body: join([
-    "{\"live\":true,\"", running_release_revision_key,
-    "\":\"fedcba9876543210fedcba9876543210fedcba98\",\"bound_port\":8085}",
-  ], ""))
-  let down = serve_liveness_read_from_probe(success: false, body: "", error: "connection refused" as NonEmptyStr)
-  let stale_release = match selected_readback(authority: BrokerWriter, read: stale) {
     StageRefused { stage: _, cause: ReleaseDoesNotMatchCandidate { expected: _, observed: _ } } => true
     other => false
   }
-  let unanswered = match selected_readback(authority: BrokerWriter, read: down) {
-    StageRefused { stage: _, cause: DarkDeploymentNotListening { detail: _ } } => true
-    other => false
-  }
-  let stale_tree = match broker_install_readback_under(
-    authority: BrokerWriter,
-    listening_port: approval_broker_listen_port,
-    read: probe_answered(body: cutover_fixture_liveness_body),
-    tree_receipt: TreeReceiptUnreadable { detail: "absent" as NonEmptyStr },
-    expected_release: cutover_fixture_revision,
-  ) {
-    StageRefused { stage: _, cause: TreeReceiptNotObserved { detail: _ } } => true
-    other => false
-  }
-  stale_release && unanswered && stale_tree
 }
 
-// THE UPGRADE QUESTION IS WRONG WHILE THE ROADMAP STILL WRITES, and it says so by type.
-test fn the_upgrade_readback_refuses_a_roadmap_that_still_writes() -> Bool {
-  match broker_install_readback_for(
-    authority: RoadmapWriter,
-    question: LiveUpgradeQuestion,
-    listening_port: approval_broker_listen_port,
-    read: probe_answered(body: cutover_fixture_liveness_body),
-    tree_receipt: fixture_tree_receipt(),
-    expected_release: cutover_fixture_revision,
-  ) {
-    StageRefused { stage: _, cause: UpgradeReadbackWhileRoadmapStillWrites } => true
-    other => false
+// THE SECOND-WRITER REFUSAL THAT REPLACES THE POSTURE CHECK INSIDE THE READBACK. With BOTH serving
+// processes live and asking, exactly one is admitted under each authority and the other is refused
+// by type naming the holder -- the single-writer premise, stated where the store is mutated.
+fn write_admitted(a: ApprovalWriteAdmission) -> Bool {
+  match a {
+    ApprovalWriteAdmitted { writer: _ } => true
+    ApprovalWriteRefused { holder: _, asker: _ } => false
   }
+}
+
+test fn with_both_writers_live_exactly_one_is_admitted_and_the_other_is_refused() -> Bool {
+  let broker_holds = write_admitted(a: approval_write_admission_under(authority: BrokerWriter, asker: BrokerProcess))
+    && !write_admitted(a: approval_write_admission_under(authority: BrokerWriter, asker: RoadmapProcess))
+  let roadmap_holds = write_admitted(a: approval_write_admission_under(authority: RoadmapWriter, asker: RoadmapProcess))
+    && !write_admitted(a: approval_write_admission_under(authority: RoadmapWriter, asker: BrokerProcess))
+  broker_holds && roadmap_holds
 }
