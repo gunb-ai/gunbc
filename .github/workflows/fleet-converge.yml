@@ -2229,6 +2229,7 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RUNNER_HOST_CAP_STEP_BUDGET_SECONDS: "3540"
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: github.event.inputs.mode == 'runner_host_file_converge'
         timeout-minutes: 74
       - name: "Runner host cap bracket: re-admit this host's slots and read them back (always)"
