@@ -103,6 +103,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_subtree_count,
+  NotADeclaration
 }
 import v2.std.witness { Holds, Violates, Witness, list_nth }
 import std.host_text { chars }
@@ -1004,7 +1005,8 @@ data bash_fold_assign_foo_bar_emitted: Node = Node {
   children: [
     Edge {
       label: Positional,
-      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
+      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign),
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
@@ -1012,11 +1014,13 @@ data bash_fold_assign_foo_bar_emitted: Node = Node {
         kind: TypeNode { connective: Atom { identity: "FOO" } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
-      target: bash_build_word_lit(text: "bar")
+      target: bash_build_word_lit(text: "bar"),
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -1027,7 +1031,8 @@ data bash_fold_assign_x_home_emitted: Node = Node {
   children: [
     Edge {
       label: Positional,
-      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
+      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign),
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
@@ -1035,11 +1040,13 @@ data bash_fold_assign_x_home_emitted: Node = Node {
         kind: TypeNode { connective: Atom { identity: "X" } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
-      target: bash_build_word_var(name: "HOME")
+      target: bash_build_word_var(name: "HOME"),
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic
@@ -1050,7 +1057,8 @@ data bash_fold_assign_wrong_emitted: Node = Node {
   children: [
     Edge {
       label: Positional,
-      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
+      target: bash_build_stmt_tag(binding: ^bash_production_fold_assign),
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
@@ -1058,11 +1066,13 @@ data bash_fold_assign_wrong_emitted: Node = Node {
         kind: TypeNode { connective: Atom { identity: "FOO" } },
         children: [],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     },
     Edge {
       label: Positional,
-      target: bash_build_word_lit(text: "baz")
+      target: bash_build_word_lit(text: "baz"),
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic

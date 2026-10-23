@@ -824,17 +824,17 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
     ValidationOracleMoved { expected, observed } =>
       join([
         "the validation oracle changed after dispatch: pinned ",
-        expected as String,
+        serialize_content_hash(hash: expected) as String,
         ", observed ",
-        observed as String,
+        serialize_content_hash(hash: observed) as String,
         ". A run against an oracle the attempt itself moved proves nothing",
       ], "")
     ValidationOracleCrossFamilyIdentityIncomparable { expected, observed } =>
       join([
         "pinned oracle identity and observed identity are different hash families and cannot be compared: expected ",
-        expected as String,
+        serialize_content_hash(hash: expected) as String,
         ", observed ",
-        observed as String,
+        serialize_content_hash(hash: observed) as String,
         ". This is a modeling error upstream of the pin gate, not oracle drift",
       ], "")
     ValidationOraclePinUnrecorded { channel } =>
@@ -947,7 +947,7 @@ fn validation_verdict_detail(verdict: ValidationVerdict) -> String {
     ValidationPassed { command, oracle_identity } =>
       join([
         "declared validation passed against the pinned oracle ",
-        oracle_identity as String,
+        serialize_content_hash(hash: oracle_identity) as String,
         ": ",
         command,
       ], "")

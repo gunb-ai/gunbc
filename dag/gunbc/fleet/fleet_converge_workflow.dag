@@ -44,6 +44,7 @@ import gunbc.ci.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_ad
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
+import gunbc.auth.access_token_source { workload_identity_token_env }
 import std.measure { Second, minute_count, second_count }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name }
 
@@ -74,6 +75,7 @@ import gunbc.fabric.workspace_source { workspace_source_receipt_path, workspace_
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path, workspace_source_object_env }
 import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
+import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
@@ -361,6 +363,7 @@ type FleetConvergeWorkflowMode
   | MtCollins1KvmObserverObserve
   | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
+  | MtCollins1RunnerImagePublish
   | MtCollins1CensusMemberReadback
   | MtCollins1CensusQemuHostObserve
   | MtCollins1CensusQemuToolchainConverge
@@ -441,6 +444,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MtCollins1KvmObserverObserve => "mtcollins1_kvm_observer_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
+    MtCollins1RunnerImagePublish => "mtcollins1_runner_image_publish"
     MtCollins1CensusMemberReadback => "mtcollins1_census_member_readback"
     MtCollins1CensusQemuHostObserve => "mtcollins1_census_qemu_host_observe"
     MtCollins1CensusQemuToolchainConverge => "mtcollins1_census_qemu_toolchain_converge"
@@ -471,7 +475,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, FlexPass, FlexTemplateEnsure, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, FlexPass, FlexTemplateEnsure, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -541,6 +545,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     MtCollins1FanObserve => SixteenBinaryPack
     MtCollins1KvmObserverObserve => SixteenBinaryPack
     MtCollins1CensusImagePublish => SixteenBinaryPack
+    MtCollins1RunnerImagePublish => SixteenBinaryPack
     MtCollins1CensusMemberReadback => SixteenBinaryPack
     MtCollins1CensusQemuHostObserve => SixteenBinaryPack
     MtCollins1CensusQemuToolchainConverge => SixteenBinaryPack
@@ -657,6 +662,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MtCollins1KvmObserverObserve => none
     FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
+    MtCollins1RunnerImagePublish => none
     MtCollins1CensusMemberReadback => none
     MtCollins1CensusQemuHostObserve => none
     MtCollins1CensusQemuToolchainConverge => none
@@ -839,6 +845,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MtCollins1KvmObserverObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyConsumed
+    MtCollins1RunnerImagePublish => FleetSshKeyConsumed
     MtCollins1CensusMemberReadback => FleetSshKeyConsumed
     MtCollins1CensusQemuHostObserve => FleetSshKeyNotConsumed
     MtCollins1CensusQemuToolchainConverge => FleetSshKeyNotConsumed
@@ -1663,6 +1670,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MtCollins1KvmObserverObserve => ExecutorDomain
     FabricWriterIdentityObserve => ExecutorDomain
     MtCollins1CensusImagePublish => ExecutorDomain
+    MtCollins1RunnerImagePublish => ExecutorDomain
     MtCollins1CensusMemberReadback => ExecutorDomain
     MtCollins1CensusQemuHostObserve => ExecutorDomain
     MtCollins1CensusQemuToolchainConverge => ExecutorDomain
@@ -2139,6 +2147,7 @@ fn fleet_converge_runner_host_file_converge_step() -> Step {
       value: [
         kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
         kv(key: runner_host_cap_step_budget_env_name, value: yaml_string(s: to_string(second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy))))),
+        kv(key: workload_identity_token_env as String, value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       ]
     },
     working_directory: none,
@@ -2926,6 +2935,44 @@ fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step 
     ] },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_image_publish_step_if) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE RUNNER IMAGE (gunbc.runner.runner_host_medium_publish), the image leg of the mtcollins1 route:
+// derived from gunbc.runner.runner_host_medium runner_host_medium_image, built and published create-only
+// in /srv/bmc over fleet SSH from any runner. The receipt names the published image and its measured
+// digest -- the fact the boot leg's runner_host_boot_medium row carries. Uploaded whatever the outcome.
+data fleet_converge_mtcollins1_runner_image_publish_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1RunnerImagePublish)
+
+fn fleet_converge_mtcollins1_runner_image_publish_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins runner image: over fleet SSH to srv2, build the derived runner image and publish it create-only in /srv/bmc" },
+    id: Present { value: "mtcollins1_runner_image_publish" },
+    run: gunbc_ci_mtcollins1_runner_image_publish_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_runner_image_publish_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins runner image receipt" },
+    id: Present { value: "mtcollins1_runner_image_publish_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-runner-image")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_runner_image_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_runner_image_publish_step_if) },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -4624,6 +4671,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_fabric_writer_identity_observe_receipt_upload_step(),
         fleet_converge_mtcollins1_census_image_publish_step(),
         fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
+        fleet_converge_mtcollins1_runner_image_publish_step(),
+        fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step(),
         fleet_converge_mtcollins1_census_member_readback_step(),
         fleet_converge_mtcollins1_census_member_readback_receipt_upload_step(),
         fleet_converge_mtcollins1_census_qemu_host_observe_step(),
@@ -4917,6 +4966,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MtCollins1FanObserve => fleet_converge_shared_job_id
     MtCollins1KvmObserverObserve => fleet_converge_shared_job_id
     MtCollins1CensusImagePublish => fleet_converge_shared_job_id
+    MtCollins1RunnerImagePublish => fleet_converge_shared_job_id
     MtCollins1CensusMemberReadback => fleet_converge_shared_job_id
     MtCollins1CensusQemuHostObserve => fleet_converge_shared_job_id
     MtCollins1CensusQemuToolchainConverge => fleet_converge_shared_job_id
