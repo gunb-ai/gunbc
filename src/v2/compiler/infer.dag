@@ -61,7 +61,7 @@ import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -110,7 +110,7 @@ fn inferred_facts_subject_node(facts: InferredFacts) -> Node {
 }
 
 fn inferred_facts_cover_node(facts: InferredFacts, node: Node) -> Bool {
-  inferred_facts_subject_node(facts: facts) == node
+  node_same_occurrence(a: inferred_facts_subject_node(facts: facts), b: node)
 }
 
 fn inferred_facts_grounding_derived(facts: InferredFacts) -> Bool {
@@ -421,7 +421,7 @@ fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool
     && well_formed(n: grounding.witness.structural.evidence)
     && (grounding.witness.structural.property == ^constraint_property_being_canonical)
     && (grounding.witness.closedness.property == ^constraint_property_candidate_set_closedness)
-    && (grounding.witness.closedness.evidence == grounding.node)
+    && node_same_occurrence(a: grounding.witness.closedness.evidence, b: grounding.node)
 }
 
 fn inferred_facts_construction(
@@ -1807,7 +1807,7 @@ fn canonical_grounding_from_inferred_facts(
     GroundingNotDerived { node: n, site: _ } =>
       outcome_rejected(infer_grounding_demanded_not_derived_diagnostic(at: node_locus(node: n)))
     DerivedGrounding { grounding: g } =>
-      if node != g.node {
+      if !node_same_occurrence(a: node, b: g.node) {
         outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
       } else if !algebra_ref_is_grounded(algebra: algebra_ref_from_grounding(grounding: g).algebra) {
         outcome_rejected(infer_algebra_ref_ungrounded_diagnostic(node: node))
@@ -2299,7 +2299,7 @@ fn infer_branch_type_atoms_equal(a: Node, b: Node) -> Bool {
         Present { value: id_b } => id_a == id_b
         Absent => false
       }
-    Absent => a == b
+    Absent => node_equal_ignoring_provenance(a: a, b: b)
   }
 }
 
@@ -8779,7 +8779,7 @@ fn infer_application_actual_is_callback(application: Node, edge: Edge) -> Bool {
     ComputationNode { behavior: Transform } =>
       match infer_application_callee_use(node: application) {
         Absent => false
-        Present { value: callee } => (callee != edge.target) && infer_node_is_function_literal(n: edge.target)
+        Present { value: callee } => !node_same_occurrence(a: callee, b: edge.target) && infer_node_is_function_literal(n: edge.target)
       }
     ComputationNode { behavior: _ } => false
     TypeNode { connective: _ } => false
@@ -8847,7 +8847,7 @@ fn infer_callback_formal_arg(pairs: List<InhabitanceFormalArg>, callback: Node) 
   fold(pairs, init: optional_absent(), f: fn(found, pair) {
     match found {
       Present { value: _ } => found
-      Absent => if pair.arg == callback { optional_present(value: pair) } else { found }
+      Absent => if node_same_occurrence(a: pair.arg, b: callback) { optional_present(value: pair) } else { found }
     }
   })
 }

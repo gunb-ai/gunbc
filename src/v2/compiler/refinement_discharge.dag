@@ -21,7 +21,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Node }
+import v2.std.node { node_equal_ignoring_provenance, Node }
 import v2.std.runtime { RuntimeValue }
 
 // DISCHARGE IS THE ONE ROUTE FROM INFER'S OUTPUT TO AN InferredTree. Infer records a
@@ -64,7 +64,7 @@ fn discharge_one(tree: InferredTree, obligation: RefinementObligation) -> Outcom
     inputs: inputs_root_only(root: obligation.application)
   ) {
     Accepted { value: v, diagnostics: _ } =>
-      if v == v2_eval_bool_true_primitive() {
+      if node_equal_ignoring_provenance(a: v, b: v2_eval_bool_true_primitive()) {
         outcome_accepted(true)
       } else {
         outcome_rejected(d: refinement_predicate_violated_diagnostic(site: obligation.site))

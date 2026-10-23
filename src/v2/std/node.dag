@@ -615,6 +615,44 @@ fn canonicalize_node_strip_provenance(n: Node) -> Node {
   fold_node(n: n, algebra: strip_provenance_fold_algebra())
 }
 
+// NODE EQUALITY IS TWO QUESTIONS, and derived `==` on Node answered both while also comparing the
+// provenance it carries (occurrence ids, Edge.declaration). Node is declared equality-inadmissible;
+// a caller names which question it asks. Both compare exactly (no hash shortcut: content_hash is a
+// 64-bit non-cryptographic fold and a collision would be a silent false equality), recursing in
+// place with no canonical copy, and stop at the first difference.
+//
+// node_equal_ignoring_provenance: same kind, same labeled children, recursively; occurrence ids and
+// Edge.declaration are not compared. The question every structural reader asks (a type against a type,
+// a node against a pinned constant).
+fn node_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
+  (a.kind == b.kind) && node_edges_equal_ignoring_provenance(xs: a.children, ys: b.children)
+}
+
+fn node_edges_equal_ignoring_provenance(xs: List<Edge>, ys: List<Edge>) -> Bool {
+  match xs {
+    Empty =>
+      match ys {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: x, tail: xrest } =>
+      match ys {
+        Empty => false
+        Cons { head: y, tail: yrest } =>
+          (x.label == y.label)
+            && node_equal_ignoring_provenance(a: x.target, b: y.target)
+            && node_edges_equal_ignoring_provenance(xs: xrest, ys: yrest)
+      }
+  }
+}
+
+// node_same_occurrence: the two are the same authored occurrence with the same content. Occurrence
+// ids are minted unique per authored node and all synthetic nodes share one, so this is the identity
+// question for authored nodes and degrades to the structural one for synthetic nodes, as `==` did.
+fn node_same_occurrence(a: Node, b: Node) -> Bool {
+  (a.occurrence_id == b.occurrence_id) && node_equal_ignoring_provenance(a: a, b: b)
+}
+
 type Node {
   kind: NodeKind
   children: List<Edge>
@@ -1988,7 +2026,7 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
 // the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
 // type is the InferBinderType row its references read, never a fact about the key atom.
 fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
-  key.label == edge.label && key.target == edge.target && match key.target.kind {
+  key.label == edge.label && node_same_occurrence(a: key.target, b: edge.target) && match key.target.kind {
     TypeNode { connective: Atom { identity: _ } } => true
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false

@@ -6,7 +6,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_lis
 import v2.std.witness { map_get_checked }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Symbol, TypeNode }
+import v2.std.node { node_same_occurrence, Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Symbol, TypeNode }
 import v2.std.type_binder { AliasRenaming, GenericTypeDecl, NotARenaming, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, PureRenamingOf, TypeAlias, binder_conj_names, refinement_declaration_of_node, type_alias_renaming, type_decl_view }
 import std.occurrence_identity { CallableOccurrence, ConstructorOccurrence, LexicalValueOccurrence, NamespaceSegmentOccurrence, OccurrenceCategory, TypeOccurrence }
 import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, OccurrenceCategoryBindingInadmissible, occurrence_category_binding_verdict }
@@ -213,7 +213,7 @@ fn symbol_index_track_global_bare(
               primitive_contracts: index.primitive_contracts
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
-            if existing_path == qualified_path && existing == resolved {
+            if existing_path == qualified_path && node_same_occurrence(a: existing, b: resolved) {
               index
             } else {
               SymbolIndex {
