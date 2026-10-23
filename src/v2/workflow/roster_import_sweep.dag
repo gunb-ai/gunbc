@@ -24,16 +24,18 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map, for_all }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.occurrence_identity {
+  NodeOccurrenceIdentity,
   OccurrenceId,
   OccurrenceMinted,
   OccurrencePending,
   OccurrenceProjected,
-  OccurrenceSynthetic
+  OccurrenceSynthetic,
+  ValuePosition
 }
 import std.types { List, Bool, GitRef }
 import extdeps.git
@@ -43,7 +45,6 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
 import v2.std.node_query { find_named_child }
-import v2.compiler.lexical_scope { arrow_domain_binder_names, bind_binder, match_arm_candidate_names }
 import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, Positional, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol, NotADeclaration }
 import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
 import v2.std.namespace_alias { AliasBindingRow }
@@ -137,7 +138,6 @@ type RosterRefusalReason
   | RefusalUnreadable
   | RefusalGrammarUnprepared
   | RefusalLabelSitesAmbiguous
-  | RefusalHomeNameLocallyBound
   // THE CENSUS CANNOT CLASSIFY A HOME THE RULE MUST DECIDE ABOUT (review 83187, DESIGN 5): an unbound head sits at a
   // value or type position and the home's keyed census rows classify NONE of its declarations -- zero rows, or only
   // OtherItem (the census's own cannot-classify answer, which a declaration the host cannot kind reads as).
@@ -176,7 +176,6 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalUnreadable => "unreadable"
     RefusalGrammarUnprepared => "grammar-unprepared"
     RefusalLabelSitesAmbiguous => "label-sites-ambiguous"
-    RefusalHomeNameLocallyBound => "home-name-locally-bound"
     RefusalHomeKindUnclassified { home: h, name: n } => "home-kind-unclassified home=" + h + " name=" + n
     RefusalImportClosesCycle { home: h, module: m } => "import-closes-cycle home=" + h + " module=" + m
     RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
@@ -876,16 +875,16 @@ fn roster_sweep_text_rows(sides: List<RosterHomeSide>, path: String, text: Strin
 }
 
 // THE LABEL SITES ARE READ FROM RESOLUTION, NOT FROM LEXEMES (review 82002). A label edit is selected only at a call whose
-// head is the row's spelling as a FREE name: the parse tree's primary-expression heads spelled `call` are counted against the
-// reference-site collector's own head classification of that spelling (v2.compiler.reference_site_collector), and the
-// counts must agree. A bound occurrence (a parameter, a local), a method or field spelling, or anything the parse tree
-// shows as a head that the collector does not classify as the free name makes them disagree, and the file REFUSES with
+// head is the row's spelling as a FREE name: each parse-tree primary-expression head spelled `call` is JOINED, by the source
+// offset of its node, to the reference-site collector's value-position site of that spelling that starts at the same byte
+// (ScopedReferenceSite.occurrence, v2.compiler.reference_site_collector), and the edit goes only to heads whose site is free.
+// A bound occurrence (a parameter, a local) is joined and left alone. A method or field spelling, a head or site with no
+// recorded offset, or a head that does not meet exactly one site cannot be placed, and the file REFUSES with
 // label-sites-ambiguous rather than relabelling what it cannot place. The free name is any occurrence no lexical frame binds
 // (roster_site_is_free); that it is the row's HOME is decided by roster_symbol_imported, never by the head class.
 type RosterLabelPlan
   = LabelsSelected { edits: List<RosterLabelEdit> }
   | LabelsAmbiguous
-  | LabelsLocallyBound
 
 fn roster_label_plan(sides: List<RosterHomeSide>, 
   parse_root: Node,
@@ -899,20 +898,42 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
     root: normalized_root,
     imported: list_map(xs: imported, f: fn(b) { b.binding })
   ).sites
-  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: roster_symbol_imported(imported: imported, row: row)) { n + 1 } else { n } })
-  let heads = roster_primary_heads(parse_root: parse_root, call: row.call)
-  if length(xs: heads) != free {
+  let imported_from_home = roster_symbol_imported(imported: imported, row: row)
+  let free_off_value = fold_list(xs: sites, empty: 0, cons: fn(n, st) {
+    if roster_spelling_is(qn: st.site.spelling, call: row.call) {
+      match st.position {
+        ValuePosition => n
+        _ => if roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) { n + 1 } else { n }
+      }
+    } else {
+      n
+    }
+  })
+  // THE JOIN IS ON IDENTITY, NOT ORDER (DESIGN section 5): each value-position site is placed by the source offset its occurrence
+  // records, each parse head by the offset of its own node, and a head is paired with the site that starts at the same byte.
+  // A site or head with no recorded offset, an offset two sites share, or a head no site starts at REFUSES the module.
+  let value_sites = roster_value_sites(sites: sites, call: row.call)
+  let all_heads = roster_primary_heads(parse_root: parse_root, call: row.call)
+  let site_starts = roster_site_starts(sites: value_sites, spans: spans)
+  let head_starts = list_map(xs: all_heads, f: fn(h) { roster_node_start(node: h, spans: spans) })
+  let unplaced = roster_absent_count(xs: site_starts) + roster_absent_count(xs: head_starts)
+  let joined = list_map(xs: all_heads, f: fn(h) {
+    roster_sites_starting_at(sites: value_sites, starts: site_starts, at: roster_node_start(node: h, spans: spans))
+  })
+  let well_joined = for_all(xs: joined, predicate: fn(m) { length(xs: m) == 1 })
+  if free_off_value != 0 || unplaced != 0 || length(xs: all_heads) != length(xs: value_sites) || !well_joined {
     LabelsAmbiguous
   } else {
+    let heads = fold_list(xs: zip_map(a: all_heads, b: joined, f: fn(h, m) {
+      if fold_list(xs: m, empty: false, cons: fn(acc2, st) { roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) }) { [h] } else { [] }
+    }), empty: [], cons: fn(acc, one) { list_append(left: acc, right: one) })
     fold_list(xs: heads, empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
       match acc {
         LabelsAmbiguous => LabelsAmbiguous
-        LabelsLocallyBound => LabelsLocallyBound
         LabelsSelected { edits: es } =>
           fold_list(xs: dag_call_direct_arg_slots(node: head), empty: LabelsSelected { edits: es }, cons: fn(inner, slot) {
             match inner {
               LabelsAmbiguous => LabelsAmbiguous
-              LabelsLocallyBound => LabelsLocallyBound
               LabelsSelected { edits: es2 } =>
                 // An argument whose capture does not read could be the label this row renames; it is never skipped.
                 match slot {
@@ -967,14 +988,71 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
 // THE DECLARATION QUESTION IS DELIBERATELY ABSENT. v2.compiler.occurrence_role's index does not key the
 // atoms the normalized tree carries (measured; recorded in the recurring-failure-mode row
 // a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call), so a role conjunct here would be a
-// gate that never fires -- a decoration. The let-binder cell therefore stays behind #14338's interim
-// guard, which roster_control_guard_still_refuses keeps exercised until that keying is repaired.
+// gate that never fires -- a decoration. The let-binder cell is settled at the collector instead: a `let`'s declaring
+// occurrence is not a site (v2.compiler.lexical_scope child_is_declaring_occurrence), and its uses read HeadBoundInFrame.
 fn roster_site_is_free(sides: List<RosterHomeSide>, site: ScopedReferenceSite, row: RosterHeadRow, imported_from_home: Bool) -> Bool {
   roster_site_needs_home_import(
     site: site,
     side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: row.home), import_name: row.import_name),
     imported_from_home: imported_from_home
   )
+}
+
+// The start byte of one occurrence / node, from the span index the parse recorded. Absent when no extent is recorded.
+fn roster_site_starts(sites: List<ScopedReferenceSite>, spans: SpanIndex) -> List<Int?> {
+  list_map(xs: sites, f: fn(st) { roster_identity_start(identity: st.occurrence, spans: spans) })
+}
+
+fn roster_value_sites(sites: List<ScopedReferenceSite>, call: String) -> List<ScopedReferenceSite> {
+  fold_list(xs: sites, empty: [], cons: fn(acc, st) {
+    if roster_spelling_is(qn: st.site.spelling, call: call) {
+      match st.position {
+        ValuePosition => list_snoc_item(xs: acc, item: st)
+        _ => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn roster_identity_start(identity: NodeOccurrenceIdentity, spans: SpanIndex) -> Int? {
+  match roster_identity_byte_range(identity: identity, spans: spans) {
+    Present { value: r } => Present { value: r.start }
+    Absent => Absent
+  }
+}
+
+fn roster_node_start(node: Node, spans: SpanIndex) -> Int? {
+  match roster_node_byte_range(node: node, spans: spans) {
+    Present { value: r } => Present { value: r.start }
+    Absent => Absent
+  }
+}
+
+fn roster_absent_count(xs: List<Int?>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(n, o) {
+    match o {
+      Present { value: _ } => n
+      Absent => n + 1
+    }
+  })
+}
+
+fn roster_site_if_start(site: ScopedReferenceSite, got: Int?, want: Int) -> List<ScopedReferenceSite> {
+  match got {
+    Present { value: g } => if g == want { [site] } else { [] }
+    Absent => []
+  }
+}
+
+// The sites whose recorded start is `at`; empty for an unplaced head.
+fn roster_sites_starting_at(sites: List<ScopedReferenceSite>, starts: List<Int?>, at: Int?) -> List<ScopedReferenceSite> {
+  match at {
+    Absent => []
+    Present { value: want } =>
+      fold_list(xs: zip_map(a: sites, b: starts, f: fn(st, o) { roster_site_if_start(site: st, got: o, want: want) }), empty: [], cons: fn(acc, one) { list_append(left: acc, right: one) })
+  }
 }
 
 // Every primary-expression capture whose head (the sequence's left atom) is spelled `call`: a bare `call(...)` or a bare
@@ -1004,8 +1082,7 @@ fn roster_primary_heads(parse_root: Node, call: String) -> List<Node> {
   })
 }
 
-// THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold. A row whose call this module binds locally refuses
-// (roster_name_locally_bound) before any site is planned.
+// THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold.
 fn roster_rows_label_plan(sides: List<RosterHomeSide>, 
   parse_root: Node,
   spans: SpanIndex,
@@ -1016,21 +1093,16 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
   fold_list(xs: rows, empty: LabelsSelected { edits: [] }, cons: fn(acc, row) {
     match acc {
       LabelsAmbiguous => LabelsAmbiguous
-      LabelsLocallyBound => LabelsLocallyBound
       LabelsSelected { edits: es } =>
         if is_empty(xs: row.labels) {
           acc
-        } else if roster_name_locally_bound(normalized_root: normalized_root, call: row.call) {
-          LabelsLocallyBound
         } else {
           fold_list(xs: row.labels, empty: LabelsSelected { edits: es }, cons: fn(inner, rename) {
             match inner {
               LabelsAmbiguous => LabelsAmbiguous
-              LabelsLocallyBound => LabelsLocallyBound
               LabelsSelected { edits: es2 } =>
                 match roster_label_plan(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, rename: rename) {
                   LabelsAmbiguous => LabelsAmbiguous
-                  LabelsLocallyBound => LabelsLocallyBound
                   LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es2, right: more) }
                 }
             }
@@ -1053,7 +1125,6 @@ fn roster_label_outcome(sides: List<RosterHomeSide>,
   })
   match roster_rows_label_plan(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
     LabelsAmbiguous => RosterRefused { reason: RefusalLabelSitesAmbiguous }
-    LabelsLocallyBound => RosterRefused { reason: RefusalHomeNameLocallyBound }
     LabelsSelected { edits: es } => if is_empty(xs: es) { RosterClean } else { RosterLabelEdits { edits: es } }
   }
 }
@@ -1070,7 +1141,6 @@ fn roster_with_pending_labels(sides: List<RosterHomeSide>,
 ) -> RosterOutcome {
   match roster_rows_label_plan(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
     LabelsAmbiguous => RosterRefused { reason: RefusalLabelSitesAmbiguous }
-    LabelsLocallyBound => RosterRefused { reason: RefusalHomeNameLocallyBound }
     LabelsSelected { edits: labels } =>
       match edit {
         RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
@@ -1148,53 +1218,6 @@ fn roster_sites_count(sides: List<RosterHomeSide>, sites: FreeMonoid<ScopedRefer
   )
 }
 
-// THE INTERIM GUARD (tidy-ant-251's ruling C on #14338): a module that binds a row's call spelling ANYWHERE -- a fn or lambda
-// parameter, a `let`, a match-arm binder -- REFUSES home-name-locally-bound, for the import row and the label pass alike. It is
-// read from the binders themselves (v2.compiler.lexical_scope arrow_domain_binder_names, bind_binder,
-// match_arm_candidate_names over the normalized tree), never from the collector's head classification. WHY IT WAS WRITTEN: the
-// classifier had no way to say "no value frame is consulted here", so #14338's specimen row read as a free name and the sweep
-// emitted an import for it (gunbc.recurring_failure_mode
-// a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call). WHAT #14435 REPAIRED, AND WHAT IT DID NOT: the
-// POSITION half is repaired at the site itself -- every site now carries the position issued by
-// v2.compiler.occurrence_role reference_position_step, and roster_site_is_free refuses any head that is not at a value
-// position, so a label or pattern-tag mention (which is what the #14338 specimen's signature spelling `chars` is) is never
-// read as a free name. The DECLARATION half is NOT repaired here: a `let` binder is DeclarationRole at a VALUE position, and
-// v2.compiler.occurrence_role's index does not key the atoms the normalized tree carries (measured; see the same
-// recurring-failure-mode row), so no role conjunct is available. A let-bound home name is therefore still refused by THIS
-// guard, and only by this guard: it is not a second path beside a modeled one, it is the only authority for that cell. That
-// is why it stays -- it only ever refuses (never admits), so it cannot let a wrong edit through, and its removal must be
-// landed with its controls, not after them.
-// TRACKED DISSOLUTION TRIGGER (tidy-ant-251: the dissolution is its own PR, after this classifier fix merges): the guard is
-// deleted by removing roster_name_locally_bound's two call sites here (roster_rows_label_plan's locally-bound refusal and the
-// import row's RefusalHomeNameLocallyBound), and the retirement is PROVEN by the controls the recurring-failure-mode row
-// enrols -- its specimen and called-parameter controls must come back Clean and correctly relabelled with the guard removed,
-// exactly as the row's measured rows in v2.test.claim.lexical_scope (the_called_parameter_head_at_the_call_is_bound_in_the_frame,
-// a_parameter_is_not_bound_in_a_sibling_parameter_type, a_type_annotation_sees_no_value_binder) already pin both readings. The
-// row's `evidence` refs name the capability; when the dissolution PR lands, the guard and the refusal variant come out with it.
-fn roster_name_locally_bound(normalized_root: Node, call: String) -> Bool {
-  fold_list(xs: node_subtree_nodes(root: normalized_root), empty: false, cons: fn(found, n) {
-    found || roster_node_binds(n: n, call: call)
-  })
-}
-
-fn roster_node_binds(n: Node, call: String) -> Bool {
-  let arrow = fold_list(xs: arrow_domain_binder_names(n: n), empty: false, cons: fn(f, b) { f || symbol_lexeme(sym: b) == call })
-  let bind = match bind_binder(n: n) {
-    Present { value: b } => symbol_lexeme(sym: b.name) == call
-    Absent => false
-  }
-  let arms = match n.kind {
-    ComputationNode { behavior: Match } =>
-      fold_list(xs: n.children, empty: false, cons: fn(f, e) { f || roster_arm_binds(e: e, call: call) })
-    _ => false
-  }
-  arrow || bind || arms
-}
-
-fn roster_arm_binds(e: Edge, call: String) -> Bool {
-  fold_list(xs: match_arm_candidate_names(arm: e.target), empty: false, cons: fn(f, b) { f || symbol_lexeme(sym: b) == call })
-}
-
 fn roster_spelling_is(qn: QualifiedName, call: String) -> Bool {
   match qn {
     Cons { head: h, tail: Empty } => (symbol_lexeme(sym: h) == call)
@@ -1221,9 +1244,7 @@ fn roster_sweep_rows(sides: List<RosterHomeSide>,
     Present { value: reason } => RosterRefused { reason: reason }
     Absent => if is_empty(xs: needed) {
       RosterClean
-    } else if fold_list(xs: needed, empty: false, cons: fn(f, r) { f || roster_name_locally_bound(normalized_root: normalized_root, call: r.call) }) {
-    RosterRefused { reason: RefusalHomeNameLocallyBound }
-  } else if roster_any_needed_bound_elsewhere(needed: needed, imported: imported) {
+    } else if roster_any_needed_bound_elsewhere(needed: needed, imported: imported) {
     RosterRefused { reason: RefusalShapeNameBoundElsewhere }
   } else {
     roster_import_row(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, needed: needed, closures: closures)
@@ -1425,7 +1446,11 @@ type RosterByteRange {
 }
 
 fn roster_node_byte_range(node: Node, spans: SpanIndex) -> RosterByteRange? {
-  match node.occurrence_id {
+  roster_identity_byte_range(identity: node.occurrence_id, spans: spans)
+}
+
+fn roster_identity_byte_range(identity: NodeOccurrenceIdentity, spans: SpanIndex) -> RosterByteRange? {
+  match identity {
     OccurrenceMinted { id: id } => roster_id_byte_range(id: id, spans: spans)
     OccurrenceProjected { id: id, caused_by: _ } => roster_id_byte_range(id: id, spans: spans)
     OccurrenceSynthetic => Absent
@@ -1522,9 +1547,12 @@ fn roster_controls_report() -> String {
         + roster_control_imported_qualified_tag(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_unbound_qualified_tag(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_d4_value_call_positive(prepared: prepared, lex: dag_prepared_lex())
-        + roster_control_guard_still_refuses(prepared: prepared, lex: dag_prepared_lex())
-        + roster_control_guard_still_refuses_let_bound(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_free_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_free_call_after_param(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_nested_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_bound_occurrence(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_free_call_beside_let(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_free_call_beside_pun(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_specimen(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_called_parameter(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_nested_call_label(prepared: prepared, lex: dag_prepared_lex())
@@ -1568,36 +1596,13 @@ fn roster_control_label_method_spelling(prepared: PreparedGrammar, lex: Prepared
   }
 }
 
-// THE INTERIM GUARD'S THREE SHAPES, each with ONE expected outcome (tidy-ant-251's ruling C; review 82014):
-//   bound occurrence: a parameter named chars read in a body, beside a free chars(s: x) -> refuses home-name-locally-bound;
-//   specimen (gunbc.recurring_failure_mode a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call): chars only as a
-//     parameter read and an argument label, no free call -> refuses home-name-locally-bound (the import is never written);
-//   called parameter: fn u(chars: fn(String) -> Int, x: String) { chars(s: x) } -> refuses home-name-locally-bound (neither
-//     the import nor the relabel of the parameter's call is written).
-// The free-call positive is roster_control_home_converges.
 // THE #14338 CELLS, PINNED TO THE FIX: a module whose only mention of a row's name is a call of a name its own scope
-// binds must sweep CLEAN -- no import, no label edit. Both fixtures below predate the position axis and demanded the
-// interim refusal home-name-locally-bound instead; that premise was the DEFECT, not the invariant. Measured, the refusal
-// is now unreachable for them because the sweep never wants a row for them at all: their `chars` mentions are the LABEL
+// binds must sweep CLEAN -- no import, no label edit. Both fixtures below predate the position axis and demanded a
+// refusal instead; that premise was the DEFECT, not the invariant. Measured, the sweep never wants a row for them at all: their `chars` mentions are the LABEL
 // spelling in a signature row plus a call head read value/frame (executed on #14435:
 // "| type/unbound | return/unbound | return/unbound | label/unbound | label/unbound | value/unbound | value/frame |
 // ... OUTCOME=Clean"). With the position issuer switched off (the fix-off arm) the signature spelling reads a value
-// position, the import comes back, and these two go red -- the revert arm for the collector's own fix. The interim guard
-// itself stays exercised by roster_control_guard_still_refuses / ..._let_bound, which still refuse by name.
-// THE GUARD-EXERCISING CELLS, still demanding the refusal BY NAME (an unexercised guard is a decoration): the module
-// makes a GENUINE free call of a row name in one function while another function BINDS that name locally, so a row is
-// wanted on its own merits and the interim guard must answer home-name-locally-bound.
-fn roster_control_refuses_locally_bound(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_sweep_text(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex) {
-    RosterRefused { reason: r } =>
-      if roster_refusal_text(reason: r) == "home-name-locally-bound" { "" } else { "CONTROL-FAIL " + name + ": refused for " + roster_refusal_text(reason: r) + " instead of home-name-locally-bound\n" }
-    RosterClean => "CONTROL-FAIL " + name + ": a module with a genuine free call AND a local binding of the row name swept Clean -- the interim guard stopped refusing\n"
-    RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL " + name + ": import proposed for a locally bound name: " + t + "\n"
-    RosterLabelEdits { edits: _ } => "CONTROL-FAIL " + name + ": label edit proposed for a locally bound name\n"
-    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: _ } => "CONTROL-FAIL " + name + ": import and label edits proposed for a locally bound name: " + t + "\n"
-  }
-}
-
+// position, the import comes back, and these two go red -- the revert arm for the collector's own fix.
 fn roster_control_sweeps_clean_locally_bound(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_sweep_text(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex) {
     RosterClean => ""
@@ -1608,12 +1613,6 @@ fn roster_control_sweeps_clean_locally_bound(name: String, text: String, prepare
   }
 }
 
-// THE GUARD IS STILL EXERCISED (tidy-ant-251's condition on the control flip: an unexercised guard is a decoration).
-// Neither fixture is the defect: in each, one function makes a GENUINE free call of a row's name (no binder in that
-// function answers it), so a row is wanted on its own merits -- while another function of the same module BINDS the
-// same name locally (a parameter, or a `let`). Without the interim guard the sweep emits an import of a name the module
-// declares itself; with it, the sweep refuses home-name-locally-bound. That is the specimen whose disappearance would
-// prove the guard dead, so it demands the refusal BY NAME and leaves only with the dissolution PR.
 // THE D4 CONTROLS ON THE ROSTER SIDE (tidy-ant-251, msg_e59d873e item 2 / msg_717e069d D4), three specimens over ONE
 // row of v2.workflow.roster_import_sweep roster_head_rows (call `count` @ std.algebra) so the sweep is genuinely looking
 // for the name and Clean can never be true because the row is inert:
@@ -1669,29 +1668,55 @@ fn roster_d4_tag_subject(with_import: Bool) -> String {
   }
 }
 
-fn roster_control_guard_still_refuses(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  roster_control_guard_refuses(name: "guard-still-refuses", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", prepared: prepared, lex: lex)
+// THE GUARD IS DISSOLVED: a module that binds a row's name in one function and calls it free in another gets the import for
+// the free call (gunbc.recurring_failure_mode a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call). One binder
+// form per control, each paired with a free call in a sibling function so Clean cannot be satisfied by an inert row: a
+// parameter, a `let` (whose declaring occurrence is no site), and a match-arm record pun (UNDECIDED by design, never counted).
+// The parameter cell: the label plan joins each parse-tree head to the collector's own verdict on the SAME occurrence (by source
+// offset, refusing any head it cannot place), so the bound `chars` in `h(s: chars)` is a head the collector explains as bound, not a disagreement.
+fn roster_control_free_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  roster_control_imports_for_free_call(name: "free-call-beside-param", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
 }
 
-// THE SAME GUARD ON A SECOND BINDER KIND (`let`, read by v2.compiler.lexical_scope bind_binder rather than
-// arrow_domain_binder_names), so the exercise does not rest on one code path inside roster_node_binds.
-fn roster_control_guard_still_refuses_let_bound(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  roster_control_guard_refuses(name: "guard-let-bound", text: "module c.guardlet\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  count(xs: x)\n}\n\nfn k() -> Int {\n  let count = 0\n  count\n}\n", prepared: prepared, lex: lex)
+// The bound head precedes the free one here: a join by position in a list would pair them wrongly; the offset join must not.
+fn roster_control_free_call_after_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  roster_control_imports_for_free_call(name: "free-call-after-param", text: "module c.guard2\n\nimport std.algebra { Cons }\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
 }
 
-fn roster_control_guard_refuses(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_sweep_text(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex) {
-    RosterRefused { reason: r } =>
-      if roster_refusal_text(reason: r) == "home-name-locally-bound" { "" } else { "CONTROL-FAIL " + name + ": refused for " + roster_refusal_text(reason: r) + " instead of home-name-locally-bound\n" }
-    RosterClean => "CONTROL-FAIL " + name + ": a module with a genuine free call AND a local binding of the row name swept Clean -- the interim guard stopped refusing\n"
-    RosterEdit { start: _, end: _, text: t, own_line: _ } => "CONTROL-FAIL " + name + ": import proposed for a locally bound name: " + t + "\n"
-    RosterLabelEdits { edits: _ } => "CONTROL-FAIL " + name + ": label edit proposed for a locally bound name\n"
-    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: _ } => "CONTROL-FAIL " + name + ": import and label edits proposed for a locally bound name: " + t + "\n"
+// Nested free calls in one fn beside a parameter: outer/inner order must pair the same way in both trees.
+fn roster_control_nested_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  roster_control_imports_for_free_call(name: "nested-call-beside-param", text: "module c.guard3\n\nimport std.algebra { Cons }\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n\nfn f(x: String) -> Int {\n  chars(s: chars(s: x))\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
+}
+
+// Restored from #14338 with its result restated (review 85013): a nested free call that is also a label-carrying row,
+// beside a parameter of the same name used as a value. The free call imports and relabels; the bound value is untouched.
+fn roster_control_label_bound_occurrence(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n"
+  let after = "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n"
+  match roster_applied(before: before, outcome: roster_sweep_text(path: "control/bound.dag", text: before, prepared: prepared, lex: lex)) {
+    RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL label-bound-occurrence: wrote [" + c + "]\n" }
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL label-bound-occurrence: refused " + roster_refusal_text(reason: r) + "\n"
   }
 }
 
-fn roster_control_label_bound_occurrence(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  roster_control_refuses_locally_bound(name: "label-bound-occurrence", text: "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", prepared: prepared, lex: lex)
+fn roster_control_free_call_beside_let(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  roster_control_imports_for_free_call(name: "free-call-beside-let", text: "module c.guardlet\n\nfn f(x: String) -> Int {\n  count(xs: x)\n}\n\nfn k() -> Int {\n  let count = 0\n  count\n}\n", needle: "import std.algebra { collection_count_shape }", prepared: prepared, lex: lex)
+}
+
+fn roster_control_free_call_beside_pun(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  roster_control_imports_for_free_call(name: "free-call-beside-pun", text: "module c.guardpun\n\nfn f(v: Thing) -> Int {\n  match v {\n    Dup { count } => count\n    Other => 0\n  }\n}\n\nfn g(xs: List<Int>) -> Int {\n  count(xs: xs)\n}\n", needle: "import std.algebra { collection_count_shape }", prepared: prepared, lex: lex)
+}
+
+fn roster_control_imports_for_free_call(name: String, text: String, needle: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex) {
+    RosterEdit { start: _, end: _, text: t, own_line: _ } =>
+      if string_contains(s: t, pattern: needle) { "" } else { "CONTROL-FAIL " + name + ": proposed [" + t + "] instead of [" + needle + "]\n" }
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: _ } =>
+      if string_contains(s: t, pattern: needle) { "" } else { "CONTROL-FAIL " + name + ": proposed [" + t + "] instead of [" + needle + "]\n" }
+    RosterClean => "CONTROL-FAIL " + name + ": a genuine free call swept Clean beside a local binder of its name\n"
+    RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "; a local binder of the name must not refuse a module with a free call\n"
+    RosterLabelEdits { edits: _ } => "CONTROL-FAIL " + name + ": label edits with no import\n"
+  }
 }
 
 fn roster_control_specimen(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -1713,7 +1738,7 @@ fn roster_control_nested_call_label(prepared: PreparedGrammar, lex: PreparedLexR
   }
 }
 
-// THE COUNT-AGREEMENT DISCRIMINATOR, with NO local binder named chars (so home-name-locally-bound cannot answer first): chars
+// THE COUNT-AGREEMENT DISCRIMINATOR, with NO local binder named chars : chars
 // also occurs in a TYPE position, `y: chars`, which the reference-site collector records as a free site but which is not a
 // primary-expression head, so the two counts disagree and the label plan must refuse exactly label-sites-ambiguous.
 fn roster_control_label_sites_disagree(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {

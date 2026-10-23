@@ -2342,6 +2342,25 @@ test fn the_probe_is_refused_once_at_the_target_key() -> Bool {
   }
 }
 
+// RESTORED DRIFT GUARD (#14634 guard, standalone after the census migration deleted its host
+// test with #14578/#14805 -- the carrier string verdict_probe_hdr survived but NOTHING asserted
+// it until now; re-measurement at main head showed the pin-flip mutation running green).
+// TEXTUAL DRIFT GUARD on the relocated symbol's import line, not a proof of provenance. It pins
+// the exact module-and-symbol substring so a typo, a deletion, or a retarget to a module that
+// never declares the name reddens this test -- the drift modes a census cannot see at all.
+// It CANNOT establish WHERE SecureBootUnobserved resolves: string_contains is a substring check;
+// a header carrying the pinned text only inside a comment plus a real import from a look-alike
+// module still satisfies it. That residual limit is tracked as the typed frontier
+// firmware_network_boot_probe_resolution_frontier, not claimed closed here. A plain DELETION of
+// the import name is also caught at resolution by every probe source that uses SecureBootUnobserved;
+// the retarget to a look-alike declaring the same name is the mode only this guard reddens.
+test fn the_probe_header_pins_the_secure_boot_leaf_import_line() -> Bool {
+  string_contains(
+    s: verdict_probe_hdr,
+    pattern: "import gunbc.secure_boot_observation { SecureBootUnobserved }",
+  )
+}
+
 test fn no_foreign_module_may_call_the_verdict_mint_directly() -> ProcessExit {
   census_verdict_all(verdicts: [
     census_verdict(
