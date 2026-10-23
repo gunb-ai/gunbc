@@ -1178,3 +1178,386 @@ ROUND-10 = (i) unfolded children names+decls in gc16_unify_diag; (ii) tvleaf-arm
 
 ## OPERATIONS LESSON (round 10, 2026-10-22 ~15:25Z)
 setsid nohup rounds SURVIVE job_kill (detached from the tool's process group). Two concurrent claim_executor --regen-round-cost on one target/ dir => the fresh one hangs (I/O D-state on contended candidate dir; 52min zero progress). ALWAYS before launching a round: ps aux | grep '[c]laim_executor --regen' and kill -9 stragglers; if hung >~15min beyond expectation: kill -9 BOTH the script and the executor, git checkout -- src/v1/stage0/, rm -rf target/regen-convergence-{journal,transaction.json} target/stage0-regen-{candidate,receipt.json}, relaunch. Stale transaction file + edited .dag = hang too (round-10 first hang was round-9's journal vs edited dag).
+
+## PRED-F2 (pre-registered 2026-10-22 ~16:50Z, before round 11)
+Fix-2 = env-backed settled head identity in type_heads_agree (vehicle 04_types.dag), per msg_1f4c0ac6:
+when a side carries no DeclarationRef and text is TextJudgedIn, settle BOTH sides via settled_type
+(fuel 16) and compare head module_path+decl_name; either side settling to none keeps the refusal
+(NO name fallback). TextNotAsked keeps old Absent=>false verbatim.
+Mechanism (round-10 witness, sites 2/12): unfolded variant children are applied nodes with decl=- and
+non-container heads -> applied-vs-applied arm -> type_heads_agree -> Absent=>false -> node refuses
+ITSELF (CR=n on 4/5 children; 5th is a leaf, CN=y pass).
+PRED-F2-1: seedgen census drops 14 -> exactly 12: the dag/std/posix.dag PosixRedirection pair and the
+StandardIntegerType pair (sites 2,12) leave; other 12 membership unchanged.
+PRED-F2-2: NOTHING JOINS (no 'bound as' span not present in census10).
+PRED-F2-3: self-host gate closure loses the two Optional-carried lines (AuthoredUsesFunction,
+demand_census_alias_uniqueness) iff same mechanism; if not, they are a different mechanism (record, do not chase).
+PRED-F2-4: claims box_int/refused, same_applied/accepted, list_int=freemonoid, arity sample keep round-10
+verdicts; shadow-formal claim stays FAIL-by-design (guard only REPLACES, never joins).
+PRED-F2-5: only 04_types.dag (+import) changes; no hand mirror edits (regen owns mirrors).
+
+## ROUND 19 RESULTS (measured 2026-10-22 ~20:05Z, head 70a9996f5930 = CI-heal-converged)
+- CI heal converged mirrors at 70a9996 (seed has fold + own-form + Fix-2 settled_head_identity_agrees). Local build BUILD_RC=0, PEAK 24GiB oom_kill=0.
+- SEEDGATE CENSUS: 14 -> 10 sites (PRED-F2 partially confirmed: nothing joined YES; sites leaving = integer.dag:20:12, integer.dag:425:49 (site 12), diagnostic.dag:146:25 (site 8), target_model.dag:12278:6 (site 7)). 14->10 = 4 span-instances / 3 sites.
+- Site 2 (remote_shell_command:106:22) RETAINED per msg_1f4c0ac6: coproduct BRANCH children (PosixRedirectStdoutClobber etc.) resolve to no module declaration (settled_type->type_reference_declaration_reading->declaration_named_in_module answers none for branches) -> identity unresolved -> refusal kept, LISTED not masked. Follow-up = branch stamping (parent-decl + branch name) AFTER #14750.
+- CR witness at census10 confirmed the mechanism (CR=|n|n|n|n|y self-refusals on applied children).
+- Sites 9,10 (diagnostic 364/409): 364 persists (8 lines); 409 -- see count above. Sites 1,13 alias-shadow persist; 5 kernel-Int persists; 6/11 wrapper persist (algebra 171/179 etc.).
+- CLAIMS on converged head: applied_constructor 3 PASS + shadow-formal FAIL-by-design; applied_head_identity 4/4 PASS (flat/nested accept, diff/diff-nested refuse).
+- OWN-FORM in gate closure at 70a9996: 0 lines algebra.dag:1412:56 (was 29). Confirmed working in CI itself.
+- #14056 REPUNTED: head 7b48d2b41bce fresh on main a01901c6; X1 head archived branch session/quiet-hawk-507-equals-x1-archived (3a698d4d); title+body rewritten (RED = census shrink 14->10 on 3 instruments; enrollment claim not the RED; retained site-2 refusal section). CI pending at reptime.
+- VEHICLE body rewritten for 70a9996 (expected red = census class, 10-site population, receipts, probe-strip promise, landing order #14750->#14056->PR-2).
+- Rounds 12-16 digest-gate failure model: round re-invokes claim_executor AFTER internal rebuild; refuses unless invoked-exe == cargo build of on-disk mirrors; script that restores mirrors to main BEFORE the round resets the fixed point (revert that). Loop-emit script (regen18) converges in <=4 attempts.
+
+## SELF-HOST-ONLY SITE CLASSIFICATION COMPLETE (2026-10-22 ~22:20Z, from CI witness at 70a9996)
+Previously 2 undecided (msg_6511d258 required re-classification pre-routing). Witness fields:
+- src/v2/std/text.dag:7:15 -> NM=std.algebra.FreeMonoid||String, UCH=;Char/std.types#Char#W/Product(Char<Primitive(Int)>) vs UCR=;Char/-/same, CR=|y.
+  = ALIAS-SHADOW family (same mechanism as sites 1/13: alias head vs its own settled RHS compared by printed name).
+  Parent's own ruling (msg_49930666): "the alias String vs its own RHS within v2.std.text is the one that is genuinely the same declaration" -- so NOT the correct-refusal case; it is the alias_rhs_resolves gap, row class A2-alias-shadow. Fold-level fix territory (head comparison must settle aliases, like settled_head_identity_agrees does for applied heads). Candidate for a Fix-2 sibling: alias the head names through settled_type at the fold's head-name compare. NOT owner-routed (fold owns).
+- src/v2/std/qualified_name.dag:32:22 -> UCH=;Symbol/-/Primitive(Symbol) vs UCR=;Symbol/v2.std.node#Symbol#W/Primitive(Symbol), CR=|y.
+  = WRAPPER-FORM family (unstamped vs stamped same-decl head, same inner shape; the Primitive(QualifiedName) vs Node(QualifiedName<Symbol>) wrapper cluster per line 1134 notes). Row class A2-wrapper -> #14632/#14750 representation owner (eager-cat-804 charter), already listed; nothing new to route.
+=> All 9 self-host-only sites classified; zero pending diag. No new owner-routing triggered.
+
+## PRED-F3 (pre-registered 2026-10-22 ~22:30Z, before edit)
+Fix-3 = settle BOTH head NAMES through the judging env in type_heads_agree when the stamp arms say false:
+resolve each authored head name via settled_type(fuel 16); when both resolve, compare head module_path+decl_name
+(== compares); either resolves to none -> keep the existing false (no spelling fallback; msg_1f4c0ac6 rubric).
+Carrier-alias short-circuit + stamp equality arms run first; ONLY false-path replaced (monotone).
+Target: alias-shadow family (sites 1/13: std.types.dag:8:30, integer.dag:38:15; witness decl=std.algebra#FreeMonoid#W
+both sides, names Node(std.algebra.FreeMonoid<..>) vs Node(String<..>)) + text.dag:7:15 (same family per
+msg_49930666: alias String vs its own RHS IS one declaration; NOT a text crossing -- kernel String vs
+FreeMonoid<Char> remains two types and untouched).
+PRED-F3-1: seed-gate census 10 -> 7 (std.types.dag:8:30, integer.dag:38:15, std/text.dag:7:15 leave).
+PRED-F3-2: NOTHING JOINS (no span outside census19 appears).
+PRED-F3-3: claims applied_constructor 3 PASS + shadow-formal FAIL-by-design hold; applied_head_identity 4/4 hold.
+PRED-F3-4: kernel sites (kernel:String x3, kernel:Int x1), wrapper sites (algebra 171/179, qualified_name...),
+PosixRedirection retained, python Unit<> retained -> ALL still refuse (identity still unresolved or genuinely distinct).
+PRED-F3-5: vehicle edit only in 04_types.dag type_heads_agree; mirrors: local build from converged mirrors; CI heal re-converges.
+
+## PRED-F3 AMENDMENT (registered BEFORE the edit, replacing PRED-F3-1)
+census19 membership check: std.types.dag:8:30 and integer.dag:38:15 are NOT in the seed-gate 10 (they are
+gate-closure spans; the seed-gate list: algebra.dag:171:65, remote_shell:106:22, kernel:Int x1, kernel:String x3,
+diagnostic:364:65 x2, diagnostic:409:6, text.dag:7:15). Corrected expectations:
+PRED-F3-1': seed-gate 10 -> 9 (only src/v2/std/text.dag:7:15 leaves; alias-stamp-equal family on the gate side
+   loses std.types.dag:8:30 + integer.dag:38:15 -- counted in the CI self-host log, not the seed-gate file).
+Witness evidence for the mechanism (census19 text.dag:7:15): BOTH sides decl=std.algebra#FreeMonoid#W (stamps EQUAL),
+NM=std.algebra.FreeMonoid||String, P[---------] all arms false, CR=y CN=n -> refusal came from type_heads_agree's
+carrier-alias short-circuit (String IS a declared carrier alias) preempting the stamp-equality arm, exactly the
+row's "spelling key ahead of declaration key" class. msg_49930666: alias-vs-own-RHS is one declaration -> should join.
+Fix = order: stamp equality FIRST; carrier-alias table second; settled-env arm (Fix-2) third. Monotone (both-stamped
+pairs currently fall through carrier=false to stamp arms only when NEITHER name is a carrier alias; reordering only
+affects pairs where carrier said false and stamps are equal -- the alias-shadow class).
+
+## VEHICLE REBASE + FIX-3 PUSH (2026-10-23 ~01:00Z)
+- b638e954d53a = merge origin/main (20 commits incl #14525 correspondence-seam refactor) into vehicle. 6 hunks resolved union: main's CallArgumentFormalCorrespondence seam (pass takes correspondence, built once; ArgGenericFoldState gains arg_formal_correspondence field) + vehicle's unify_diagnostics field/fold accumulation/second-pass concat. Both mirrors conflicted -> taken wholesale from main (regen owns; PRED-H class). Validated BEFORE push: target/release/claim_executor --regen-round-cost ran seed_build + corpus phases + regen.hand_verify PASS; refusal only the known census class (PosixRedirection retained). Merge commit b638e954d53a pushed.
+- Fix-3 (a7febed7c42d): type_heads_agree stamp equality BEFORE carrier-alias table (alias-shadow class; witness text.dag:7:15 both-sides decl=std.algebra#FreeMonoid#W, refused via CN=n name compare; carrier String shadowing own RHS). PRED-F3+amendment pre-registered: seed-gate 10->9 (text.dag:7:15 leaves), gate-closure loses std.types.dag:8:30 + integer.dag:38:15, nothing joins, kernel/wrapper/retained unchanged, claims hold.
+- Measurement state awaits CI heal re-convergence of mirrors from merged .dag (same path as a1687063->70a9996). v2-bootstrap red at a7febed was BYTE-IDENTICAL to 70a9996 census (proven by log diff; replied review 84714) because seed-in-mirror unchanged; honest-red, not defect.
+- heal-replica lesson: repo-target claim_executor + internal cargo may dispatch REMOTE via ctrl wrapper (101 from runner env); use /cargo-target/gentle-carp-16 binary + CARGO_TARGET_DIR + CTRL_BUILD_MODE=local (loop-emit regen15/18 pattern that worked).
+
+## ROUND 23 RESULTS (Fix-3 measurement at heal-converged head 1c61e21421db) — 2026-10-23
+- Heal converged mirrors at 1c61e21 (regen-owned commit; shape verified locally: alias_pair_resolved Present-vs-Absent routing + settled_head_identity_agrees in v1_compiler_infer_types.rs). Artifacts: /tmp/gc16dbg/regen23.sh, census23.txt, claim23_*.txt, ci_v2b_1c61.txt, ci_v2b_*_sites.txt/_content.txt.
+- SEED GATE (main_wet instrument): 10 -> 8 refusals. Left as predicted: text.dag:7:15 (PRED-F3-1' seed side). ALSO algebra.dag:171:65 (String=FreeMonoid<Char> alias-shadow twin; both sides decl=std.algebra#FreeMonoid#W — same class as the witness pair). Nothing joined. Remaining members: remote_shell 106:22 (retained), kernel Int x1, kernel String x3, diagnostic 364:65 x2, diagnostic 409:6 x1.
+- GATE CLOSURE (v2-bootstrap self-host step, 101 -> 36 hard): content-diff — QN cluster qualified_name.dag:32:22 x65 JOINED (QN is `type QualifiedName = FreeMonoid<Symbol>` at qualified_name.dag:32 — a TRANSPARENT alias, join is SOUND; false refusals the print-name carrier table manufactured; seed gate never emitted them — its resolution unfolds aliases). types.dag:119:22 x2 NEW refusals (UnresolvedDecl class; same mechanism as the seed-gate text pair; all census .dag files byte-identical between heads -> NOT main drift; appeared when heal-converged mirrors made the fold head active for self-host too). dep-demand-census 116:15/179:49 "joins" = re-numbering (file changed between heads via #14757).
+- CLAIMS: box_int refused PASS, same_applied accepted PASS, list_int==freemonoid accepted PASS, corpus shadow_formal FAIL-by-design (#14750 acceptance, per msg_a5947538 order).
+- PR postings: measurement comment + CORRECTION comment (initial overclaimed "no flips"; corrected: QN joins + types:119 new refusals + soundness argument).
+- MAIN BASELINE pending: main push 39900172645 v2-bootstrap in_progress at write; compare gate-closure content to attribute types:119 pair fully.
+- PRED-F3 verdict: PRED-F3-1' HOLDS+1 (also algebra 171:65, same class). PRED-F3-2 (seed gate: nothing joins) HOLDS. Gate closure: departures superset of predicted; joins sound (transparent alias); reported honestly, no masking.
+
+## BASELINE + ATTRIBUTION NOTES (05:40Z)
+- MAIN v2-bootstrap GREEN at d945cc9074aa (04:24Z push) => main's self-host closure = 0 hard. #14056 head d5657221458b (Fix-2 only, heal-converged) v2-bootstrap PASSED => Fix-2 alone does not create gate-closure refusals.
+- 101-refusal gate-closure population appeared at 70a9996 = first heal-converged head carrying own-form+Fix-2 in the seed => own-form is the bulk creator: spelling-keyed skip on main silently passed sites that correctly-stamped binding now routes to real unification -> exposed conflict population (exactly #14747's thesis; parent's shadow-formal RED demands these refuse). ~34 others + 65 QN.
+- Fix-3 (a7febed) at 1c61e21: QN 65 join (sound, transparent alias `type QualifiedName = FreeMonoid<Symbol>` @qualified_name.dag:32); types.dag:119:22 x2 appear. Fix-3's Present-vs-Absent branch SKIPS the carrier table (old top-of-fn alias check applied to Present-Absent pairs) -> possible new-refusal mechanism.
+- DIFFERENTIAL IN FLIGHT (regen24, worktree gc16-diff3 = 1c61e21 + revert a7febed, emit-loop + self-host closure): types:119 disappears => Fix-3-created (then decide: legitimate exposure vs restructure); persists => not Fix-3.
+
+## DIFFERENTIAL ROUND 25 RESULT (Fix-3 attribution, CONCLUSIVE) — 2026-10-23
+- gc16-diff3 = 1c61e21 + revert a7febed; candidate emitted from reverted .dag (alias_pair_resolved=0, Fix-2 helper + own-form retained), deployed as mirrors, self-host closure run. Artifacts /tmp/gc16dbg/regen2{4,5}.log, diff3_selfhost.txt.
+- WITHOUT Fix-3: 101 hard = matches CI 70a9996 site-for-site (QN qualified_name.dag:32:22 x65 PRESENT; types.dag:119:22 ABSENT; diagnostic 364:65 x8; python 571:6 x5; program_assembly 81:1 x4; kernel:Map x4; dep-demand 114:15 x2 / 177:49 x1 re-numbered by #14757; etc).
+- WITH Fix-3 (CI 1c61e21): 36 hard. Net Fix-3 effect isolated: (a) QN x65 refuse->join, SOUND (qualified_name.dag:32 `type QualifiedName = FreeMonoid<Symbol>` transparent alias; pre-Fix-3 the carrier-name table short-circuited the stamp comparison: FreeMonoid vs QualifiedName mismatch); (b) types.dag:119:22 x2 NEW refusals (left stamp std.types#List#W, right UnresolvedDecl(FreeMonoid<String>) decl=- ; pre-Fix-3 joined via name-keyed carrier table; post: settled_head_identity_agrees -> right resolves to no declaration -> typed refusal. = msg_1f4c0ac6 class ("name match was hiding real unresolved-declaration defects: list them"). Same family as site-2 remote_shell 106:22 -> fold into branch-stamping follow-up list.
+- ATTRIBUTION FINAL: remaining vehicle red 36 = own-form-exposed conflict population (expected; clears as #14750->#14056->PR-2 land) + 2 enumerated unresolved-decl sites (kept refusing, listed). No silent acceptance anywhere; every move accounted + sound.
+- FIX-3 PLACEMENT: rides PR-2 with own-form (both classes only exist when own-form routes alias-shadow pairs into type_heads_agree; #14056 head d5657221 without own-form is CI-green, zero QN sites). #14056 freeze untouched.
+- PR-2 cherry-pick set grows: own-form (67694d80) + Fix-3 (a7febed) + fold/claims, probes stripped.
+
+## PR-2 PRE-STAGE REHEARSAL (2026-10-23 ~07:10Z)
+- worktree gc16-pr2-prestage @ origin/main 0516d3a5dacb (#14846). cherry-pick -n 67694d80 (own-form) conflicts: 04_infer 3+ hunks (main's region rewritten since vehicle base: empty HEAD side vs vehicle block w/ generic_node_mentions etc.) + applied_constructor_type_equals.dag DU (new-on-branch). RESOLUTION MUST WAIT for #14750 landing (it rewrites same 04_infer regions: substitute_generics_apply/expand_alias_chain_for_field_access). Plan: assemble fresh on post-#14750 main, hand-carry: (1) own-form arms binding_leaves_carry_formal_parameter in KEEP/REPLACE after params arms, (2) Fix-3 stamp-first in type_heads_agree (04_types.dag, conflicts none), (3) fold threading if not already on main, (4) claims applied_constructor + applied_head_identity + shadow_formal corpus member. Strip all gc16_* probes. Rehearsal state aborted/clean.
+
+## THIRD INSTRUMENT BASELINE (heal candidate closure, dag/gunbc/heal_candidate_stage0.dag heal_stage0_overlap_refusal_wet) at vehicle 1c61e21
+- heal job run 39896738364 (failed at 04:16Z, no commit — census-red heads get no heal commit). Population: 29 'type variable' refusals on the heal corpus: python 571:6 x5, program_assembly 81:1 x5, kernel:String x4, diagnostic 364:65 x3, source_authority 41:1 x2, arm_resolution 34:1 x2, diagnostic 409:6, module_impact_query 466:20 (new: primitive-vs-node class A2 — decl-equal both sides, UF=Coproduct(..)||Coproduct(..), EQ=F via shape Primitive vs unfolded-Coproduct), program_assembly 635:14, kernel:T, kernel:Int, types.dag:119:22 x1, algebra 179:53, remote_shell 106:22 (retained).
+- This is PR-2's third-instrument RED baseline: PR-2 landing requires own-form-exposed sites leave this population too (kernel/Primitive-vs-Node classes persist until their owners fix call sites or PR-2's fold lands; per owner-routing plan).
+- Consistency: text 7:15 / algebra 171:65 / QN cluster all ABSENT from heal population too (0 hits) -> Fix-3 departures agree across all three instruments.
+- module_impact_query.dag:466:20 classified A2 (Primitive-vs-Node, sibling-row fail-open population): both sides decl=gunbc.namespace_cut...#ReferenceDerivedClosureAdmission#W, UF=---- EQ=F, P[---------] (fold_list call: xs element bound as T from first actual; fold in unify_generics shape-compares Primitive vs unfolded Coproduct without unfolding) — owner-routing per bucket plan, not alias-shadow, no own-form interaction.
+
+## PR-2 ASSEMBLY FACT (2026-10-23 09:30Z rehearsal)
+- main has NO type_heads_agree; it is introduced by vehicle commit d943faa1fc1c (15-0302 "Compare type identity in node_type_equals: unfold aliases, resolve container heads, print distinctions" — X1/fold series). Carry-set = full origin/main..HEAD series (24 commits) minus vehicle-only (gc16_* probes, debug dumps, applied_head_identity claim if #14056 lands first, measurement rows). Conflicts expected in 04_infer unify region (main #14525 seam + #14750 rewrites). Resolve by hand-carry against post-#14750 text.
+- Watchers: watch14750b.sh (PID see ps; /tmp/gc16dbg/watch14750b.log) wakes on MERGED/CLOSED/HEADCHANGED, 3-min cadence, 12h budget.
+
+## VEHICLE BODY REFRESH (11:10Z) — PR #14711 body now final-measured state @1c61e21: 8/36/29 across three instruments, full measurement history (own-form 29-lines, Fix-2 14->10, Fix-3 10->8 + 101->36 + differential), claims, receipts, probes, landing order, all review/CI-nudge coverage listed.
+## #14750 EVENT (11:03Z): head cdefbcca->b2964e2e ("remove scratch run15.sh") — NOT the heal fix (heal+v2-bootstrap pending on it). Watchers re-armed.
+
+## #14750 ORPHANED (13:10Z) — BLOCKED awaiting parent routing (msg_e12875d1, read)
+- eager-cat-804 session archived (message refused: recipient session not found). Heal fails again at b2964e2e (only push was 'remove scratch run15.sh'): same SortKeyed 1341:3 'unresolved type key' regen refusal; declared_divergent=1 [main.rs]; first_generation_equal=false; v2-bootstrap PASS (mirrors fine). Codex review bot comment 11:16Z.
+- Options sent: (A) seat-holder adopts; (B) I rebase their 04_infer change + fix SortKeyed emit (crosses lanes; needs go-ahead); (C) land #14056 early (deviates from msg_de58a642; flagged, NOT doing). Recommended B or A.
+- WatchB+poller armed (j725582e3). PR #14711 body refreshed to final measured state meanwhile.
+
+## #14750 CORRECTION (13:09Z, parent msg_0f983870): NOT orphaned — Charter 1 (tidy-raven-397) reassigned eager-cat-804 -> swift-lark-171 ~11:15Z. Option A in progress. CONSTRAINTS: do NOT push to #14750 branch (rules out B); do NOT land #14056 early (rules out C). Diagnosis sent to swift-lark-171 (msg_05f14002): run/job ids, SortKeyed 1341:3 signature, substitute_generics_apply label-rekey suspicion, Charter 1 fact (fires only via module std.algebra source, not anonymous entry -> reader gated on n.declaration), local repro recipe, offer of census artifacts/co-debug. Parent asking Charter 1 for status. Waiting: watchB+poller (j725582e3) on MERGED/CLOSED/HEADCHANGED.
+
+## #14750 NO-HANDOVER RULING (13:33Z, parent msg_835c7742): swift-lark-171 live and owns it. Dispatch G fixes algebra.dag:1341; only change.dag:460 remains. Root cause: substitute_generics_apply drops the Resolved cache; fix = producer-set InferredNode ArgumentsResolved mark, regenerated through heal, is_bare keying removed. My rescue pre-verification (regen26 on run D) stopped before any push; rescue worktree removed. STANDBY: #14750 lands -> #14056 -> PR-2 (assemble per PR-2 ASSEMBLY FACT section). WatchB (3-min cadence) wakes me on head change = dispatch push, or MERGED.
+
+## MERGE-READINESS RE-VERIFY (17:20Z): #14056 CLEAN/MERGEABLE + both checks pass @d565722145; #14747 CLEAN/MERGEABLE + both checks pass @4e5cc9f3a5. Neither merges yet: #14056 parent hold (post-#14750 order), #14747 parent routing. Watchers: watch14750b ticks OK; poller j2aa4972a armed (watchB budget ends ~21:17Z, will re-arm).
+
+## PR-2 CARRY TEXTS (extracted from vehicle 1c61e21; assembly onto post-#14750 main = paste + resolve seam)
+### (1) own-form guard = 67694d80cdeb -- src/v1/04_infer.dag only:
+```
+commit 67694d80cdebfab920d1ddd39ff4cc8f3e35713e
+Author: gunbc-ci-auto-heal <gunbc-ci-auto-heal@users.noreply.github.com>
+Date:   Thu Oct 22 15:54:28 2026 +0000
+
+    PR-2 measurement: identity own-form guard + refusal-witness probes + shadow-formal RED (vehicle only)
+    
+    Fold-side repair (measured: both algebra.dag:1412:56 own-form sites leave the
+    seed-build population at 14 sites, nothing joins): binding_leaves_carry_formal_parameter
+    keys KEEP/REPLACE on the leaf's declaration field being a DeclField TypeParameter --
+    resolve's binder_marked_type stamp (measured on the bound side: std.algebra#empty_map#P:K
+    / #P:V), NEVER spelling (manager msg_60a19937: the spelling interim was inert AND
+    unsafe; the shadow-formal case it accepted is now enrolled as a blocking claim member,
+    corpus_type_shadow_named_like_formal_still_refuses, owned by the representation PR's
+    substitution re-expression per manager msg_a5947538).
+    
+    Witness probes (vehicle-only scaffolding, off the landing branch): gc16_dbg_dump
+    (node params/children/inferred/declaration+children DeclarationRefs/authored name/
+    shape), gc16_unify_diag (unfolded-pair EQ/names/children pairwise-eq with per-child
+    name+decl+shape), gc16_eq_probe (arm-level trace). These render into the refusal
+    diagnostics so every gate run prints the decision table.
+    
+    Vehicle never merges; mirrors are at the pre-probe regeneration and are NOT updated
+    by this commit -- the landing gate regenerates from the .dag.
+
+@@ -113,7 +113,7 @@ import v1.compiler.infer_types {
+   bare_map_node, bare_set_node,
+   callable_inferred,
+   normalize_access_type_node,
+-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
++  node_type_shape, node_type_compatible, node_type_equals, gc16_eq_probe, prefer_specific_type, alias_identity_in_judgment, alias_names_identity_in_judgment,
+   is_declared_container_alias_spelling, structural_carrier_template_name,
+   is_product_type,
+   node_type_deps,
+@@ -8024,6 +8024,33 @@ fn binding_is_unsettled_formal_annotation(n: Node, generics: List<String>, sourc
+ // producer of that Unit is being hunted (parent's part (1)), the fold must not treat a
+ // variable-bearing node as settled evidence. Reject twins are unaffected: they contain no
+ // type variable at all (Int vs Bool, P vs Q, FreeMonoid<Int> vs FreeMonoid<Bool>).
++// A STORED BINDING OR ACTUAL READ BACK FROM A CALL SITE, NOT FROM THE CALLEE'S DECLARATION:
++// a call-site application node carries NO params, so binding_is_generic_declaration_own_form
++// (which reads n.params) cannot see it, and its leaves carry inferred=Resolved of their own
++// spelling, so binding_has_type_variable_leaf (which reads TypeVariable) cannot see it either
++// -- measured at the refusal: p=0, own=F, tvleaf=F, bound=std.types#Map#W with leaves K,V
++// (dag/std/algebra.dag map_insert). THE QUESTION IS IDENTITY, NOT SPELLING (manager ruling
++// msg_60a19937): resolve's binder_marked_type stamps every reference to an item's own binder
++// with (owner item, DeclField TypeParameter{name}) -- measured on the bound side at the
++// refusal: children carry std.algebra#empty_map#P:K and #P:V. A leaf whose declaration field
++// IS a TypeParameter denotes a formal parameter slot, not a type; a real corpus type named
++// like a formal carries WholeDeclaration (or nothing) and is NOT mistaken -- enrolled as
++// corpus_type_shadow_named_like_formal_still_refuses in dag/test/claim/
++// applied_constructor_type_equals.dag, which the earlier spelling-keyed interim ACCEPTED.
++fn binding_leaves_carry_formal_parameter(n: Node) -> Bool {
++  if n.children |> count == 0 {
++    match n.declaration {
++      Absent => false
++      Present { value: d } => match d.field {
++        TypeParameter { name: _ } => true
++        _ => false
++      }
++    }
++  } else {
++    n.children |> any(c => binding_leaves_carry_formal_parameter(n: c))
++  }
++}
++
+ fn binding_has_type_variable_leaf(n: Node) -> Bool {
+   match n.inferred {
+     Present { value: TypeVariable { id: _ } } => true
+@@ -15197,6 +15224,87 @@ fn generic_head_matches_application(head: Node, applied: Node, source_indices: M
+   } else { false }
+ }
+ 
++fn field_str(d: DeclarationRef) -> String {
++  let fs = match d.field {
++    WholeDeclaration => "W"
++    NamedField { field_name: fname } => concat("F:", fname)
++    TypeParameter { name: pname } => concat("P:", pname)
++  }
++  concat(d.module_path, "#", d.decl_name, "#", fs)
++}
++
++fn gc16_dbg_dump(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
++  let kind = match n.inferred {
++    Absent => "none"
++    Present { value: Resolved { node: _ } } => "resolved"
++    Present { value: TypeVariable { id: _ } } => "tv"
++    _ => "other"
++  }
++  let has_span = if n.ident_span != none { "S" } else { "-" }
++  let decl_str = match n.declaration {
++    Absent => "-"
++    Present { value: d } => field_str(d: d)
++  }
++  let kids_str = fold(n.children |> enumerate, init: "", f: (acc, pair) => concat(acc, ";", to_string(value: pair.first), ":", match pair.second.declaration {
++    Absent => "-"
++    Present { value: d } => field_str(d: d)
++  }, "/", authored_name_at(source_indices: source_indices, node: pair.second), "/", match pair.second.inferred {
++    Absent => "i-"
++    Present { value: Resolved { node: rt } } => concat("iR:", node_type_shape(n: rt, source_indices: source_indices))
++    Present { value: _ } => "iT"
++  }))
++  concat(
++    "p=", to_string(value: n.params |> count),
++    " c=", to_string(value: n.children |> count),
++    " inf=", kind,
++    " sp=", has_span,
++    " own=", if binding_is_generic_declaration_own_form(n: n) { "T" } else { "F" },
++    " tvleaf=", if binding_has_type_variable_leaf(n: n) { "T" } else { "F" },
++    " unin=", if unify_binding_is_uninformative(n: n) { "T" } else { "F" },
++    " decl=", decl_str,
++    " kids=", kids_str,
++    " an=", authored_name_at(source_indices: source_indices, node: n),
++    " shape=", node_type_shape(n: n, source_indices: source_indices)
++  )
++}
++
++fn gc16_flag_str(n: Node) -> String {
++  let err = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
++  let tv = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
++  let opt = n.return_cardinality == CardOptional
++  let unit = is_unit_like(n: n)
++  concat(if err {"E"} else {"-"}, if tv {"V"} else {"-"}, if opt {"O"} else {"-"}, if unit {"u"} else {"-"})
++}
++
++fn gc16_unify_diag(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> String {
++  let left_u = generic_type_unify_unfold(n: left, text: text, depth: 0, source_indices: source_indices)
++  let right_u = generic_type_unify_unfold(n: right, text: text, depth: 0, source_indices: source_indices)
++  concat(
++    " UF=", gc16_flag_str(n: left_u), "||", gc16_flag_str(n: right_u),
++    " EQ=", if node_type_equals(left: left_u, right: right_u, source_indices: source_indices, text: text) { "T" } else { "F" },
++    " TXT=", if generic_types_are_the_text_pair(left: left_u, right: right_u, source_indices: source_indices) { "T" } else { "F" },
++    " APP1=", if generic_head_matches_application(head: left_u, applied: right_u, source_indices: source_indices) { "T" } else { "F" },
++    " APP2=", if generic_head_matches_application(head: right_u, applied: left_u, source_indices: source_indices) { "T" } else { "F" },
++    " U=", node_type_shape(n: left_u, source_indices: source_indices), "||", node_type_shape(n: right_u, source_indices: source_indices),
++    " CNU=", if type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left_u), b: authored_name_at(source_indices: source_indices, node: right_u)) {"y"} else {"n"},
++    " UN=", authored_name_at(source_indices: source_indices, node: left_u), "||", authored_name_at(source_indices: source_indices, node: right_u),
++    " UC=", to_string(value: left_u.children |> count), "|", to_string(value: right_u.children |> count),
++    " CH=", fold(left_u.children |> enumerate, init: "", f: (acc, pair) => concat(acc, "|", match right_u.children |> skip(pair.first) |> first {
++      Present { value: rc } => if node_type_equals(left: pair.second, right: rc, source_indices: source_indices, text: text) { "y" } else { "n" }
++      Absent => "?"
++    })),
++    " CR=", fold(left_u.children |> enumerate, init: "", f: (acc, pair) => concat(acc, "|", if node_type_equals(left: pair.second, right: pair.second, source_indices: source_indices, text: text) { "y" } else { "n" })),
++    " UCH=", fold(left_u.children |> enumerate, init: "", f: (acc, pair) => concat(acc, ";", authored_name_at(source_indices: source_indices, node: pair.second), "/", match pair.second.declaration {
++      Absent => "-"
++      Present { value: d } => field_str(d: d)
++    }, "/", node_type_shape(n: pair.second, source_indices: source_indices))),
++    " UCR=", fold(right_u.children |> enumerate, init: "", f: (acc, pair) => concat(acc, ";", authored_name_at(source_indices: source_indices, node: pair.second), "/", match pair.second.declaration {
++      Absent => "-"
++      Present { value: d } => field_str(d: d)
++    }, "/", node_type_shape(n: pair.second, source_indices: source_indices)))
++  )
++}
++
+ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
+   let bind_name = type_node_label(n: formal, source_indices: source_indices)
+   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
+@@ -15247,16 +15355,27 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
+           // placed earlier would also re-route bindings that unify today, whose behaviour is not
+           // in that measurement.
+           UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
++        } else if binding_leaves_carry_formal_parameter(n: bound) {
++          // SAME MEANING AS THE ARM ABOVE, one representation wider: the stored binding is a
++          // CALL-SITE spelling of the callee's own formal parameter names (p=0, own=F, tvleaf=F
++          // measured). It was never settled for this call -- REPLACE with the first settled
++          // actual, exactly as the params-based own-form arm does.
++          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+         } else if binding_is_generic_declaration_own_form(n: actual) {
+           // SYMMETRIC: an actual that is still a declaration's own form carries unsubstituted
+           // slots, so it cannot falsify the stored binding -- the slot could denote exactly that
+           // binding. KEEP the first binding, as binding_has_type_variable_leaf(n: actual) does.
+           UnifyGenericsAcc { subst: acc, diagnostics: [] }
++        } else if binding_leaves_carry_formal_parameter(n: actual) {
++          // SYMMETRIC to the call-site bound arm above: a call-site actual still spelling the
++          // callee's own formal parameter names carries no settled type and cannot falsify the
++          // stored binding. KEEP.
++          UnifyGenericsAcc { subst: acc, diagnostics: [] }
+         } else {
+           UnifyGenericsAcc {
+             subst: acc,
+             diagnostics: [type_mismatch_error(
+-              expected: concat("type variable ", bind_name, " bound as ", node_type_shape(n: bound, source_indices: source_indices), " (first argument)"),
++              expected: concat("type variable ", bind_name, " bound as ", node_type_shape(n: bound, source_indices: source_indices), " (first argument)", " GC16DBG[", gc16_dbg_dump(n: bound, source_indices: source_indices), "][", gc16_dbg_dump(n: actual, source_indices: source_indices), "]", gc16_unify_diag(left: bound, right: actual, source_indices: source_indices, text: text), gc16_eq_probe(left: bound, right: actual, source_indices: source_indices, text: text)),
+               got: concat(node_type_shape(n: actual, source_indices: source_indices), " (later argument)"),
+               span: actual.span,
+               module_name: module_name
+```
+### (2) Fix-3 = a7febed7c42d -- src/v1/04_types.dag only (type_heads_agree + alias_pair_resolved + settled_head_identity_agrees):
+```
+commit a7febed7c42d5fbf9912a6b8a1730cbe3470955e
+Author: gunbc-ci-auto-heal <gunbc-ci-auto-heal@users.noreply.github.com>
+Date:   Thu Oct 22 23:16:13 2026 +0000
+
+    PR-2 measurement: declaration identity decides head agreement before the carrier-alias table (vehicle only)
+    
+    type_heads_agree keyed on PRINTED head names first (type_head_is_declared_carrier_alias), so a
+    transparent alias shadowing its own RHS refused a same-declaration join: at 70a9996f5930 the
+    src/v2/std/text.dag:7:15 site carries decl=std.algebra#FreeMonoid#W on BOTH sides - one
+    declaration - and still refused (witness: stamps equal, CN=n between names
+    std.algebra.FreeMonoid vs String, all core arms false). The carrier table now runs only when the
+    stamps disagree or are missing; stamp equality decides first. Unstamped sides keep the
+    settled_head_identity_agrees env resolution (120331d63220) unchanged; TextNotAsked keeps the
+    refusal verbatim. Monotone: only pairs the carrier table refused with EQUAL stamps change verdict.
+    
+    Targets the alias-shadow class (sites 1/13: src/v2/std/types.dag:8:30, src/v2/std/integer.dag:38:15;
+    plus src/v2/std/text.dag:7:15) of gunbc.recurring_failure_mode
+    stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes. The kernel-String vs
+    FreeMonoid<Char> text crossing (text_crossing_by_identity, gunbc.rung_drop
+    text_boundary_identity_wall) runs ahead of this arm and is untouched: two types, never nicknames.
+    
+    Pre-registered PRED-F3 + amendment in scratch/PREDICTIONS_PIN.md (seed-gate 10 -> 9; nothing joins;
+    kernel/wrapper/retained sites unchanged; claim verdicts hold). Mirrors regen-owned: CI heal converges.
+
+@@ -889,17 +889,29 @@ fn type_head_is_declared_carrier_alias(name: String) -> Bool {
+ // keeps the refusal - there is no name-spelling fallback path (gunbc.recurring_failure_mode
+ // stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes; PR-2 measurement, lands as #14056).
+ fn type_heads_agree(left: Node, right: Node, left_name: String, right_name: String, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+-  if type_head_is_declared_carrier_alias(name: left_name) || type_head_is_declared_carrier_alias(name: right_name) {
+-    type_head_carrier(name: left_name) == type_head_carrier(name: right_name)
+-  } else {
+-    match left.declaration {
+-      Present { value: ld } =>
+-        match right.declaration {
+-          Present { value: rd } => ld.module_path == rd.module_path && ld.decl_name == rd.decl_name
+-          Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
+-        }
+-      Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
+-    }
++  // DECLARATION IDENTITY DECIDES FIRST (measurement at 70a9996f5930: src/v2/std/text.dag:7:15 carried
++  // decl=std.algebra#FreeMonoid#W on BOTH sides - one declaration - and still refused, because the
++  // carrier-alias table below keys on PRINTED head names and a transparent alias (String = FreeMonoid<Char>)
++  // is not the table's own key. Same stamp, same declaration, must join (gunbc.rung_drop
++  // text_boundary_identity_wall; the alias-shadow class of gunbc.recurring_failure_mode
++  // stale_seed_hides_the_first_wins_conflict_population_the_fold_exposes). When the stamps disagree or are
++  // missing, the carrier table and the settled-env resolution below decide exactly as before.
++  match left.declaration {
++    Present { value: ld } =>
++      match right.declaration {
++        Present { value: rd } =>
++          if ld.module_path == rd.module_path && ld.decl_name == rd.decl_name { true }
++          else if type_head_is_declared_carrier_alias(name: left_name) || type_head_is_declared_carrier_alias(name: right_name) {
++            type_head_carrier(name: left_name) == type_head_carrier(name: right_name)
++          }
++          else { false }
++        Absent => settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text)
++      }
++    Absent =>
++      if type_head_is_declared_carrier_alias(name: left_name) || type_head_is_declared_carrier_alias(name: right_name) {
++        type_head_carrier(name: left_name) == type_head_carrier(name: right_name)
++      }
++      else { settled_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text) }
+   }
+ }
+ 
+```
+### (3) type_heads_agree helper introduced by vehicle d943fa1fc1c (grep it in rehearse HEAD src/v1/04_types.dag -- main has none; carry its definition too).
+### (4) claims: dag/test/claim/cross_coproduct_generic_locate.dag (box_int + same_applied + list_int==freemonoid + shadow_formal FAIL-by-design members) from vehicle HEAD; gc16_* probes STRIPPED.
