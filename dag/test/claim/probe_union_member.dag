@@ -34,3 +34,8 @@ fn p_imported_unit_struct_minted() -> Bool { compile_dag_rust_emit_check(importe
 fn p_fresh_accepted() -> Bool { blocking_count(fresh_src) == 0 }
 fn p_fresh_unit_struct_minted() -> Bool { compile_dag_rust_emit_check(fresh_src, "src/probe_um_c.rs", ["pub struct Alpha;"], []) }
 fn p_unique_body_is_the_variant() -> Bool { compile_dag_rust_emit_check(unique_src, "src/probe_um_a.rs", ["PickUnique::Solo"], []) }
+fn p_unique_count_is_1() -> Bool { blocking_count(unique_src) == 1 }
+fn p_unique_count_is_2() -> Bool { blocking_count(unique_src) == 2 }
+fn p_unique_count_is_3() -> Bool { blocking_count(unique_src) == 3 }
+fn p_unique_count_is_4() -> Bool { blocking_count(unique_src) == 4 }
+fn p_unique_notrunnable() -> Bool { blocking_count(unique_src) == 0 - 1 }
