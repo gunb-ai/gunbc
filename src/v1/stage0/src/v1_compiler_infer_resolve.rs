@@ -22,7 +22,7 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, symbol_index_lookup, type_declaration_visible_with_spelling,
+    lookup_unit_variant_phantom_type, symbol_index_lookup, type_declaration_in_own_scope_with_spelling,
     type_ref_measure_binding_authority, width_resolution_declaration, TypeBinding, TypeEnv,
     UnitVariantContribution, UnitVariantPhantomLookup,
 };
@@ -4596,7 +4596,7 @@ Rc::new(ItemResolveResult {
 })
 }); } __result });
 let resolved_fields = Rc::new({ let mut __result = Vec::new(); for fr in field_results.iter().cloned() { __result.push(fr.item.clone()); } __result });
-let shadow_diags = if (((variant.children.clone().len() as i64) == 0) && crate::v1_compiler_infer_env::type_declaration_visible_with_spelling(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), variant.clone()))) {
+let shadow_diags = if (((variant.children.clone().len() as i64) == 0) && crate::v1_compiler_infer_env::type_declaration_in_own_scope_with_spelling(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), variant.clone()))) {
                             Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnionMemberShadowsType {
     name: crate::v1_compiler_infer_env::authored_name(env.clone(), variant.clone()),
     span: variant.span.clone(),

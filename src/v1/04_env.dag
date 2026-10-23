@@ -1268,8 +1268,10 @@ fn type_declaration_in_own_scope_with_spelling(env: TypeEnv, name: String) -> Bo
   let own = match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
     Absent =>
-      if map_has(m: env.authored_import_names, key: name) { lookup_binding_by_name(env: env, name: name) }
-      else { none }
+      match map_get(env.authored_import_names, name) {
+        Present { value: _ } => lookup_binding_by_name(env: env, name: name)
+        Absent => Absent
+      }
   }
   match own {
     Present { value: binding } =>

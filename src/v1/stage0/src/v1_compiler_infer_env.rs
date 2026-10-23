@@ -2130,8 +2130,17 @@ impl UnitVariantPhantomLookup {
     }
 }
 
-pub fn type_declaration_visible_with_spelling(env: Rc<TypeEnv>, name: String) -> bool {
-    match lookup_binding_by_name(env.clone(), name.clone()) {
+pub fn type_declaration_in_own_scope_with_spelling(env: Rc<TypeEnv>, name: String) -> bool {
+    let own = match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        std::option::Option::None => {
+            match v1_rt::map_get(&env.authored_import_names.clone(), name.clone()) {
+                Some(_) => lookup_binding_by_name(env.clone(), name.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+    };
+    match own {
         Some(binding) => {
             ((binding.resolved.module_item_kind.clone()
                 == ParsedModuleItemKind::ModuleItemTypeDeclaration)
