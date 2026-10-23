@@ -874,10 +874,11 @@ fn roster_sweep_text_rows(sides: List<RosterHomeSide>, path: String, text: Strin
 }
 
 // THE LABEL SITES ARE READ FROM RESOLUTION, NOT FROM LEXEMES (review 82002). A label edit is selected only at a call whose
-// head is the row's spelling as a FREE name: the parse tree's primary-expression heads spelled `call` are counted against the
-// reference-site collector's own head classification of that spelling (v2.compiler.reference_site_collector), and the
-// counts must agree. A bound occurrence (a parameter, a local), a method or field spelling, or anything the parse tree
-// shows as a head that the collector does not classify as the free name makes them disagree, and the file REFUSES with
+// head is the row's spelling as a FREE name: each parse-tree primary-expression head spelled `call` is JOINED, by the source
+// offset of its node, to the reference-site collector's value-position site of that spelling that starts at the same byte
+// (ScopedReferenceSite.occurrence, v2.compiler.reference_site_collector), and the edit goes only to heads whose site is free.
+// A bound occurrence (a parameter, a local) is joined and left alone. A method or field spelling, a head or site with no
+// recorded offset, or a head that does not meet exactly one site cannot be placed, and the file REFUSES with
 // label-sites-ambiguous rather than relabelling what it cannot place. The free name is any occurrence no lexical frame binds
 // (roster_site_is_free); that it is the row's HOME is decided by roster_symbol_imported, never by the head class.
 type RosterLabelPlan
@@ -1657,13 +1658,13 @@ fn roster_d4_tag_subject(with_import: Bool) -> String {
 // the free call (gunbc.recurring_failure_mode a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call). One binder
 // form per control, each paired with a free call in a sibling function so Clean cannot be satisfied by an inert row: a
 // parameter, a `let` (whose declaring occurrence is no site), and a match-arm record pun (UNDECIDED by design, never counted).
-// The parameter cell: the label plan pairs each parse-tree head with the collector's own verdict on the SAME occurrence (document
-// order, lengths must agree), so the bound `chars` in `h(s: chars)` is a head the collector explains as bound, not a disagreement.
+// The parameter cell: the label plan joins each parse-tree head to the collector's own verdict on the SAME occurrence (by source
+// offset, refusing any head it cannot place), so the bound `chars` in `h(s: chars)` is a head the collector explains as bound, not a disagreement.
 fn roster_control_free_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   roster_control_imports_for_free_call(name: "free-call-beside-param", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
 }
 
-// The pairing is by document order, so the parameter fn comes FIRST here (the bound head precedes the free one).
+// The bound head precedes the free one here: a join by position in a list would pair them wrongly; the offset join must not.
 fn roster_control_free_call_after_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   roster_control_imports_for_free_call(name: "free-call-after-param", text: "module c.guard2\n\nimport std.algebra { Cons }\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
 }
