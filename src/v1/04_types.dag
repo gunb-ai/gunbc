@@ -97,7 +97,17 @@ fn node_is_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Boo
 // anyway (DESIGN §6 bare-minimum cost — a conjunction that puts its expensive
 // term first is a cost-shape defect regardless of the realized n).
 fn node_is_keyed_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  (n.children |> count) == 2 && node_is_collection(n: n, source_indices: source_indices)
+  (n.children |> count) == 2 && (node_is_collection(n: n, source_indices: source_indices) || node_is_keyed_algebra_spelling(n: n, source_indices: source_indices))
+}
+
+// THE KEYED ALGEBRA'S OWN SPELLING IS THE SAME CARRIER AS ITS ALIASES. std.algebra now writes
+// `FinitelySupportedFunction<K, V>` where it wrote `Map<K, V>`; that spelling is deliberately not
+// an alias row (canonical_spelling_sorts_ahead_of_alias_reason), so node_is_collection missed it
+// and the Rust emitter rendered the algebra STRUCT beside HashMap callers (E0308). Only the keyed
+// algebra is admitted here: the element algebras' own spellings (FreeMonoid) are v2 declarations
+// with their own representation and must not lower to a host container by spelling.
+fn node_is_keyed_algebra_spelling(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.connective == NoConnective && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) == "FinitelySupportedFunction"
 }
 
 fn collection_carrier_node(n: Node) -> Node {
