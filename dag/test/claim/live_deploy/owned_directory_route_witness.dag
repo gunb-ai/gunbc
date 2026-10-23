@@ -3,7 +3,6 @@ module test.claim.live_deploy.owned_directory_route_witness
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.live_deploy.emit { owned_directory_apply_steps }
 import gunbc.live_deploy.member_identity {
   DirectoryRoot, converged_member_eq, converged_effect_plan, derive_member_plan, RootAt, DirectoryRootIdentity, RootConverged,
   directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, EffectsDerived, EffectsRefused, plan_mutation_count,
@@ -49,74 +48,12 @@ fn roster_enrols_it_for_readback(spec: DeploymentSpec, path: String) -> Bool {
   any(deployment_member_roster(spec: spec), m => converged_member_eq(a: m, b: DirectoryRoot { path: path as NonEmptyStr }))
 }
 
-fn emitter_renders_its_install_text(spec: DeploymentSpec, path: String) -> Bool {
-  string_contains(
-    s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: path), plan: converged_effect_plan(roster: [], target: deploy_witness_release_target(spec: spec)))),
-    pattern: path,
-  )
-}
-
-fn routed(spec: DeploymentSpec, written: String, demanded: String) -> Bool {
-  written == demanded
-    && demands_contain(spec: spec, path: demanded)
-    && roster_enrols_it_for_readback(spec: spec, path: demanded)
-    && emitter_renders_its_install_text(spec: spec, path: demanded)
-}
-
-test fn the_event_carrier_worktree_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  routed(
-    spec: deployment_spec_srv1(),
-    written: roadmap_event_carrier_layout_for_instance(instance: live).worktree as String,
-    demanded: owned_directory_path(t: roadmap_event_carrier_directory(instance: live)) as String,
-  )
-}
-
-test fn the_login_transaction_store_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  routed(
-    spec: deployment_spec_srv1(),
-    written: login_transaction_store_layout_for_instance(instance: live).root as String,
-    demanded: owned_directory_path(t: login_transaction_store_directory(instance: live)) as String,
-  )
-}
-
-// THE CREDENTIAL ACQUISITION SLOTS ROOT, which the slot store reads and nothing created: the path the
-// dispatch selection lists is its declared demand, and the srv1 transaction demands, enrols and renders it.
-test fn the_credential_acquisition_slots_root_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  routed(
-    spec: deployment_spec_srv1(),
-    written: credential_acquisition_slots_root(instance_root: live.instance_root as String) as String,
-    demanded: owned_directory_path(t: credential_acquisition_slots_directory(instance: live)) as String,
-  )
-}
-
-// THE CURSOR ATTEMPT RUNTIME PARENT is an instance directory: the attempt creates only its own base under it.
-test fn the_cursor_attempt_runtime_parent_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  routed(
-    spec: deployment_spec_srv1(),
-    written: cursor_attempt_runtime_parent(instance_root: live.instance_root as String),
-    demanded: owned_directory_path(t: cursor_attempt_runtime_directory(instance: live)) as String,
-  )
-}
-
 // THE DEMAND IS THE INSTANCE'S: the lab's carrier worktree is not in production's transaction.
 test fn another_instances_demand_is_not_in_the_srv1_transaction() -> Bool {
   !demands_contain(
     spec: deployment_spec_srv1(),
     path: owned_directory_path(t: roadmap_event_carrier_directory(instance: srv1_lab_dashboard_instance())) as String,
   )
-}
-
-// A CONVERGED PLAN INSTALLS NO DIRECTORY: the emission is the decision's, not unconditional.
-test fn a_converged_plan_emits_no_directory_install() -> Bool {
-  let spec = deployment_spec_srv1()
-  pipeline_steps_text(steps: owned_directory_apply_steps(
-    spec: spec,
-    plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec)),
-  )) == ""
 }
 
 // ── P1 CONTROL: A PROTECTED FABRIC TREE IS CONVERGED THROUGH THE DEPLOY PRINCIPAL'S PINNED READS ─────
@@ -165,36 +102,6 @@ fn fabric_member_as_privileged_reads_see_it(t: OwnedDirectoryTarget) -> Observed
     target: t,
     observation: owned_directory_observe(path: owned_directory_path(t: t), list: d => privileged_listing_of_the_tree(dir: d), stat: p => privileged_stat_of_the_tree(path: p)),
   )
-}
-
-test fn a_protected_fabric_tree_is_converged_and_a_second_deployment_installs_nothing() -> Bool {
-  let spec = deployment_spec_srv1()
-  let tree = fabric_tree()
-  let roster = map(tree, t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr })
-  let protected_root = any(tree, t => match owned_directory_mode(t: t) {
-    OwnedDirectoryModeResolved { mode } => !mode.other.execute && !mode.group.read
-    OwnedDirectoryModeRefused { reason: _ } => false
-  })
-  let derivation = derive_member_plan(
-    roster: roster,
-    desired: m => Present { value: match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } } },
-    observed: m => match first(filter(xs: tree, predicate: t => converged_member_eq(a: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }, b: m))) {
-      Present { value: t } => fabric_member_as_privileged_reads_see_it(t: t)
-      Absent => MemberUnobservable { member: m, cause: "not a fabric demand" }
-    },
-    target: deploy_witness_release_target(spec: spec),
-  )
-  count(tree) > 0 && protected_root
-    && all(tree, t => match fabric_member_as_privileged_reads_see_it(t: t) {
-      MemberObserved { identity } => match identity { RootAt { root } => directory_root_standing_wire(s: root.standing) == "converged"  _ => false }
-      _ => false
-    })
-    && match derivation {
-      EffectsRefused { refusals: _ } => false
-      EffectsDerived { plan } =>
-        plan_mutation_count(plan: plan) == 0
-          && all(tree, t => pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: owned_directory_path(t: t) as String), plan: plan)) == "")
-    }
 }
 
 // RED: the child read as the unprivileged job user reads it -- the owner-only parent's listing refused

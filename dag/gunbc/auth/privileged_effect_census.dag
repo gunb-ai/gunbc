@@ -902,7 +902,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
 
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
+    site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "live_deploy_apply_helper_grant_on_host"),
     effect: PrivilegedEffect {
       subject: "on every broker release, install one exact NOPASSWD grant letting the operator's account run that release's root-owned ntfy runtime-observe helper as gunbc-ntfy, replacing the previous release's grant" as NonEmptyStr,
       frequency: EveryProvision,
