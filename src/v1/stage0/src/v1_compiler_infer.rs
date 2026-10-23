@@ -25714,6 +25714,19 @@ pub fn param_is_generic_decl(
     }
 }
 
+pub fn unify_denoted_actual(actual: Rc<Node>) -> Rc<Node> {
+    match actual.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            if (actual.connective.clone() == Connective::Arrow) {
+                actual
+            } else {
+                rt.clone()
+            }
+        }
+        _ => actual,
+    }
+}
+
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -25742,9 +25755,11 @@ pub fn unify_generics(
             })
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
-                std::option::Option::None => {
-                    v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
-                }
+                std::option::Option::None => v1_rt::rc_map_insert(
+                    acc.clone(),
+                    bind_name.clone(),
+                    unify_denoted_actual(actual.clone()),
+                ),
                 Some(_) => acc.clone(),
             }
         } else {
