@@ -1,0 +1,226 @@
+module v2.test.claim.compiler.infer_red_claims_minted_probe
+
+// SEAT 16, SCRATCH (never-merge branch; claims only; nothing here lands). Round 6, per M3
+// msg_9fc7457c: decide (a)/(c) FIXTURE DRIFT vs #14749 REGRESSION by execution, not relabelling.
+//
+// MEASURED (round 5, 0d7594755add, 2 PASS): BOTH trees' fatal is grounding_evidence_is_source.
+// MECHANISM, read from the code at this head: #14749's new leaf rule (v2.compiler.infer, the
+// infer_atom_is_rigid_binder_in_scope arm of the roster-member-type rule, :1033-1038) derives an
+// in-scope T-headed node's type as infer_open_type_param_atom (:1518-1524) -- occurrence_id
+// OccurrenceSynthetic. inferred_facts_from_derived_type (:2309) pipes it through
+// v2.std.constraints.canonical_grounding_from_derived_type, which REFUSES when
+// derived_type == node (:80), and raw Node == compares kind+children+occurrence (infer.dag:2323
+// comment). The fixtures build every T position with dag_type_atom_node -- OccurrenceSynthetic --
+// so the derived open atom is EQUAL to the node it grounds and the constructor refuses. Pre-#14749
+// no rule derived a type for an in-scope bare T at these positions, which is why the claims passed.
+// v2.test.lens_common.infer_fixture states this class at :152-156: "two synthetic type atoms of one
+// spelling are ONE key, and a codomain atom structurally equal to the type infer derives for it is
+// refused as grounding_evidence_is_source ... Callers pass distinct ids per position." The (a)/(c)
+// fixtures do NOT: every T position is synthetic.
+//
+// THE TEST: byte-copies of the (a)/(c) builders with ONLY the T-headed atoms minted
+// (claim_minted_atom, distinct ids per position -- the documented cure). Decision:
+//   DRIFT      <=> probe_a_minted_not_accepted + probe_a_minted_fatal_is_inhabitance PASS (refusal
+//                returns, under the inhabitance reason -- keep the behavior assertions, fix builders)
+//                AND probe_c_minted_not_rejected + probe_c_minted_counted_reason_present PASS.
+//   REGRESSION <=> minting does NOT restore the verdicts (a' accepted with no inhabitance fatal, or
+//                c' refused) -- #14749's rule itself is the finding, per M3 option (2).
+
+import v2.test.lens_common.infer_fixture { claim_minted_atom, claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness { inhabitance_named_conj_domain }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.type_binder { type_binder_set_children, type_params_edge }
+import std.algebra { list_snoc_item }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason, diagnostics_has_reason }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node {
+  Arrow,
+  Authored,
+  ComputationNode,
+  Conj,
+  Edge,
+  Instantiation,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  ArrowBodyEdge,
+  core_edge_label,
+  NotADeclaration
+}
+
+// (a)'s tree: g<T>(x: T) applied to 1. Byte-copy of inhabitance_generic_formal_tree(), with the
+// three T positions -- Instantiation head, binder-set target, binder-set source -- each MINTED.
+fn probe_a_declared() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 101),
+        declaration: NotADeclaration
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn probe_a_tree() -> Node {
+  let arrow = dag_arrow_with_body_node(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_t,
+      declared: probe_a_declared()
+    ),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_int_literal_fixture_one()
+  )
+  let binder_conj = Node {
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [
+        Edge {
+          label: Authored { name: ^inhabitance_type_param_t },
+          target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 102),
+          declaration: NotADeclaration
+        }
+      ],
+      source: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 103)
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: type_params_edge(conj: binder_conj)
+          ),
+          occurrence_id: OccurrenceSynthetic
+        },
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// (c)'s tree: g<T>(x: (Int) -> T) applied to 1. Byte-copy of the claim (c) fixture, with the arrow's
+// two codomain T atoms (the duplicated return Positional pair dag_arrow_with_body_node builds) MINTED.
+fn probe_c_arrow() -> Node {
+  let domain = inhabitance_named_conj_domain(
+    parameter: ^inhabitance_param_x,
+    declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+  )
+  let signature = declared_signature(params: domain.children, source: domain)
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge {
+        label: Positional,
+        target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 201),
+        declaration: NotADeclaration
+      },
+      Edge {
+        label: Positional,
+        target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 202),
+        declaration: NotADeclaration
+      },
+      signature.order,
+      Edge {
+        label: core_edge_label(marker: ArrowBodyEdge),
+        target: dag_int_literal_fixture_one(),
+        declaration: NotADeclaration
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn probe_c_tree() -> Node {
+  let arrow = probe_c_arrow()
+  let binder_conj = Node {
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [
+        Edge {
+          label: Authored { name: ^inhabitance_type_param_t },
+          target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 203),
+          declaration: NotADeclaration
+        }
+      ],
+      source: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 204)
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: type_params_edge(conj: binder_conj)
+          ),
+          occurrence_id: OccurrenceSynthetic
+        },
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// (a) PRIMARY: with distinct minted T occurrences the refusal is the INHABITANCE refusal again --
+// the behavior the claim asserts. If minting restores it, the fixture's synthetic T atoms are the
+// only thing that changed under #14749: DRIFT, fix the builders, keep the assertions.
+test fn probe_a_minted_not_accepted() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: probe_a_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn probe_a_minted_fatal_is_inhabitance() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: probe_a_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
+  }
+}
+
+test fn probe_a_minted_fatal_is_not_grounding() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: probe_a_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) != ^grounding_evidence_is_source
+  }
+}
+
+// (c) PRIMARY: with minted codomain occurrences the tree is ACCEPTED again and the counted generic-
+// formal frontier is what carries it. If minting restores ACCEPTED + counted, DRIFT.
+test fn probe_c_minted_not_rejected() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: probe_c_tree())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn probe_c_minted_counted_reason_present() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: probe_c_tree())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+  }
+}
