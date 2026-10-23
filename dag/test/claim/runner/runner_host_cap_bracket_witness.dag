@@ -2,7 +2,7 @@ module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -106,14 +106,16 @@ import gunbc.runner.runner_host_cap_bracket {
 fn u(n: String) -> NonEmptyStr { concat("actions-runner@srv3-", n, ".service") as NonEmptyStr }
 fn drained(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunStopped } }
 fn finishing(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunWorkerLive } }
-fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunListenerIdle { roster: RosterNotBusy } } }
+// The supplied roster reading carries the minted identity a real join would have used for this slot, so a
+// control that reads a verdict cannot pass on a bracket that dropped the name it joined on.
+fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunListenerIdle { roster: RosterNotBusy { joined: minted(n: n, tag: slot_current_mint_tag) } } } }
 fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
 fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionOpen, run: RunStopped } }
 
-fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained { listeners: _ } => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained { listeners: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls, causes: _ } => length(ls) == 1 BracketDrained { listeners: _ } => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained { listeners: _ } => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false } }
+fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained { listeners: _, joined: _ } => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained { listeners: _, joined: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls, causes: _ } => length(ls) == 1 BracketDrained { listeners: _, joined: _ } => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
+fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained { listeners: _, joined: _ } => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false } }
 
 // the bound is a declared policy row that yields a positive tick count
 test fn the_declared_bound_yields_positive_ticks() -> Bool { host_cap_drain_ticks(policy: runner_host_cap_drain_policy) > 0 }
@@ -198,7 +200,7 @@ fn slot_read_outcome_of(unit: NonEmptyStr, show_stdout: String) -> SlotReadOutco
 
 fn projected(active: String, listing: String) -> SlotDrainReading {
   let read = slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: active))
-  slot_drain_reading_of(unit: u(n: "01"), read: read, worker: if slot_drain_needs_worker(read: read) { slot_activity_of_listing(listing: listing, unit: u(n: "01")) } else { SlotIdle }, roster: RosterNotBusy)
+  slot_drain_reading_of(unit: u(n: "01"), read: read, worker: if slot_drain_needs_worker(read: read) { slot_activity_of_listing(listing: listing, unit: u(n: "01")) } else { SlotIdle }, roster: RosterNotBusy { joined: minted(n: "01", tag: slot_current_mint_tag) })
 }
 
 test fn a_deactivating_unit_with_a_live_worker_is_not_drained() -> Bool {
@@ -219,8 +221,8 @@ test fn a_stopped_masked_unit_is_drained_without_a_cgroup_reading() -> Bool {
 }
 
 test fn an_unknown_or_missing_active_state_is_unproven_never_idle() -> Bool {
-  let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle, roster: RosterNotBusy)
-  let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle, roster: RosterNotBusy)
+  let unknown = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")), worker: SlotIdle, roster: RosterNotBusy { joined: minted(n: "01", tag: slot_current_mint_tag) })
+  let missing = slot_drain_reading_of(unit: u(n: "01"), read: slot_read_outcome_of(unit: u(n: "01"), show_stdout: concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\n")), worker: SlotIdle, roster: RosterNotBusy { joined: minted(n: "01", tag: slot_current_mint_tag) })
   exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [unknown], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
     && exceeded(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [missing], ticks_left: 0, time_up: false), busy: 0, unproven: 1)
 }
@@ -748,7 +750,13 @@ fn step_word(r: BracketRun<BracketWaitStep>) -> String {
   match r {
     BracketRunEnded { cause: c } => concat("ended: ", c)
     BracketRunReturned { value: v, legs: _, calls: _ } => match v {
-      BracketDrained { listeners: l } => concat("drained:", to_string(length(l)))
+      // The count keeps its word so a control can still ask "how many", and the joined identities are
+      // appended so a control can ask "WHICH registration did the bracket certify?" -- a drained verdict
+      // that reports only a count cannot be checked against the roster the join used, which is §5's located
+      // diagnostic now that the join key is a suffixed identity.
+      BracketDrained { listeners: l, joined: j } =>
+        if length(j) == 0 { concat("drained:", to_string(length(l))) }
+        else { join(["drained:", to_string(length(l)), " joined=", join(j, ",")], "") }
       BracketWaiting { ticks_left: _ } => "waiting"
       BracketAdmissionNotClosed { listeners: _, causes: cs } => concat("not-closed: ", join(cs, " | "))
       BracketBoundExceeded { busy: b, unproven: p } => concat("exceeded:", to_string(length(b)), ":", to_string(length(p)))
@@ -771,7 +779,10 @@ fn admitted_roster() -> List<RosterAt> { roster_constant(list_stdout: roster_of(
 // unit, the process listing, and the current registration identity.
 test fn a_masked_idle_listener_with_a_roster_not_busy_and_no_worker_is_admitted() -> Bool {
   let r = admission_pass(legs: listener_legs(n: "01"), roster: admitted_roster(), environment: route_environment())
-  step_word(r: r) == "drained:1" && list_calls(r: r) == 1 && length(ledger_of(r: r)) == 3
+  // The identity is asserted here, not just the count: an admission that certified the WRONG registration
+  // (a stale mint, another slot's name) would still be "drained:1".
+  step_word(r: r) == concat("drained:1 joined=", minted(n: "01", tag: slot_current_mint_tag))
+    && list_calls(r: r) == 1 && length(ledger_of(r: r)) == 3
 }
 
 // RED: the roster says busy while the cgroup holds no Runner.Worker -> the readings disagree, never admitted.
@@ -809,7 +820,7 @@ test fn a_registration_absent_from_the_roster_refuses_admission() -> Bool {
 test fn a_suffixed_current_registration_matches_its_slot_though_the_slot_name_is_nowhere_on_the_roster() -> Bool {
   let rows = [registered_named(name: minted(n: "01", tag: slot_current_mint_tag), id: 7, busy: false)]
   let r = admission_pass(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: rows)), environment: route_environment())
-  step_word(r: r) == "drained:1"
+  step_word(r: r) == concat("drained:1 joined=", minted(n: "01", tag: slot_current_mint_tag))
     && !string_contains(s: roster_of(entries: rows), pattern: concat("\"name\": \"", registration_of(n: "01"), "\"" ))
 }
 
@@ -865,9 +876,12 @@ test fn the_name_the_host_yields_is_the_join_key_even_when_it_carries_another_sl
   // control uses), NOT through the registration name. A roster-busy refusal quotes no name -- it reports
   // the disagreement between the roster and the cgroup -- and an assertion on a string the bracket does
   // not print is a control that fails for the wrong reason.
-  step_word(r: idle) == "drained:1"
+  step_word(r: idle) == concat("drained:1 joined=", minted(n: "01", tag: slot_current_mint_tag))
     && string_contains(s: step_word(r: busy), pattern: "not-closed: ")
     && string_contains(s: step_word(r: busy), pattern: "the readings disagree")
+    // The busy refusal NAMES the registration the roster answered busy: a refusal that reports only a
+    // disagreement cannot be checked against the roster, and the slot re-mints per job.
+    && string_contains(s: step_word(r: busy), pattern: minted(n: "02", tag: slot_current_mint_tag))
     && !string_contains(s: step_word(r: busy), pattern: minted(n: "01", tag: slot_current_mint_tag))
     && string_contains(s: step_word(r: absent), pattern: "is ABSENT from the roster")
     && string_contains(s: step_word(r: absent), pattern: minted(n: "02", tag: slot_current_mint_tag))
@@ -1167,11 +1181,13 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
     cap_phase_after_drain_over(
       subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
       context: context, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
-      owned: owned, admitted: [u(n: "01")])
+      // What the drain certified, threaded through from the bracket's own verdict shape: one unit=identity
+      // pair per admitted idle listener. The flow controls below assert this reaches the receipt.
+      owned: owned, admitted: [u(n: "01")], certified: [concat(u(n: "01") as String, "=", minted(n: "01", tag: slot_current_mint_tag))])
   })
 }
 
-fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _ } => false CapPhaseNotOwed => false CapPhaseObserved { readings: _ } => false } BracketRunEnded { cause: _ } => false } }
+fn flow_withheld(r: BracketRun<RunnerHostCapPhase>) -> Bool { match r { BracketRunReturned { value: v, legs: _, calls: _ } => match v { CapPhaseWithheld { cause: _ } => true CapPhaseRan { files: _, reload: _, slots: _, certified: _ } => false CapPhaseNotOwed => false CapPhaseObserved { readings: _ } => false } BracketRunEnded { cause: _ } => false } }
 fn flow_cap_effects(r: BracketRun<RunnerHostCapPhase>) -> Int {
   let legs = ledger_of(r: r)
   count_containing(legs: legs, needle: "daemon-reload") + count_containing(legs: legs, needle: " stop ")
@@ -1186,4 +1202,49 @@ test fn a_reread_that_turns_busy_after_the_drain_issues_no_cap_write_reload_or_s
 test fn a_foreign_live_listener_after_the_drain_issues_no_cap_write_reload_or_stop() -> Bool {
   let r = flow_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [])
   flow_withheld(r: r) && length(ledger_of(r: r)) >= 2 && flow_cap_effects(r: r) == 0
+}
+
+// THE RECEIPT NAMES WHAT IT CERTIFIED. A cap written for a JIT-registered listener is only provable
+// against the registration the bracket actually joined on, and that name cannot be recovered afterwards
+// from the slot: the next job re-mints it. So "caps applied" plus a unit name is not enough -- the receipt
+// has to carry the suffixed identity while the run still holds it (§5's located diagnostic, and the one
+// place apply mode can show it, since the observe-only slot-registration line is deliberately not read
+// after this run's own writes).
+//
+// WHAT THIS CLAIM DECIDES, AND WHAT IT DOES NOT: flow_run hands cap_phase_after_drain_over its `certified`
+// argument, which in production is filled from the bracket's own BracketDrained.joined. So this is the
+// RENDERING half -- verdict -> receipt text, unit-prefixed, suffixed, never bare. The half that proves the
+// identity is the host's answer rather than a supplied string is the drained-verdict controls above, which
+// build `joined` from a real cat leg over the hermetic route. Neither half alone is enough; read together
+// they say the name in the receipt is the name on the host.
+test fn the_apply_receipt_names_the_registration_each_admitted_listener_was_certified_on() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: admitted_roster(), owned: [u(n: "01")])
+  match r {
+    BracketRunReturned { value: v, legs: _, calls: _ } => match v {
+      CapPhaseRan { files: _, reload: _, slots: _, certified: cs } =>
+        // The identity travels with the verdict, unbroken from the host answer: unit-prefixed so a
+        // multi-slot receipt cannot attribute an identity to the wrong unit, and suffixed so a bare slot
+        // name -- which no fleet listener ever registered under -- could never satisfy this.
+        length(cs) == 1
+          && (list_head(xs: cs) == concat(u(n: "01") as String, "=", minted(n: "01", tag: slot_current_mint_tag)))
+          && string_contains(s: runner_host_cap_phase_text(phase: v), pattern: concat("caps-certified=", u(n: "01") as String, "=", minted(n: "01", tag: slot_current_mint_tag)))
+          // No bare-name certification anywhere in the receipt.
+          && !string_contains(s: runner_host_cap_phase_text(phase: v), pattern: concat("=", registration_of(n: "01"), "\n"))
+          && !string_contains(s: runner_host_cap_phase_text(phase: v), pattern: concat("=", registration_of(n: "01"), " "))
+      _ => false
+    }
+    BracketRunEnded { cause: _ } => false
+  }
+}
+
+// A WITHHELD PHASE CLAIMS NOTHING. The line an operator reads when caps are withheld must not carry a
+// certification the bracket never made; the withheld rendering has no certified field to leak, and this
+// holds it that way.
+test fn a_withheld_cap_phase_renders_no_certification() -> Bool {
+  let r = flow_run(legs: listener_legs(n: "01"), roster: roster_constant(list_stdout: roster_of(entries: [registered_current(n: "01", id: 7, busy: true)])), owned: [u(n: "01")])
+  flow_withheld(r: r)
+    && match r {
+      BracketRunReturned { value: v, legs: _, calls: _ } => !string_contains(s: runner_host_cap_phase_text(phase: v), pattern: "caps-certified=")
+      BracketRunEnded { cause: _ } => false
+    }
 }

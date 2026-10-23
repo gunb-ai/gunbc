@@ -229,9 +229,15 @@ type SlotAdmissionState
 // WHAT THE ORGANIZATION ROSTER SAYS OF ONE LISTENER'S REGISTRATION, a reading of its own: a registration
 // absent from the roster, a partial or unavailable roster, or two registrations of one name disagreeing on
 // busy are never read as not-busy (could-not-tell is not idle).
+// EVERY ROSTER READING NAMES THE REGISTRATION IT WAS JOINED ON. The join key is a JIT-minted suffixed
+// identity, so a verdict that says only "the roster says busy" is not yet a located diagnostic (§5): an
+// operator looking at a withheld cap cannot tell which of the slot's mints the bracket examined, and a
+// slot re-mints per job. The name is carried forward from the one place it is read
+// (listener_roster_reading_of, where the host's answer is in scope), not re-derived here -- it is the same
+// value the join used, so the verdict cannot name an identity the join did not use.
 type ListenerRosterReading
-  = RosterNotBusy
-  | RosterBusy
+  = RosterNotBusy { joined: String }
+  | RosterBusy { joined: String }
   | RosterUnread { cause: String }
   | RosterDisagrees { cause: String }
 
@@ -254,7 +260,7 @@ type SlotDrainReading {
 type SlotDrainClass
   = ClassDrained
   | ClassBusy
-  | ClassListenerAdmitted
+  | ClassListenerAdmitted { joined: String }
   | ClassIdleListenerOpen { cause: String }
   | ClassAdmissionOpen
   | ClassUnproven { cause: String }
@@ -267,8 +273,11 @@ fn listener_class(closure: AdmissionClosure, r: SlotDrainReading, roster: Listen
         AdmissionOpen => ClassAdmissionOpen
         AdmissionClosedByMask =>
           match roster {
-            RosterNotBusy => ClassListenerAdmitted
-            RosterBusy => ClassIdleListenerOpen { cause: "the roster says the registration is busy while its cgroup holds no Runner.Worker: the readings disagree" }
+            // BOTH verdicts name the identity. NotBusy is the one that ADMITS a cap write, so the
+            // drained verdict has to say which registration it certified; Busy is the one that WITHHOLDS
+            // it, so the refusal has to say which registration was found working.
+            RosterNotBusy { joined: j } => ClassListenerAdmitted { joined: j }
+            RosterBusy { joined: j } => ClassIdleListenerOpen { cause: join(["the roster says the registration ", j, " is busy while its cgroup holds no Runner.Worker: the readings disagree"], "") }
             RosterUnread { cause: c } => ClassIdleListenerOpen { cause: concat("the roster did not say whether the registration is busy: ", c) }
             RosterDisagrees { cause: c } => ClassIdleListenerOpen { cause: concat("the roster readings disagree: ", c) }
           }
@@ -287,13 +296,19 @@ fn slot_drain_class(closure: AdmissionClosure, r: SlotDrainReading) -> SlotDrain
 }
 
 fn drain_class_is_idle_listener(c: SlotDrainClass) -> Bool { match c { ClassIdleListenerOpen { cause: _ } => true _ => false } }
-fn drain_class_is_listener_admitted(c: SlotDrainClass) -> Bool { match c { ClassListenerAdmitted => true _ => false } }
-fn drain_class_is_drained(c: SlotDrainClass) -> Bool { match c { ClassDrained => true ClassListenerAdmitted => true _ => false } }
+fn drain_class_is_listener_admitted(c: SlotDrainClass) -> Bool { match c { ClassListenerAdmitted { joined: _ } => true _ => false } }
+fn drain_class_is_drained(c: SlotDrainClass) -> Bool { match c { ClassDrained => true ClassListenerAdmitted { joined: _ } => true _ => false } }
 fn drain_class_is_busy(c: SlotDrainClass) -> Bool { match c { ClassBusy => true _ => false } }
 fn drain_class_is_unproven(c: SlotDrainClass) -> Bool { match c { ClassAdmissionOpen => true ClassUnproven { cause: _ } => true _ => false } }
 
 type BracketWaitStep
-  = BracketDrained { listeners: List<NonEmptyStr> }
+  // `joined` names what the bracket CERTIFIED: one "<unit>=<registration>" per admitted listener, each
+  // carrying the JIT-minted identity the roster was joined on. Carried as self-describing strings rather
+  // than a second list positionally paired with `listeners`, so a reordered or filtered listeners list can
+  // never misattribute an identity to the wrong unit. It travels with the verdict instead of being re-read,
+  // so the cap phase and the receipt can say what was certified without asking the host a second time --
+  // and in apply mode this is the ONLY place that identity can reach an operator.
+  = BracketDrained { listeners: List<NonEmptyStr>, joined: List<String> }
   | BracketWaiting { ticks_left: Int }
   | BracketAdmissionNotClosed { listeners: List<NonEmptyStr>, causes: List<String> }
   | BracketBoundExceeded { busy: List<NonEmptyStr>, unproven: List<NonEmptyStr> }
@@ -309,7 +324,13 @@ fn bracket_wait_step(closure: AdmissionClosure, readings: List<SlotDrainReading>
   if length(refused) > 0 {
     BracketAdmissionNotClosed { listeners: map(refused, c => c.unit), causes: list_flat_map(classed, c => match c.class { ClassIdleListenerOpen { cause: x } => [concat(c.unit as String, ": ", x)] _ => [] }) }
   } else if all(classed, c => drain_class_is_drained(c: c.class)) {
-    BracketDrained { listeners: map(filter(classed, c => drain_class_is_listener_admitted(c: c.class)), c => c.unit) }
+    BracketDrained {
+      listeners: map(filter(classed, c => drain_class_is_listener_admitted(c: c.class)), c => c.unit),
+      joined: map(filter(classed, c => drain_class_is_listener_admitted(c: c.class)), c => match c.class {
+        ClassListenerAdmitted { joined: j } => join([c.unit as String, "=", j], "")
+        _ => ""
+      }),
+    }
   } else if ticks_left <= 0 || time_up {
     BracketBoundExceeded {
       busy: map(filter(classed, c => drain_class_is_busy(c: c.class)), c => c.unit),
@@ -438,8 +459,8 @@ fn listener_roster_reading_of(reading: ListenerRegistrationReading, evidence: Or
           if length(hits) == 0 {
             RosterUnread { cause: join([u, ": the registration ", n, " that ", i, " is running under now is ABSENT from the roster, which is not an idle slot but a registration between mints, and the roster cannot exclude a re-mint landing a job on it"], "") }
           }
-          else if all(hits, g => !g.busy) { RosterNotBusy }
-          else if all(hits, g => g.busy) { RosterBusy }
+          else if all(hits, g => !g.busy) { RosterNotBusy { joined: n } }
+          else if all(hits, g => g.busy) { RosterBusy { joined: n } }
           else { RosterDisagrees { cause: concat("registrations of the name ", n, " disagree on busy") } }
         }
       }
@@ -554,7 +575,7 @@ fn drain_until_quiescent_over(target: SshTarget, context: FleetSshExecutionConte
   let before = read_slot_drain_pass_over(target: target, context: context, units: observed)
   match bracket_wait_step(closure: closure, readings: before, ticks_left: ticks_left + 1, time_up: false) {
     BracketAdmissionNotClosed { listeners: ls, causes: cs } => BracketAdmissionNotClosed { listeners: ls, causes: cs }
-    BracketDrained { listeners: l } => BracketDrained { listeners: l }
+    BracketDrained { listeners: l, joined: j } => BracketDrained { listeners: l, joined: j }
     BracketWaiting { ticks_left: _ } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
     BracketBoundExceeded { busy: b, unproven: u } => drain_pass_over(target: target, context: context, observed: observed, owned: owned, policy: policy, ticks_left: ticks_left, started: started)
   }
@@ -621,7 +642,7 @@ fn listener_stop_cause(c: SlotDrainClass) -> String {
     ClassAdmissionOpen => "the unit is no longer masked"
     ClassUnproven { cause: x } => x
     ClassDrained => "drained"
-    ClassListenerAdmitted => "admitted"
+    ClassListenerAdmitted { joined: _ } => "admitted"
   }
 }
 
@@ -637,7 +658,7 @@ fn restart_decision_of(closure: AdmissionClosure, unit: NonEmptyStr, readings: L
     Absent => ListenerStopDeclined { cause: "the unit was not read immediately before the stop" }
     Present { value: r } =>
       match slot_drain_class(closure: closure, r: r) {
-        ClassListenerAdmitted => ListenerStopAdmitted
+        ClassListenerAdmitted { joined: _ } => ListenerStopAdmitted
         ClassDrained => ListenerAlreadyNotRunning
         c => ListenerStopDeclined { cause: listener_stop_cause(c: c) }
       }
@@ -684,7 +705,7 @@ fn cap_write_unit_cause(closure: AdmissionClosure, owned: List<NonEmptyStr>, uni
     Present { value: r } =>
       match slot_drain_class(closure: closure, r: r) {
         ClassDrained => Absent
-        ClassListenerAdmitted =>
+        ClassListenerAdmitted { joined: _ } =>
           if is_owned { Absent } else { Present { value: join([unit as String, " is masked by someone else and is a live listener: it is not stopped or restarted here, so a reload would cap it unproven"], "") } }
         c => Present { value: join([unit as String, ": ", listener_stop_cause(c: c)], "") }
       }
