@@ -26901,8 +26901,12 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
     FunctionNotFound,
     /// A file-grain row (`check_fns: []`) whose entry file carries no TEST MARKER: the sentinel
     /// promises every marked declaration in the file, and a marked-empty file promises nothing,
