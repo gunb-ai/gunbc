@@ -45,8 +45,9 @@ import std.algebra { list_snoc_item }
 import v2.std.type_binder { type_binder_set_children, type_params_edge }
 import std.optional { Absent, Optional, Present }
 import v2.std.node_query { binder_edge }
-import v2.std.arrow_signature { declared_signature_arrow }
+import v2.std.arrow_signature { declared_signature, declared_signature_arrow }
 import v2.std.node {
+  Arrow,
   ComputationNode,
   Conj,
   Edge,
@@ -58,9 +59,12 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  core_edge_label,
+  ArrowBodyEdge,
   node_synthetic,
   NotADeclaration
 }
+import std.occurrence_identity { OccurrenceSynthetic }
 
 fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
   node_synthetic(
@@ -106,6 +110,18 @@ fn inhabitance_call_tree(arg: Node) -> Node {
 // parameter list (v2.std.type_binder type_params_edge), so the relation holds no instance for it and
 // the obligation is counted UndecidableGenericFormal. An Instantiation that mentions no declared type
 // variable is decided structurally instead (inhabitance_ground_instantiation_* below).
+//
+// EVERY T POSITION IS MINTED, NOT SYNTHETIC. v2.test.lens_common.infer_fixture (its claim_callable_arrow
+// header): each authored position carries its OWN minted occurrence, because raw node equality compares
+// occurrence and two synthetic atoms of one spelling are ONE key -- an atom structurally equal to the
+// type infer derives for it is refused as grounding_evidence_is_source by
+// v2.std.constraints.canonical_grounding_from_derived_type. Since #14749 (c5d5b2025e4e) an in-scope type
+// variable HAS a derived type (the infer_atom_is_rigid_binder_in_scope leaf rule derives
+// v2.compiler.infer.infer_open_type_param_atom, an OccurrenceSynthetic atom), so a T position still
+// built with dag_type_atom_node now collides with the node it grounds and the tree refuses for
+// self-evidence before its inhabitance verdict is reached. Pre-#14749 nothing derived a type for an
+// in-scope T at these positions, so the shared synthetic key was latent. The assertions below stay the
+// behavior assertions (refuses non-inhabiting / counted frontier); the FIXTURES carry the discipline.
 fn inhabitance_generic_formal_tree() -> Node {
   inhabitance_generic_formal_tree_over(
     declared: node_synthetic(
@@ -113,7 +129,7 @@ fn inhabitance_generic_formal_tree() -> Node {
       children: [
         Edge {
           label: Positional,
-          target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+          target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3001),
           declaration: NotADeclaration
         }
       ]
@@ -145,10 +161,10 @@ fn inhabitance_generic_formal_tree_over(declared: Node) -> Node {
                 children: type_binder_set_children(binders: [
                   Edge {
                     label: Authored { name: ^inhabitance_type_param_t },
-                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+                    target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3002),
                     declaration: NotADeclaration
                   }
-                ], source: dag_type_atom_node(identity: ^inhabitance_type_param_t))
+                ], source: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3003))
               )
             )
           )
@@ -158,6 +174,42 @@ fn inhabitance_generic_formal_tree_over(declared: Node) -> Node {
       Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
+}
+
+// THE ARROW FORMAL `(Int) -> T`, codomain MINTED. Byte-faithful to v2.extdeps.languages.dag
+// dag_arrow_with_body_node EXCEPT the two codomain T atoms: each position carries its OWN minted
+// occurrence, for the reason recorded on inhabitance_generic_formal_tree -- the arrow's codomain is an
+// in-scope T position, and dag_arrow_with_body_node builds it with the shared synthetic spelling key,
+// which collides with the open atom #14749's leaf rule derives for it (grounding_evidence_is_source).
+fn inhabitance_arrow_formal_tree_minted_codomain() -> Node {
+  let domain = inhabitance_named_conj_domain(
+    parameter: ^inhabitance_param_x,
+    declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+  )
+  let signature = declared_signature(params: domain.children, source: domain)
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge {
+        label: Positional,
+        target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3004),
+        declaration: NotADeclaration
+      },
+      Edge {
+        label: Positional,
+        target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3005),
+        declaration: NotADeclaration
+      },
+      signature.order,
+      Edge {
+        label: core_edge_label(marker: ArrowBodyEdge),
+        target: dag_int_literal_fixture_one(),
+        declaration: NotADeclaration
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
 }
 
 fn inhabitance_optional_formal_tree() -> Node {
@@ -275,14 +327,7 @@ test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -
   match infer(
     tree: claim_resolved_tree_without_declarations(
       root: inhabitance_generic_formal_tree_over(
-        declared: dag_arrow_with_body_node(
-          domain: inhabitance_named_conj_domain(
-            parameter: ^inhabitance_param_x,
-            declared: dag_type_atom_node(identity: ^dag_binding_type_int)
-          ),
-          return_type_binding: ^inhabitance_type_param_t,
-          body: dag_int_literal_fixture_one()
-        )
+        declared: inhabitance_arrow_formal_tree_minted_codomain()
       )
     )
   ) {
