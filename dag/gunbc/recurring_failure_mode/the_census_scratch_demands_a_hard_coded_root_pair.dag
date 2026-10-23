@@ -1,0 +1,64 @@
+module gunbc.recurring_failure_mode.the_census_scratch_demands_a_hard_coded_root_pair
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE CENSUS SCRATCH DEMANDS A ROOT PAIR IT CARRIES, NOT THE ROOTS IT RUNS OVER.
+// `scratch_index_for_fixture_closure_extension` (src/v1/stage0/src/cli_run.rs) builds the
+// fixture-closure scratch index by demanding `witness_layer_roots()` — the pair the CI layer
+// roster declares (`data witness_layer_roots: List<String> = ["dag", "src/v2"]` in
+// dag/gunbc/ci/ci_layer_roots.dag). The demand is correct for the fleet's resident pool, which
+// is the same pair, and it was the only caller shape when it was written. It is nonetheless a
+// SECOND authoring of the root set beside the one authority (`witness_layer_roots()` itself
+// stays the single home for the fleet pair; this row does not move that fact — it records the
+// misuse boundary of keying a demand to it), and a caller resident over ANY OTHER root set
+// misfires: the scratch asks slot 0 for the carried pair, the residency check refuses with
+// `SharedIndexSecondResidentPool`, and the claim fold eats the refusal into a bare -1 with no
+// cause at the consuming end.
+//
+// MEASURED, 2026-10-23 (Charter 4, gunbc#14909's four-witness triage): claim_batch run with
+// `--source-root dag --source-root src/v1 --source-root src/v2` (three roots) reaches
+// compile_dag_diagnostic_census on a parse-clean fixture and reports
+// `census not runnable: SharedIndexSecondResidentPool: slot 0 already holds roots [dag, src/v1,
+// src/v2]; roots [dag, src/v2] demanded at src/v1/stage0/src/cli_run.rs`, while the same binary
+// with the fleet pair (`--source-root dag --source-root src/v2`) reports `Observed` rows and the
+// same fixtures pass. The refusal is the residency check in
+// `try_process_shared_index_over_slot` (src/v1/stage0/src/cli_run/entry_resolve.rs), doing its
+// job loudly — the class is the DEMAND's keying, not the check.
+//
+// CEILING: structurally impossible, by keying the demand to the resident pool's own roots — the
+// scratch would ask the resident slot over the roots it actually holds (or key the demand off
+// `shared.source_roots` after acquisition), so no caller's root set can mismatch what it already
+// residentiated, and the refusal this class reaches can then only fire for its real purpose
+// (a genuine second resident pool), never for a caller-shape accident.
+//
+// RUNG FOUND AT: mechanically preventable in fact — the refusal exists, is typed, located, and
+// fires; what is missing is only the re-keying that makes the misfire impossible.
+// NEXT-RUNG TRIGGER (UNBUILT): re-key the scratch demand to the resident pool's roots — derive
+// the demanded root list from the acquired shared slot instead of from `witness_layer_roots()` —
+// with a witness that a census over a three-root resident pool reports `Observed` where today it
+// reports the residency refusal. LOW PRIORITY (Charter 4 triage, 2026-10-23): the fleet's
+// resident shape is the pair, the misfire needs a non-fleet caller, and the refusal is loud
+// where it fires; recorded so the boundary is countable rather than rediscovered.
+
+data the_census_scratch_demands_a_hard_coded_root_pair: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_census_scratch_demands_a_hard_coded_root_pair" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "re-key the fixture-closure scratch index demand to the resident pool's acquired roots (derive the demanded root list from the acquired shared slot, not from the carried witness-layer pair), with a witness that a census over a three-root resident pool reports Observed where the residency refusal fires today" } },
+
+  receipts: [
+    "A SCRATCH INDEX DEMANDS A ROOT SET IT CARRIES INSTEAD OF THE ROOTS IT IS BUILT OVER. `scratch_index_for_fixture_closure_extension` acquires the process-shared slot by demanding `witness_layer_roots()` — the fleet pair [dag, src/v2] — then builds its scratch over the acquired slot's own `source_roots`. For the fleet's resident shape the two agree and nothing notices the duplicate keying; for any other resident root set the acquisition itself refuses, before any scratch exists.",
+
+    "SPECIMEN, 2026-10-23, gunbc#14909's four-witness triage (head-built claim_batch): a run over a THREE-root pool (`--source-root dag --source-root src/v1 --source-root src/v2`) makes compile_dag_diagnostic_census report `census not runnable: SharedIndexSecondResidentPool: slot 0 already holds roots [dag, src/v1, src/v2]; roots [dag, src/v2] demanded at src/v1/stage0/src/cli_run.rs` on fixtures that the fleet two-root shape reports Observed rows for — the same binary, the same fixtures, only the resident root set differing. The claim fold at the consuming end turns the refusal into a bare -1: the cause text is printed by the refusal, but the cell verdict alone does not distinguish 'this census refuses because the pool is keyed differently' from 'this census refuses because the fixture refuses'.",
+
+    "WHY IT LIVES: `witness_layer_roots()` is the correct single authority for the fleet's witness layer, and the census scratch was written when the census's only caller was the fleet itself. Keying a DEMAND to an authority's value is invisible while there is one caller shape; it becomes a defect the first time a second shape appears, and the second shape appeared in-repo (a three-root claim_batch invocation) before it appeared anywhere else.",
+
+    "THE TELL: a scratch/extension route that demands roots from a carried constant (or a roster read) instead of from the resident pool it is extending; the residency check then fires for caller shape rather than for the double-pool it guards.",
+
+    "THE CEILING IS STRUCTURALLY IMPOSSIBLE, NOT MERELY HARDER: once the demand is derived from the acquired resident slot's own roots, no caller's root set can mismatch what the slot already holds — the residency refusal keeps exactly its real purpose (a true second resident pool) and loses the misfire entirely. The re-keying is unbuilt; nothing else on the current path needs it while the fleet shape is the only resident shape on the merge path.",
+  ],
+
+  evidence: [],
+}

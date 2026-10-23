@@ -705,7 +705,7 @@ fn content_has_target_leaf_at_ident_boundary(content: &str, leaves: &HashSet<Str
     false
 }
 
-/// Production horizon roots are witness-layer names (`dag`, `src/v2`): callers may import
+/// Production horizon roots are witness-layer names (`witness_layer_roots()`, the one home): callers may import
 /// across the admitted universe, so resolve uses `default_source_roots()`. A fixture pool
 /// is not a layer root; resolving it through the live-tree universe rebuilds a corpus
 /// index for a closed handful of files.
@@ -1133,7 +1133,7 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
     }
     // Caller horizon (`pool_roots`) selects candidate files only. When that horizon is a
     // witness-layer root, resolution runs against the admitted live-tree universe
-    // (`witness_layer_roots` → dag ∪ src/v2) through the process-shared index. Using the
+    // (`witness_layer_roots()` -> its own value, the one home) through the process-shared index. Using the
     // horizon `dag` as resolve_roots under-resolved std.materialization_provider (it
     // imports v2.compiler.self_host.generation). A fixture pool is not a layer root:
     // resolve against a PRIVATE index of that subtree only. Routing fixtures through
