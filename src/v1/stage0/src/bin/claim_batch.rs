@@ -1059,7 +1059,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
             );
         }
     }
-    let mut partition_flags = (false, false);
+    let partition_flags: (bool, bool);
     {
         let st = v1_compiler::cli_run::resolve_stage_totals();
         let ms = |n: u128| n as f64 / 1.0e6;
