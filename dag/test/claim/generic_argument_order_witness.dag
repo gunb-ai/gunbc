@@ -1,7 +1,8 @@
 module test.claim.generic_argument_order_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, total_blocking_census, census_exit}
+import std.process { ProcessExit }
 
 // WHAT A GENERIC CALL MUST ACCEPT, AND WHAT IT MUST REFUSE, ACROSS ARGUMENT ORDER.
 // Five rows about a generic call whose lambda argument comes before or after the argument
@@ -41,34 +42,25 @@ data inner_generic_settled_by_later_argument_source: String = "module test.claim
 // FAIL this one. Zero blocking diagnostics is the only acceptable answer here.
 data inner_generic_compatible_control_source: String = "module test.claim.gar_inner_later_ok\nimport std.types { Bool, Int }\nfn gar_id<U>(x: U) -> U { x }\nfn gar_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { gar_ap(f: fn(v) { gar_id(x: v) }, x: true, r: true) }\n"
 
-test fn a_lambda_after_the_argument_that_binds_its_parameter_is_accepted() -> Bool {
-  total_blocking_count_for(source: left_bound_lambda_source) == 0
+test fn a_lambda_after_the_argument_that_binds_its_parameter_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: left_bound_lambda_source), holds: fn(n) { n == 0 }))
 }
 
-test fn a_lambda_before_the_argument_that_binds_its_parameter_is_accepted_under_the_final_context() -> Bool {
-  total_blocking_count_for(source: right_bound_lambda_source) == 0
+test fn a_lambda_before_the_argument_that_binds_its_parameter_is_accepted_under_the_final_context() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: right_bound_lambda_source), holds: fn(n) { n == 0 }))
 }
 
-test fn a_nested_left_bound_bind_chain_is_accepted() -> Bool {
-  // Zero blocking diagnostics of ANY class. Every generic here is bound by the lambda's
-  // own return, so there is nothing for a later argument to settle: a blocking row appearing
-  // on this program is a refusal of something that type-checks, and a DUPLICATED row would
-  // mean one diagnostic per nesting level rather than per genuine fault.
-  total_blocking_count_for(source: nested_left_bound_chain_source) == 0
+test fn a_nested_left_bound_bind_chain_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: nested_left_bound_chain_source), holds: fn(n) { n == 0 }))
 }
 
-test fn an_inner_generic_settled_only_by_a_later_argument_refuses() -> Bool {
-  // EXACTLY one blocking TypeMismatch and nothing else blocking, the same bar as the
-  // return-mismatch negative: a second refusal of the same node, or an unrelated blocking row
-  // riding along, both fail this row as written.
-
-  blocking_class_count_for(source: inner_generic_settled_by_later_argument_source, wanted_class: "TypeMismatch") == 1 &&
-    total_blocking_count_for(source: inner_generic_settled_by_later_argument_source) == 1
+test fn an_inner_generic_settled_only_by_a_later_argument_refuses() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_class_census(source: inner_generic_settled_by_later_argument_source, wanted_class: "TypeMismatch"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_blocking_census(source: inner_generic_settled_by_later_argument_source), holds: fn(n) { n == 1 }),
+  ])
 }
 
-test fn an_inner_generic_settled_by_a_later_argument_stays_accepted_when_consistent() -> Bool {
-  // THE OTHER HALF OF THE DISCRIMINATOR. Identical shape, consistently typed, so nothing
-  // may refuse: zero blocking diagnostics, and not "fewer than N". Without this row, a
-  // compiler that refuses every lambda-bearing generic call could satisfy the claim above.
-  total_blocking_count_for(source: inner_generic_compatible_control_source) == 0
+test fn an_inner_generic_settled_by_a_later_argument_stays_accepted_when_consistent() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: inner_generic_compatible_control_source), holds: fn(n) { n == 0 }))
 }

@@ -38,7 +38,7 @@ import gunbc.roadmap.roadmap_serve {
   serve_text_response,
 }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnLaunchPending, SpawnNotAdmitted,
   belt_dispatch_result_exemplars,
   BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
@@ -205,11 +205,12 @@ test fn witness_405_response_carries_allowed() -> Bool {
 fn na(r: LaunchRefusal) -> BeltSpawnOutcome { SpawnNotAdmitted { node_id: "n", refusal: r } }
 
 fn status_is_typed(s: Int) -> Bool {
-  s == 200 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
+  s == 200 || s == 202 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
 }
 
 test fn witness_dispatch_status_total() -> Bool {
   belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == 200
+    && belt_dispatch_status(r: SpawnLaunchPending { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar(), entry: "e" }) == 202
     && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
     && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
     && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404

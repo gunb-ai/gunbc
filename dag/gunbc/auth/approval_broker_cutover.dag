@@ -29,12 +29,11 @@ import gunbc.auth.approval_broker_demand {
   BrokerDemandPhase, PeakOfIncarnationExercising, broker_demand_phase_label,
 }
 import gunbc.auth.approval_writer_authority {
-  ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
   ApprovalServingProcess, RoadmapProcess, BrokerProcess,
 }
 import gunbc.auth.approval_cutover_posture {
   ApprovalCutoverPosture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone,
-  approval_cutover_posture, approval_cutover_posture_label,
+  approval_cutover_posture,
 }
 
 // ── MOVING THE APPROVAL LOOP WITHOUT EVER HAVING TWO WRITERS ─────────────────────────────────
@@ -340,7 +339,6 @@ type ApprovalBrokerCutoverEvidence {
 type CutoverRefusal
   = DarkDeploymentNotListening { detail: NonEmptyStr }
   | DarkDeploymentOnUnexpectedPort { observed: Port, expected: Port }
-  | DarkStageBrokerAlreadyHoldsWriterAuthority
   | ReleaseUnreadable { detail: NonEmptyStr }
   | ReleaseDoesNotMatchCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
   | DemandNotMeasured { missing: NonEmptyStr }
@@ -420,11 +418,15 @@ fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal?
 // dark deployment looks like, and being anywhere else means the unit is not the one this plan
 // reasons about (side-chat HOLD item 1).
 //
-// DARKNESS IS NOW THE TWO FACTS THAT ACTUALLY DECIDE IT: nothing routes the public paths to the
-// broker, and the broker does not hold writer authority. The second is the one a port could never
-// express -- a loopback client reaches the process whatever the front door says -- so a broker
-// already holding authority at the dark stage is refused by name rather than observed to be
-// unlikely.
+// DARKNESS IS NOT THIS FOLD'S TO JUDGE, AND IT NO LONGER TRIES. It used to also refuse a broker
+// holding writer authority, by consulting the live posture. That made the INSTALL READBACK -- the
+// same fold, asked after every release swap -- refuse the live writer it had just correctly
+// upgraded (fleet-converge run 39897344906: unit written, /livez 200 on the installed release, then
+// RED). The readback is posture-independent: is the unit listening on its one port, does the tree
+// receipt name the candidate, does /livez serve the candidate. A posture refusal inside it had no
+// authorable RED (DESIGN section 4b). Two live writers are refused where the store is mutated,
+// gunbc.auth.approval_writer_authority approval_write_admission, and the move to the live writer
+// is the posture row's one transaction.
 fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.dark {
     DarkUnitNotStarted { detail: d } => Present { value: DarkDeploymentNotListening { detail: d } }
@@ -432,10 +434,7 @@ fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal
       if !(p == approval_broker_listen_port) {
         Present { value: DarkDeploymentOnUnexpectedPort { observed: p, expected: approval_broker_listen_port } }
       } else {
-        match approval_writer_authority {
-          BrokerWriter => Present { value: DarkStageBrokerAlreadyHoldsWriterAuthority }
-          RoadmapWriter => Absent
-        }
+        Absent
       }
   }
 }
@@ -603,16 +602,6 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
         to_string(x), " for the process's whole life, so whatever answered is not the unit this ",
         "plan is reasoning about -- and every later reading, release, identity and demand alike, ",
         "would be about a process nobody deployed.",
-      ], "") as NonEmptyStr
-    DarkStageBrokerAlreadyHoldsWriterAuthority =>
-      join([
-        "the broker already holds approval-store writer authority, so this is not a dark stage: ",
-        "the stage whose purpose is to observe the broker while it CANNOT mutate the store would ",
-        "be observing the live writer. The deployment's posture is: ",
-        approval_cutover_posture_label(p: approval_cutover_posture) as String,
-        " -- authority and routing both derive from that one row ",
-        "(gunbc.auth.approval_cutover_posture), and it moves in one modeled transaction after the ",
-        "demand is measured.",
       ], "") as NonEmptyStr
     ReleaseUnreadable { detail: d } =>
       join(["the dark broker did not read back a release revision: ", d as String,

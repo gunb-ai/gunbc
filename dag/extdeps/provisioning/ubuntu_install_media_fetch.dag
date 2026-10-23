@@ -18,6 +18,7 @@ import extdeps.provisioning.ubuntu_install_media {
   ubuntu_install_media_artifacts_dir,
   UbuntuInstallMediaMirrorRow,
 }
+import gunbc.url_file_acquisition { url_file_acquisition_handler }
 import gunbc.artifact_acquisition {
   AcquisitionKey, ContentDigestSha256, AcquisitionSource, AcquisitionSubject, AcquisitionHandler,
   AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch,
@@ -69,102 +70,9 @@ data install_media_fetch_bash_emit_dissolution_trigger: Disposition = Terminal {
 //     a re-fetch. It is now a refusal that is not fetched over: something put wrong bytes at that
 //     path, and which thing did it is worth answering before the path is reused.
 
-// The presence probe is OutcomeIsData: a non-zero `test -f` here means the media is ABSENT, which is
-// one of this fn's four declared answers, not a fault. The type already draws the distinction the arm
-// formalises -- AcquisitionProbeFailed is the separate 'the probe itself broke' arm -- so subject
-// state and probe breakage were never conflated here; only the effect layer's glyph conflated them.
-fn observe_install_media_fetch(path: NonEmptyStr, expected_hash: NonEmptyStr) -> AcquisitionObservation {
-  let present = shell.Test.IsFile(path: path as FilePath, expect: OutcomeIsData)
-  if present.is_file == false {
-    AcquisitionAbsent
-  } else {
-    match sha256sum_verify_via_shell(path: path, expected_digest: expected_hash) {
-      Sha256Matches => AcquisitionVerified
-      Sha256Mismatch => AcquisitionDigestMismatch
-      Sha256VerifyInfraFailure { reason: r } => AcquisitionProbeFailed { reason: r }
-    }
-  }
-}
-
-// THE PROBE KEEPS ITS PATH-AND-DIGEST SIGNATURE and the handler adapts to it, rather than the other
-// way round. Its three real-execution witnesses drive it with a temp file they wrote themselves, and
-// a probe that could only be called with a whole AcquisitionSubject would have forced those fixtures
-// to build one -- more ceremony around the same two facts. One authority, called by both.
-fn observe_install_media(subject: AcquisitionSubject) -> AcquisitionObservation {
-  observe_install_media_fetch(
-    path: subject.install_path,
-    expected_hash: acquisition_key_digest(key: subject.key),
-  )
-}
-
-// THE DIGEST THIS SUBJECT IS KEYED ON. An install-media subject is always digest-keyed -- the
-// artifact is one file with one published SHA-256 from Canonical -- so the revision arm is
-// unreachable here and answers with a string that could never verify rather than a plausible one.
-fn acquisition_key_digest(key: AcquisitionKey) -> NonEmptyStr {
-  match key {
-    ContentDigestSha256 { hex: h } => h
-    UpstreamRevision { revision: _ } => "install media is never revision-keyed" as NonEmptyStr
-  }
-}
-
-fn ensure_install_media_parent(subject: AcquisitionSubject) -> Bool {
-  let made = shell.Mkdir.Parents(path: subject.parent_directory as FilePath)
-  made.success
-}
-
-fn install_media_staging_path(subject: AcquisitionSubject) -> NonEmptyStr {
-  match subject.staging_path {
-    Present { value: p } => p
-    Absent => subject.install_path
-  }
-}
-
-fn attempt_install_media_mirror(subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  let part_path = install_media_staging_path(subject: subject)
-  match origin.locator {
-    SourceArgv { argv: _ } =>
-      AttemptRejected { detail: "this mirror was built with a command-line locator, which the install-media transport cannot fetch; it downloads a URL" as NonEmptyStr }
-    SourceUrl { url: u } => attempt_install_media_download(subject: subject, origin: origin, url: u, part_path: part_path)
-  }
-}
-
-fn attempt_install_media_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr) -> AcquisitionAttempt {
-  let downloaded = http.Client.DownloadToFile(url: url, destination: part_path)
-  if downloaded.success == false {
-    AttemptUnreachable
-  } else {
-    match sha256sum_verify_via_shell(path: part_path, expected_digest: acquisition_key_digest(key: subject.key)) {
-      Sha256Matches => install_media_publish(subject: subject, origin: origin, part_path: part_path)
-      Sha256Mismatch => install_media_discard_mismatch(part_path: part_path)
-      Sha256VerifyInfraFailure { reason: r } => install_media_discard_infra_failure(part_path: part_path, subject: subject, origin: origin, reason: r)
-    }
-  }
-}
-
-fn install_media_publish(subject: AcquisitionSubject, origin: AcquisitionSource, part_path: NonEmptyStr) -> AcquisitionAttempt {
-  let moved = shell.Move.File(source: part_path as FilePath, destination: subject.install_path as FilePath)
-  if moved.success {
-    AttemptTerminal { outcome: AcquisitionFetched {
-      identity: subject.identity, install_path: subject.install_path, source: origin,
-    } }
-  } else {
-    AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed {
-      identity: subject.identity, source: origin.identity, install_path: subject.install_path,
-    } } }
-  }
-}
-
-fn install_media_discard_mismatch(part_path: NonEmptyStr) -> AcquisitionAttempt {
-  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
-  AttemptFailedKey
-}
-
-fn install_media_discard_infra_failure(part_path: NonEmptyStr, subject: AcquisitionSubject, origin: AcquisitionSource, reason: NonEmptyStr) -> AcquisitionAttempt {
-  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
-  AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
-    identity: subject.identity, source: origin.identity, reason: reason,
-  } } }
-}
+// The probe, the download-verify-publish attempt and the handler that binds them are the generic
+// single-file URL acquisition in gunbc.url_file_acquisition: nothing in them was specific to install
+// media, and a second single-file subject (the print runtime's pinned micromamba) needed them.
 
 // THE MIRRORS AS TRANSPORTS BOUND TO THIS SUBJECT, one of N, carrying their host identity so a
 // receipt names which one answered rather than making a reader match a URL back to a row.
@@ -187,12 +95,6 @@ fn install_media_subject(artifact: UbuntuInstallMediaArtifactRow) -> Acquisition
   }
 }
 
-data install_media_acquisition_handler: AcquisitionHandler = AcquisitionHandler {
-  observe: observe_install_media,
-  ensure_parent: ensure_install_media_parent,
-  attempt: attempt_install_media_mirror,
-}
-
 fn install_media_fetch_reconcile(artifact: UbuntuInstallMediaArtifactRow) -> AcquisitionOutcome {
-  acquire_artifact(subject: install_media_subject(artifact: artifact), handler: install_media_acquisition_handler)
+  acquire_artifact(subject: install_media_subject(artifact: artifact), handler: url_file_acquisition_handler)
 }

@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.stale_buffer_write_reverts_outside_its_own_diff
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data stale_buffer_write_reverts_outside_its_own_diff: RecurringFailureMode = RecurringFailureMode {
   identity: "stale_buffer_write_reverts_outside_its_own_diff" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a stale-buffer write reverts another author's landed change, and the reversion is invisible in the reverting diff** (a whole-file write derived from a buffer that no longer matches the ref it is committed against silently drops whatever landed in between).",

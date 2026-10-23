@@ -7,7 +7,10 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
-import std.algebra { trim }
+import std.algebra { trim, skip }
+import std.durable_compare_and_set { cas_generation_count }
+import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
+import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
@@ -131,6 +134,7 @@ import extdeps.languages.json.emit {
   json_array,
   json_object,
   json_kv,
+  JsonKeyValue,
 }
 import extdeps.languages.json.parse {
   parse_json_document,
@@ -271,19 +275,15 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
-import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
+import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
   AttemptSystemUnitEnqueueRefused,
-  attempt_system_unit_launch_host_argv, attempt_system_unit_launch_argv_refused_detail,
-  attempt_system_unit_host_exec_from_launch_argv,
-  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
-  AttemptSystemUnitLaunchArgvRevisionUnreadable,
   attempt_system_unit_read_answer,
-  attempt_system_unit_harness_start_from_launcher_exit,
-  AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
+  attempt_system_unit_harness_start_from_observation,
+  AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessPending, AttemptSystemUnitHarnessFailed,
 }
 import extdeps.systemd {
   ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax,
@@ -373,7 +373,7 @@ import gunbc.roadmap.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
-import gunbc.compute.attempt_lifecycle { DispatchOwned }
+import gunbc.compute.attempt_lifecycle { DispatchOwned, attempt_record_json }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
@@ -685,6 +685,7 @@ import gunbc.roadmap.roadmap_session_placement {
   session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon,
   session_process_bounds, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed,
   session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable,
+  SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
@@ -731,6 +732,11 @@ import gunbc.roadmap.roadmap_presentation {
 }
 import extdeps.gunbc
 import extdeps.shell
+import gunbc.roadmap.spool_stall {
+  SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at,
+  SpoolStallNone, SpoolStallHeld, SpoolStallUnreadable, spool_stall_read_at,
+  SpoolStallCleared, SpoolStallClearRefused, spool_stall_clear_at,
+}
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemEntryAbsent,
@@ -749,6 +755,9 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused,
   FilesystemReadSucceeded,
   filesystem_read_outcome,
+  filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
+  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
   filesystem_file_observation,
   FilesystemFileObservation,
   FilesystemEntryPresence,
@@ -877,6 +886,14 @@ type BeltExecStep {
 type BeltExecStepsOutcome
   = ExecStepsOk
   | ExecStepFailed { step: String, detail: String }
+
+// What creating the session container answers. The tmux container's steps are all synchronous, so
+// they fold to Ok or Failed through belt_exec_steps; the systemd unit container enqueues a start
+// request on the attempt-unit spool and reads its answer ONCE, so it alone can answer Pending.
+type BeltContainerCreateOutcome
+  = ContainerCreated
+  | ContainerCreatePending { entry: String }
+  | ContainerCreateFailed { step: String, detail: String }
 
 fn belt_exec_steps(
   steps: List<BeltExecStep>,
@@ -1567,7 +1584,7 @@ fn belt_session_container_create(
   container: DispatchSessionContainer,
   placement: BeltHeldPlacement?,
   workdir: String,
-) -> BeltExecStepsOutcome {
+) -> BeltContainerCreateOutcome {
   match container {
     TmuxSessionContainer {
       spawn,
@@ -1576,11 +1593,14 @@ fn belt_session_container_create(
       event_pipe: _,
       provider_start: _,
     } =>
-      belt_exec_steps(steps: [BeltExecStep { step: "tmux-session-create", command: spawn }], workdir: workdir)
+      match belt_exec_steps(steps: [BeltExecStep { step: "tmux-session-create", command: spawn }], workdir: workdir) {
+        ExecStepsOk => ContainerCreated
+        ExecStepFailed { step, detail } => ContainerCreateFailed { step: step, detail: detail }
+      }
     SystemdUnitContainer { plan } =>
       match placement {
         Absent =>
-          ExecStepFailed {
+          ContainerCreateFailed {
             step: "session-placement",
             detail: "the worker unit was reached with no placement grant; belt_session_placement_for_container acquires one for every unit container, so this refuses rather than starting the unit at the instance ceiling",
           }
@@ -1588,60 +1608,43 @@ fn belt_session_container_create(
           let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
           match systemd_run_property_assignments(properties: properties) {
             SystemdRunPropertyAssignmentsRefused { cause: why } =>
-              ExecStepFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+              ContainerCreateFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
             SystemdRunPropertyAssignmentsReady { assignments: property_texts } =>
           match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: property_texts) {
             SessionPlacementWriteFailed { path, error } =>
-              ExecStepFailed { step: "session-placement-record", detail: join(["the placement record could not be written at ", path, ": ", error], "") }
+              ContainerCreateFailed { step: "session-placement-record", detail: join(["the placement record could not be written at ", path, ": ", error], "") }
             SessionPlacementWritten { path: _ } =>
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
-                SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
+                SessionLaunchRefused { detail } => ContainerCreateFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
                   match attempt_system_unit_enqueue_start(
                     instance_root: instance.instance_root as String,
-                    request: attempt_system_unit_start_request_from_plan(plan: plan, granted: launched.amount),
+                    request: attempt_system_unit_start_request_from_plan(
+                      plan: plan,
+                      granted: launched.amount,
+                      nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
+                    ),
                   ) {
                     AttemptSystemUnitEnqueueRefused { detail } =>
-                      ExecStepFailed { step: "harness-unit-start", detail: detail }
+                      ContainerCreateFailed { step: "harness-unit-start", detail: detail }
                     AttemptSystemUnitEnqueueOccupied { entry } =>
-                      ExecStepFailed {
+                      ContainerCreateFailed {
                         step: "harness-unit-start",
                         detail: join(["a request for this attempt already exists at ", entry], ""),
                       }
-                    AttemptSystemUnitEnqueued { entry } =>
-                      match attempt_system_unit_launch_host_argv(instance: instance) {
-                        AttemptSystemUnitLaunchArgvRefused { cause } =>
-                          ExecStepFailed {
-                            step: "harness-unit-start",
-                            detail: attempt_system_unit_launch_argv_refused_detail(cause: cause),
-                          }
-                        AttemptSystemUnitLaunchArgvRevisionUnreadable =>
-                          ExecStepFailed {
-                            step: "harness-unit-start",
-                            detail: "attempt-system-unit launcher revision receipt is unreadable",
-                          }
-                        AttemptSystemUnitLaunchArgvReady { argv: launch_argv } => {
-                          let launched_exec = belt_exec(
-                            cmd: attempt_system_unit_host_exec_from_launch_argv(argv: launch_argv),
-                            workdir: workdir,
-                          )
-                          let exit_code = match launched_exec {
-                            ExecOk { stdout: _ } => 0
-                            ExecFailed { program: _, exit_code: c, stderr: _ } => c
-                            ExecRefused { program: _, reason: _ } => 1
-                          }
-                          match attempt_system_unit_harness_start_from_launcher_exit(
-                            exit_code: exit_code,
-                            reading: attempt_system_unit_read_answer(
-                              instance_root: instance.instance_root as String,
-                              entry: entry,
-                            ),
-                          ) {
-                            AttemptSystemUnitHarnessStarted => ExecStepsOk
-                            AttemptSystemUnitHarnessFailed { detail } =>
-                              ExecStepFailed { step: "harness-unit-start", detail: detail }
-                          }
-                        }
+                    AttemptSystemUnitEnqueued { entry, body } =>
+                      match attempt_system_unit_harness_start_from_observation(
+                        entry: entry,
+                        reading: attempt_system_unit_read_answer(
+                          instance_root: instance.instance_root as String,
+                          entry: entry,
+                          request_body: body,
+                        ),
+                      ) {
+                        AttemptSystemUnitHarnessStarted => ContainerCreated
+                        AttemptSystemUnitHarnessPending { entry: pending } => ContainerCreatePending { entry: pending }
+                        AttemptSystemUnitHarnessFailed { detail } =>
+                          ContainerCreateFailed { step: "harness-unit-start", detail: detail }
                       }
                   }
               }
@@ -1866,6 +1869,7 @@ fn belt_spawn_release_unless_spawned(held: BeltHeldPlacement, provider_wire_labe
   match outcome {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => outcome
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => outcome
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => outcome
     SpawnNotAdmitted { node_id: _, refusal: _ } =>
       belt_spawn_outcome_with_release(outcome: outcome, release_note: session_placement_abandon(stores: held.stores, grant: held.grant, reason: "spawn did not complete"), provider_wire_label: provider_wire_label, launch: launch)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
@@ -1879,6 +1883,7 @@ fn belt_spawn_outcome_with_release(outcome: BeltSpawnOutcome, release_note: Stri
   match outcome {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => outcome
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => outcome
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => outcome
     SpawnNotAdmitted { node_id, refusal } =>
       SpawnFailed {
         node_id: node_id,
@@ -1997,6 +2002,13 @@ type BeltSpawnOutcome
   | SupervisorConvened { node_id: String, unit: String, provider: String, launch: LaunchIdentity }
   | SpawnFailed { node_id: String, step: String, detail: String, provider: String, launch: LaunchIdentity }
   | SpawnNotAdmitted { node_id: String, refusal: LaunchRefusal }
+  | SpawnLaunchPending { node_id: String, session_name: String, provider: String, launch: LaunchIdentity, entry: String }
+
+// SpawnLaunchPending is the launch whose start request is enqueued on the attempt-unit spool and
+// whose answer was not yet there at the single read made right after the enqueue. It is neither
+// Spawned nor SpawnFailed: the root side (the spool's path unit) answers asynchronously, the slot
+// stays "launching", and the placement is NOT released here -- the recovery pass resolves the slot
+// from the unit's real state. The entry names the spool request a client follows.
 
 fn belt_dispatch_spawn_unselected_provider_wire_label() -> String {
   "unselected"
@@ -2467,6 +2479,7 @@ fn belt_snapshot_disposition(outcome: BeltSpawnOutcome) -> BeltSnapshotDispositi
   match outcome {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => SnapshotConsumedByChild
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => SnapshotDiscardRequired
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => SnapshotConsumedByChild
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => SnapshotDiscardRequired
     SpawnNotAdmitted { node_id: _, refusal: _ } => SnapshotDiscardRequired
   }
@@ -3548,7 +3561,7 @@ fn belt_spawn_admitted(
                 placement: placement,
                 workdir: workdir,
               ) {
-                ExecStepFailed { step, detail } =>
+                ContainerCreateFailed { step, detail } =>
                   SpawnFailed {
                     node_id: node.node as String,
                     step: step,
@@ -3562,7 +3575,15 @@ fn belt_spawn_admitted(
                     provider: provider_wire_label,
                     launch: launch,
                   }
-                ExecStepsOk =>
+                ContainerCreatePending { entry } =>
+                  SpawnLaunchPending {
+                    node_id: node.node as String,
+                    session_name: session_name,
+                    provider: provider_wire_label,
+                    launch: launch,
+                    entry: entry,
+                  }
+                ContainerCreated =>
                   match belt_exec_steps(
                     steps: belt_session_container_start_steps(container: cmds.session_container),
                     workdir: workdir,
@@ -4538,6 +4559,7 @@ fn belt_spawn_failure_reason(spawn_outcomes: List<BeltSpawnOutcome>) -> String {
           concat(acc, [join([n, " [", pv, "] ", st, ": ", d], "")])
         Spawned { node_id: _, session_name: _, provider: _, launch: _ } => acc
         SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => acc
+        SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => acc
         SpawnNotAdmitted { node_id: _, refusal: _ } => acc
       }),
       "; ",
@@ -5074,11 +5096,12 @@ fn belt_tick_admit_and_spawn(
 fn belt_tick_deferred_count(outcomes: List<BeltSpawnOutcome>) -> Int { belt_spawn_tally(outcomes: outcomes).deferred }
 
 fn belt_tick_launch_identities(outcomes: List<BeltSpawnOutcome>) -> List<LaunchIdentity> {
-  fold(outcomes, init: [], f: (acc, o) => match o {
-    Spawned { node_id: _, session_name: _, provider: _, launch } => concat(acc, [launch])
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch } => concat(acc, [launch])
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch } => concat(acc, [launch])
-    SpawnNotAdmitted { node_id: _, refusal: _ } => acc
+  flat_map(outcomes, o => match o {
+    Spawned { node_id: _, session_name: _, provider: _, launch } => [launch]
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch } => [launch]
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch } => [launch]
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch, entry: _ } => [launch]
+    SpawnNotAdmitted { node_id: _, refusal: _ } => [] as List<LaunchIdentity>
   })
 }
 
@@ -5114,52 +5137,55 @@ type BeltSpawnTally {
   failed: Int
   not_admitted: Int
   deferred: Int
+  pending: Int
 }
 
 fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
-  fold(outcomes, init: BeltSpawnTally { spawned: 0, failed: 0, not_admitted: 0, deferred: 0 }, f: (acc, o) => match o {
+  fold(outcomes, init: BeltSpawnTally { spawned: 0, failed: 0, not_admitted: 0, deferred: 0, pending: 0 }, f: (acc, o) => match o {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
-      BeltSpawnTally { spawned: acc.spawned + 1, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred }
+      BeltSpawnTally { spawned: acc.spawned + 1, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred, pending: acc.pending }
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
-      BeltSpawnTally { spawned: acc.spawned + 1, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred }
+      BeltSpawnTally { spawned: acc.spawned + 1, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred, pending: acc.pending }
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } =>
+      BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred, pending: acc.pending + 1 }
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
-      BeltSpawnTally { spawned: acc.spawned, failed: acc.failed + 1, not_admitted: acc.not_admitted, deferred: acc.deferred }
+      BeltSpawnTally { spawned: acc.spawned, failed: acc.failed + 1, not_admitted: acc.not_admitted, deferred: acc.deferred, pending: acc.pending }
     SpawnNotAdmitted { node_id: _, refusal } =>
       match refusal {
         LaunchNoCapacity { occupied: _, max_concurrent: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred + 1 }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred + 1, pending: acc.pending }
         LaunchNoActuatingInstance { reason: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchInstanceActuationRefused { instance_id: _, reason: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchTransitionInhibited { reason: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchRevisionUnobserved { cause: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchRevisionNotLanded { local: _, admitted: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchAuthorityUnobserved { detail: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchNodeUnknown =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchNotReady { missing: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchSessionsUnobservable { reason: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchAlreadyLive { session_name: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchStaleSession { session_name: _, detail: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchLivenessUnobserved { session_name: _, reason: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchSessionMultiplicityConflict { session_names: _, session_count: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchCauseNotPermitted { cause: _, mode: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchGateNotEvaluated { gate: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred, pending: acc.pending }
         LaunchNoPlacementGrant { detail: _ } =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred + 1 }
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred + 1, pending: acc.pending }
       }
   })
 }
@@ -5242,6 +5268,15 @@ fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
         json_kv(key: "provider", value: json_string(s: p)),
         json_kv(key: "step", value: json_string(s: st)),
         json_kv(key: "detail", value: json_string(s: d)),
+        json_kv(key: "launch", value: launch_identity_json(id: l)),
+      ])
+    SpawnLaunchPending { node_id: nid, session_name: sn, provider: p, launch: l, entry: e } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "launch_pending")),
+        json_kv(key: "provider", value: json_string(s: p)),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "entry", value: json_string(s: e)),
         json_kv(key: "launch", value: launch_identity_json(id: l)),
       ])
     SpawnNotAdmitted { node_id: nid, refusal: r } =>
@@ -5358,16 +5393,28 @@ fn belt_attempts_observe() -> BeltAttempts {
   belt_attempts_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
-fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
+fn belt_attempt_slots_json_members(slots: SessionSlotRecords) -> List<JsonKeyValue> {
+  match slots {
+    SessionSlotRecordsRead { records, unreadable } => [
+      json_kv(key: "slots", value: json_array(elements: map(records, r => attempt_record_json(r: r)))),
+      json_kv(key: "slots_unreadable", value: json_array(elements: map(unreadable, u => json_string(s: u)))),
+    ]
+    SessionSlotRecordsRefused { detail } => [
+      json_kv(key: "slots_refused", value: json_string(s: detail)),
+    ]
+  }
+}
+
+fn belt_attempts_json_value(a: BeltAttempts, slots: SessionSlotRecords) -> JsonValue {
   match a {
     AttemptsRefused { reason: r } =>
-      json_object(members: [
+      json_object(members: concat([
         json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
         json_kv(key: "attempts_refused", value: json_bool(b: true)),
         json_kv(key: "reason", value: json_string(s: r)),
-      ])
+      ], belt_attempt_slots_json_members(slots: slots)))
     AttemptsObserved { attempts } =>
-      json_object(members: [
+      json_object(members: concat([
         json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
         json_kv(key: "attempts_refused", value: json_bool(b: false)),
         json_kv(key: "attempts", value: json_array(elements: attempts |> map(a2 => {
@@ -5383,12 +5430,12 @@ fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
             json_kv(key: "terminal_outcome_evidence", value: json_string(s: terminal_outcome_evidence_label(evidence: evidence.terminal_outcome))),
           ])
         }))),
-      ])
+      ], belt_attempt_slots_json_members(slots: slots)))
   }
 }
 
-fn belt_attempts_observed_json(a: BeltAttempts) -> String {
-  serialize_json(v: belt_attempts_json_value(a: a))
+fn belt_attempts_observed_json(a: BeltAttempts, slots: SessionSlotRecords) -> String {
+  serialize_json(v: belt_attempts_json_value(a: a, slots: slots))
 }
 
 fn belt_attempts_http_status(a: BeltAttempts) -> Int {
@@ -10477,6 +10524,8 @@ fn belt_escalate_one_for_instance(instance: HostDashboardInstance, node_id: Stri
                       EscalateOneGateNoOp { step: step, detail: detail }
                     Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
                       EscalateOneRefused { reason: "the convene answered a worker spawn, which is outside its vocabulary" }
+                    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } =>
+                      EscalateOneRefused { reason: "the convene answered a pending worker launch, which is outside its vocabulary" }
                     SpawnNotAdmitted { node_id: _, refusal: _ } =>
                       EscalateOneRefused { reason: "the convene answered a launch refusal, which is outside its vocabulary" }
                   }
@@ -11530,6 +11579,7 @@ fn belt_dispatch_status_label(r: BeltSpawnOutcome) -> String {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => "spawned"
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => "supervisor_convened"
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => "spawn_failed"
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => "launch_pending"
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_label(r: refusal)
   }
 }
@@ -11543,9 +11593,12 @@ fn belt_dispatch_disabled_status_label() -> String {
 // text. The operator reads BANDS, each a remedy class — ok: the click achieved or already holds the
 // desired state; fail: this click cannot achieve it and the ROW is the remedy (wrong node, already
 // signed off); loud: the BELT is unwell (observe refused, spawn failed — step/detail in the detail
-// channel, never the caption). BandInProgress is inhabited only by the client's requested phase: no
-// wire RESULT maps to it (no arm below produces it), so presentation cannot fabricate progress out
-// of an answer. This fold is the SINGLE ok-authority — belt_dispatch_result_ok and
+// channel, never the caption). BandInProgress is inhabited by the client's requested phase AND by
+// exactly one wire RESULT, SpawnLaunchPending (the start request is on the attempt-unit spool and
+// its answer was not yet there at the single read after the enqueue). That is a meaning change from
+// "no wire RESULT maps to it": the progress is not fabricated by presentation, it is the
+// observed fact that the root side has not answered, and the client follows the entry named in the
+// 202 body through /attempts.json. This fold is the SINGLE ok-authority — belt_dispatch_result_ok and
 // belt_dispatch_ok_status_labels project it; the former hand copies (a Bool match, a hand list, a
 // label predicate — three spellings of one fact) were the half-born-band defect this dissolves.
 type DispatchBand
@@ -11581,6 +11634,7 @@ fn belt_dispatch_result_band(r: BeltSpawnOutcome) -> DispatchBand {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => BandOk
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => BandOk
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => BandLoud
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => BandInProgress
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_band(r: refusal)
   }
 }
@@ -11648,6 +11702,7 @@ fn belt_dispatch_result_exemplars() -> List<BeltSpawnOutcome> {
       Spawned { node_id: "x", session_name: "s", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
       SupervisorConvened { node_id: "x", unit: "gunbc-supervisor-x-k-t3.service", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
       SpawnFailed { node_id: "x", step: "s", detail: "d", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
+      SpawnLaunchPending { node_id: "x", session_name: "s", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar(), entry: "e" },
     ],
     map(launch_refusal_exemplars(), r => SpawnNotAdmitted { node_id: "x", refusal: r }),
   )
@@ -15537,17 +15592,19 @@ fn belt_attempt_obligation_receipt_read(instance: HostDashboardInstance, node_id
 //
 // A RECORDED EXIT IS HANDED TO ITS ATTEMPT'S OBLIGATION UNIT, and that is all the drain does (dogfood
 // intervention #4: with no timer, a worker's exit is what causes its capture to run). The deployment's
-// exit path unit starts the drain while the inbox is not empty. Each entry leaves the inbox in the
-// same pass: to `queued` once its attempt's unit was started or was already running (the unit owns
-// it now), or to `refused` when it is not a record or its unit could not be started -- a refused
-// entry stays on disk, because the exit it records still happened and the process observer still
-// reads it. An entry is never left in the inbox, so the path unit goes quiet.
+// exit path unit starts the drain while the inbox is not empty. Each entry is CLAIMED in the same pass:
+// to `queued` when it is a record (the sweep then hands its attempt to the unit), or to `refused` when it
+// is not -- a refused entry stays on disk, because the exit it records still happened and the process
+// observer still reads it. An entry the drain cannot move is BeltExitEntryUnmovable: typed, counted,
+// failing the pass, left on disk, and it has handed nothing to anyone.
 //
 // A WORKER'S EXIT ALSO QUEUES LAUNCH: its slot is free, so the ready frontier may admit the next
 // attempt. A reviewer's or auditor's exit does not -- it frees no worker capacity.
 type BeltExitDrainEntry
   = BeltExitEntryHanded { entry: String, enqueue: BeltObligationEnqueue }
+  | BeltExitEntryClaimed { entry: String }
   | BeltExitEntryRefused { entry: String, reason: String }
+  | BeltExitEntryUnmovable { entry: String, step: String, cause: String }
 
 type BeltExitDrain
   = BeltExitDrained { entries: List<BeltExitDrainEntry>, launch: BeltObligationEnqueue? }
@@ -15569,36 +15626,28 @@ fn belt_exit_entry_move_at(root: String, entry: String, from: HostSpoolStage, to
   }
 }
 
-// THE DRAIN OVER A SPOOL ROOT WITH ITS HAND-OFF SUPPLIED. Production passes the instance root and the
-// real enqueue (belt_attempt_obligations_enqueue, belt_instance_obligation_enqueue); the wet witness
-// passes a temp root and a recording hand-off, so the listing, the decode and every move are the real
-// ones and only starting a unit in a user manager is supplied.
-fn belt_exit_entry_drain_at(root: String, entry: String, enqueue: fn(String, String) -> BeltObligationEnqueue) -> BeltExitDrainEntry {
+// THE DRAIN'S ONLY ENTRY OPERATION IS THE CLAIM: inbox -> queued (or inbox -> refused for a name that is
+// not a record). CLAIM FIRST, then hand off: `queued` is the durable record of a pending hand-off and
+// belt_exit_queued_sweep_at, run in the same pass after every claim, is the SOLE hand-off. The earlier
+// shape enqueued the attempt's obligation and only then moved the entry, so a move that failed left an
+// effect the next pass repeated (refusal_decided_after_a_mutation). A claim that fails has no effect to
+// repeat: the entry is BeltExitEntryUnmovable, typed and counted, and stays on disk as evidence.
+//
+// THE MOVE IS SUPPLIED. Production passes belt_exit_entry_move_at; a witness passes a move that refuses a
+// named entry, because an entry the drain's principal cannot rename (a root-owned directory) is not
+// authorable in unprivileged CI.
+fn belt_exit_entry_drain_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitDrainEntry {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } =>
-      match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitRefused) {
+      match move(root, entry, AttemptExitInbox, AttemptExitRefused) {
         Absent => BeltExitEntryRefused { entry: entry, reason: join(["not an exit record: ", reason], "") }
-        Present { value: why } => BeltExitEntryRefused { entry: entry, reason: join(["not an exit record (", reason, ") and it could not be moved out of the inbox: ", why], "") }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: "inbox -> refused", cause: why }
       }
-    AttemptExitEntryDecoded { record } => {
-      let handed = enqueue(record.node_id, record.attempt_key)
-      match handed {
-        BeltObligationEnqueueRefused { unit: _, reason } =>
-          match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitRefused) {
-            Absent => BeltExitEntryRefused { entry: entry, reason: reason }
-            Present { value: why } => BeltExitEntryRefused { entry: entry, reason: join([reason, "; and it could not be moved out of the inbox: ", why], "") }
-          }
-        BeltObligationStarted { unit: _ } => belt_exit_entry_handed_at(root: root, entry: entry, enqueue: handed)
-        BeltObligationHeld { unit: _ } => belt_exit_entry_handed_at(root: root, entry: entry, enqueue: handed)
+    AttemptExitEntryDecoded { record: _ } =>
+      match move(root, entry, AttemptExitInbox, AttemptExitQueued) {
+        Absent => BeltExitEntryClaimed { entry: entry }
+        Present { value: why } => BeltExitEntryUnmovable { entry: entry, step: "inbox -> queued", cause: why }
       }
-    }
-  }
-}
-
-fn belt_exit_entry_handed_at(root: String, entry: String, enqueue: BeltObligationEnqueue) -> BeltExitDrainEntry {
-  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitQueued) {
-    Absent => BeltExitEntryHanded { entry: entry, enqueue: enqueue }
-    Present { value: why } => BeltExitEntryRefused { entry: entry, reason: join(["its obligation was handed to its unit, but the entry could not be moved to queued: ", why], "") }
   }
 }
 
@@ -15614,7 +15663,7 @@ fn belt_exit_entry_is_worker(entry: String) -> Bool {
 // hook's `obligation` entry (the unit ended while the manager was up) and the drain's own start (boot,
 // where no hook ran) -- so a lone orphaned claim recovers with no exit, answer, launch or operator
 // action. A live unit keeps its claim; an unreadable manager leaves it and says so.
-fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> AttemptUnitObservation) -> List<BeltExitDrainEntry> {
+fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
     AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "running", reason: reason }]
     AttemptExitStageNames { names } =>
@@ -15624,17 +15673,17 @@ fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> A
           match observe(record.node_id, record.attempt_key) {
             AttemptUnitActive => [] as List<BeltExitDrainEntry>
             AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: n, reason: join(["the user manager could not say whether the claiming unit is live: ", reason], "") }]
-            AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n)
-            AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n)
+            AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
+            AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n, move: move)
           }
       })
   }
 }
 
-fn belt_exit_orphan_requeue_at(root: String, entry: String) -> List<BeltExitDrainEntry> {
-  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitRunning, to: AttemptExitQueued) {
+fn belt_exit_orphan_requeue_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+  match move(root, entry, AttemptExitRunning, AttemptExitQueued) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryRefused { entry: entry, reason: join(["an orphaned claim could not be returned to queued: ", why], "") }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: "running -> queued", cause: why }]
   }
 }
 
@@ -15648,42 +15697,50 @@ fn belt_exit_entry_is_obligation(entry: String) -> Bool {
 // THE OBLIGATION ENTRY IS A WAKE-UP, NOT A HAND-OFF. Consumed (inbox -> done) only once its attempt's unit
 // is gone -- the hook writes while the unit is still stopping, and consuming it then would lose the very
 // rescue it exists for; a live unit leaves it in the inbox and the level fires again. It is never enqueued.
-fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation) -> List<BeltExitDrainEntry> {
+fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match attempt_exit_entry_decode(entry_name: entry) {
     AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: entry, reason: reason }]
     AttemptExitEntryDecoded { record } =>
       match observe(record.node_id, record.attempt_key) {
         AttemptUnitActive => [] as List<BeltExitDrainEntry>
         AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
-        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry)
-        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry)
+        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
       }
   }
 }
 
-fn belt_exit_obligation_entry_consume_at(root: String, entry: String) -> List<BeltExitDrainEntry> {
-  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitDone) {
+fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+  match move(root, entry, AttemptExitInbox, AttemptExitDone) {
     Absent => [] as List<BeltExitDrainEntry>
-    Present { value: why } => [BeltExitEntryRefused { entry: entry, reason: join(["the obligation entry could not be moved to done: ", why], "") }]
+    Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: "inbox -> done", cause: why }]
   }
 }
 
 fn belt_exit_drain_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation) -> BeltExitDrain {
+  belt_exit_drain_moving_at(root: root, enqueue: enqueue, launch: launch, observe: observe, move: (r, e, from, to) => belt_exit_entry_move_at(root: r, entry: e, from: from, to: to))
+}
+
+// The sweep runs after every claim in this pass: the claims are bound first, and the sweep lists `queued`
+// afterwards, so a claimed entry is handed in the pass that claimed it. A worker's launch is owed only for
+// a worker entry whose claim succeeded.
+fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitDrain {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
     AttemptExitStageUnreadable { reason } => BeltExitDrainRefused { reason: reason }
     AttemptExitStageNames { names: inbox } => {
-      let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe)
+      let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe, move: move)
       let rescues = inbox |> filter(n => belt_exit_entry_is_obligation(entry: n))
       let names = inbox |> filter(n => !belt_exit_entry_is_obligation(entry: n))
+      let rescued = rescues |> flat_map(n => belt_exit_obligation_entry_at(root: root, entry: n, observe: observe, move: move))
+      let claims = names |> map(n => belt_exit_entry_drain_at(root: root, entry: n, move: move))
+      let swept = belt_exit_queued_sweep_at(root: root, enqueue: enqueue)
+      let claimed_a_worker = any(claims, c => match c {
+        BeltExitEntryClaimed { entry } => belt_exit_entry_is_worker(entry: entry)
+        _ => false
+      })
       BeltExitDrained {
-        entries: concat(concat(reconciled, rescues |> flat_map(n => belt_exit_obligation_entry_at(root: root, entry: n, observe: observe))), concat(
-          names |> map(n => belt_exit_entry_drain_at(root: root, entry: n, enqueue: enqueue)),
-          belt_exit_queued_sweep_at(root: root, skip: names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
-            AttemptExitEntryDecoded { record } => [join([record.node_id, "/", record.attempt_key], "")]
-            AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<String>
-          }), enqueue: enqueue),
-        )),
-        launch: if any(names, n => belt_exit_entry_is_worker(entry: n)) { Present { value: launch() } } else { none },
+        entries: concat(concat(reconciled, rescued), concat(claims, swept)),
+        launch: if claimed_a_worker { Present { value: launch() } } else { none },
       }
     }
   }
@@ -15701,7 +15758,9 @@ fn belt_exit_drain_for_instance(instance: HostDashboardInstance) -> BeltExitDrai
 fn belt_exit_drain_entry_json(e: BeltExitDrainEntry) -> JsonValue {
   match e {
     BeltExitEntryHanded { entry, enqueue } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "handed", value: belt_obligation_enqueue_json(e: enqueue))])
+    BeltExitEntryClaimed { entry } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "claimed", value: json_string(s: "queued"))])
     BeltExitEntryRefused { entry, reason } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "refused", value: json_string(s: reason))])
+    BeltExitEntryUnmovable { entry, step, cause } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "unmovable", value: json_object(members: [json_kv(key: "step", value: json_string(s: step)), json_kv(key: "cause", value: json_string(s: cause))]))])
   }
 }
 
@@ -15725,6 +15784,8 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
       concat(
         entries |> flat_map(e => match e {
           BeltExitEntryRefused { entry, reason } => [join([entry, ": ", reason], "")]
+          BeltExitEntryUnmovable { entry, step, cause } => [join([entry, ": unmovable at ", step, " (stays on disk): ", cause], "")]
+          BeltExitEntryClaimed { entry: _ } => [] as List<String>
           BeltExitEntryHanded { entry: _, enqueue: _ } => [] as List<String>
         }),
         match launch {
@@ -15735,6 +15796,177 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
         },
       )
   }
+}
+
+// THE EXIT SPOOL'S LINE STOP (DESIGN section 5, the factory model: a refusal that fires stops the line).
+// The belt-exit path unit is a LEVEL on inbox and queued, so a drain that exits leaving an entry it
+// cannot move is started again at once -- a hot loop with no terminal (srv1, 2026-10-21). The terminal is
+// the drain's OWN verdict, not a rate: THIS PASS CLAIMED NOTHING AND AT LEAST ONE ENTRY WAS UNMOVABLE.
+// Then the drain writes the stall record into `stalled/` (create-only) and the belt-exit service is
+// skipped by `ConditionDirectoryNotEmpty=!stalled` until `belt_exit_stall_release_cli` clears it.
+// Entries that arrive while stalled WAIT, unconsumed; the record says so, and the backlog judge
+// (gunbc.roadmap.roadmap_launch_deployment_observe event_backlog_judge) reports them behind the head.
+type BeltExitStallVerdict
+  = BeltExitNotStalled
+  | BeltExitStalled { unmovable: List<SpoolStallEntry> }
+
+fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
+  match d {
+    BeltExitDrainRefused { reason: _ } => BeltExitNotStalled
+    BeltExitDrained { entries, launch: _ } => {
+      let claimed = entries |> filter(e => match e {
+        BeltExitEntryClaimed { entry: _ } => true
+        _ => false
+      })
+      let unmovable = entries |> flat_map(e => match e {
+        BeltExitEntryUnmovable { entry, step, cause } => [SpoolStallEntry { entry: entry, step: step, cause: cause }]
+        _ => [] as List<SpoolStallEntry>
+      })
+      if count(claimed) == 0 && count(unmovable) > 0 { BeltExitStalled { unmovable: unmovable } } else { BeltExitNotStalled }
+    }
+  }
+}
+
+// THE DRAIN'S TAIL: a stall verdict writes the record; a record that cannot be written is its own failure
+// (the line cannot be stopped, so the hot loop is not contained and the operator must be told).
+fn belt_exit_stall_failures(root: String, d: BeltExitDrain) -> List<String> {
+  match belt_exit_stall_verdict(d: d) {
+    BeltExitNotStalled => [] as List<String>
+    BeltExitStalled { unmovable: u } =>
+      match spool_stall_record_at(stalled_dir: attempt_exit_stalled_dir(instance_root: root), record_path: attempt_exit_stall_record_path(instance_root: root), unmovable: u) {
+        SpoolStallRecorded => [join(["exit spool STALLED: ", to_string(value: count(u)), " entries cannot leave the spool; the belt-exit service is held until belt_exit_stall_release_cli (record: ", attempt_exit_stall_record_path(instance_root: root), ")"], "")]
+        SpoolStallUnrecorded { reason } => [join(["SpoolStallUnrecorded: the stall record could not be written (", reason, "); the exit drain will re-fire"], "")]
+      }
+  }
+}
+
+// THE MODELED OPERATOR ROUTE OUT OF A STALL. `release` re-attempts the claim of every recorded entry that is
+// still in the spool, with the same move the drain uses, unprivileged. Only when none is still unmovable does it
+// delete the stall record; the re-arm of the path unit is a separate privileged effect (belt_exit_stall_release_cli).
+// An entry that is no longer in the spool (cleared by a privileged operator) counts as left. A hand `rm` of the
+// record is not the route: it would re-arm the loop over an entry that still cannot leave.
+type BeltExitStallRelease
+  = BeltExitStallNotHeld
+  | BeltExitStallReleased { reclaimed: Int }
+  | BeltExitStallStillUnmovable { entries: List<SpoolStallEntry> }
+  | BeltExitStallReleaseRefused { reason: String }
+
+fn belt_exit_stall_reclaim_entry_at(root: String, e: SpoolStallEntry, inbox: List<String>, running: List<String>, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+  if any(inbox, n => n == e.entry) && !belt_exit_entry_is_obligation(entry: e.entry) {
+    [belt_exit_entry_drain_at(root: root, entry: e.entry, move: move)]
+  } else if any(running, n => n == e.entry) {
+    belt_exit_orphan_requeue_at(root: root, entry: e.entry, move: move)
+  } else {
+    [] as List<BeltExitDrainEntry>
+  }
+}
+
+fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> BeltExitStallRelease {
+  match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallNone => BeltExitStallNotHeld
+    SpoolStallUnreadable { reason } => BeltExitStallReleaseRefused { reason: join(["the stall record is unreadable: ", reason], "") }
+    SpoolStallHeld { entries: recorded } =>
+      match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
+        AttemptExitStageUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
+        AttemptExitStageNames { names: inbox } =>
+          match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
+            AttemptExitStageUnreadable { reason } => BeltExitStallReleaseRefused { reason: reason }
+            AttemptExitStageNames { names: running } => {
+              let attempts = recorded |> flat_map(e => belt_exit_stall_reclaim_entry_at(root: root, e: e, inbox: inbox, running: running, move: move))
+              let still = attempts |> flat_map(a => match a {
+                BeltExitEntryUnmovable { entry, step, cause } => [SpoolStallEntry { entry: entry, step: step, cause: replace(cause, "\n", " ") }]
+                _ => [] as List<SpoolStallEntry>
+              })
+              if count(still) > 0 {
+                BeltExitStallStillUnmovable { entries: still }
+              } else {
+                match spool_stall_clear_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+                  SpoolStallCleared => BeltExitStallReleased { reclaimed: count(attempts) }
+                  SpoolStallClearRefused { reason } => BeltExitStallReleaseRefused { reason: reason }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// ANALYZE IS READ-ONLY: for each recorded entry it reports the recorded cause and the entry's own owner, mode
+// and type (stat), and for an entry owned by another principal it names the follow-up -- a privileged clear
+// through the approval-broker route (gunbc.auth.approval_broker redeem_capability). Nothing is moved.
+// An observation either happened or it did not; a failed reading is never folded into a value, so ownership
+// is classified only from two readings that both succeeded.
+type BeltExitStallObservation
+  = BeltExitStallObserved { value: String }
+  | BeltExitStallUnobserved { reason: String }
+
+fn belt_exit_stall_observation_of(out: BeltExecOutcome, what: String) -> BeltExitStallObservation {
+  match out {
+    ExecOk { stdout } => BeltExitStallObserved { value: trim(stdout) }
+    ExecFailed { program: _, exit_code, stderr } => BeltExitStallUnobserved { reason: join([what, " exited ", to_string(exit_code), ": ", trim(stderr)], "") }
+    ExecRefused { program: _, reason } => BeltExitStallUnobserved { reason: join([what, " refused: ", reason], "") }
+  }
+}
+
+fn belt_exit_stall_entry_stat_at(root: String, entry: String) -> BeltExitStallObservation {
+  let path = join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox), "/", entry], "")
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/stat", args: ["-c", "%U %a %F", path]), workdir: belt_observe_workdir as String), what: "stat")
+}
+
+fn belt_exit_stall_analyze_at(root: String, whoami: BeltExitStallObservation) -> List<String> {
+  match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: root)) {
+    SpoolStallNone => ["no stall record: the exit drain is not stalled"]
+    SpoolStallUnreadable { reason } => [join(["the stall record is unreadable: ", reason], "")]
+    SpoolStallHeld { entries } =>
+      entries |> map(e => {
+        let head = join([e.entry, ": ", e.step, " failed (", e.cause, "); "], "")
+        match belt_exit_stall_entry_stat_at(root: root, entry: e.entry) {
+          BeltExitStallUnobserved { reason: sr } => join([head, "owner unknown (", sr, "); the entry may no longer be in the inbox"], "")
+          BeltExitStallObserved { value: stat } =>
+            match whoami {
+              BeltExitStallUnobserved { reason: wr } => join([head, "stat owner/mode/type: ", stat, "; owner unknown (the drain's principal is unread: ", wr, ")"], "")
+              BeltExitStallObserved { value: me } =>
+                if starts_with(s: stat, prefix: join([me, " "], "")) {
+                  join([head, "stat owner/mode/type: ", stat, "; owned by the drain's principal: release re-attempts the claim"], "")
+                } else {
+                  join([head, "stat owner/mode/type: ", stat, "; foreign-owned: the drain's principal cannot move it -- a privileged clear through the approval-broker route is the follow-up, then release"], "")
+                }
+            }
+        }
+      })
+  }
+}
+
+// THE PRIVILEGED HALF OF A RELEASE: the .path unit sits failed (trigger-limit-hit) after a stall, and re-arming
+// a SYSTEM unit is root's. Its argv is elevated through extdeps.sudo.elevation sudo_elevate_argv, and the
+// authorization it needs is whatever select_authorization_pattern selects for it
+// (gunbc.auth.privileged_effect_census, site belt_exit_stall_rearm_at) -- no sudoers line is coined here. A
+// refusal by the host is TYPED and carries the exact argv, so a privileged operator can run it.
+type BeltExitStallRearm
+  = BeltExitStallRearmed
+  | BeltExitStallRearmRefused { argv: List<String>, reason: String }
+
+fn belt_exit_stall_rearm_commands(path_unit: NonEmptyStr) -> List<ElevatedInvocation> {
+  [
+    sudo_elevate(command: systemctl_reset_failed_argv(unit: path_unit)),
+    sudo_elevate(command: systemctl_start_argv(unit: path_unit)),
+  ]
+}
+
+fn belt_exit_stall_rearm_at(path_unit: NonEmptyStr) -> BeltExitStallRearm {
+  let refusals = belt_exit_stall_rearm_commands(path_unit: path_unit) |> flat_map(c => match belt_exec(cmd: host_exec_argv(program: c.bin_path, args: c.args), workdir: belt_observe_workdir as String) {
+    ExecOk { stdout: _ } => [] as List<BeltExitStallRearm>
+    ExecFailed { program: _, exit_code, stderr } => [BeltExitStallRearmRefused { argv: list_append(left: [c.bin_path], right: c.args), reason: join(["exit ", to_string(exit_code), ": ", trim(stderr)], "") }]
+    ExecRefused { program: _, reason } => [BeltExitStallRearmRefused { argv: list_append(left: [c.bin_path], right: c.args), reason: reason }]
+  })
+  match refusals.first() {
+    Present { value: r } => r
+    Absent => BeltExitStallRearmed
+  }
+}
+
+fn belt_exit_stall_whoami() -> BeltExitStallObservation {
+  belt_exit_stall_observation_of(out: belt_exec(cmd: host_exec_argv(program: "/usr/bin/id", args: ["-un"]), workdir: belt_observe_workdir as String), what: "id -un")
 }
 
 // THE RUN CLAIMS A BOUNDED POPULATION BEFORE ITS FIRST OBSERVATION, AND ONLY WHAT IT CLAIMED IS SETTLED
@@ -15809,10 +16041,10 @@ fn belt_exit_entries_pending_at(root: String, node_id: String, attempt_key: Stri
 }
 
 // THE QUEUED SWEEP: the level-triggered half of the hand-off. Every attempt with an entry in `queued`
-// that this drain did not just hand off is enqueued again -- a held unit is a no-op (its own re-check or
+// is enqueued -- the sole hand-off, run in the pass that claimed the entry -- a held unit is a no-op (its own re-check or
 // the next drain picks the entry up), a gone unit is started and its run claims the entry. One enqueue
 // per attempt, whatever its entry count.
-fn belt_exit_queued_sweep_at(root: String, skip: List<String>, enqueue: fn(String, String) -> BeltObligationEnqueue) -> List<BeltExitDrainEntry> {
+fn belt_exit_queued_sweep_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue) -> List<BeltExitDrainEntry> {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
     AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "queued", reason: reason }]
     AttemptExitStageNames { names } =>
@@ -15820,7 +16052,7 @@ fn belt_exit_queued_sweep_at(root: String, skip: List<String>, enqueue: fn(Strin
         AttemptExitEntryMalformed { entry_name: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["queued entry is not an exit record: ", reason], "") }])
         AttemptExitEntryDecoded { record } => {
           let key = join([record.node_id, "/", record.attempt_key], "")
-          if any(skip, k => k == key) || any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: record.node_id, attempt_key: record.attempt_key) _ => false }) {
+          if any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: record.node_id, attempt_key: record.attempt_key) _ => false }) {
             acc
           } else {
             let handed = enqueue(record.node_id, record.attempt_key)

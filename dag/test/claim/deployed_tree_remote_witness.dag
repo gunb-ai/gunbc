@@ -20,6 +20,7 @@ import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   ComposeOwned, UpsertOwned,
   PublicationHelperPathUnit,
+  AttemptUnitDrainPathUnit,
   FabricStorageServeUnit,
   FabricStorageServeMapping,
   ApprovalBrokerFrontDoor,
@@ -238,6 +239,7 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
       ServeBinary => "binary"
       DeployedTreeRemoteUnit => "remote"
       PublicationHelperPathUnit => "publication"
+      AttemptUnitDrainPathUnit => "attempt-unit-drain"
       BeltEventPathUnit => "belt"
       TailscaleServeMapping => "route"
       ApprovalBrokerFrontDoor => ""
@@ -259,6 +261,7 @@ fn ordered_tags() -> List<String> {
       instance: srv1_live_dashboard_instance(),
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
       holding: deployment_spec_srv1().role_singletons,
+      lab_plan: deployment_spec_srv1().target.lab_plan,
     ),
     init: [],
     f: (acc, step) => {
@@ -269,5 +272,5 @@ fn ordered_tags() -> List<String> {
 }
 
 test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> Bool {
-  join(ordered_tags(), ",") == "binary,tree,remote,publication,belt,route"
+  join(ordered_tags(), ",") == "binary,tree,remote,publication,attempt-unit-drain,belt,route"
 }

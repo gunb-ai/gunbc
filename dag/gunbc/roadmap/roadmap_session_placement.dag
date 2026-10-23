@@ -1187,6 +1187,49 @@ fn session_settle_release(stores: SessionPlacementStores, host: String, unit: No
   SessionSettlementReleaseAttempted { unit: unit as String, freed: freed, detail: join([reason, session_write_note(w: write)], "") }
 }
 
+// THE SLOT RECORDS A CLIENT FOLLOWS AFTER A 202. A dispatch whose attempt-unit start request was
+// enqueued but not yet answered (SpawnLaunchPending) leaves its placement slot "launching"; the
+// served /attempts.json carries every slot through attempt_record_json (the one serializer), each
+// naming its owner_node and state, so the client reads that node's slot until it is no longer
+// launching. A slot that cannot be read is carried as its own refusal, never dropped.
+type SessionSlotRecords
+  = SessionSlotRecordsRead { records: List<AttemptRecord>, unreadable: List<String> }
+  | SessionSlotRecordsRefused { detail: String }
+
+// ONE READ PER SLOT: each key is read once into this classification, then records and unreadable are
+// projections of the same reads, so a slot that changes state mid-serve cannot appear in both lists or
+// neither, and the lists are built by flat_map rather than a copied accumulator.
+type SessionSlotObserved
+  = SessionSlotObservedHeld { record: AttemptRecord }
+  | SessionSlotObservedUnreadable { line: String }
+  | SessionSlotObservedAbsent
+
+fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlotRecords {
+  match cas_slot_keys(root: stores.slots_root) {
+    CasSlotKeysListed { keys } => {
+      let observed = map(keys, k => match attempt_slot_read(root: stores.slots_root, reference: k) {
+        AttemptSlotHeld { record: r, generation: _ } => SessionSlotObservedHeld { record: r }
+        AttemptSlotAbsent => SessionSlotObservedAbsent
+        AttemptSlotUnreadable { detail: d } => SessionSlotObservedUnreadable { line: join([k as String, ": ", d], "") }
+      })
+      SessionSlotRecordsRead {
+        records: flat_map(observed, o => match o {
+          SessionSlotObservedHeld { record: r } => [r]
+          SessionSlotObservedUnreadable { line: _ } => []
+          SessionSlotObservedAbsent => []
+        }),
+        unreadable: flat_map(observed, o => match o {
+          SessionSlotObservedUnreadable { line: l } => [l]
+          SessionSlotObservedHeld { record: _ } => []
+          SessionSlotObservedAbsent => []
+        }),
+      }
+    }
+    CasSlotKeysListingRefused { root: r, detail: d } => SessionSlotRecordsRefused { detail: join(["the session slot store at ", r as String, " could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: r, cause: c } => SessionSlotRecordsRefused { detail: join(["the session slot store path ", r as String, " is not admissible: ", c], "") }
+  }
+}
+
 // THE PASS TAKES THE UNIT OBSERVATIONS AS A FUNCTION OF THE UNIT NAME so a witness can plant them;
 // production passes session_worker_unit_lifecycle_for_instance, the worker's own read (unit, then its
 // exit record).
