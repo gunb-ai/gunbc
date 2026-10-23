@@ -1,15 +1,31 @@
 module v2.test.claim.compiler.infer_shape_arm_reason_harness
 
-// SEAT 16, SCRATCH HARNESS (never-merge branch). The witness module proved the shape arm's
-// application_argument label appears NOWHERE in the chain for the generic-formal instantiation
-// fixture on main, while the fatal is not any of the five named candidates probed individually
-// (srv1 run at f8f8a6dd555e / 823b3b7690b0). Guessing more symbols one claim at a time is the
-// wrong loop; this harness prints the fatal instead. It follows the corpus's own accepted pattern
-// (v2.test.claim.rigid_binder_leaf rbl_reason :54: assemble a carried source through
-// assemble_program_from_ingest, infer, and project diagnostics_fatal_reason through
-// symbol_lexeme into a String an equality asserts). Each claim below asserts the reason is NOT
-// some specific symbol, so a srv1 failure line names the actual fatal: the assertion diff shows
-// expected vs actual on the offending string. One run answers what the chain says.
+// SEAT 16, SCRATCH HARNESS v2 (never-merge branch). v1 run (M3 msg_4db6a145, srv1 at main
+// 68b93782919a): the T<T> fixture IS refused and its fatal IS application_argument_does_not_inhabit,
+// but the CONTROL (g<T>(x: T) applied to g(1)) did NOT read the label -- because it is simply
+// ACCEPTED: T := Int inhabits its own formal, so that control can never read any label. The
+// instrument was unpinned, not lying. v2 pins it three ways:
+//   (1) a trivial module must read ACCEPTED (assemble+infer plumbing works on this route);
+//   (2) a GROUND refusal at the eight members' own door -- the plain call-argument door, whose
+//       candidate test demonstrably runs (raven measured a real find_witness edge on it) -- must
+//       read the label;
+//   (3) the B probe below decides from SOURCE whether the shape arm is live.
+//
+// THE MATCHER ANALYSIS THAT v1'S READING MISSED (infer_match_generic_formal, infer.dag:4537):
+// the T<T> fixture's formal is an Instantiation whose HEAD IS THE TYPE VARIABLE T itself, so the
+// branch at :4552 (inhabitance_node_mentions_type_variable(n: f.head, ...)) answers Matched and
+// the fold never reaches InferFormalShapeMismatch. Dispatch (:5266-5269) then recurses through the
+// Matched arm (:5226) into infer_judge_declared_position, where the label is emitted at the PLAIN
+// door after find_witness actually ran. So the label on the T<T> fixture is CONSISTENT WITH THE
+// HONEST DOOR, and does not by itself prove the shape arm is reachable. The arm needs formal and
+// produced to be same-arity Instantiations with DIFFERENT heads, neither head mentioning a type
+// param -- or a produced node that is not an Instantiation at all. The B probe uses the second
+// shape: a NULLARY CONSTRUCTOR VALUE of the formal's own generic. Nope inhabits Opt<T> for every
+// T (it is Opt's constructor), so an honest candidate test over Opt's constructor rows cannot
+// answer no_candidate; if g(Nope) refuses WITH THE LABEL anyway, the mint was never earned and
+// defect B is live from source, at a user-visible false refusal. If it ACCEPTS, the arm is
+// bypassed from source and B stays latent. If it refuses with any OTHER reason, the arm was also
+// bypassed (some earlier stage answered) -- and that reason names itself in the failing line.
 
 import v2.compiler.infer { infer }
 import v2.compiler.resolve { ResolvedTree }
@@ -73,43 +89,61 @@ fn shah_reason(src: String) -> String {
   }
 }
 
-// THE FIXTURE, in SOURCE, mirroring the accepted claim's tree (infer_application_argument_inhabitance_witness
-// inhabitance_generic_formal_tree): a declared type parameter T, a generic function whose formal is
-// an INSTANTIATION of T (the wrapper keeps the route on the generic-formal judge -- a bare T formal
-// binds instead), applied to the Int literal 1. If this accepts, the documented shape-arm refusal has
-// no source syntax; if it refuses, the failure line names the reason.
+// PLUMBING PIN: a module with nothing to infer must read ACCEPTED. If this fails, the harness
+// route itself (assemble/infer) is the instrument at fault and no other reading here means anything.
+data shah_trivial_source: String = "module shape_arm_probe\n\nfn f() -> Int {\n  1\n}\n"
+
+// GROUND CONTROL at the members' own door (the PLAIN call-argument door, no generics): a data
+// constructor value at an Int formal. The candidate test runs for real on this door, so a green
+// harness must read the label here. A constructor value, not a literal: literals route through the
+// literal elaboration tables (infer.dag:4806ff) and can answer a different reason.
+data shah_control_source: String = "module shape_arm_probe\n\ndata Flag\n  = On\n\nfn takes(x: Int) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  takes(On)\n}\n"
+
+// THE FIXTURE (kept from v1 for continuity with the srv1 reading): formal T<T>, applied to 1. Per
+// the header analysis its label -- if still the label -- is earned at the honest door, not the arm.
 data shah_shape_source: String = "module shape_arm_probe\n\nfn g<T>(x: T<T>) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  g(1)\n}\n"
 
-// CONTROL for the same harness: the documented non-inhabiting generic refusal that DOES carry the
-// label today (the accepted claim's ground instantiation, T := Int against Int) must read as the
-// label, proving the harness prints the right thing for a known-good input.
-data shah_control_source: String = "module shape_arm_probe\n\nfn g<T>(x: T) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  g(1)\n}\n"
+// THE B PROBE: nullary constructor value at its OWN generic's formal. Nope inhabits Opt<T> for
+// every T, so no honest candidate test can answer no_candidate; a refusal carrying the label here
+// can only have come from the :5222 mint that skips the test.
+data shah_b_source: String = "module shape_arm_probe\n\ndata Opt<T>\n  = Nope\n  | Yep { value: T }\n\nfn g<T>(x: Opt<T>) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  g(Nope)\n}\n"
 
-// THE READOUT CLAIMS. Each asserts a SPECIFIC string is not the reason. The srv1 run's failing lines
-// print the actual -- one pass names every fatal. The first claim is the whole question in one line:
-// is the fixture accepted at all?
-test fn harness_shape_fixture_is_not_accepted() -> Bool {
-  shah_reason(src: shah_shape_source) != "ACCEPTED"
+// (1) plumbing pin.
+test fn harness_trivial_module_is_accepted() -> Bool {
+  shah_reason(src: shah_trivial_source) == "ACCEPTED"
 }
 
-test fn harness_shape_fatal_is_not_the_label_itself() -> Bool {
-  shah_reason(src: shah_shape_source) != "infer:application_argument_does_not_inhabit"
-}
-
-test fn harness_shape_fatal_is_not_undecidable_argument_type_not_derived() -> Bool {
-  shah_reason(src: shah_shape_source) != "infer:inhabitance_undecidable_argument_type_not_derived"
-}
-
-test fn harness_shape_fatal_is_not_unbound_symbol() -> Bool {
-  (shah_reason(src: shah_shape_source) != "assemble:resolve_reason_unbound_symbol") && (shah_reason(src: shah_shape_source) != "infer:resolve_reason_unbound_symbol")
-}
-
-test fn harness_shape_fatal_is_not_undecidable_generic_formal() -> Bool {
-  shah_reason(src: shah_shape_source) != "infer:inhabitance_undecidable_generic_formal"
-}
-
-// THE CONTROL CLAIM: the known-good ground refusal reads as the label through this harness. If THIS
-// fails, the harness (or its lexeme printing) is the instrument at fault, not the program.
+// (2) ground control: the plain door reads the label through this harness.
 test fn harness_control_reads_the_label() -> Bool {
   shah_reason(src: shah_control_source) == "infer:application_argument_does_not_inhabit"
+}
+
+// (3) the T<T> fixture, unchanged reading from v1: the fatal == the label.
+test fn harness_shape_fatal_is_the_label() -> Bool {
+  shah_reason(src: shah_shape_source) == "infer:application_argument_does_not_inhabit"
+}
+
+// (3a)+(3b) the B probe's discriminator, in the != idiom so a refusal by ANY named reason prints
+// its actual value on the failing line. Read the PASS/FAIL pair, not either claim alone:
+//   FAIL/PASS => g(Nope) ACCEPTED: the arm is bypassed from source, B stays LATENT (the v1 matrix
+//                plus the matcher analysis already predict this world).
+//   PASS/FAIL => g(Nope) REFUSED WITH THE LABEL: a value that inhabits the formal for every T was
+//                refused with a candidate-set cause no candidate ever earned. Defect B is LIVE
+//                from source and produces false refusals; the mint is infer.dag:5222.
+//   PASS/PASS => refused with a reason outside this probe's names: the arm was bypassed and an
+//                earlier stage answered -- rerun with that candidate added; B stays latent either way.
+test fn harness_b_probe_is_not_accepted() -> Bool {
+  shah_reason(src: shah_b_source) != "ACCEPTED"
+}
+
+test fn harness_b_probe_fatal_is_not_the_label() -> Bool {
+  shah_reason(src: shah_b_source) != "infer:application_argument_does_not_inhabit"
+}
+
+test fn harness_b_probe_fatal_is_not_undecidable_generic_formal() -> Bool {
+  shah_reason(src: shah_b_source) != "infer:inhabitance_undecidable_generic_formal"
+}
+
+test fn harness_b_probe_fatal_is_not_unbound_symbol() -> Bool {
+  (shah_reason(src: shah_b_source) != "assemble:resolve_reason_unbound_symbol") && (shah_reason(src: shah_b_source) != "infer:resolve_reason_unbound_symbol")
 }
