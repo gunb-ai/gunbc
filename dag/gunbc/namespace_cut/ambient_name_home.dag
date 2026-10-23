@@ -31,7 +31,8 @@ type AmbientNameHomeOrigin
 // The call the acceptance kit's fixture pair makes of the name: a probe function of `params` returning `result`
 // whose body is `name(args)`, with `std.types` names `type_imports`. SUPPLIED BY THE WAVE with its row, because a
 // call shape is a fact of the name's signature, which no fixture template can guess (list_push takes a list and an
-// element; map_lookup does not). Absent: the kit emits a fixture with no call, which it reads as not-runnable.
+// element; map_lookup does not). REQUIRED, not optional: a row without a call shape would make the kit's fixture
+// never observe the name, and one such row would turn the whole label into no-observation for every wave.
 type AmbientNameKitCall {
   type_imports: NonEmptyStr
   params: NonEmptyStr
@@ -47,7 +48,7 @@ type AmbientNameHome {
   // The ambient *_contract row (std.primitives) this move retires, when the name had one; Absent for a name
   // that left a table with no contract row. Read by the namespace-migration acceptance kit's contract-absent check.
   retired_contract: Optional<NonEmptyStr>
-  kit_call: Optional<AmbientNameKitCall>
+  kit_call: AmbientNameKitCall
 }
 
 // Empty until wave 1 adds its row: wave 0 lands the census and the diff, and moves no name.
@@ -66,11 +67,11 @@ fn ambient_name_candidates() -> List<AmbientNameHome> {
     table: PrimitiveAuthorityTable,
     origin: ExistingDeclaration,
     retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr),
-    kit_call: optional_present(value: AmbientNameKitCall {
+    kit_call: AmbientNameKitCall {
       type_imports: "Int, List" as NonEmptyStr,
       params: "xs: List<Int>" as NonEmptyStr,
       result: "List<Int>" as NonEmptyStr,
       args: "xs, 1" as NonEmptyStr
-    })
+    }
   }]
 }
