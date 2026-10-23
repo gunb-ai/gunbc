@@ -65,7 +65,13 @@ import gunbc.auth.approval_device_routes { device_observed_at, device_instant_pl
 // or indeterminate. Only an explicit refusal establishes that nobody received the code; an
 // indeterminate delivery keeps the SAME code valid until it expires and says so, and never invites
 // a second code under the claim that the first reached no one.
-data approval_enrolment_code_window: Second = second(count: 600)
+//
+// TWENTY-FOUR HOURS, NOT TEN MINUTES (operator, 2026-10-23). The window bounds how long a code that
+// was minted but never redeemed stays spendable. It is not what keeps the code secret: the 128-bit
+// entropy above is, together with delivery on a channel only the operator reads and single use.
+// Ten minutes cost the operator a whole issuing run whenever the phone was not in hand when the
+// code arrived; a day keeps the leftover-code bound without that.
+data approval_enrolment_code_window: Second = second(count: 86400)
 data approval_enrolment_code_entropy: ByteSize = byte_size(count: 16)
 data approval_enrolment_code_notification_title: NonEmptyStr = "Device enrolment code"
 
