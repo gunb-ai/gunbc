@@ -1,0 +1,414 @@
+// Witness for the TYPED LIVE_DEPLOY APPLY PLAN (gunbc.live_deploy.apply_legs deploy_apply_plan_legs):
+// what the real srv1 plan contains, in what order, under which elevation, and what it refuses. These
+// replace the claims that rendered the deleted apply script and searched its text; each reads the
+// typed legs at the plan interface instead (DESIGN section 3: a witness discriminates at one
+// interface), and the real route is reached once (the locus refusal) so supplying the plan never
+// removes the last execution of production's entry.
+module test.claim.live_deploy.live_deploy_apply_plan_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.algebra { Cons, Empty }
+import std.optional { Optional, Present, Absent }
+import std.realization_reconcile { Converged, NotConverged }
+import std.content_hash { content_hash_atom }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
+import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
+import gunbc.host.host_axis_caps { CapConvergeWithheld }
+import gunbc.live_deploy.apply_legs {
+  DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
+  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
+  ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
+  deploy_apply_plan_legs, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_sudo_grants }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.sudo.elevation { sudo_program }
+import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_binary_path }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
+
+fn lab_spec() -> DeploymentSpec {
+  selected_deployment_spec(row: srv1_lab_desired_deployment())
+}
+
+// THE OBSERVER CLOCK IS A SUPPLIED READING here: the lab twin owes an OIDC config whose standing is
+// judged at a clock, and these claims are about the plan given a readable clock inside the console
+// readback's own window, so the reading is that readback's observation instant (it moves with the
+// readback, where a literal would expire). The unreadable clock is its own claim
+// (lab_apply_oidc_refuses_without_an_observer_clock).
+fn plan_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+  deploy_apply_plan_legs(spec: spec, plan: plan, authorization: CapConvergeWithheld { cause: "witness" }, source_root: "/src", oidc_now: tracker_web_test_console_readback_observed_at_epoch)
+}
+
+fn legs_of(p: DeployApplyPlan) -> List<DeployApplyLeg> {
+  match p {
+    ApplyPlanReady { legs: ls } => ls
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+}
+
+fn full_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
+  legs_of(p: plan_for(spec: spec, plan: deploy_witness_full_install_plan(spec: spec)))
+}
+
+fn step_index_from(legs: List<DeployApplyLeg>, step: String, i: Int) -> Int {
+  match legs {
+    Empty => 0 - 1
+    Cons { head: h, tail: rest } => if deploy_apply_leg_step(leg: h) == step { i } else { step_index_from(legs: rest, step: step, i: i + 1) }
+  }
+}
+
+fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
+  step_index_from(legs: legs, step: step, i: 0)
+}
+
+fn has_step(legs: List<DeployApplyLeg>, step: String) -> Bool {
+  step_index(legs: legs, step: step) >= 0
+}
+
+fn the_intent() -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: srv1_host },
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "srv-x" },
+    privilege_denial: none,
+  }
+}
+
+// INHABITANCE, ROUTE: the real apply realize is reached and refuses a non-local locus before any leg.
+test fn the_real_apply_route_refuses_a_remote_locus_typed() -> Bool {
+  let spec = deployment_spec_srv1()
+  match realize_live_deploy_apply_on_host(
+    spec: spec,
+    candidate: CandidateRelease {
+      revision: deploy_witness_release_revision,
+      expected_surface_identity: content_hash_atom(value: "surface" as NonEmptyStr),
+      expected_dispatch_digest: content_hash_atom(value: "dispatch" as NonEmptyStr),
+    },
+    plan: deploy_witness_full_install_plan(spec: spec),
+    transport: SshShell { ssh_host: "srv-x" },
+    intent: the_intent(),
+    access: ci_deploy_srv1_access,
+  ) {
+    Converged { evidence: _, applied: _ } => false
+    NotConverged { reason: r, applied: _ } => string_contains(s: r, pattern: "live_deploy apply refused over ssh host=srv-x")
+  }
+}
+
+// INHABITANCE, PLAN: the srv1 full install is a Ready list of typed legs carrying every family, with the
+// object source first.
+test fn the_srv1_full_install_plan_is_ready_and_carries_every_family() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  step_index(legs: legs, step: "object-source") == 0
+    && has_step(legs: legs, step: "executable-install")
+    && has_step(legs: legs, step: "tree-sync-restart")
+    && has_step(legs: legs, step: "convergence-readback")
+    && has_step(legs: legs, step: "attempt-launcher-grant")
+    && has_step(legs: legs, step: "serve-unit")
+    && has_step(legs: legs, step: "serve-restart")
+}
+
+// THE DEPLOYMENT'S ORDER: the binary is installed (and verified) before the tree converges, and the
+// tree before the serve unit, because spec.steps orders ServeBinary, GunbcSourceTree, SystemdUnit.
+test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  let installed = step_index(legs: legs, step: "executable-installed-digest")
+  step_index(legs: legs, step: "executable-source-digest") < step_index(legs: legs, step: "executable-install")
+    && step_index(legs: legs, step: "executable-install") < installed
+    && installed < step_index(legs: legs, step: "tree-root")
+    && step_index(legs: legs, step: "convergence-readback") < step_index(legs: legs, step: "serve-unit")
+}
+
+// EVERY ELEVATED LEG STAYS WITHIN THE CI RUNNER'S GRANTS: the program sudo runs is one the roster
+// grants (by path, or by the granted path's last component for a PATH-resolved program), and no leg
+// elevates a generic mover the roster refuses.
+fn granted(word: String) -> Bool {
+  any(fleet_posix_ci_runner_sudo_grants(), g =>
+    (g.command_path as String) == word || ends_with(s: g.command_path as String, suffix: join(["/", word], "")))
+}
+
+fn elevated_word(c: ArgvCommand) -> Optional<String> {
+  let sudo: String = sudo_program().invocation as String
+  let prog: String = c.program.invocation as String
+  if prog != sudo {
+    Absent
+  } else {
+    match c.arguments {
+      Cons { head: _, tail: Cons { head: w, tail: _ } } => Present { value: w }
+      Cons { head: _, tail: Empty } => Present { value: "" }
+      Empty => Present { value: "" }
+    }
+  }
+}
+
+fn command_within_grants(c: ArgvCommand) -> Bool {
+  match elevated_word(c: c) {
+    Absent => true
+    Present { value: w } => granted(word: w) && !string_contains(s: w, pattern: "rsync") && !string_contains(s: w, pattern: "chown")
+  }
+}
+
+fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
+  match leg {
+    ApplyLegCommand { step: _, command: c } => command_within_grants(c: c)
+    ApplyLegInstallFile { step: _, command: c, payload: _ } => command_within_grants(c: c)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } => command_within_grants(c: c) && command_within_grants(c: g)
+    ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
+    ApplyLegReport { step: _, line: _ } => true
+    ApplyLegEnsureDirectory { target: _ } => true
+    ApplyLegHelperGrant { revision: _ } => true
+    ApplyLegObjectSource => true
+    ApplyLegDigestVerify { step: _, path: _, digest: _ } => true
+    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => true
+    ApplyLegBrokerTree { revision: _ } => true
+    ApplyLegRetract { step: _, leg: _ } => true
+    ApplyLegDependency { dep: _ } => true
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
+  }
+}
+
+test fn every_elevated_leg_stays_within_the_ci_runner_grants() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  count(legs) > 0 && all(legs, l => leg_within_grants(leg: l))
+}
+
+// THE RED's other half: a leg elevating a program no grant names is outside the roster.
+test fn a_leg_elevating_an_ungranted_program_is_outside_the_grants() -> Bool {
+  !granted(word: "/usr/bin/rsync") && !granted(word: "/definitely/not/granted")
+}
+
+// A PLAN THAT ONLY CHANGES THE BINARY installs it and restarts the process, and never touches the tree.
+fn binary_only_plan(spec: DeploymentSpec) -> ReleaseEffectPlan {
+  uniform_release_plan(
+    roster: deployment_member_roster(spec: spec),
+    target: deploy_witness_release_target(spec: spec),
+    mutation_for: m => match m {
+      Executable => InstallExecutable
+      ServiceProcess => RestartService
+      _ => KeepMember
+    },
+  )
+}
+
+test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = legs_of(p: plan_for(spec: spec, plan: binary_only_plan(spec: spec)))
+  has_step(legs: legs, step: "executable-install")
+    && has_step(legs: legs, step: "serve-restart")
+    && !has_step(legs: legs, step: "tree-sync-restart")
+    && !has_step(legs: legs, step: "serve-unit")
+}
+
+// A PLAN THAT KEEPS EVERY MEMBER installs, publishes and restarts nothing of the release.
+test fn a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = legs_of(p: plan_for(spec: spec, plan: uniform_release_plan(
+    roster: deployment_member_roster(spec: spec),
+    target: deploy_witness_release_target(spec: spec),
+    mutation_for: m => KeepMember,
+  )))
+  has_step(legs: legs, step: "object-source")
+    && !has_step(legs: legs, step: "executable-install")
+    && !has_step(legs: legs, step: "tree-sync-restart")
+    && !has_step(legs: legs, step: "serve-unit")
+    && !has_step(legs: legs, step: "serve-restart")
+}
+
+// THE HOST BROKER IS A SINGLETON: the lab twin neither writes nor restarts it; the owning production
+// apply does (the positive control without which the first is satisfied by an apply that never
+// writes the broker).
+test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
+  let legs = full_legs(spec: lab_spec())
+  count(legs) > 0
+    && !has_step(legs: legs, step: "approval-broker-tree")
+    && !has_step(legs: legs, step: "approval-broker-unit")
+    && !has_step(legs: legs, step: "approval-broker-restart")
+    && !deployment_owns_the_host_approval_broker(spec: lab_spec())
+}
+
+test fn the_owning_apply_does_write_and_restart_the_host_broker() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  deployment_owns_the_host_approval_broker(spec: deployment_spec_srv1())
+    && step_index(legs: legs, step: "approval-broker-tree") < step_index(legs: legs, step: "approval-broker-unit")
+    && step_index(legs: legs, step: "serve-restart") < step_index(legs: legs, step: "approval-broker-restart")
+}
+
+// THE TWIN'S LAUNCHER GRANT IS ITS OWN: the lab and production grants install different sudoers files.
+fn grant_sudoers_path(legs: List<DeployApplyLeg>) -> String {
+  match legs {
+    Empty => ""
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegRootHelperGrant { site: s, receipt: _, revision: _ } => s.sudoers_path
+        ApplyLegCommand { step: _, command: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, payload: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegRepairDirectoryEntries { command: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegReport { step: _, line: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegEnsureDirectory { target: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegHelperGrant { revision: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegObjectSource => grant_sudoers_path(legs: rest)
+        ApplyLegDigestVerify { step: _, path: _, digest: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegBrokerTree { revision: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegRetract { step: _, leg: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegDependency { dep: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => grant_sudoers_path(legs: rest)
+      }
+  }
+}
+
+test fn the_lab_and_production_applies_install_their_own_launcher_grants() -> Bool {
+  let prod = grant_sudoers_path(legs: full_legs(spec: deployment_spec_srv1()))
+  let lab = grant_sudoers_path(legs: full_legs(spec: lab_spec()))
+  prod != "" && lab != "" && prod != lab
+    && string_contains(s: prod, pattern: deployment_spec_srv1().instance_id as String)
+    && string_contains(s: lab, pattern: lab_spec().instance_id as String)
+}
+
+// THE LAB OIDC CONFIG REFUSES WITHOUT AN OBSERVER CLOCK, rather than reading an unknown as no file owed.
+test fn lab_apply_oidc_refuses_without_an_observer_clock() -> Bool {
+  let spec = lab_spec()
+  match deploy_apply_oidc_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
+    ApplyPlanRefused { step: s, reason: r } => s == "oidc-config" && string_contains(s: r, pattern: "observer clock unreadable")
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+fn timer_step(spec: DeploymentSpec) -> DeploymentArtifactStep {
+  DeploymentArtifactStep { kind: ComposeOwned { kind: FleetConvergeTimerUnit }, path: "/etc/systemd/system/ctrl-fleet-converge.timer" as NonEmptyStr }
+}
+
+// A SPEC STILL NAMING THE RETIRED FLEET-CONVERGE TIMER refuses the plan; the timer is never installed.
+test fn a_retired_fleet_converge_timer_step_refuses_the_plan() -> Bool {
+  let spec = deployment_spec_srv1()
+  match deploy_apply_step_plan(
+    step: ArtifactStep { step: timer_step(spec: spec) },
+    effects: [],
+    spec: spec,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    source_root: "/src",
+    oidc_now: Absent,
+  ) {
+    ApplyPlanRefused { step: s, reason: _ } => s == "fleet-converge-timer"
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+// THE SIDECAR'S DIGEST ENV FILE READS THE SIDECAR AS INSTALLED, never the gunbc binary of the same locus, and
+// it is written after the install and before the sidecar unit is restarted.
+fn env_binary(legs: List<DeployApplyLeg>) -> String {
+  match legs {
+    Empty => ""
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
+        ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, payload: _ } => env_binary(legs: rest)
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
+        ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
+        ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
+        ApplyLegEnsureDirectory { target: _ } => env_binary(legs: rest)
+        ApplyLegHelperGrant { revision: _ } => env_binary(legs: rest)
+        ApplyLegObjectSource => env_binary(legs: rest)
+        ApplyLegDigestVerify { step: _, path: _, digest: _ } => env_binary(legs: rest)
+        ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => env_binary(legs: rest)
+        ApplyLegBrokerTree { revision: _ } => env_binary(legs: rest)
+        ApplyLegRetract { step: _, leg: _ } => env_binary(legs: rest)
+        ApplyLegDependency { dep: _ } => env_binary(legs: rest)
+      }
+  }
+}
+
+test fn the_sidecar_digest_env_reads_the_installed_sidecar_and_no_other() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = full_legs(spec: spec)
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  env_binary(legs: legs) == device_crypto_sidecar_binary_path(spec: spec, revision: rev)
+    && env_binary(legs: legs) != release_locus_binary_path(root: spec.approval_broker.repo_root as String, revision: rev)
+    && step_index(legs: legs, step: "approval-broker-tree") < step_index(legs: legs, step: "device-crypto-digest-env")
+    && step_index(legs: legs, step: "device-crypto-digest-env") < step_index(legs: legs, step: "device-crypto-sidecar-restart")
+}
+
+// THE SIDECAR STANDS BEFORE THE BROKER UNIT IS SWAPPED (#14685, run 39545280023): the sidecar's unit, reload,
+// enable and restart all precede the broker's slice and unit legs, and the broker's own restart comes after
+// them. The bash claim this replaces read approval_broker_lifecycle_steps; here it is the real srv1 plan.
+test fn the_sidecar_starts_before_the_broker_unit_is_swapped() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  let restart = step_index(legs: legs, step: "device-crypto-sidecar-restart")
+  all(["device-crypto-sidecar-unit", "device-crypto-sidecar-reload", "device-crypto-sidecar-enable", "device-crypto-sidecar-restart",
+       "approval-broker-slice-unit", "approval-broker-unit", "approval-broker-restart"], st => has_step(legs: legs, step: st))
+    && step_index(legs: legs, step: "device-crypto-sidecar-unit") < step_index(legs: legs, step: "device-crypto-sidecar-reload")
+    && step_index(legs: legs, step: "device-crypto-sidecar-reload") < step_index(legs: legs, step: "device-crypto-sidecar-enable")
+    && step_index(legs: legs, step: "device-crypto-sidecar-enable") < restart
+    && restart < step_index(legs: legs, step: "approval-broker-slice-unit")
+    && restart < step_index(legs: legs, step: "approval-broker-unit")
+    && step_index(legs: legs, step: "approval-broker-unit") < step_index(legs: legs, step: "approval-broker-restart")
+}
+
+// C1 AND C2 THROUGH THE PRODUCTION ADAPTER. The run-witness controls supply the ensure-directory and
+// retract ports, so they stop at the dispatch. Here the ports are production's deploy_apply_ports_on_host
+// over EmitArtifactThenThinRun, a real transport arm that refuses typed argv before any command, and the
+// leg is the real srv1 plan's own: the run stops at that leg, and the transport's refusal survives into
+// the reason (an unreadable directory never reads as absent). An adapter that no longer reaches C1 or C2
+// cannot produce this reason.
+fn refusing_production_ports() -> DeployApplyPorts {
+  deploy_apply_ports_on_host(
+    spec: deployment_spec_srv1(),
+    principal: ci_deploy_srv1_access.principal,
+    source_root: "/src",
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "true" },
+      invocation: ThinInvocation { argv: ["true"] },
+    },
+    intent: the_intent(),
+  )
+}
+
+fn first_ensure_directory_leg(legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  match legs {
+    Empty => []
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegEnsureDirectory { target: _ } => [h]
+        _ => first_ensure_directory_leg(legs: rest)
+      }
+  }
+}
+
+fn first_retract_leg(legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  match legs {
+    Empty => []
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegRetract { step: _, leg: _ } => [h]
+        _ => first_retract_leg(legs: rest)
+      }
+  }
+}
+
+fn stops_at_the_leg_with_the_transport_refusal(legs: List<DeployApplyLeg>) -> Bool {
+  let run = deploy_apply_run_legs(legs: legs, ports: refusing_production_ports())
+  let refused = match run {
+    ApplyRunFailed { step: _, reason: r, legs_run: n } => n == 0 && string_contains(s: r, pattern: "EmitArtifactThenThinRun")
+    ApplyRunOk { legs_run: _, reports: _ } => false
+  }
+  count(legs) == 1 && refused
+}
+
+test fn the_production_adapter_reaches_c1_and_the_typed_transport_refusal() -> Bool {
+  stops_at_the_leg_with_the_transport_refusal(legs: first_ensure_directory_leg(legs: full_legs(spec: deployment_spec_srv1())))
+}
+
+test fn the_production_adapter_reaches_c2_and_the_typed_transport_refusal() -> Bool {
+  stops_at_the_leg_with_the_transport_refusal(legs: first_retract_leg(legs: full_legs(spec: deployment_spec_srv1())))
+}

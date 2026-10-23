@@ -18,6 +18,7 @@ import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_see
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
 import gunbc.ambiguity_ban_admission { ambiguity_ban_seed_growth_justification }
 import gunbc.decl_facts_shared_memo_seed_growth { decl_facts_shared_memo_seed_growth_justification }
+import gunbc.decl_facts_field_binder_seed_growth { decl_facts_field_binder_seed_growth_justification }
 import gunbc.decl_facts_authored_string_attach_seed_growth {
   collect_authored_string_literals_seed_growth_justification,
   authored_string_literal_edge_seed_growth_justification,
@@ -68,7 +69,6 @@ import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
 import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
-import gunbc.decl_ref_census_seed_growth { decl_ref_census_seed_growth_justification }
 import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
 import gunbc.bootstrap_witness_diagnostic_count_seed_growth { bootstrap_witness_diagnostic_count_seed_growth_justification }
 import gunbc.interpolation_hole_census_seed_growth { interpolation_hole_census_seed_growth_justification }
@@ -332,7 +332,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,
     dependency_demand_census_seed_growth_justification,
-    decl_ref_census_seed_growth_justification,
     generic_identity_census_seed_growth_justification,
     bootstrap_witness_diagnostic_count_seed_growth_justification,
     interpolation_hole_census_seed_growth_justification,
@@ -373,6 +372,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     regen_scope_worktree_seed_growth_justification,
     regen_rustfmt_batch_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
+    decl_facts_field_binder_seed_growth_justification,
     collect_authored_string_literals_seed_growth_justification,
     authored_string_literal_edge_seed_growth_justification,
     with_authored_string_literals_seed_growth_justification,

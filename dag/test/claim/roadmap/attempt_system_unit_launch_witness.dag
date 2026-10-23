@@ -24,10 +24,6 @@ import gunbc.live_deploy.slice_bounds {
   attempt_worker_slice_memory_high,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
-import gunbc.live_deploy.emit {
-  attempt_system_unit_grant_steps, attempt_system_unit_grant_steps_for_instance,
-  attempt_system_unit_grant_launch_argv_refused_poison, apply_intent_from_effects,
-}
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
@@ -266,79 +262,6 @@ test fn each_instance_sudoers_body_pins_its_named_instance_root() -> Bool {
   }
 }
 
-// DISCRIMINATING: sudoers pins the sha-addressed root-owned launcher, not the requester-writable
-// instance binary or checkout. The deploy grant installs that tree as root (privileged copy +
-// readback) and writes the sudoers body that names it.
-test fn the_launcher_grant_pins_a_root_owned_release_the_deploy_installs() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
-  let dir = attempt_system_unit_launcher_dir(instance: live, revision: rev)
-  match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: live, revision: rev)) {
-    Absent => false
-    Present { value: body } => {
-      let steps = pipeline_steps_text(steps: attempt_system_unit_grant_steps(
-        spec: deployment_spec_srv1(),
-        principal: fleet_posix_ci_runner_principal(),
-        revision: rev,
-      ))
-      string_contains(s: dir, pattern: attempt_system_unit_launcher_helpers_root)
-        && string_contains(s: dir, pattern: live.instance_id as String)
-        && string_contains(s: dir, pattern: deploy_witness_release_revision as String)
-        && string_contains(s: body, pattern: dir)
-        && string_contains(s: body, pattern: gunbc_release_bin_name)
-        && !string_contains(s: body, pattern: live.serve_binary as String)
-        && !string_contains(s: body, pattern: live.repo_root as String)
-        && string_contains(s: steps, pattern: dir)
-        && string_contains(s: steps, pattern: "'--no-preserve=all'")
-        && string_contains(s: steps, pattern: "'-o' 'root' '-g' 'root'")
-        && string_contains(s: steps, pattern: dir)
-    }
-  }
-}
-
-// THE DEPLOY RUNS THE GRANT (review 80299). The grant fold above is the shape; whether a deploy installs it is a
-// fact of the apply the real producer emits (apply_intent_from_effects over the instance's spec, a full
-// install), so these claims read that apply. The grant once sat on an emit_artifact_upsert arm no apply
-// reaches while the fold's own claim stayed green. Each instance's apply installs its own grant and never
-// the other instance's: a lab apply never touches production's privilege surface.
-fn full_install_apply_text(spec: DeploymentSpec) -> String {
-  join(map(
-    apply_intent_from_effects(
-      spec: spec,
-      effects: apply_empty_host_effects(spec: spec),
-      access: ci_deploy_srv1_access,
-      plan: deploy_witness_full_install_plan(spec: spec),
-      cap_authorization: CapConvergeWithheld { cause: "the launcher grant claims are not about the cap step" },
-      oidc_now: claim_oidc_now(),
-      object_source_serve: apply_complete_object_source_serve(),
-    ).steps,
-    st => pipeline_step_text(st: st)
-  ), "")
-}
-
-fn apply_installs_only_its_own_grant(spec: DeploymentSpec, own: HostDashboardInstance, other: HostDashboardInstance) -> Bool {
-  let text = full_install_apply_text(spec: spec)
-  string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: own))
-    && string_contains(s: text, pattern: join([attempt_system_unit_launcher_helpers_root, "/", own.instance_id as String], ""))
-    && !string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: other))
-}
-
-test fn the_production_full_install_apply_installs_the_production_launcher_grant() -> Bool {
-  apply_installs_only_its_own_grant(
-    spec: deployment_spec_srv1(),
-    own: srv1_live_dashboard_instance(),
-    other: srv1_lab_dashboard_instance(),
-  )
-}
-
-test fn the_lab_full_install_apply_installs_only_the_lab_launcher_grant() -> Bool {
-  apply_installs_only_its_own_grant(
-    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
-    own: srv1_lab_dashboard_instance(),
-    other: srv1_live_dashboard_instance(),
-  )
-}
-
 fn apply_needle_precedes(text: String, earlier: String, later: String) -> Bool {
   string_contains(s: text, pattern: earlier)
     && string_contains(s: text, pattern: later)
@@ -346,24 +269,6 @@ fn apply_needle_precedes(text: String, earlier: String, later: String) -> Bool {
       Absent => false
       Present { value: prefix } => !string_contains(s: prefix, pattern: later)
     }
-}
-
-test fn the_full_install_apply_installs_the_attempt_worker_slice_with_bounds_before_the_grant() -> Bool {
-  let live = srv1_live_dashboard_instance()
-  let text = full_install_apply_text(spec: deployment_spec_srv1())
-  let dest = gunbc_attempt_worker_slice_unit_path() as String
-  let grant = attempt_system_unit_sudoers_path(instance: live)
-  match attempt_worker_slice_memory_high() {
-    UserWorkSliceHighGapExceedsMax => false
-    UserWorkSliceHighDerived { bytes: high } =>
-      string_contains(s: dest, pattern: "/etc/systemd/system/")
-        && string_contains(s: dest, pattern: attempt_worker_slice_unit_name as String)
-        && string_contains(s: text, pattern: dest)
-        && string_contains(s: text, pattern: join(["MemoryMax=", to_string(byte_size_count(b: attempt_worker_slice_memory_max))], ""))
-        && string_contains(s: text, pattern: join(["MemoryHigh=", to_string(byte_size_count(b: high))], ""))
-        && string_contains(s: text, pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], ""))
-        && apply_needle_precedes(text: text, earlier: dest, later: grant)
-  }
 }
 
 fn instance_toolchain_has_systemd_run(instance: HostDashboardInstance) -> Bool {
@@ -857,24 +762,6 @@ fn sudoers_refused_separator(reading: AttemptSystemUnitSudoersText) -> Bool {
         NamedArgumentAdmitted { argument: _ } => false
       }
   }
-}
-
-test fn an_instance_root_holding_the_separator_refuses_at_argv_sudoers_and_grant() -> Bool {
-  let inst = live_with_instance_root(root: "/tmp/gunbc=separator" as FilePath)
-  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
-  let steps = pipeline_steps_text(steps: attempt_system_unit_grant_steps_for_instance(
-    spec: deployment_spec_srv1(),
-    principal: fleet_posix_ci_runner_principal(),
-    instance: inst,
-    revision: rev,
-  ))
-  launch_argv_refused_separator(reading: attempt_system_unit_launch_gunbc_argv_at(instance: inst, revision: rev))
-    && launch_argv_refused_separator(reading: attempt_system_unit_launch_flocked_argv_at(instance: inst, revision: rev))
-    && launch_argv_refused_separator(reading: attempt_system_unit_launch_host_argv_at(instance: inst, revision: rev))
-    && sudoers_refused_separator(reading: attempt_system_unit_sudoers_line(instance: inst, revision: rev))
-    && sudoers_refused_separator(reading: attempt_system_unit_sudoers_body(instance: inst, revision: rev))
-    && string_contains(s: steps, pattern: attempt_system_unit_grant_launch_argv_refused_poison)
-    && string_contains(s: steps, pattern: "holds the separator")
 }
 
 test fn a_declared_instance_launch_argv_stays_ready() -> Bool {
