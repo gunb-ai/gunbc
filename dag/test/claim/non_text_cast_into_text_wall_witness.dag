@@ -45,6 +45,8 @@ data string_value_source: String = "module probe_text_cast_string\nimport std.ty
 
 data identity_source: String = "module probe_text_cast_identity\nimport std.types { NonEmptyStr }\nfn label(s: NonEmptyStr) -> NonEmptyStr { s as NonEmptyStr }\n"
 
+data user_declared_int_source: String = "module probe_user_declared_int\nimport std.types { String, NonEmptyStr }\ntype Int { label: String }\nfn label(x: Int) -> NonEmptyStr { x as NonEmptyStr }\n"
+
 data non_text_target_source: String = "module probe_non_text_cast_float_target\nimport std.types { Int, Float }\nfn widen(n: Int) -> Float { n as Float }\n"
 
 test fn w_int_as_non_empty_text_is_refused() -> Bool { blocking_count(source: int_source) >= 1 }
@@ -64,3 +66,9 @@ test fn w_string_value_cast_is_not_this_wall() -> Bool { blocking_count(source: 
 test fn w_non_empty_text_identity_cast_is_accepted() -> Bool { blocking_count(source: identity_source) == 0 }
 
 test fn w_non_text_cast_not_into_text_is_still_accepted() -> Bool { blocking_count(source: non_text_target_source) == 0 }
+
+// KEYED ON IDENTITY, NOT SPELLING: a corpus type that happens to be named Int is not the kernel Int,
+// so the wall does not fire on it (a leaf-name check would). A record cast is outside the cast domain
+// and this wall's question, so the fixture compiles with no blocking diagnostic.
+test fn w_user_declared_type_spelled_int_is_not_the_kernel_int() -> Bool { blocking_count(source: user_declared_int_source) == 0 }
+

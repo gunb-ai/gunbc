@@ -145,7 +145,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -7481,12 +7481,17 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-// A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table above names no row into
-// NonEmptyStr, and a source outside the table's domain passes validate_cast unjudged, so
-// `n as NonEmptyStr` over an Int, Bool, Float, Unit or Nat compiled clean and re-typed a number as
-// text; test.claim.non_text_cast_into_text_wall_witness holds the five REDs and four GREENs. The
-// refusal is keyed on the kernel's own names: these mints are distinct nominal types with no text
-// representation, so the set is closed, not a heuristic.
+// A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table names no row into NonEmptyStr, and
+// validate_cast passes a source outside the table's domain unjudged, so `n as NonEmptyStr` over an Int,
+// Bool, Float, Unit or Nat compiled clean and re-typed a number as text;
+// test.claim.non_text_cast_into_text_wall_witness holds the five REDs, the GREENs, and the RED that a
+// user-declared type SPELLED Int is not the kernel Int.
+//
+// KEYED ON IDENTITY, NEVER ON SPELLING (DESIGN section 4). The four kernel sources are read by their
+// mint provenance (node_is_kernel_mint_named over the resolved node), Nat and the NonEmptyStr target by
+// the declaration their type reference resolves to (type_reference_declaration_reading). A corpus type
+// that happens to be named Int is CorpusDeclared, so it is not the kernel mint and is not refused here.
+// The check needs the TypeEnv, so it runs at the ExprCast arm beside validate_cast rather than inside it.
 //
 // WHY A LEAF HERE AND NOT A TABLE ROW (DESIGN section 6b, root generalization). The earliest
 // unjustified boundary is validate_cast's out-of-domain pass-through, and this is its SECOND local
@@ -7498,8 +7503,30 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
 // cast consumer asks its own inhabitance judgment, and the out-of-domain arm then judges all
 // targets, not one. String as a target is deliberately out of scope here: this change refuses only
 // into NonEmptyStr, as ruled.
-fn is_non_text_kernel_cast_source(name: String) -> Bool {
-  name == "Int" || name == "Float" || name == "Bool" || name == "Unit" || name == "Nat"
+fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScope) -> Bool {
+  match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } => declaration_ref_eq(a: d, b: wanted)
+    _ => false
+  }
+}
+
+fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
+  node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
+    || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
+    || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
+}
+
+fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  match source_inferred {
+    Present { value: Resolved { node: src_node } } =>
+      if type_node_names_declaration(n: target_type, wanted: decl_ref(module_path: "std.types", decl_name: "NonEmptyStr"), scope: scope)
+        && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
+        let si = scope.type_env.source_indices
+        let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
+        [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
+      } else { [] }
+    _ => []
+  }
 }
 
 fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String) -> ErrorNode? {
@@ -7511,10 +7538,6 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
-      }
-      else if qualified_last_segment(name: target_name) == "NonEmptyStr" && is_non_text_kernel_cast_source(name: qualified_last_segment(name: source_name)) {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
-        Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
       }
       else if !is_dag_cast_domain_type(name: source_name) { none }
       else if !is_dag_cast_domain_type(name: target_name) { none }
@@ -10551,6 +10574,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         module_name: scope.module_name
       )
       let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
+      let cast_non_text_diags = non_text_kernel_cast_into_non_empty_text_diags(source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
         value_expr: inner_typed,
@@ -10561,7 +10585,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let cast_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        emissions: infer_emissions_concat(left: inner_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(cast_diags, cast_optional_diags, cast_sole_ctor_diags, cast_refinement_diags)))
+        emissions: infer_emissions_concat(left: inner_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(cast_diags, cast_optional_diags, cast_sole_ctor_diags, cast_non_text_diags, cast_refinement_diags)))
       }
 
     ExprForEach =>
