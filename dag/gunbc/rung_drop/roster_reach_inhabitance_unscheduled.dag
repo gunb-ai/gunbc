@@ -1,7 +1,7 @@
 module gunbc.rung_drop.roster_reach_inhabitance_unscheduled
 
 import std.types { NonEmptyStr, List, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, population_from_list }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for the real call-reach walk behind the roster-token witness (DESIGN 3 pairing
@@ -31,7 +31,7 @@ data roster_reach_inhabitance_unscheduled: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "gunbc.instruments.roster_reach_inhabitance, run by operator dispatch of //gunbc/instruments:roster-reach-inhabitance" },
-    population: roster_reach_inhabitance_unscheduled_population(),
+    population: population_from_list(xs: roster_reach_inhabitance_unscheduled_population()),
     restoration_trigger: "CAPABILITY: the call-reach walk (fn_arrow_decl_facts_live over the runner and fleet pool) completes inside the runner envelope, so it is enrolled on a lane or cadence that executes it to a terminal verdict on every change touching that pool. MEASURED RECEIPT: gunbc.instruments.roster_reach_inhabitance at b5e586bfc2b on srv1 (20 GiB cap, swap 0) hit rc=124 at the 10800s timeout with memory.peak 20,807,602,176 bytes (19.4 GiB) and never left pre-entry -- a proven cost-shape defect, named here as the next-rung trigger, not a timeout to raise. INTERIM INHABITANCE RECEIPT, to be linked when it exists and not claimed in advance: the first live fleet-converge runner_host_file_converge run on srv3 after #14814 lands, whose roster read must succeed through the real path"
   } }
 }
