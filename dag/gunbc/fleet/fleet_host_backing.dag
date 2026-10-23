@@ -73,18 +73,15 @@ type OwnedProvisioning { control: OwnedControlRoute, delivery: OwnedOsDelivery }
 // becomes a capability of the control route, so a delivery cannot name a medium its route lacks, owed at the
 // first non-BMC delivery medium (PXE, the network-boot cut). Splitting the medium out of delivery alone is not
 // sufficient.
-type OwnedProvisioningRefusalCause
-  = VirtualMediaInstallWithoutBmc
-
 type OwnedProvisioningAdmission
   = OwnedProvisioningAdmitted
-  | OwnedProvisioningRefused { cause: OwnedProvisioningRefusalCause }
+  | OwnedProvisioningRefused { provisioning: OwnedProvisioning }
 
 fn admit_owned_provisioning(provisioning: OwnedProvisioning) -> OwnedProvisioningAdmission {
   match provisioning.control {
     Bmc => OwnedProvisioningAdmitted
     NoOutOfBand => match provisioning.delivery {
-      InstalledViaVirtualMedia => OwnedProvisioningRefused { cause: VirtualMediaInstallWithoutBmc }
+      InstalledViaVirtualMedia => OwnedProvisioningRefused { provisioning: provisioning }
       ApplianceImage => OwnedProvisioningAdmitted
       RamImageBoot => OwnedProvisioningAdmitted
     }

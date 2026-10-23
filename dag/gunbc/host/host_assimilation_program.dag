@@ -95,7 +95,7 @@ import gunbc.fleet.fleet_enrollment {
 fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool {
   match backing {
     OwnedMachine { provisioning: OwnedProvisioning { control: c, delivery: d }, unit: _ } => match admit_owned_provisioning(provisioning: OwnedProvisioning { control: c, delivery: d }) {
-      OwnedProvisioningRefused { cause: _ } => false
+      OwnedProvisioningRefused { provisioning: _ } => false
       OwnedProvisioningAdmitted => match p {
         BmcCredentialConverge => match c {
           Bmc => true
