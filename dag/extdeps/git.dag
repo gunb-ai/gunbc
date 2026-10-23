@@ -1302,6 +1302,18 @@ fn git_in_trusted_repository_args(repo: NonEmptyStr) -> List<String> {
   append(git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }), items: ["-C", repo as String])
 }
 
+// A FULL TRUSTED CALL: `git -c safe.directory=<repo> -C <repo> <verbs...>`, PROGRAM WORD FIRST. This
+// composes the two single-owner builders rather than laying argv out by hand at each call site: the
+// program word comes from git_argv_of_args (the one place that decides where `git` sits) and the trusted
+// `safe.directory`/`-C` shape comes from git_in_trusted_repository_args (the one place that decides what
+// those words look like). Hand-concatenating them is where the order silently goes wrong -- putting the
+// `-c safe.directory=... -C <repo>` words BEFORE the program word runs `-c` as the program, which prints
+// nothing and exits, so a caller comparing the captured output sees the empty string and mis-decides.
+// The program word cannot drift to the back of the list at a second site, because there is no second site.
+fn git_in_trusted_repository_argv(repo: NonEmptyStr, verbs: List<String>) -> List<String> {
+  git_argv_of_args(args: concat(git_in_trusted_repository_args(repo: repo), items: verbs))
+}
+
 // gitrepository-layout(5): a non-bare repository keeps its GIT_DIR in the `.git` directory at the
 // root of its working tree.
 data git_non_bare_git_dir_name: String = ".git"

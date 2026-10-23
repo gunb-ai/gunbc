@@ -67,6 +67,7 @@ import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.live_deploy.emit {
   dashboard_git_worker_repository_premise_gate_command_text,
   dashboard_git_worker_repository_premise_refusal_sentence,
+  dashboard_git_worker_repository_premise_headless_refusal_sentence,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, DashboardLocalProvision, DashboardEnsureGitSharedRepositoryPosture,
@@ -1464,11 +1465,15 @@ test fn the_premise_gate_admits_a_detached_head_repository() -> Bool {
   }
 }
 
-// REFUSE STATE 1 -- the FABRICATION: a .git DIRECTORY with objects/refs/logs and NO HEAD. Refuses with
-// a NONZERO exit and a non-empty stdout sentence. The verdict tolerates which premise fires first, since
-// --absolute-git-dir is version-sensitive here: the refusal must be one of the model's OWN two
-// sentences (path or HEAD), so it is compared to the builders (no prose is re-typed) and a silent admit
-// -- empty stdout, exit 0 -- fails. This is THE discriminating arm and the one the HEAD premise added.
+// REFUSE STATE 1 -- the FABRICATION: a .git DIRECTORY with objects/refs/logs and NO HEAD. This is THE
+// discriminating arm (the one the HEAD premise added) and the one that must not pass by accident, so it
+// pins WHICH premise refuses, not just that a refusal happened. On the qualification host's git (2.43)
+// git rev-parse --absolute-git-dir resolves a HEAD-less .git with exit 0 and prints <repo>/.git -- so the
+// PATH premise is SATISFIED and it is the HEAD premise (both HEAD reads empty) that does the refusing.
+// The gate therefore prints the HEAD premise's OWN sentence, and the claim asserts it EXACTLY (trimmed,
+// straight from the builder -- no prose re-typed) alongside a NONZERO exit. A gate that merely broke
+// (bare operand, arity error, silent admit) cannot print this sentence by accident. The head-asserting
+// find below first proves the state really is HEAD-less, so this is the fabrication and not a real repo.
 test fn the_premise_gate_refuses_a_headless_dot_git_skeleton() -> Bool {
   let root = wre3_scratch_root()
   if root == "" {
@@ -1480,8 +1485,11 @@ test fn the_premise_gate_refuses_a_headless_dot_git_skeleton() -> Bool {
       && wet_ok(command: mkdir_parents_command(path: join([skel, "/.git/logs/refs/heads"], "")))
     // The state really is HEAD-less; if git had written a HEAD this would not be the fabrication.
     let headless = !wet_ok(command: find_path_probe_command(path: join([skel, "/.git/HEAD"], ""), kind: "f", clause: []))
+    // The HEAD premise is the refusing one on the host's git, so assert ITS sentence exactly -- not the
+    // shared "repository premise:" prefix, which the path premise also carries and which a broken gate
+    // could satisfy for the wrong reason.
     let refused = !wre3_gate_passes(repo: skel)
-      && string_contains(s: wre3_gate_stdout(repo: skel), pattern: "gunbc-deploy-refused: repository premise:")
+      && wre3_gate_stdout(repo: skel) == trim(s: dashboard_git_worker_repository_premise_headless_refusal_sentence(repo: skel))
     let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
     planted && headless && refused && cleaned
   }
