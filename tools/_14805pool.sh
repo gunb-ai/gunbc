@@ -95,7 +95,7 @@ for f in $FILES; do
         run_chunk "${tag}_rt_$(echo $nm | cut -c1-24)" "$ent" "$nm"
       done
     done
-    cnt=${#CLAIMS[@]}; i=$((i+cnt)); tagn=$((tagn+1))
+    step=$((N*CHUNK)); if [ $step -gt ${#CLAIMS[@]} ]; then step=${#CLAIMS[@]}; fi; i=$((i+step)); tagn=$((tagn+1))
     true
   done
   echo "FILEDONE $TREE $f $(date -u +%H:%M:%S)Z"
