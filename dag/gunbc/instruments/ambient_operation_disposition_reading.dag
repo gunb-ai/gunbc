@@ -74,7 +74,7 @@ fn claim_change_text(c: AmbientOperationClaim) -> String {
 
 // THE DECLARED-CALLABLE CANDIDATES for a collection-roster spelling. A roster row (AlgebraFieldTemplate) is a
 // template, not a callable declaration, so a roster spelling is class A only when a declared callable already
-// implements it, and class B when none does (manager ruling, tidy-ant-251, on the declared-callable reading).
+// implements it, and class B when none does (manager direction, tidy-ant-251, on the declared-callable reading).
 // The table names the candidate by declaration identity only; it is
 // a manager-named candidate, not a derivation: the census prints the declaration row when the module
 // contributes, and the column says when it did not. A spelling absent from the table has no candidate.
@@ -245,7 +245,7 @@ fn classify_declared_row(spelling: String, source: String, target: String, decls
           Present { value: d } => verdict(class: DispositionA, basis: BasisDeclaredCandidate, evidence: "the roster row " + target + " is a template, not a callable; the printed declaration " + declaration_evidence(decl: d) + " is the candidate (name from the manager's table; argument types not compared)")
           Absent => verdict(class: DispositionA, basis: BasisManagerDirection, evidence: "UNVERIFIED: " + c.module + "." + c.name + " is named by manager direction as the declared callable, but the census printed no declaration row for it (" + c.module + " is a refused declarer), so no executed evidence confirms it; trigger: derive the candidate when " + c.module + " resolves")
         }
-      Absent => verdict(class: DispositionB, basis: BasisDeclaredCandidate, evidence: "none in the N7 closure: the roster row " + target + " is a template, not a callable declaration")
+      Absent => verdict(class: DispositionB, basis: BasisHeuristicNoNameMatch, evidence: "none in the N7 closure: the roster row " + target + " is a template, not a callable declaration")
     }
   } else {
     match declaration_named(decls: decls, name: spelling) {
@@ -345,6 +345,13 @@ fn control_binding(name: String, source: String, target: String) -> String {
   "binding\tctl.mod\t" + name + "\t0\t" + source + "\t" + target + "\t1:1"
 }
 
+fn control_basis_of(rows: List<DispositionRow>, spelling: String) -> String {
+  match first(rows |> filter(r => r.spelling == spelling)) {
+    Present { value: r } => disposition_basis_text(basis: r.verdict.basis)
+    Absent => "missing-row"
+  }
+}
+
 fn control_class_of(rows: List<DispositionRow>, spelling: String) -> String {
   match first(rows |> filter(r => r.spelling == spelling)) {
     Present { value: r } => disposition_class_text(class: r.verdict.class)
@@ -364,19 +371,24 @@ fn disposition_classifier_control_failure() -> Optional<String> {
 }
 
 fn disposition_classifier_control_for(d: String) -> Optional<String> {
-  let stdout = "binding_declaration\tctl.decl\tctl_decl\tfn\t() -> Int\nbinding_declaration\tctl.decl\tctl_named\tfn\t() -> Int\n"
+  let stdout = "binding_declaration\tctl.decl\tctl_decl\tfn\t() -> Int\nbinding_declaration\tctl.decl\tctl_named\tfn\t() -> Int\nbinding_declaration\tstd.algebra\tlist_map\tfn\t() -> Int\n"
     + control_binding(name: "list_push", source: "ambient:ctl_table", target: "ctl.none") + "\n"
     + control_binding(name: "ctl_gen", source: "generated", target: "ctl.gen") + "\n"
     + control_binding(name: d, source: "ambient:ctl_table", target: "ctl.none") + "\n"
     + control_binding(name: "fold", source: "ambient:collection_roster", target: "std.algebra.collection_fold_shape") + "\n"
+    + control_binding(name: "map", source: "ambient:collection_roster", target: "std.algebra.collection_map_shape") + "\n"
     + control_binding(name: "filter", source: "ambient:collection_roster", target: "std.algebra.collection_filter_shape") + "\n"
     + control_binding(name: "ctl_named", source: "ambient:ctl_table", target: "ctl.none") + "\n"
     + control_binding(name: "ctl_missing", source: "ambient:ctl_table", target: "ctl.none") + "\n"
     + control_binding(name: "ctl_kernel", source: "ambient:kernel_ctl", target: "kernel:ctl") + "\n"
   let rows = ambient_operation_rows(tree_stdout: stdout)
   let got = control_class_of(rows: rows, spelling: "list_push") + "," + control_class_of(rows: rows, spelling: "ctl_gen") + "," + control_class_of(rows: rows, spelling: d) + "," + control_class_of(rows: rows, spelling: "fold") + "," + control_class_of(rows: rows, spelling: "ctl_named") + "," + control_class_of(rows: rows, spelling: "ctl_missing") + "," + control_class_of(rows: rows, spelling: "ctl_kernel") + "," + control_class_of(rows: rows, spelling: "filter")
+  let basis_got = control_basis_of(rows: rows, spelling: "map") + "|" + control_basis_of(rows: rows, spelling: "fold") + "|" + control_basis_of(rows: rows, spelling: "filter")
+  let basis_want = disposition_basis_text(basis: BasisDeclaredCandidate) + "|" + disposition_basis_text(basis: BasisManagerDirection) + "|" + disposition_basis_text(basis: BasisHeuristicNoNameMatch)
   let stale_got = join(stale_claims(decls: declaration_lines(stdout: stdout + "binding_declaration\tctl.decl\tlist_push\tfn\t() -> Int\n")), separator: ",")
   if stale_got != "list_push" || count(stale_claims(decls: declaration_lines(stdout: stdout))) != 0 { Present { value: "stale-claim control read '" + stale_got + "', expected list_push when a declaration exists and none otherwise" } }
+  else if basis_got != basis_want { Present { value: "classifier control read bases " + basis_got + ", expected " + basis_want + " (verified candidate, unverified candidate, no candidate)" } }
+  else if control_class_of(rows: rows, spelling: "map") != "A" { Present { value: "the verified-candidate control row map did not reach class A" } }
   else if got == "in-flight,C,D,A,A,B,kernel-grounding,B" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B,kernel-grounding" } }
 }
 
