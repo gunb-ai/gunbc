@@ -4516,12 +4516,14 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
 // ambient primitive contracts as a resolution authority -- the route's entries come from
 // native_lane_candidate_entries with no contract module, and neither do these. THE CLASS IS OPEN
 // (runs of different subject lists still load different populations); it closes at Seat 12's per-name
-// dispositions, added HERE and nowhere else, naming the tier each serves. NO CLAIM FORM CAN GUARD
-// THIS BOUNDARY WHILE THE CONTRACT ROWS STAY OFF THE POPULATION -- measured, four probe rounds
+// dispositions, added HERE and nowhere else, naming the tier each serves. NO CLAIM FORM GUARDS THIS
+// BOUNDARY TODAY, ON MAIN OR AT THIS HEAD -- measured, four probe rounds
 // (banked scratch/qc503-boundary-probe1 through probe4, causes recorded in the ledger row): every
 // claim shape, from `==` over lists down to a bare String-literal equality in a module importing
-// nothing but std.types, refuses at prepare/eval with the grounding-not-derived chain, because
-// claim grounding is itself admitted through the contract rows this ruling removes. An un-executed
+// nothing but std.types, refuses at prepare/eval with the grounding-not-derived chain. The control:
+// the same minimal module refuses identically ON MAIN (scratch/qc503-probe4-on-main @ 7b954f7182cc,
+// cause=eval_rejected_grounding_not_derived) -- this is the claim lane's own grounding requirement,
+// NOT an effect of this rework. An un-executed
 // claim is not a guard (DESIGN section 5), so none is landed. THE GUARD IS THE EXECUTED RUN-PAIR:
 // //gunbc/instruments:v2-native-census-scoped (its census report, baseline-diffed by census_run_diff)
 // run in ONE dispatch at ONE identity beside the route's own parse-label run, as in the acceptance
