@@ -1,6 +1,5 @@
 module v2.test.claim.long.mandatory_tag_gate_witness
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List }
 import v2.compiler.tokenize { tokenize }
@@ -193,7 +192,7 @@ fn roster_rejects_with(probe: GrainProbe, reason: Symbol) -> Bool {
   match probe {
     GrainStageRejected => false
     GrainTree { root: root, channel: _ } =>
-      let inferred = InferredTree { root: root, facts: empty_map(), arm_resolutions: constructed_root_arm_resolutions() }
+      let inferred = InferredTree { root: root, facts: empty_map() }
       fold(required_lenses_at_grain(grain: CompileLensRoot), init: false, f: fn(acc, lens) {
         acc
           || match lens.gate(inferred) {
