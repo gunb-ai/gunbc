@@ -4,7 +4,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.shell
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import std.content_hash { Sha512Hash }
+import std.content_hash { Sha512Hash, serialize_content_hash }
 import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
@@ -201,8 +201,8 @@ test fn materialize_identical_input_twice_reuses_same_release_identity_holds() -
           ) {
             CodexRuntimeMaterialized { bundle: second } => {
               let same_root = (first.root as String) == (second.root as String)
-              let same_receipt = (first.receipt.receipt_identity as String) == (second.receipt.receipt_identity as String)
-              let same_tree = (first.receipt.materialized_tree.tree_identity as String) == (second.receipt.materialized_tree.tree_identity as String)
+              let same_receipt = serialize_content_hash(hash: first.receipt.receipt_identity) == serialize_content_hash(hash: second.receipt.receipt_identity)
+              let same_tree = serialize_content_hash(hash: first.receipt.materialized_tree.tree_identity) == serialize_content_hash(hash: second.receipt.materialized_tree.tree_identity)
               same_root && same_receipt && same_tree
             }
             _ => false

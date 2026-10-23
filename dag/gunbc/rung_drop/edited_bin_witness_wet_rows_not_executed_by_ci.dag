@@ -50,13 +50,11 @@ data edited_bin_witness_wet_rows_not_executed_by_ci: RungDrop = RungDrop {
 
   declared: "2026-09-30",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: LostAsPassenger { carrier: "the per-PR bin-witness wet batch, deleted with the floor cut of 2026-08-15, and .github/workflows/falsifier.yml, deleted at 611fd02770 (gunbc#8283)" },
     population: Enumerated { members: edited_bin_witness_wet_rows_not_executed_by_ci_population },
     restoration_trigger: "a REQUIRED lane executes changed BinWitnessWet rows for the same pull_request or merge_group -- builds their witness binaries and runs the edited entries to a terminal verdict on a host that admits their effects -- so the changed-witness sublane can plan them instead of declining; sufficient for deleting DeclinedNoCiWetLane and this row together",
-  }
+  } }
 }

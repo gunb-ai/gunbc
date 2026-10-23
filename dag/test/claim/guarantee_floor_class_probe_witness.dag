@@ -36,17 +36,17 @@ import gunbc.guarantee_probe_corpus {
   observation_is_clean,
   observation_refused_count,
   observed_is_verdict,
-  census_blocking_count_for_class,
-  census_any_count_for_class,
 }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
   CensusNotRunnable,
 }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list }
+import std.process { ProcessExit }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
 
@@ -162,11 +162,8 @@ fn silent_hole_holds(probe: GuaranteeProbeId, source: String) -> Bool {
   }
 }
 
-fn blocking_count(source: String, wanted: String) -> Int {
-  match census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
-    Present { value: n } => n
-    Absent => -1
-  }
+fn blocking_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: holds)
 }
 
 data generic_instantiation_hole_source: String = "module probe_floor_generic_inst\ntype Boxed<T> { inner: T }\nfn f() -> Boxed<Int> { Boxed { inner: \"not an int\" } }\n"
@@ -197,9 +194,11 @@ test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
   silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
 }
 
-test fn floor_generic_instantiation_monomorphic_control_refuses() -> Bool {
-  row_holds(probe: floor_generic_instantiation_monomorphic_control_probe, source: generic_instantiation_monomorphic_source)
-    && blocking_count(source: generic_instantiation_monomorphic_source, wanted: "TypeMismatch") == 1
+test fn floor_generic_instantiation_monomorphic_control_refuses() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_generic_instantiation_monomorphic_control_probe, source: generic_instantiation_monomorphic_source)),
+    blocking_verdict(source: generic_instantiation_monomorphic_source, wanted: "TypeMismatch", holds: fn(n) { n == 1 })
+  ])
 }
 
 test fn floor_generic_instantiation_green_control_is_clean() -> Bool {
@@ -215,14 +214,18 @@ test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control()
   }
 }
 
-test fn floor_field_through_generics_type_variable_refuses() -> Bool {
-  row_holds(probe: floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)
-    && blocking_count(source: field_through_generics_hole_source, wanted: "InternalError") >= 1
+test fn floor_field_through_generics_type_variable_refuses() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)),
+    blocking_verdict(source: field_through_generics_hole_source, wanted: "InternalError", holds: fn(n) { n >= 1 })
+  ])
 }
 
-test fn floor_field_through_generics_declared_record_control_refuses() -> Bool {
-  row_holds(probe: floor_field_through_generics_record_control_probe, source: field_through_generics_record_source)
-    && blocking_count(source: field_through_generics_record_source, wanted: "InternalError") == 1
+test fn floor_field_through_generics_declared_record_control_refuses() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_record_control_probe, source: field_through_generics_record_source)),
+    blocking_verdict(source: field_through_generics_record_source, wanted: "InternalError", holds: fn(n) { n == 1 })
+  ])
 }
 
 test fn floor_field_through_generics_green_control_is_clean() -> Bool {
@@ -230,14 +233,18 @@ test fn floor_field_through_generics_green_control_is_clean() -> Bool {
     && total_row_count_is_zero(census: census_of(source: field_through_generics_green_source))
 }
 
-test fn floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent() -> Bool {
-  silent_hole_holds(probe: floor_exhaustiveness_type_variable_hole_probe, source: exhaustiveness_type_variable_hole_source)
-    && blocking_count(source: exhaustiveness_type_variable_hole_source, wanted: "NonExhaustiveMatch") == 0
+test fn floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_exhaustiveness_type_variable_hole_probe, source: exhaustiveness_type_variable_hole_source)),
+    blocking_verdict(source: exhaustiveness_type_variable_hole_source, wanted: "NonExhaustiveMatch", holds: fn(n) { n == 0 })
+  ])
 }
 
-test fn floor_record_completeness_missing_field_refuses_blocking() -> Bool {
-  row_holds(probe: floor_record_completeness_red_probe, source: record_completeness_red_source)
-    && blocking_count(source: record_completeness_red_source, wanted: "MissingField") == 1
+test fn floor_record_completeness_missing_field_refuses_blocking() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_record_completeness_red_probe, source: record_completeness_red_source)),
+    blocking_verdict(source: record_completeness_red_source, wanted: "MissingField", holds: fn(n) { n == 1 })
+  ])
 }
 
 test fn floor_record_completeness_green_control_is_clean() -> Bool {
@@ -245,14 +252,18 @@ test fn floor_record_completeness_green_control_is_clean() -> Bool {
     && total_row_count_is_zero(census: census_of(source: record_completeness_green_source))
 }
 
-test fn floor_parse_list_separator_omission_is_still_silent() -> Bool {
-  silent_hole_holds(probe: floor_parse_list_separator_hole_probe, source: parse_list_separator_hole_source)
-    && blocking_count(source: parse_list_separator_hole_source, wanted: "ParseError") == 0
+test fn floor_parse_list_separator_omission_is_still_silent() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_parse_list_separator_hole_probe, source: parse_list_separator_hole_source)),
+    blocking_verdict(source: parse_list_separator_hole_source, wanted: "ParseError", holds: fn(n) { n == 0 })
+  ])
 }
 
-test fn floor_parse_list_separator_doubled_separator_control_refuses() -> Bool {
-  row_holds(probe: floor_parse_list_separator_control_probe, source: parse_list_separator_double_source)
-    && blocking_count(source: parse_list_separator_double_source, wanted: "ParseError") == 1
+test fn floor_parse_list_separator_doubled_separator_control_refuses() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_parse_list_separator_control_probe, source: parse_list_separator_double_source)),
+    blocking_verdict(source: parse_list_separator_double_source, wanted: "ParseError", holds: fn(n) { n == 1 })
+  ])
 }
 
 test fn floor_parse_list_separator_green_control_is_clean() -> Bool {

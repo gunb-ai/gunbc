@@ -39,8 +39,6 @@ import std.durable_compare_and_set {
   cas_attempt,
   ExpectSlotAbsent,
   ExpectSlotGeneration,
-  CasOutcome,
-  CasCommitted,
   CasSlotObservation,
   CasObservedReadable,
   CasObservedUnreadable,
@@ -523,34 +521,49 @@ test fn the_sanctioned_route_inside_the_fixture_admits_its_own_effect() -> Bool 
   )
 }
 
-// KNOWN GAP, KEPT EXECUTABLE RATHER THAN AS PROSE.
+// THE SEAL'S DELIBERATE RED (std.durable_compare_and_set does not seal `CasOutcome`; the sealing change
+// is gunbc#14447). `cas_decide` is a pure fold and nothing in the tree stops a caller authoring a
+// `CasCommitted` and handing it to a consumer with no store involved, because every commit fact a fold
+// could check is caller-authored. The closure obligation is the durable store's: only an admitted
+// realization mints `CasCommitted`.
 //
-// std.durable_compare_and_set does not seal CasOutcome: `cas_decide` is a pure fold and nothing in the
-// tree mints a CasOutcome but the caller, so a caller can author a CasCommitted and reach the admitted
-// arm with no store involved. No fold in any module can close that, because every commit fact a fold
-// could check is caller-authored. The closure obligation is the durable store's — a store-minted,
-// sole_constructor CasOutcome that enrolment_persist takes as its receipt.
-//
-// This control asserts the gap EXISTS, so closing it FLIPS this test rather than letting the module's
-// disclosure quietly go stale.
-test fn known_gap_a_caller_authored_commit_reaches_the_admitted_arm() -> Bool {
-  let state = prepared_state()
-  let verdict = enrolment_persist(
-    state: state,
-    attempt: honest_attempt(state: state),
-    observed: absent_observation(),
-  )
-  let forged: CasOutcome<EnrolmentState> = CasCommitted {
-    committed: CasSlotVersion {
-      generation: cas_generation_first(),
-      content: enrolment_record_digest(state: state),
-      value: state,
-    },
-  }
-  match forged {
-    CasCommitted { committed: _ } => has_admission(verdict: verdict)
-    _ => false
-  }
+// THE FORGERY IS FIXTURE SOURCE HANDED TO THE COMPILER, NOT A CONSTRUCTION IN THIS MODULE: no
+// test-only mint exists in the corpus, and once the seal lands this module still compiles while the
+// fixture is the thing refused. The claim asserts the wall (SoleConstructorViolation at `CasCommitted`),
+// which is FALSE today, so it fails today. It is enrolled in
+// v2.workflow.floor_expected_red `floor_expected_red_chunk_cas_outcome_seal` with the seal as its named
+// trigger, so it counts as held debt rather than a passing assertion; when the seal lands it passes, the
+// roster reports it stale, and the row is deleted while the claim stays as a permanent regression control
+// (DESIGN 4b(4)).
+data forged_cas_committed_binding: String = "let forged: CasOutcome<String> = CasCommitted { committed: CasSlotVersion { generation: cas_generation_first(), content: content_hash_of_value(value: \"forged\"), value: \"forged\" } }\n"
+
+fn cas_committed_probe_source(forged_binding: String) -> String {
+  "module probe_approve_ios_cas_committed_axis\n"
+    + "import std.types { Int, String }\n"
+    + "import std.content_hash { content_hash_of_value }\n"
+    + "import std.durable_compare_and_set { CasOutcome, CasCommitted, CasSlotVersion, cas_generation_first }\n"
+    + "fn subject() -> Int {\n  "
+    + forged_binding
+    + "  0\n}\n"
+}
+
+// RED (EXPECTED, TRIGGER gunbc#14447) — WRITING A COMMITTED OUTCOME OUTSIDE THE MODULE THAT REALIZES IT.
+test fn a_forged_cas_committed_literal_is_refused_at_compile() -> Bool {
+  keyed_count(
+    source: cas_committed_probe_source(forged_binding: forged_cas_committed_binding),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "CasCommitted",
+  ) == 1
+}
+
+// CONTROL — THE SAME SOURCE WITHOUT THE BINDING DRAWS NO VIOLATION, so the red above is the literal and
+// not the fixture's other lines.
+test fn the_unbound_cas_committed_source_draws_no_violation() -> Bool {
+  keyed_count(
+    source: cas_committed_probe_source(forged_binding: no_forged_binding),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "CasCommitted",
+  ) == 0
 }
 
 // THE LAW IS THE MACHINE, SO THE MACHINE IS WHAT GETS ASKED — this claim replaces an
