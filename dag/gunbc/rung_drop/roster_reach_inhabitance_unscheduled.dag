@@ -27,13 +27,11 @@ data roster_reach_inhabitance_unscheduled: RungDrop = RungDrop {
 
   declared: "2026-10-22",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "gunbc.instruments.roster_reach_inhabitance, run by operator dispatch of //gunbc/instruments:roster-reach-inhabitance" },
     population: roster_reach_inhabitance_unscheduled_population(),
     restoration_trigger: "fn_arrow_decl_facts_live is a modeled substrate fold whose pool walk fits a lane budget, so the walk is enrolled on a lane or cadence that executes it to a terminal verdict on every change touching the runner or fleet pool"
-  }
+  } }
 }
