@@ -16,7 +16,7 @@ on:
       host:
         description: Executor fleet host (runner pinned here; plan mode observes this host)
         required: true
-        options: [srv1, srv2, srv3, srv4]
+        options: [srv1, srv2, srv3, srv4, mtcollins1]
         type: choice
       arrival_subject:
         description: "arrival_converge only: the arrival-population unit (not executor host, not managed_host). Options are gunbc.machine_intake.arrival_subject arrival_converge_subject_options. Names signed off msg_f03558d1"

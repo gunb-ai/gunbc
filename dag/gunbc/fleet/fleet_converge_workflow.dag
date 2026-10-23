@@ -917,13 +917,15 @@ data fleet_converge_mode_options: List<String> = map(fleet_converge_dispatchable
 // wording slip: it is one fact with two incompatible spellings (DESIGN section 3's meaning fork), and
 // the one a later worker would most plausibly act on is the one that disarms the corroboration.
 // gunbc.host.host_reset_return carries the full argument, above reset_return_verdict_of_mint.
+data fleet_converge_reset_subjects: List<NonEmptyStr> = reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
+
 data fleet_converge_reset_assignment: ResetDispatchAssignment = reset_dispatch_pairings(
   // The COMMITTED EVIDENCE REGISTRY, not a per-unit row: this is fleet-generic code and naming a unit
   // here would be the host-name branch DESIGN forbids. The registry is the aggregate of committed
   // operation evidence and the current-build fold keys it by the controller endpoint inside, so one
   // value answers for every unit the roster contains.
-  subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence())),
-  peer_roster: reset_observer_peer_roster(),
+  subject_roster: fleet_converge_reset_subjects,
+  peer_roster: reset_observer_peer_roster(subjects: fleet_converge_reset_subjects),
 )
 
 // THE OPTION LIST IS DERIVED FROM THE ASSIGNMENT. The empty list is never serialized, and the reason
@@ -5854,7 +5856,7 @@ fn fleet_converge_reset_assignment_refusal_reason(cause: ResetDispatchAssignment
     AssignmentPairingRefused { cause: inner } =>
       match inner {
         ObserverIsSubject { host: h } =>
-          join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", h as String, " is rostered as BOTH a reset subject and a reset observer, so the two rosters disagree about what that machine is. gunbc.host.host_reset_subject_roster derives subjects from BMC power-control admission and peers from fleet_hosts(); a host in both needs one of those two answers withdrawn."], "")
+          join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", h as String, " is rostered as both a reset subject and a reset observer. The observer roster is derived with every reset subject excluded (gunbc.host.host_reset_subject_roster reset_observer_peer_roster), so a real derivation cannot reach this; it means a roster was passed to gunbc.host.host_reset_return select_reset_observer without that exclusion."], "")
         SubjectNotRostered { subject: sname } =>
           join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", sname as String, " is not an admitted reset subject (gunbc.host.host_reset_subject_roster admits a host only when a landed BMC access observation and its capability row admit power control)."], "")
         ObserverNotRostered { observer: o } =>
