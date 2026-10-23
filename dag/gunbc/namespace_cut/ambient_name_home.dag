@@ -33,6 +33,10 @@ type AmbientNameHomeOrigin
 // rewritten). Absent is the common case: the occurrence keeps its spelling and only its binding moves. When present, the
 // binding diff pairs a base occurrence of `name` with the head occurrence of `authored_on_head` that the generator's own
 // rename edit put at the same carried position, and admits it only from the primitive-authority table to `home`.
+// DECLARED FRONTIER (review 84850): every row here is Absent today. The first Present row is map_get's (authored_on_head
+// map_lookup), added by the map_get wave's own change (branch wave/map-lookup-rename) together with the generator's
+// RenameHead row that produces the renamed occurrences; until that lands the field's only reader with a Present value is
+// the occurrence join's rename controls.
 type AmbientNameHome {
   name: NonEmptyStr
   home: NonEmptyStr

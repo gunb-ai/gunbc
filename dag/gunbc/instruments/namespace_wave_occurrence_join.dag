@@ -864,8 +864,13 @@ fn generated_controls() -> String {
 // THE RENAME ARM'S CONTROLS (tidy-ant-251 and sunny-bee-153's conditions on the map_get wave), at the proof-free core
 // with a SUPPLIED proof: the rename step is the one the generator's RenameHead row plans (the head atom `map_get`
 // replaced by `map_lookup`, then a zero-width `m: ` / `key: ` before each positional argument), and the head text is that
-// proof applied to the base text, so every locus is read off a text, never typed. The real route -- the generator
-// planning exactly these steps -- is v2.workflow.roster_import_sweep roster_rename_controls.
+// proof applied to the base text, so every locus is read off a text, never typed.
+// DECLARED FRONTIER (review 84850): no producer in THIS tree plans a call-head ReplaceStep or a positional InsertStep;
+// the generator here emits argument-label renames only. The producer is the RenameHead row of
+// v2.workflow.roster_import_sweep, built in the map_get wave's own change (branch wave/map-lookup-rename), whose
+// rename controls are the inhabitance claim that the generator emits exactly these steps. TRIGGER: that change lands
+// beside this one; it then enrols a real-route case here -- the generator's own recomputation of a map_get base text,
+// joined through this arm -- and these supplied cases stay as the discriminating controls.
 fn rename_rows() -> List<AmbientNameHome> {
   [AmbientNameHome { name: "map_get", home: "std.algebra.map_lookup", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Present { value: "map_lookup" } }]
 }
