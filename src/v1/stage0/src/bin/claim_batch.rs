@@ -1471,29 +1471,45 @@ mod cli_path_resolution_wiring_tests {
         ]
     }
 
-    // The wire's roster is the authority for which kinds exist. Equality in BOTH directions: a
-    // ClaimOutcome variant the wire does not name, or a wire kind no variant produces, fails here.
+    // EXECUTED, NOT READ: every `ClaimOutcome` variant's row goes through the real wire module
+    // (`render_ledger_from_outcomes`) resolved from the real source roots. The wire declares the
+    // kind sum and refuses an unparsed name, so a variant this side names that the wire lacks
+    // makes the render refuse and `write_outcomes_ledger` return Err here.
     #[test]
-    fn every_claim_outcome_kind_has_a_wire_arm_and_no_wire_kind_is_orphaned() {
-        let wire = include_str!("../../../../v2/workflow/floor_terminal_ledger_wire.dag");
-        let start = wire.find("fn outcome_kind_roster()").expect("roster fn");
-        let body = &wire[start
-            ..wire[start..]
-                .find("\n}\n")
-                .map(|e| start + e)
-                .expect("roster end")];
-        let roster: std::collections::BTreeSet<String> = body
-            .split('"')
-            .skip(1)
-            .step_by(2)
-            .map(str::to_string)
-            .collect();
-        let produced: std::collections::BTreeSet<String> = one_of_every_claim_outcome()
+    fn every_claim_outcome_kind_renders_through_the_real_wire() {
+        let ws = workspace_root();
+        let roots = vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let index = process_shared_index(&roots);
+        let entry = ws
+            .join("dag/test/claim/discovery_census_witness.dag")
+            .to_string_lossy()
+            .into_owned();
+        let rows: Vec<(String, Vec<String>)> = one_of_every_claim_outcome()
             .iter()
-            .map(|o| super::claim_outcome_kind(o).to_string())
+            .enumerate()
+            .map(|(i, o)| (format!("w{i}"), super::outcome_row_tail(o)))
             .collect();
-        assert_eq!(produced, roster);
-        assert_eq!(roster.len(), 11);
+        let out = std::env::temp_dir().join(format!("outcomes-wire-{}.tsv", std::process::id()));
+        let out = out.to_string_lossy().into_owned();
+        super::write_outcomes_ledger(
+            &roots,
+            &index,
+            &entry,
+            "unpublished",
+            &rows,
+            ExecutionMode::Hermetic,
+            &out,
+        )
+        .unwrap_or_else(|why| panic!("the wire refused a kind the seed produces: {why}"));
+        let text = std::fs::read_to_string(&out).expect("ledger written");
+        let _ = std::fs::remove_file(&out);
+        assert_eq!(
+            text.lines().filter(|l| l.contains("expect-hold")).count(),
+            rows.len()
+        );
     }
 
     #[test]

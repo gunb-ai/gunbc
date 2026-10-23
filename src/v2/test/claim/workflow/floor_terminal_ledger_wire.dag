@@ -52,7 +52,8 @@ import v2.workflow.floor_terminal_ledger_wire {
   derive_outcome_row,
   OutcomeRowDerived,
   OutcomeRowRefused,
-  outcome_kind_roster,
+  parse_outcome_kind,
+  OutcomeKind,
   render_row,
   render_terminal_detail,
   render_terminal_tag,
@@ -677,10 +678,12 @@ fn outcome_tag_of(fields: List<String>) -> String {
   }
 }
 
-// EVERY KIND THE SEED CAN NAME HAS AN ARM. The roster is the list the seed's exhaustive
-// `claim_outcome_kind` is cross-checked against, so a variant added without a wire arm fails here.
-test fn every_outcome_kind_in_the_roster_derives_a_row() -> Bool {
-  all(outcome_kind_roster(), k =>
+// EVERY NAME THE SEED CAN SEND PARSES TO A DECLARED KIND AND DERIVES A ROW. The names are the
+// `ClaimOutcome` variant names; the Rust side sends the same names through this route in its own
+// executed test, so a variant added to either side without the other fails in one of them.
+test fn every_outcome_kind_the_seed_names_derives_a_row() -> Bool {
+  all(["Pass", "Fail", "NotBool", "RuntimeError", "BudgetInterrupted", "CompletedOverBudget",
+       "HostToolUnresolved", "HostEffectRefused", "Panicked", "NotAttempted", "ExitFailure"], k =>
     match derive_outcome_row(fields: outcome_fields(kind: k, code: "1", ground: "NoMockResponse")) {
       OutcomeRowDerived { row: _ } => true
       OutcomeRowRefused { reason: _, offending: _ } => false

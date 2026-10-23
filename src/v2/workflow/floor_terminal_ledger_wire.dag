@@ -1023,11 +1023,49 @@ fn render_ledger_from_seed(
 // exit code, ground. A field a kind does not carry is the empty string and a kind that needs one
 // refuses when it is empty. An unknown kind refuses with its own typed reason; there is no
 // default tag, because a default is the plausible output that reads as a verdict nobody reached.
-fn outcome_kind_roster() -> List<String> {
-  [
-    "Pass", "Fail", "NotBool", "RuntimeError", "BudgetInterrupted", "CompletedOverBudget",
-    "HostToolUnresolved", "HostEffectRefused", "Panicked", "NotAttempted", "ExitFailure"
-  ]
+// THE OUTCOME KIND AND THE HERMETIC GROUND ARE CLOSED SUMS, DECLARED HERE. The seed's `ClaimOutcome`
+// has exactly these variants; every arm below matches the type, so a variant added here without an
+// arm fails to compile, and an illegal kind has no constructor. A name crosses the host boundary
+// as a String at ONE parse step (`parse_outcome_kind`, `parse_outcome_ground`), which is where an
+// unrecognized name refuses; nothing after it handles a string kind.
+type OutcomeKind
+  = OutcomeKindPass
+  | OutcomeKindFail
+  | OutcomeKindNotBool
+  | OutcomeKindRuntimeError
+  | OutcomeKindBudgetInterrupted
+  | OutcomeKindCompletedOverBudget
+  | OutcomeKindHostToolUnresolved
+  | OutcomeKindHostEffectRefused
+  | OutcomeKindPanicked
+  | OutcomeKindNotAttempted
+  | OutcomeKindExitFailure
+
+type OutcomeGround
+  = OutcomeGroundUnpublishedMockCase
+  | OutcomeGroundNoMockResponse
+  | OutcomeGroundFilesystemRemoval
+
+fn parse_outcome_kind(name: String) -> OutcomeKind? {
+  if name == "Pass" { Present { value: OutcomeKindPass } } else {
+  if name == "Fail" { Present { value: OutcomeKindFail } } else {
+  if name == "NotBool" { Present { value: OutcomeKindNotBool } } else {
+  if name == "RuntimeError" { Present { value: OutcomeKindRuntimeError } } else {
+  if name == "BudgetInterrupted" { Present { value: OutcomeKindBudgetInterrupted } } else {
+  if name == "CompletedOverBudget" { Present { value: OutcomeKindCompletedOverBudget } } else {
+  if name == "HostToolUnresolved" { Present { value: OutcomeKindHostToolUnresolved } } else {
+  if name == "HostEffectRefused" { Present { value: OutcomeKindHostEffectRefused } } else {
+  if name == "Panicked" { Present { value: OutcomeKindPanicked } } else {
+  if name == "NotAttempted" { Present { value: OutcomeKindNotAttempted } } else {
+  if name == "ExitFailure" { Present { value: OutcomeKindExitFailure } } else { none }
+  }}}}}}}}}}
+}
+
+fn parse_outcome_ground(name: String) -> OutcomeGround? {
+  if name == "UnpublishedMockCase" { Present { value: OutcomeGroundUnpublishedMockCase } } else {
+  if name == "NoMockResponse" { Present { value: OutcomeGroundNoMockResponse } } else {
+  if name == "FilesystemRemoval" { Present { value: OutcomeGroundFilesystemRemoval } } else { none }
+  }}
 }
 
 type OutcomeRowDerivation
@@ -1046,64 +1084,42 @@ fn outcome_field(fields: List<String>, index: Int) -> String? {
   }
 }
 
-fn outcome_ground_tag(ground: String) -> String? {
-  if ground == "UnpublishedMockCase" {
-    Present { value: "route-gap-unpublished-mock-case" }
-  } else {
-    if ground == "NoMockResponse" {
-      Present { value: "route-gap-no-mock-response" }
-    } else {
-      if ground == "FilesystemRemoval" { Present { value: "route-gap-filesystem-removal" } } else { none }
-    }
+fn outcome_ground_tag(ground: OutcomeGround) -> String {
+  match ground {
+    OutcomeGroundUnpublishedMockCase => "route-gap-unpublished-mock-case"
+    OutcomeGroundNoMockResponse => "route-gap-no-mock-response"
+    OutcomeGroundFilesystemRemoval => "route-gap-filesystem-removal"
   }
 }
 
-fn derive_outcome_terminal(kind: String, detail: String, exit_code: String, ground: String) -> OutcomeTerminalDerivation {
-  if kind == "Pass" {
-    OutcomeTerminalDerived { tag: "returned-true", detail: "" }
-  } else {
-  if kind == "Fail" {
-    OutcomeTerminalDerived { tag: "returned-false", detail: "" }
-  } else {
-  if kind == "NotBool" {
-    OutcomeTerminalDerived { tag: "returned-unreadable", detail: join(["returned a non-Bool value: ", detail], "") }
-  } else {
-  if kind == "RuntimeError" {
-    OutcomeTerminalDerived { tag: "runtime-errored", detail: detail }
-  } else {
-  if kind == "BudgetInterrupted" {
-    OutcomeTerminalDerived { tag: "budget-refused", detail: detail }
-  } else {
-  if kind == "CompletedOverBudget" {
-    OutcomeTerminalDerived { tag: "passed-over-budget", detail: "completed-past-limit" }
-  } else {
-  if kind == "HostToolUnresolved" {
-    OutcomeTerminalDerived { tag: "host-tool-unresolved", detail: detail }
-  } else {
-  if kind == "HostEffectRefused" {
-    match outcome_ground_tag(ground: ground) {
-      Present { value: tag } => OutcomeTerminalDerived { tag: tag, detail: detail }
-      Absent => OutcomeTerminalRefused { reason: "outcome-ground-unrecognized" }
-    }
-  } else {
-  if kind == "Panicked" {
-    OutcomeTerminalDerived { tag: "panicked", detail: detail }
-  } else {
-  if kind == "NotAttempted" {
-    OutcomeTerminalDerived { tag: "not-attempted", detail: detail }
-  } else {
-  if kind == "ExitFailure" {
-    if exit_code == "2" {
-      OutcomeTerminalDerived {
-        tag: "returned-unreadable",
-        detail: join(["returned ExitFailure code 2: ", detail], "")
+fn derive_outcome_terminal(kind: OutcomeKind, detail: String, exit_code: String, ground: String) -> OutcomeTerminalDerivation {
+  match kind {
+    OutcomeKindPass => OutcomeTerminalDerived { tag: "returned-true", detail: "" }
+    OutcomeKindFail => OutcomeTerminalDerived { tag: "returned-false", detail: "" }
+    OutcomeKindNotBool =>
+      OutcomeTerminalDerived { tag: "returned-unreadable", detail: join(["returned a non-Bool value: ", detail], "") }
+    OutcomeKindRuntimeError => OutcomeTerminalDerived { tag: "runtime-errored", detail: detail }
+    OutcomeKindBudgetInterrupted => OutcomeTerminalDerived { tag: "budget-refused", detail: detail }
+    OutcomeKindCompletedOverBudget =>
+      OutcomeTerminalDerived { tag: "passed-over-budget", detail: "completed-past-limit" }
+    OutcomeKindHostToolUnresolved => OutcomeTerminalDerived { tag: "host-tool-unresolved", detail: detail }
+    OutcomeKindHostEffectRefused =>
+      match parse_outcome_ground(name: ground) {
+        Present { value: g } => OutcomeTerminalDerived { tag: outcome_ground_tag(ground: g), detail: detail }
+        Absent => OutcomeTerminalRefused { reason: "outcome-ground-unrecognized" }
       }
-    } else {
-      OutcomeTerminalDerived { tag: "exit-failure", detail: join(["code ", exit_code, ": ", detail], "") }
-    }
-  } else {
-    OutcomeTerminalRefused { reason: "outcome-kind-unrecognized" }
-  }}}}}}}}}}}
+    OutcomeKindPanicked => OutcomeTerminalDerived { tag: "panicked", detail: detail }
+    OutcomeKindNotAttempted => OutcomeTerminalDerived { tag: "not-attempted", detail: detail }
+    OutcomeKindExitFailure =>
+      if exit_code == "2" {
+        OutcomeTerminalDerived {
+          tag: "returned-unreadable",
+          detail: join(["returned ExitFailure code 2: ", detail], "")
+        }
+      } else {
+        OutcomeTerminalDerived { tag: "exit-failure", detail: join(["code ", exit_code, ": ", detail], "") }
+      }
+  }
 }
 
 fn derive_outcome_row(fields: List<String>) -> OutcomeRowDerivation {
@@ -1129,8 +1145,11 @@ fn derive_outcome_row(fields: List<String>) -> OutcomeRowDerivation {
                 Present { value: c } => match ground {
                   Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
                   Present { value: g } =>
-                    match derive_outcome_terminal(kind: k, detail: d, exit_code: c, ground: g) {
-                      OutcomeTerminalRefused { reason: r } => OutcomeRowRefused { reason: r, offending: k }
+                    match parse_outcome_kind(name: k) {
+                      Absent => OutcomeRowRefused { reason: "outcome-kind-unrecognized", offending: k }
+                      Present { value: parsed_kind } =>
+                    match derive_outcome_terminal(kind: parsed_kind, detail: d, exit_code: c, ground: g) {
+                      OutcomeTerminalRefused { reason: r } => OutcomeRowRefused { reason: r, offending: g }
                       OutcomeTerminalDerived { tag: t, detail: td } =>
                         match parse_expectation(wire: e) {
                           Absent => OutcomeRowRefused { reason: "seed-expectation-unrecognized", offending: qualified }
@@ -1152,6 +1171,7 @@ fn derive_outcome_row(fields: List<String>) -> OutcomeRowDerivation {
                                 } }
                             }
                         }
+                    }
                     }
                 }
               }
