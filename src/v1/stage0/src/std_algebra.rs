@@ -257,10 +257,6 @@ pub fn list_append<T: Clone>(
     v1_rt::concat(left.clone(), right.clone())
 }
 
-pub fn list_push<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
-    v1_rt::rc_list_push(xs.clone(), item.clone())
-}
-
 pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
     v1_rt::rc_list_push(xs.clone(), item.clone())
 }
@@ -300,11 +296,10 @@ pub struct PartialFunction<K, V> {
 #[derive(Clone)]
 pub struct FinitelySupportedFunction<K: std::cmp::Eq + std::hash::Hash, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,
-    pub empty: Rc<FinitelySupportedFunction<K, V>>,
+    pub empty: Rc<HashMap<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
-    pub insert: Rc<dyn Fn(K, V) -> Rc<FinitelySupportedFunction<K, V>>>,
-    pub merge:
-        Rc<dyn Fn(Rc<FinitelySupportedFunction<K, V>>) -> Rc<FinitelySupportedFunction<K, V>>>,
+    pub insert: Rc<dyn Fn(K, V) -> Rc<HashMap<K, V>>>,
+    pub merge: Rc<dyn Fn(Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>>>,
     pub map_keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
     pub map_values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
     pub map_has: Rc<dyn Fn(K) -> bool>,

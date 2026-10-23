@@ -2,7 +2,10 @@ module test.claim.host.host_build_cache_provision_design_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
+// The name said `_in_shell` because the property was asserted on the read-back's script text. It is now
+// asserted on the typed read-back's outcomes, which is the stronger claim: a non-zero exit, a read that
+// could not run, and a read that answered are three different inputs, and only the third may converge.
+test fn design_witness_read_back_fails_closed_on_typed_read_back() -> Bool {
   build_cache_provision_read_back_fails_closed()
 }
 
@@ -234,20 +237,50 @@ test fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bo
     )
 }
 
-test fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool {
-  !string_contains(
-    s: build_cache_observe_stats_body(),
-    pattern: "path_authority=SHADOWED",
-  ) && !string_contains(
-    s: build_cache_read_back_body(binary: sccache_installed_binary_path),
-    pattern: "path_authority=SHADOWED",
-  ) && !string_contains(
-    s: build_cache_provision_script_body(
-      instance: ci_cache_instance(host: "srv1"),
-      arch_token: "aarch64" as NonEmptyStr,
-      digest: sccache_release_0_15_0.digest_aarch64,
-    ),
-    pattern: "command -v sccache",
+// THE PATH-AUTHORITY AND SUPERVISION OBSERVATIONS ARE NOT THE BUILD-CACHE ENSURE'S TO MAKE. Both belong to
+// other authorities: endpoint path state to gunbc.build_cache.build_cache_endpoint_observe (which the
+// realize path already runs as the PRE-flight), and unit supervision to whoever claims a systemd unit -- and
+// neither question can be answered from inside the ensure, because `--show-stats` answers "does something
+// answer this socket", never "who set it up". The retired script printed both kinds of receipt into its own
+// stdout, where a later phase could grep them and read them as evidence; the typed route has no stdout for a
+// phase to lie into, so the claim is now that no such PROBE is even derived.
+//
+// ASSERTED NON-VACUOUSLY, because a `!string_contains` claim is worth nothing if the string simply exists
+// nowhere: each claim first requires text the ensure DOES derive, and the requirement is anchored on the
+// legs the renderer must be looking at, not on text that merely happens to occur somewhere. The
+// path-authority claim anchors on the digest read (a leg the ensure derives precisely because it installs
+// something it has to identify), the supervision claim on the unit reload (a leg it derives precisely
+// because it writes a unit). Both are asserted over the install-needing host, which is the host whose plan
+// is longest, so a probe hidden in a leg only that host exercises still surfaces.
+//
+// The anchor choice is the substance of the guard. An earlier draft of the first claim anchored on
+// `--show-stats`, which is the OBSERVE and READ-BACK command and is not an ensure operation at all -- a
+// non-vacuity guard that can never be satisfied is not a guard, it is a permanently red claim, and it
+// would have been deleted as flaky with its refusal unnoticed.
+test fn design_witness_path_authority_probe_not_derived_by_the_ensure() -> Bool {
+  let ops = build_cache_ensure_ops_under_witness()
+  string_contains(s: ops, pattern: "sha256sum")
+    && !string_contains(s: ops, pattern: "path_authority=SHADOWED")
+    && !string_contains(s: ops, pattern: "command -v sccache")
+}
+
+test fn design_witness_supervision_probe_not_derived_by_the_ensure() -> Bool {
+  let ops = build_cache_ensure_ops_under_witness()
+  string_contains(s: ops, pattern: "daemon-reload")
+    && !string_contains(s: ops, pattern: "is-active")
+    && !string_contains(s: ops, pattern: "pgrep")
+}
+
+// THE ENSURE'S DERIVED OPERATIONS, RENDERED FOR READING. The same builder the production oracles use, called
+// with the sccache release's own boundary values and BOTH legs requested (install + unit + restart), so a
+// probe hidden in a leg the witness did not ask for still shows up. The newline join is what stops an
+// assertion matching across two words of one argv.
+fn build_cache_ensure_ops_under_witness() -> String {
+  build_cache_ensure_ops_rendered(
+    instance: ci_cache_instance(host: "srv1"),
+    arch_token: "aarch64" as NonEmptyStr,
+    digest: sccache_release_0_15_0.digest_aarch64,
+    install_needed: true,
   )
 }
 
@@ -312,28 +345,52 @@ test fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> B
     )
 }
 
-test fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool {
-  !string_contains(
-    s: build_cache_observe_stats_body(),
-    pattern: "is-active",
-  ) && !string_contains(
-    s: build_cache_read_back_body(binary: sccache_installed_binary_path),
-    pattern: "is-active",
-  )
-}
-
 test fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
   build_cache_classifier_covers_every_cited_fragment()
 }
 
+// FIRST MATCH WINS, OVER THE ROW IN ORDER -- the property the old claim asserted by grepping the emitted
+// script for `for frag in` and the absence of `elif`. That assertion was about SHAPE and could be satisfied
+// by an unrolled chain that happened to lack the word `elif`; the typed route has no emitted script to
+// grep, so what is left to assert is the behaviour, which is what the shape was ever for.
+//
+// With a capture containing BOTH cited fragments, the scan must return the FIRST. Last-match, any-match, or
+// a chain built in a different order all fail here, and a row reordered without its consumers would fail
+// too. What this claim can NOT discriminate is a hand-unrolled chain in the same order -- it behaves
+// identically, so no behavioural claim could tell them apart; the thing that made unrolling a real risk was
+// fragments living somewhere other than the cited row, and build_cache_classifier_covers_every_cited_fragment
+// is the claim that catches that.
 test fn design_witness_classifier_is_a_fold_not_an_unrolled_chain() -> Bool {
-  !string_contains(s: build_cache_classify_failure_body(), pattern: "elif")
-    && string_contains(s: build_cache_classify_failure_body(), pattern: "for frag in ")
+  // THE SUBJECT MATTER COMES FROM THE MODULE UNDER TEST, not from a list assembled here. The fragments a
+  // classifier is claimed to scan are the classifier's own data, so the module that owns the classifier hands
+  // them over; a claim that built its own fragment list would be testing its own copy as much as the
+  // classifier.
+  //
+  // WHY THIS IS A FOLD AND NOT AN INDEX: the first cut of this claim reached the two fragments through
+  // `get(xs:, index:)`, which type-checks and then fails at run time — `get` is an algebra FIELD (a receiver
+  // plus a positional Int), not a named-parameter function. The claim came back UNOBSERVED, which is the
+  // verdict a claim that never actually ran receives, and it sat looking enrolled for the whole time. A
+  // permanently-unobserved claim is worse than a red one: red gets read, unobserved gets counted.
+  let probe = build_cache_fragment_probe()
+  match probe.first {
+    Absent => false
+    Present { value: a } =>
+      match probe.second {
+        Absent => false
+        Present { value: b } =>
+          match build_cache_matched_stats_fragment(capture: build_cache_two_fragment_capture(first: a, second: b)) {
+            // THE FIRST MATCH WINS, which is the property under test: a fold that keeps the earliest fragment
+            // rather than the latest. Were the classifier an unrolled chain that tested fragments in reverse,
+            // this would return the second and refuse here.
+            Present { value: got } => got == a
+            Absent => false
+          }
+      }
+  }
 }
 
-test fn design_witness_fragment_words_are_shell_safe() -> Bool {
-  build_cache_fragment_words_are_shell_safe()
-}
+// THE FIRST TWO CITED FRAGMENTS, AS A PAIR, taken by INDEX so the claim cannot pass by hard-coding a
+// fragment that happens to be first today. Absent when the row is shorter than two, which the caller fails
 
 test fn design_witness_release_arch_token_is_fail_closed() -> Bool {
   match sccache_release_arch_token(arch: Aarch64) {
@@ -387,4 +444,3 @@ test fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
     Absent => false
   }
 }
-
