@@ -115,3 +115,12 @@ test fn kp_e_absent_resolves() -> Bool { kp_resolved(src: kp_e_absent) }
 test fn kp_e_int_rejected() -> Bool { kp_rejected(src: kp_e_int) }
 test fn kp_e_int_advisory() -> Bool { kp_advisory(src: kp_e_int) }
 test fn kp_e_int_resolves() -> Bool { kp_resolved(src: kp_e_int) }
+
+data kp_f: String = "module p\n\nimport std.types { Int }\nimport std.optional { Optional, Present, Absent }\n\ntype Ch\n  = Out\n  | Err\n\nfn op<T>(value: T) -> Optional<T> {\n  Present { value: value }\n}\n\nfn none_of<T>() -> Optional<T> {\n  Absent\n}\n\nfn g(k: Int) -> Optional<Ch> {\n  if k == 1 { op(value: Out) } else { none_of() }\n}\n"
+data kp_f_ctl: String = "module p\n\nimport std.types { Int }\nimport std.optional { Optional, Present, Absent }\n\ntype Ch\n  = Out\n  | Err\n\nfn op<T>(value: T) -> Optional<T> {\n  Present { value: value }\n}\n\nfn none_of<T>() -> Optional<T> {\n  Absent\n}\n\nfn g(k: Int) -> Optional<Ch> {\n  if k == 1 { Present { value: Out } } else { Absent }\n}\n"
+test fn kp_f_resolves() -> Bool { kp_resolved(src: kp_f) }
+test fn kp_f_rejected() -> Bool { kp_rejected(src: kp_f) }
+test fn kp_f_advisory() -> Bool { kp_advisory(src: kp_f) }
+test fn kp_f_ctl_resolves() -> Bool { kp_resolved(src: kp_f_ctl) }
+test fn kp_f_ctl_rejected() -> Bool { kp_rejected(src: kp_f_ctl) }
+test fn kp_f_ctl_advisory() -> Bool { kp_advisory(src: kp_f_ctl) }
