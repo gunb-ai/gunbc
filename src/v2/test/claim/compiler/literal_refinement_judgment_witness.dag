@@ -45,6 +45,8 @@ data lrj_nonliteral_source: String = "module v2.test.lrj_nonliteral\n\nfn lrj_p(
 
 data lrj_wrong_type_source: String = "module v2.test.lrj_wrong_type\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(1)\n"
 
+data lrj_int_holds_source: String = "module v2.test.lrj_int_holds\n\nfn lrj_p(n: Int) -> Bool { true }\n\ntype LrjNi = Int where lrj_p\n\nfn lrj_take(v: LrjNi) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(1)\n"
+
 data lrj_plain_source: String = "module v2.test.lrj_plain\n\nfn lrj_take(v: String) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(\"x\")\n"
 
 fn lrj_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -69,6 +71,7 @@ data lrj_ingest: SourceRootIngest = [
   lrj_read(source: lrj_predicate_call_source, id: ^lrj_predicate_call_read, unit: ^lrj_predicate_call_cu, path: "src/v2/test/fixture/lrj/predicate_call.dag"),
   lrj_read(source: lrj_plain_refined_decl_source, id: ^lrj_plain_refined_decl_read, unit: ^lrj_plain_refined_decl_cu, path: "src/v2/test/fixture/lrj/plain_refined_decl.dag"),
   lrj_read(source: lrj_fn_body_source, id: ^lrj_fn_body_read, unit: ^lrj_fn_body_cu, path: "src/v2/test/fixture/lrj/fn_body.dag"),
+  lrj_read(source: lrj_int_holds_source, id: ^lrj_int_holds_read, unit: ^lrj_int_holds_cu, path: "src/v2/test/fixture/lrj/int_holds.dag"),
   lrj_read(source: lrj_plain_source, id: ^lrj_plain_read, unit: ^lrj_plain_cu, path: "src/v2/test/fixture/lrj/plain.dag")
 ]
 
@@ -488,3 +491,10 @@ test fn lrj_children_is_10_holds() -> Bool { lrj_children_code(subject: "v2.test
 test fn lrj_children_is_11_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_holds") == 11 }
 test fn lrj_children_is_12_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_holds") == 12 }
 test fn lrj_children_is_13_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_holds") == 13 }
+
+test fn lrj_int_children_is_10_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 10 }
+test fn lrj_int_children_is_11_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 11 }
+test fn lrj_int_children_is_1_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 1 }
+test fn lrj_int_children_is_0_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 0 }
+test fn lrj_int_verdict_is_2_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_holds") == 2 }
+test fn lrj_int_verdict_is_3_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_holds") == 3 }
