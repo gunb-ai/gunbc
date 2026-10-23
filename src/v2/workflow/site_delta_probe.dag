@@ -42,7 +42,7 @@ fn probe_class_of(s: ScopedReferenceSite) -> String {
 }
 
 fn probe_totals(path: String, sites: List<ScopedReferenceSite>) -> String {
-  fold_list(xs: sites, empty: "", cons: fn(acc, s) { acc + "site\t" + path + "\t" + probe_class_of(s: s) + "\n" })
+  fold_list(xs: sites, empty: "", cons: fn(acc, s) { acc + "site\t" + path + "\t" + roster_qn_text(qn: s.site.spelling) + "\t" + probe_class_of(s: s) + "\n" })
 }
 
 fn probe_located(tag: String, path: String, spelling: String, sites: List<ScopedReferenceSite>) -> String {
