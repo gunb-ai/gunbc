@@ -314,8 +314,22 @@ fn stale_claims(decls: List<String>) -> List<String> {
   ambient_operation_claims |> filter(c => match declaration_named(decls: decls, name: c.spelling) { Present { value: _ } => true  Absent => false }) |> map(c => c.spelling)
 }
 
+// Class A rows whose candidate declaration the census did not print: asserted by manager direction, with no executed
+// evidence behind them. The summary reports them on their own line so an A count never mixes the two (§4b rung honesty).
+fn unverified_a_count(rows: List<DispositionRow>) -> Int {
+  count(rows |> filter(r => disposition_class_text(class: r.verdict.class) == disposition_class_text(class: DispositionA) && disposition_basis_text(basis: r.verdict.basis) == disposition_basis_text(basis: BasisManagerDirection)))
+}
+
+fn summary_count(rows: List<DispositionRow>, label: String) -> Int {
+  let unverified = unverified_a_count(rows: rows)
+  if label == "A-unverified" { unverified }
+  else if label == "A" { class_count(rows: rows, class: DispositionA) - unverified }
+  else { count(rows |> filter(r => disposition_class_text(class: r.verdict.class) == label)) }
+}
+
 fn ambient_operation_summary(rows: List<DispositionRow>) -> List<String> {
-  [DispositionInFlight, DispositionA, DispositionB, DispositionC, DispositionD, DispositionKernelGrounding] |> map(c => "disposition_summary\t" + disposition_class_text(class: c) + "\t" + to_string(class_count(rows: rows, class: c)))
+  ["in-flight", "A", "A-unverified", "B", "C", "D", "kernel-grounding"]
+    |> map(label => "disposition_summary\t" + label + "\t" + to_string(summary_count(rows: rows, label: label)))
 }
 
 // The reading, over the same run the ambient-name census reads. Its controls are that census's own
@@ -399,6 +413,7 @@ fn disposition_classifier_control_for(d: String) -> Optional<String> {
   let stale_got = join(stale_claims(decls: declaration_lines(stdout: stdout + "binding_declaration\tctl.decl\tlist_push\tfn\t() -> Int\n")), separator: ",")
   if stale_got != "list_push" || count(stale_claims(decls: declaration_lines(stdout: stdout))) != 0 { Present { value: "stale-claim control read '" + stale_got + "', expected list_push when a declaration exists and none otherwise" } }
   else if basis_got != basis_want { Present { value: "classifier control read bases " + basis_got + ", expected " + basis_want + " (verified candidate, unverified candidate, no candidate)" } }
+  else if summary_count(rows: rows, label: "A-unverified") != 1 || summary_count(rows: rows, label: "A") != 2 { Present { value: "classifier control summary read A-unverified " + to_string(summary_count(rows: rows, label: "A-unverified")) + " and A " + to_string(summary_count(rows: rows, label: "A")) + ", expected 1 and 2 (fold unverified; ctl_named and map evidenced)" } }
   else if control_class_of(rows: rows, spelling: "map") != "A" { Present { value: "the verified-candidate control row map did not reach class A" } }
   else if got == "in-flight,C,D,A,A,B,kernel-grounding,B" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B,kernel-grounding,B" } }
 }
