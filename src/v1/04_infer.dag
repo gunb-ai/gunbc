@@ -8984,7 +8984,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
     ExprMethodCall { method_semantics: _ } => expr_method_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
     _ => ""
   }
-  if fname == "concat" || fname == "join" {
+  let host_result = match text_representation_by_identity(n: resolved_type(n: r.typed), env: scope.type_env) { HostText => true  _ => false }
+  if (fname == "concat" && host_result) || fname == "join" {
     let classes = r.typed.children |> flat_map(c => chain2_arg_classes(func: fname, c: c, scope: scope))
     let diags = classes |> map(k => inference_error(message: concat("CHAIN2CENSUS ", fname, " ", k), span: texpr.span, module_name: scope.module_name))
     InferResult { typed: r.typed, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_of_diagnostics(diagnostics: diags)) }
