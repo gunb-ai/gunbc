@@ -27,7 +27,7 @@ import v2.std.node {
   TypeNode,
   node_subtree_nodes
 }
-import std.algebra { Cons, Empty }
+import std.algebra { list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.list { first_where }
 
@@ -40,19 +40,25 @@ data lowered_call_subject_source: String = "module wall.same\n\nfn leaf() -> Boo
 
 // THE LOWERED CALL NODE: a Transform whose callee slot is the authored `leaf` spine. Exactly one
 // exists in this tree; the subject is fixed, so this is a lookup, not a search over inputs.
+// EDGE-TYPED ACCESSORS ONLY, no field reads on pattern-bound children elements: at the seed, an
+// element bound by matching `.children` as Cons/Empty is typed a free T, so `.target`/`.kind` on
+// it close as 'no field kind on type T' (M3 msg_15a64131, same seed limitation as quick-pike-815).
+// positional_child_target_nodes (node.dag:952) returns List<Node> through a typed accessor; the
+// callee occupies the FIRST positional slot of a lowered call (the fold builds it Positional-first,
+// body_lowering_fold:5358), so slot 0 is the callee spine and its identity is the check.
 fn lowered_call_node_opt(tree: Node) -> Optional<Node> {
   first_where(
     xs: node_subtree_nodes(root: tree),
     keep: fn(n) {
         match n.kind {
           ComputationNode { behavior: _ } =>
-            match n.children {
-              Cons { head: callee, tail: _ } =>
-                match callee.target.kind {
+            match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+              Present { value: callee } =>
+                match callee.kind {
                   TypeNode { connective: Atom { identity: id } } => id == ^leaf
                   _ => false
                 }
-              Empty => false
+              Absent => false
             }
           _ => false
         }
