@@ -23,7 +23,7 @@ module gunbc.firmware_network_boot_standing
 
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
 import std.algebra { length, fold_list, list_append, contains, list_map, string_concat_join, Cons, Empty }
-import std.optional { Optional, Present, Absent, optional_prefer_first_present }
+import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot {
