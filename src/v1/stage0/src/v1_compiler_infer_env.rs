@@ -2130,6 +2130,17 @@ impl UnitVariantPhantomLookup {
     }
 }
 
+pub fn type_declaration_visible_with_spelling(env: Rc<TypeEnv>, name: String) -> bool {
+    match lookup_binding_by_name(env.clone(), name.clone()) {
+        Some(binding) => {
+            ((binding.resolved.module_item_kind.clone()
+                == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                && binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
+        }
+        std::option::Option::None => false,
+    }
+}
+
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
