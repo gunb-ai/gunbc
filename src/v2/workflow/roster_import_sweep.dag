@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map, for_all }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -907,10 +907,13 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
       n
     }
   })
-  let value_flags = fold_list(xs: sites, empty: [], cons: fn(acc, st) {
+  // THE JOIN IS ON IDENTITY, NOT ORDER (DESIGN section 5): each value-position site is placed by the source offset its occurrence
+  // records, each parse head by the offset of its own node, and a head is paired with the site that starts at the same byte.
+  // A site or head with no recorded offset, an offset two sites share, or a head no site starts at REFUSES the module.
+  let value_sites = fold_list(xs: sites, empty: [], cons: fn(acc, st) {
     if roster_spelling_is(qn: st.site.spelling, call: row.call) {
       match st.position {
-        ValuePosition => list_snoc_item(xs: acc, item: roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home))
+        ValuePosition => list_snoc_item(xs: acc, item: st)
         _ => acc
       }
     } else {
@@ -918,10 +921,19 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
     }
   })
   let all_heads = roster_primary_heads(parse_root: parse_root, call: row.call)
-  if length(xs: all_heads) != length(xs: value_flags) || free_off_value != 0 {
+  let site_starts = list_map(xs: value_sites, f: fn(st) { roster_occurrence_start(occurrence: st.occurrence, spans: spans) })
+  let head_starts = list_map(xs: all_heads, f: fn(h) { roster_node_start(node: h, spans: spans) })
+  let unplaced = roster_absent_count(xs: site_starts) + roster_absent_count(xs: head_starts)
+  let joined = list_map(xs: all_heads, f: fn(h) {
+    roster_sites_starting_at(sites: value_sites, starts: site_starts, at: roster_node_start(node: h, spans: spans))
+  })
+  let well_joined = for_all(xs: joined, predicate: fn(m) { length(xs: m) == 1 })
+  if free_off_value != 0 || unplaced != 0 || length(xs: all_heads) != length(xs: value_sites) || !well_joined {
     LabelsAmbiguous
   } else {
-    let heads = fold_list(xs: zip_map(a: all_heads, b: value_flags, f: fn(h, free) { if free { [h] } else { [] } }), empty: [], cons: fn(acc, one) { list_append(left: acc, right: one) })
+    let heads = fold_list(xs: zip_map(a: all_heads, b: joined, f: fn(h, m) {
+      if fold_list(xs: m, empty: false, cons: fn(acc2, st) { roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) }) { [h] } else { [] }
+    }), empty: [], cons: fn(acc, one) { list_append(left: acc, right: one) })
     fold_list(xs: heads, empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
       match acc {
         LabelsAmbiguous => LabelsAmbiguous
@@ -991,6 +1003,46 @@ fn roster_site_is_free(sides: List<RosterHomeSide>, site: ScopedReferenceSite, r
     side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: row.home), import_name: row.import_name),
     imported_from_home: imported_from_home
   )
+}
+
+// The start byte of one occurrence / node, from the span index the parse recorded. Absent when no extent is recorded.
+fn roster_occurrence_start(occurrence: OccurrenceId, spans: SpanIndex) -> Int? {
+  match roster_id_byte_range(id: occurrence, spans: spans) {
+    Present { value: r } => Present { value: r.start }
+    Absent => Absent
+  }
+}
+
+fn roster_node_start(node: Node, spans: SpanIndex) -> Int? {
+  match roster_node_byte_range(node: node, spans: spans) {
+    Present { value: r } => Present { value: r.start }
+    Absent => Absent
+  }
+}
+
+fn roster_absent_count(xs: List<Int?>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(n, o) {
+    match o {
+      Present { value: _ } => n
+      Absent => n + 1
+    }
+  })
+}
+
+fn roster_site_if_start(site: ScopedReferenceSite, got: Int?, want: Int) -> List<ScopedReferenceSite> {
+  match got {
+    Present { value: g } => if g == want { [site] } else { [] }
+    Absent => []
+  }
+}
+
+// The sites whose recorded start is `at`; empty for an unplaced head.
+fn roster_sites_starting_at(sites: List<ScopedReferenceSite>, starts: List<Int?>, at: Int?) -> List<ScopedReferenceSite> {
+  match at {
+    Absent => []
+    Present { value: want } =>
+      fold_list(xs: zip_map(a: sites, b: starts, f: fn(st, o) { roster_site_if_start(site: st, got: o, want: want) }), empty: [], cons: fn(acc, one) { list_append(left: acc, right: one) })
+  }
 }
 
 // Every primary-expression capture whose head (the sequence's left atom) is spelled `call`: a bare `call(...)` or a bare
