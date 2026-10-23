@@ -10,7 +10,13 @@ import gunbc.ci.ci_fleet {
 }
 import extdeps.external_authority { ObservedByReceipt, observed_receipt_ref }
 import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv3 }
+import gunbc.host.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound, fleet_converge_policy_from }
+import gunbc.ci.ci_runner_placement {
+  runner_deployment_plan, runner_image_baked_deployment_plan, runner_host_deployment_for,
+  HostRunnerDeploymentRefused, HostRunnerDeploymentDerived, RefusedHostDeployment, HostNotEnrolledInFleet,
+  HostRealizedByImage, runner_fleet_capacity_plan,
+}
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId,
 }
@@ -289,14 +295,13 @@ test fn mtcollins1_RED_unread_receipt_is_not_an_unbegun_capture() -> Bool {
   }
 }
 
-test fn mtcollins1_production_committed_width_is_unresolved_until_catalog_enrolment() -> Bool {
+// Through fleet_intent_offers, with no supplied offer: enrolling the host is what moved its committed width
+// off WidthComputeOfferAbsent. The figure is the one mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots
+// derives from supplied values; this is its pairing inhabitance claim over the production route.
+test fn mtcollins1_production_committed_width_is_derived_through_the_enrolled_offer() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_mtcollins1) {
-    RunnerWidthUnresolved { cause: c } =>
-      match c {
-        WidthComputeOfferAbsent { host: h } => (h as String) == (operator_host_mtcollins1 as String)
-        _ => false
-      }
-    RunnerWidthDerived { slots: _ } => false
+    RunnerWidthDerived { slots: n } => n == 5
+    RunnerWidthUnresolved { cause: _ } => false
   }
 }
 
@@ -433,4 +438,43 @@ test fn mtcollins1_eight_rdimm_attestation_contradicts_the_firmware_reading() ->
       == mtcollins1_eight_rdimm_one_rank_module_count + mtcollins1_eight_rdimm_two_rank_module_count
     && mtcollins1_eight_rdimm_firmware_read_module_count == 8
     && mtcollins1_eight_rdimm_trained_megatransfers == 2133
+}
+
+// RED: THE PLAN AND THE POLICY PARTITION BY HOW THE HOST IS REALIZED. A RamImageBoot host in
+// fleet_intent_offers emits no converge target and emits an image-baked entry; mutating the partition so
+// the converge-applied arm takes it reds the first two conjuncts. Control: a converge-delivered host is a
+// converge target and not image-baked.
+test fn ram_image_boot_host_is_image_baked_and_never_a_converge_target() -> Bool {
+  match fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan()) {
+    ConvergePolicyDerived { hosts: applied, image_baked: baked } =>
+      !any(applied, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && any(baked, h => (h.identity as String) == (operator_host_mtcollins1 as String))
+        && !any(baked, h => (h.identity as String) == (operator_host_srv3 as String))
+        && any(applied, h => (h.identity as String) == (operator_host_srv3 as String))
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
+test fn the_converge_applied_plan_does_not_name_a_ram_image_host() -> Bool {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostRealizedByImage } } => true
+    _ => false
+  }
+}
+
+// An enrolled image-baked host is not "not enrolled": the refusal names how it is realized. Control: a host
+// the fleet never enrolled keeps HostNotEnrolledInFleet.
+test fn an_unenrolled_host_still_refuses_as_not_enrolled() -> Bool {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: "not-a-fleet-host" as HostIdentity) {
+    HostRunnerDeploymentRefused { refusal: RefusedHostDeployment { host: _, cause: HostNotEnrolledInFleet } } => true
+    _ => false
+  }
+}
+
+// The capacity plan keeps mtcollins1: CI capacity readers do not drop an image-baked host.
+test fn the_fleet_capacity_plan_carries_the_ram_image_host() -> Bool {
+  match runner_host_deployment_for(p: runner_fleet_capacity_plan(), host: operator_host_mtcollins1) {
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 5
+    _ => false
+  }
 }
