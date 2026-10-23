@@ -3615,6 +3615,24 @@ pub fn compile_to_resolved_with_options(
     }
 }
 
+/// COUNTS EVERY RENDER THAT ASKED FOR EVERY MODULE. `RenderEveryModule` is the whole-graph render
+/// the census must never request: the census runs on the compiled graph's diagnostics and asks for
+/// no render subject at all, so a census that reached a whole-graph render is a regression, not a
+/// slower pass. The census control (`every_module_render_never_requested`) reads this counter
+/// around real census calls; every whole-graph render reaches [`emit_resolved_for_target_selected`]
+/// with `RenderEveryModule` in hand (the unselected entry delegates here), so a census-side
+/// widening cannot dodge the count by choosing an entry point.
+static EVERY_MODULE_RENDER_CALLS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+pub fn every_module_render_calls() -> u64 {
+    EVERY_MODULE_RENDER_CALLS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub fn reset_every_module_render_calls() {
+    EVERY_MODULE_RENDER_CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
 pub fn emit_resolved_for_target(
     resolved: Rc<ResolvedPipelineResult>,
     target: RenderTarget,
@@ -3631,6 +3649,12 @@ pub fn emit_resolved_for_target_selected(
     target: RenderTarget,
     selection: Rc<RustModuleRenderSelection>,
 ) -> Rc<PipelineResult> {
+    // ONE COUNTING SITE: every whole-graph render, whichever entry point asked for it, passes
+    // through this function with `RenderEveryModule` in hand. Counting here means a census-side
+    // widening cannot dodge the counter by calling the selected route directly.
+    if matches!(&*selection, RustModuleRenderSelection::RenderEveryModule) {
+        EVERY_MODULE_RENDER_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
     match emittable_graph(resolved.clone()) {
         std::option::Option::None => Rc::new(PipelineResult {
             files: Rc::new(vec![]),

@@ -228,7 +228,21 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
                         )
                         .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
                         record_fixture_closure(&sources);
-                        compile_fixture_rendering_only_what_is_read(sources, None, module_index)
+                        // THE CENSUS RUNS ON THE COMPILED GRAPH'S DIAGNOSTICS AND REQUESTS NO
+                        // RENDER SUBJECT (mgr ruling msg_546ed998, after the #13037 floor repair
+                        // wired a render-selection demand into this route). A census asks "which
+                        // located diagnostics did the compile produce"; a render subject is not
+                        // one of its inputs, and demanding one made a parse-error fixture -- whose
+                        // own module never joins the compiled graph -- refuse the census instead of
+                        // reporting the parse diagnostics it exists to report. The route therefore
+                        // emits with an EMPTY selection: the fixed-point compile runs in full
+                        // (whole-graph checks and graph-level scans included, all before any
+                        // per-module work), and the empty selection renders no module, which is
+                        // exactly what a census needs and nothing more. It is NOT a catch of the
+                        // old refusal and a proceed, and it never widens to RenderEveryModule --
+                        // the counter below and the control test make a whole-graph census render
+                        // a refused regression rather than a slower pass.
+                        compile_fixture_rendering_nothing(sources, module_index)
                     })
                 },
             )
@@ -2208,6 +2222,37 @@ pub(crate) fn compile_fixture_rendering_only_what_is_read(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
         selection,
+    ))
+}
+
+/// COMPILE A FIXTURE CLOSURE AND RENDER NOTHING. The census route: the same fixed-point compile
+/// as [`compile_fixture_rendering_only_what_is_read`] (identical pool, identical closure authority,
+/// identical resolve), but the emit requests NO render subject instead of deriving one from a read
+/// path. The census question -- "which located diagnostics did the compile produce" -- is answered
+/// by the diagnostics the compile and the crate-level emit scans attach before per-module work
+/// begins, so no module needs to render to answer it, and a fixture whose own module never joins
+/// the compiled graph (a parse-error fixture) reports its parse diagnostics instead of refusing for
+/// lack of a render subject. The selection is the empty one, never `RenderEveryModule`: widening
+/// would re-buy the whole-graph render cost this route exists to not-ask for, and the counter at
+/// `v1_compiler_compile::every_module_render_calls` makes any such widening a control failure.
+pub(crate) fn compile_fixture_rendering_nothing(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pool: &HashMap<String, String>,
+) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
+    let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+        sources,
+        &|module: &str| fixture_pool_answer(module, pool),
+        &|module: &str| fixture_pool_closure_of(module, pool),
+    )
+    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+    Ok(v1_compiler_compile::emit_resolved_for_target_selected(
+        resolved,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+        Rc::new(
+            v1_compiler_artifact::RustModuleRenderSelection::RenderSelectedMirrors {
+                basenames: Rc::new(Vec::new()),
+            },
+        ),
     ))
 }
 
