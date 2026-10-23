@@ -6,8 +6,7 @@ import std.occurrence_identity {
 }
 import v2.compiler.inferred_tree {
   InferredFacts,
-  InferredTree,
-  constructed_root_arm_resolutions
+  InferredTree
 }
 import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use }
 import v2.extdeps.languages.dag {
@@ -811,7 +810,7 @@ fn translate_generic_arrow_not_rendered_diagnostic(arrow: Node) -> Diagnostic {
 // DECLARED GAP: this serialize entry is given an emitted Node, not an InferredTree. Nullary-arm
 // stamp lookup therefore cannot fire here; a declaration-reference body refuses
 // emit_declaration_reference_inferred_facts_absent rather than guessing. The module-emit path
-// carries the real tree. The empty arm_resolutions is the same gap: no arm test is decided for a bare emitted Node. empty_symbol_index at these call sites is the same gap: no resolve index
+// carries the real tree. empty_symbol_index at these call sites is the same gap: no resolve index
 // is in scope at relation-row serialize.
 fn serialize_facts_absent_tree(root: Node) -> InferredTree {
   InferredTree {
@@ -820,8 +819,7 @@ fn serialize_facts_absent_tree(root: Node) -> InferredTree {
       lookup: fn(_key) {
         Absent
       }
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 
