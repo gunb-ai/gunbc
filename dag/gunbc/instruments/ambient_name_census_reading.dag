@@ -132,7 +132,7 @@ fn ambient_census_subjects() -> List<String> {
 // THE BASE A WAVE'S REWRITTEN MODULES ARE READ AGAINST: the merge base of the run's commit and this
 // ref. A policy fact, owned here; the binding diff reads its base at the same ref.
 fn ambient_census_base_ref() -> String {
-  "origin/t02-sim-base2"
+  "origin/t02-reval-base"
 }
 
 fn binding_lines(stdout: String) -> List<String> {
