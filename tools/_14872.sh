@@ -49,7 +49,9 @@ claim() { # tag driver tree entry fn
   local rc=$?
   echo "  [$tag] rc=$rc PASS=$(grep -ac '^PASS ' /tmp/w872_$tag.out) FAIL=$(grep -ac '^FAIL ' /tmp/w872_$tag.out) UNOBS=$(grep -ac '^UNOBSERVED ' /tmp/w872_$tag.out) BYTES=$(wc -c < /tmp/w872_$tag.out) $(date -u +%H:%M:%S)Z"
   grep -aE "^(PASS|FAIL|UNOBSERVED) $fn" /tmp/w872_$tag.out | sed 's/^/    V| /' | cut -c1-160
-  grep -aE '\[cost-partition\]' /tmp/w872_$tag.out | tail -1 | sed 's/^/    CP| /' | cut -c1-420
+  local cp=$(grep -aE '\[cost-partition\]' /tmp/w872_$tag.out | tail -1)
+  echo "    CP| kinds=$(printf '%s' "$cp" | grep -oE '\"kind\":\"[A-Za-z]+\"' | tr '\n' ' ') oos=$(printf '%s' "$cp" | grep -oE '\"out_of_span\":\{[^}]*\}' | head -1) sum=$(printf '%s' "$cp" | grep -oE '\"sum_exclusive_nanos\":[0-9]+' | head -1)"
+  echo "    CPRAW_BYTES=$(printf '%s' "$cp" | wc -c) CPHEAD=$(printf '%s' "$cp" | cut -c1-200)"
   cd $REPO || exit 9
 }
 SCF=dag/test/claim/string_family_cast.dag; SCFn=string_family_cast_holds
