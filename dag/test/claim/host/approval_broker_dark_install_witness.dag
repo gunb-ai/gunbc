@@ -34,7 +34,11 @@ import gunbc.host.host_effect_realize {
   dark_slice_control_legs,
   dark_snapshot_readback_legs,
   approval_broker_dark_install,
+  DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarRestart, DarkStepSidecarDaemonReload, DarkStepSidecarEnable,
+  DarkStepSidecarDigest, dark_sidecar_legs, dark_stage_sidecar_digest, dark_stage_sidecar, dark_sidecar_readback_not_local, DarkInstallInputs,
 }
+import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 import gunbc.host.host_effect_realize { Sha256Agreement, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved, Sha256Agrees, Sha256SideUnobserved, SourceSide, Sha256RunFailed }
 import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
@@ -213,6 +217,52 @@ test fn the_real_route_refuses_a_non_owning_spec_at_the_owner_step() -> Bool {
     transport: LocalShell,
   ) {
     DarkInstallRefused { step: s, reason: _ } => s == DarkStepOwner
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}
+
+// ── THE SIDECAR PRECEDES THE BROKER SWAP (run 39545280023) ─────────────────────────────────────
+// The release locus has two executable members, enumerated once; a roster naming only gunbc is the defect.
+test fn the_broker_locus_enumerates_the_gunbc_and_sidecar_binaries() -> Bool {
+  approval_broker_release_locus_executables == [gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name]
+}
+
+fn sidecar_plan() -> List<DarkLeg> {
+  dark_sidecar_legs(spec: deployment_spec_srv1(), revision: rev(), digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+}
+
+fn inputs() -> DarkInstallInputs {
+  DarkInstallInputs { spec: deployment_spec_srv1(), revision: rev(), principal: fleet_posix_ci_runner_principal(), source_root: "/nonexistent-sidecar-source", transport: refusing_transport }
+}
+
+// POSITIVE CONTROL: the real sidecar plan is the sidecar sequence, and every one of its steps is ordered before the broker's unit legs.
+test fn the_real_sidecar_plan_precedes_every_broker_unit_leg() -> Bool {
+  let unit_steps = map(dark_unit_legs(spec: deployment_spec_srv1(), revision: rev()), l => leg_step(l: l))
+  map(sidecar_plan(), l => leg_step(l: l)) == [DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarDaemonReload, DarkStepSidecarEnable, DarkStepSidecarRestart]
+    && !any(unit_steps, u => any(map(sidecar_plan(), l => leg_step(l: l)), t => t == u))
+}
+
+// RED: a locus whose sidecar binary cannot be observed refuses at the sidecar digest, before any sidecar or broker leg.
+test fn a_locus_missing_the_sidecar_binary_refuses_before_any_leg() -> Bool {
+  match dark_stage_sidecar_digest(i: inputs(), tree_digest: "t") {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarDigest
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: with the sidecar digest in hand, the same transport is first reached at the sidecar's own first leg.
+test fn a_present_sidecar_binary_reaches_the_first_sidecar_leg() -> Bool {
+  match dark_stage_sidecar(i: inputs(), tree_digest: "t", deployed: "d") {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarEnv
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}
+
+// RED: the readback probes the evaluator's loopback, so a transport that is not LocalShell refuses at the readback step with no broker leg run.
+// (The legs run first over the transport; this stage is reached with them done, hence the direct stage call.)
+test fn a_non_local_transport_refuses_the_sidecar_readback() -> Bool {
+  match dark_sidecar_readback_not_local() {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarReadback
     DarkInstallConverged { broker_tree_digest: _ } => false
   }
 }

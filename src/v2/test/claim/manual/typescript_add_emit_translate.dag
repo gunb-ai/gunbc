@@ -1,5 +1,7 @@
 module v2.test.claim.manual.typescript_add_emit_translate
 
+import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -273,7 +275,8 @@ data typescript_add_inferred_tree: InferredTree = InferredTree {
   root: typescript_add_emitted_root,
   facts: PartialFunction {
     lookup: typescript_add_facts_lookup
-  }
+  },
+  arm_resolutions: constructed_root_arm_resolutions()
 }
 
 fn anchor_typescript_add_emit_accepts() -> Outcome<Medium<String>> {

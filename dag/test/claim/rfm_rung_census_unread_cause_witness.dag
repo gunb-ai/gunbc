@@ -1,7 +1,8 @@
 module test.claim.rfm_rung_census_unread_cause_witness
 
-import std.types { Bool, String }
-import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import std.types { String }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
 
 // A CAUSE ADDED TO gunbc.recurring_failure_mode UnreadCause CANNOT BE MISSED BY THE RUNG CENSUS, AND THE COMPILER
 // SAYS SO (DESIGN section 3 single authority, section 5 construction over validation): the census derives its
@@ -15,10 +16,10 @@ data omitted_cause_source: String = "module probe_unread_cause_omitted\nimport s
 
 data omitted_cause_with_catch_all_source: String = "module probe_unread_cause_catch_all\nimport std.types { String }\nimport gunbc.recurring_failure_mode { UnreadCause, NoRungStated, FoundAtAmbiguous, CeilingNotStated, CeilingAmbiguous, CurrentRungUnstatedAfterClimb, CeilingStatedWithoutTrigger, TriggerNamesArtifactNotCapability }\nfn label(c: UnreadCause) -> String {\n  match c {\n    NoRungStated => \"a\"\n    FoundAtAmbiguous => \"a\"\n    CeilingNotStated => \"a\"\n    CeilingAmbiguous => \"a\"\n    CurrentRungUnstatedAfterClimb => \"a\"\n    CeilingStatedWithoutTrigger => \"a\"\n    TriggerNamesArtifactNotCapability => \"a\"\n    _ => \"a\"\n  }\n}\n"
 
-test fn a_cause_arm_missing_from_the_labelling_match_is_refused_at_compile() -> Bool {
-  blocking_class_count_for(source: omitted_cause_source, wanted_class: "NonExhaustiveMatch") == 1
+test fn a_cause_arm_missing_from_the_labelling_match_is_refused_at_compile() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: blocking_class_census(source: omitted_cause_source, wanted_class: "NonExhaustiveMatch"), holds: fn(n) { n == 1 }))
 }
 
-test fn the_same_match_with_a_catch_all_draws_no_non_exhaustive_refusal() -> Bool {
-  blocking_class_count_for(source: omitted_cause_with_catch_all_source, wanted_class: "NonExhaustiveMatch") == 0
+test fn the_same_match_with_a_catch_all_draws_no_non_exhaustive_refusal() -> ProcessExit {
+  census_exit(verdict: census_verdict(census: blocking_class_census(source: omitted_cause_with_catch_all_source, wanted_class: "NonExhaustiveMatch"), holds: fn(n) { n == 0 }))
 }

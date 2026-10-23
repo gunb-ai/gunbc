@@ -637,6 +637,31 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "claim_coverage_census_exit",
             },
         ),
+        // Second home for a binding `gunbc.instrument_targets` `known_red_derivation_binding` already
+        // owns: this table is hand-maintained -- `heal` never regenerates it -- so a rostered label with
+        // no row here exits 2 'no such target' whatever the .dag registry says. Adding the row is the
+        // only way to make the instrument's label reachable, and it follows the table's existing shape
+        // (the `claim-coverage-census` row is built the same way).
+        // RECEIPT / DEFERRAL for the duplicated mapping: generating this table from
+        // `gunbc.instrument_targets` is the repair, and it is a seed lane rather than this instrument's
+        // lane because it touches every instrument's binding at once. The hand-maintained table is
+        // already under a seed census, so the duplication is tracked rather than invisible: the
+        // `DeclarationRef { decl_name: "instrument_registry" }` row inside
+        // `gunbc.target_invocation_seed_growth` `target_invocation_seed_growth_justification`.
+        (
+            instrument_label("known-red-derivation"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/known_red_derivation.dag",
+                function: "known_red_derivation_exit",
+            },
+        ),
+        (
+            instrument_label("roster-reach-inhabitance"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/roster_reach_inhabitance.dag",
+                function: "roster_reach_inhabitance_exit",
+            },
+        ),
         (
             instrument_label("compute-run-unit-cold"),
             TargetProducer::CliWireProgram {
@@ -5298,7 +5323,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("");
-                names.iter().any(|want| name == *want)
+                names.contains(&name)
             })
             .cloned()
             .collect::<Vec<_>>()

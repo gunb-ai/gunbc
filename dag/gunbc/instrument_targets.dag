@@ -888,6 +888,46 @@ fn claim_coverage_census_binding() -> TargetBinding {
   TargetBinding { target: claim_coverage_census_label() producer: CliWireProgramProducer { entry: claim_coverage_census_entry() function: claim_coverage_census_function() } }
 }
 
+// THE KNOWN-RED DERIVATION. The label exists to print a list no file holds: which ExpectedToHold claims
+// fail at the head this run executed on. Its producer is asked only for a head and a population — it
+// reads the schedule from the wet lane's own accessor and the enrollment from floor_expected_red — so
+// the printed rows can only come from a run. See the module header for what each refusal arm refuses.
+fn known_red_derivation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "known-red-derivation" } }
+}
+
+fn known_red_derivation_entry() -> String {
+  "dag/gunbc/instruments/known_red_derivation.dag"
+}
+
+fn known_red_derivation_function() -> String {
+  "known_red_derivation_exit"
+}
+
+fn known_red_derivation_binding() -> TargetBinding {
+  TargetBinding { target: known_red_derivation_label() producer: CliWireProgramProducer { entry: known_red_derivation_entry() function: known_red_derivation_function() } }
+}
+
+// THE ROSTER-REACH INHABITANCE CLAIM (gunbc.instruments.roster_reach_inhabitance): the one real call-reach walk
+// that pairs test.claim.fleet.fleet_converge_roster_token_prelude_witness, which is handed its target. Hours of
+// interpreter time, so it is dispatched by an operator at the head that changes the supplied target and on no lane.
+// `gunbc test //gunbc/instruments:roster-reach-inhabitance`.
+fn roster_reach_inhabitance_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-reach-inhabitance" } }
+}
+
+fn roster_reach_inhabitance_entry() -> String {
+  "dag/gunbc/instruments/roster_reach_inhabitance.dag"
+}
+
+fn roster_reach_inhabitance_function() -> String {
+  "roster_reach_inhabitance_exit"
+}
+
+fn roster_reach_inhabitance_binding() -> TargetBinding {
+  TargetBinding { target: roster_reach_inhabitance_label() producer: CliWireProgramProducer { entry: roster_reach_inhabitance_entry() function: roster_reach_inhabitance_function() } }
+}
+
 fn compute_run_unit_cold_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
 }
@@ -1219,7 +1259,7 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    claim_coverage_census_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), claim_coverage_census_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -1241,7 +1281,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    claim_coverage_census_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), claim_coverage_census_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

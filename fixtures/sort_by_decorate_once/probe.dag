@@ -1,0 +1,24 @@
+module test.fixture.sort_by_decorate_once
+
+import std.types { List }
+
+type Row = { label: String, rank: Int }
+
+// THE ONE SHAPE THIS FIXTURE EXISTS FOR: sort_by sites whose emitted lowering must run the
+// selector once per element (decorate), sort on the stored key, and undecorate. Read as emitted
+// text by the test beside it; it lives under the repo-root `fixtures/` tree for the reason the
+// grounded_shared_carrier fixture does.
+//
+// Duplicate ranks and tied keys are authored so a lowering that drops a duplicate or reorders ties
+// has a site to disagree on.
+fn ranked(rows: List<Row>) -> List<Row> {
+  rows |> sort_by(r => r.rank)
+}
+
+fn labelled(rows: List<Row>) -> List<Row> {
+  rows |> sort_by(r => r.label)
+}
+
+fn generic_sorted<T>(items: List<T>) -> List<T> {
+  items |> sort_by(i => i)
+}
