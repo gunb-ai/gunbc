@@ -10,7 +10,8 @@ import extdeps.http.server {
 }
 import extdeps.uri_path { path_param_value }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
+  DeviceEnrolHandlerObserved,
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body, approval_broker_marker_in_response,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, BrokerNoRouteMatched,
   approval_broker_served_token, approval_serving_process_token,
@@ -29,7 +30,8 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission_under, approval_writer_authority, approval_writer_process,
 }
-import extdeps.http.server { ServeHttpResponse }
+import extdeps.http.server { ServeHttpResponse, serve_response_headers_wire, ServeResponseHeaderApprovalBroker }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
@@ -218,7 +220,66 @@ test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bo
     tailscale_identity: "",
   )
   r.status == 404
-    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: BrokerNoRouteMatched) as String)
+    && r.body == "not found\n"
+    && match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: r.headers), body: r.body) {
+      MarkerObserved { process: p, marker: m } =>
+        approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: BrokerNoRouteMatched)
+      NoMarkerInBody => false
+    }
+}
+
+// ── A JSON ANSWER IS STILL JSON, AND STILL MARKED ───────────────────────────────────────────
+// The defect (srv1 2026-10-23): the marker was joined into every application/json body, so the
+// device app's strict decoder could read no device route. These run the REAL entry on a device route.
+fn device_enrol_refusal() -> ServeHttpResponse {
+  approval_broker_respond(method_label: "POST", path: "/approve/device/enrol", body: "{}", tailscale_identity: "")
+}
+
+fn body_parses_as_json(body: String) -> Bool {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: _ } => true
+    JsonDocumentUnreadable { gap: _ } => false
+  }
+}
+
+test fn a_device_route_json_body_parses_as_json_with_no_marker_in_it() -> Bool {
+  let r = device_enrol_refusal()
+  r.status >= 400
+    && body_parses_as_json(body: r.body)
+    && !string_contains(s: r.body, pattern: "approval-broker/")
+}
+
+test fn a_device_route_json_response_carries_the_marker_in_its_header() -> Bool {
+  let r = device_enrol_refusal()
+  any(r.headers, h => match h {
+    ServeResponseHeaderApprovalBroker { token: t } =>
+      (t as String) == (approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved) as String)
+    _ => false
+  })
+}
+
+test fn a_json_route_probe_still_yields_marker_observed() -> Bool {
+  let r = device_enrol_refusal()
+  match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: r.headers), body: r.body) {
+    MarkerObserved { process: p, marker: m } =>
+      approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved)
+    NoMarkerInBody => false
+  }
+}
+
+// RED CONTROL for the first two: the OLD arm's output (marker joined after the body) is not JSON, so
+// the discriminator above rejects it. Its green here is what makes the claim above a reading.
+test fn the_old_trailing_line_body_is_not_json() -> Bool {
+  let old = join([device_enrol_refusal().body, "x-approval-broker: ", approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved) as String, "\n"], "")
+  !body_parses_as_json(body: old)
+}
+
+// And the body-only reader cannot see a header-carried marker: the reader must be handed the headers.
+test fn a_body_only_reader_misses_a_json_route_marker() -> Bool {
+  match approval_broker_marker_in_body(body: device_enrol_refusal().body) {
+    NoMarkerInBody => true
+    MarkerObserved { process: _, marker: _ } => false
+  }
 }
 
 // AND THE READER AGREES WITH THE WRITER ON ONE SPELLING. The two claims above establish that the
