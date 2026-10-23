@@ -1,0 +1,186 @@
+module gunbc.instruments.ambient_operation_disposition_reading
+
+import std.types { String, Bool, List, Int, Map }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
+import std.optional { Optional, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.primitive_projection { primitive_identity_runtime_name }
+import gunbc.primitive_egress.disposition { PrimitiveEvidence, ObservesOrMutates, NoExternalSubject, ExternalSubjectUnestablished }
+import gunbc.primitive_egress.dispositions { primitive_evidence_rows }
+import gunbc.instruments.ambient_name_census_reading {
+  ambient_name_census_standing, ambient_census_subjects, binding_lines, field_at, distinct_lines,
+  module_subject_attribution, module_subjects_text
+}
+
+// HOW `gunbc test //gunbc/instruments:ambient-operation-disposition-census` READS ITS RUN. It is the
+// ambient-name census's own run (the same subject, the same controls, the same producer: DESIGN §3, no
+// second census), read for one question: every spelling that binds with NO import through an ambient
+// primitive table, which of four dispositions it takes. This module measures; it rules nothing. Which
+// disposition a row takes is the manager's decision per row, and no row is renamed or retired here.
+//
+// THE POPULATION is the closure of the census subjects (ambient_census_subjects), the N7 closure; each row
+// names the number of its modules that the run attributes to a subject (module_subjects), and a row whose
+// modules are all outside every closure says so.
+//
+// THE ROWS, one per (source, spelling, target):
+//   disposition <spelling> <source> <target> <call_sites> <modules> <in_closure> <class> <basis> <evidence>
+// call_sites counts distinct census rows (module, spelling, ordinal), i.e. occurrences by binding identity,
+// not by text match; modules counts the distinct modules holding them.
+//
+// THE CLASSES, assigned in this order and exactly one per row:
+//   in-flight  the spelling is claimed by a change already under way (ambient_operation_in_flight); counted,
+//              never classified, so the work is not duplicated;
+//   C          the binding source is `generated`: the compiler minted the reference;
+//   D          the primitive-egress ledger (gunbc.primitive_egress.dispositions) records the spelling as
+//              observing or mutating something outside the value graph; the evidence is that row's
+//              retirement trigger (next_observation), quoted;
+//   A          a declaration the census printed (a `binding_declaration` row) implements the spelling;
+//   B          no such declaration was printed.
+//
+// A AND B ARE HEURISTIC, labelled so in every row's basis. A is matched on the declaration's NAME alone
+// (exact spelling) outside std.primitives; the signature is printed as evidence but is rendered by the type
+// census's own reference text, which prints an applied type as `<structural>`, so argument types
+// can NOT be relied on to confirm the match. A collection-roster row is different in kind: the table
+// binds the spelling to an existing declaration (its target), so A there is the binding's own identity and
+// its basis says so. B's evidence is exactly "none in the N7 closure": a statement about the closure the
+// census read, never about the corpus. A declaration outside the closure is invisible to this reading.
+
+fn ambient_operation_in_flight() -> List<String> {
+  ["list_push", "map_get"]
+}
+
+fn ambient_operation_sources() -> List<String> {
+  ["ambient:primitive_authority", "ambient:collection_roster", "generated"]
+}
+
+fn is_in_scope_source(source: String) -> Bool {
+  count(ambient_operation_sources() |> filter(s => s == source)) != 0
+}
+
+fn row_key(line: String) -> String {
+  field_at(line: line, index: 4) + "\t" + field_at(line: line, index: 2) + "\t" + field_at(line: line, index: 5)
+}
+
+fn declaration_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_declaration\t"))
+}
+
+// A declaration row's module, name and signature: `binding_declaration <module> <name> fn <signature>`.
+fn declaration_named(decls: List<String>, name: String) -> Optional<String> {
+  first(decls |> filter(l => field_at(line: l, index: 2) == name) |> filter(l => !starts_with(s: field_at(line: l, index: 1), prefix: "std.primitives")))
+}
+
+// The census row's target is the declaring path `<module>.<name>`; its declaration row, when printed.
+fn declaration_at_path(decls: List<String>, path: String) -> Optional<String> {
+  first(decls |> filter(l => field_at(line: l, index: 1) + "." + field_at(line: l, index: 2) == path))
+}
+
+fn egress_observing_trigger(spelling: String) -> Optional<String> {
+  match first(primitive_evidence_rows() |> filter(e => primitive_identity_runtime_name(identity: e.identity) == spelling) |> filter(e => match e.external_subject { ObservesOrMutates { operation: _, subject: _, provider: _, ambient_realization: _ } => true  NoExternalSubject => false  ExternalSubjectUnestablished { detail: _ } => false })) {
+    Present { value: e } => Present { value: e.next_observation as String }
+    Absent => Absent
+  }
+}
+
+fn declaration_evidence(decl: String) -> String {
+  field_at(line: decl, index: 1) + "." + field_at(line: decl, index: 2) + " " + field_at(line: decl, index: 4)
+}
+
+// (class, basis, evidence) of one row.
+fn classify_row(spelling: String, source: String, target: String, decls: List<String>) -> String {
+  if count(ambient_operation_in_flight() |> filter(s => s == spelling)) != 0 {
+    "in-flight\tin-flight\tclaimed by a change already under way; not classified here"
+  } else if source == "generated" {
+    "C\tgenerated-source\tthe compiler minted this reference (binding source generated) and it binds " + target
+  } else {
+    match egress_observing_trigger(spelling: spelling) {
+      Present { value: next } => "D\tegress-evidence\tprimitive_egress row observes or mutates outside the value graph; retirement trigger: " + next
+      Absent =>
+        if source == "ambient:collection_roster" {
+          match declaration_at_path(decls: decls, path: target) {
+            Present { value: d } => "A\tbinding-identity\tthe roster binds the spelling to the declaration " + declaration_evidence(decl: d)
+            Absent => "A\tbinding-identity\tthe roster binds the spelling to " + target + " (no declaration row printed for it in the N7 closure)"
+          }
+        } else {
+          match declaration_named(decls: decls, name: spelling) {
+            Present { value: d } => "A\tHEURISTIC-name-match\tdeclaration " + declaration_evidence(decl: d) + " (name match only; argument types are not compared)"
+            Absent => "B\tHEURISTIC-no-name-match\tnone in the N7 closure"
+          }
+        }
+    }
+  }
+}
+
+fn in_closure_modules(modules: List<String>, attribution: Map<String, List<String>>) -> Int {
+  count(modules |> filter(m => module_subjects_text(attribution: attribution, module: m) != "-"))
+}
+
+fn ambient_operation_rows(tree_stdout: String) -> List<String> {
+  let selected = distinct_lines(lines: binding_lines(stdout: tree_stdout)) |> filter(l => is_in_scope_source(source: field_at(line: l, index: 4)))
+  let decls = distinct_lines(lines: declaration_lines(stdout: tree_stdout))
+  let attribution = module_subject_attribution(tree_stdout: tree_stdout)
+  let sites = fold(selected, init: empty_map(), f: fn(m, l) {
+    let k = row_key(line: l)
+    map_insert(m, k, match map_get(m, k) { Present { value: n } => n + 1  Absent => 1 })
+  })
+  let mods = fold(selected, init: empty_map(), f: fn(m, l) {
+    let k = row_key(line: l)
+    map_insert(m, k, match map_get(m, k) { Present { value: xs } => list_push(xs, field_at(line: l, index: 1))  Absent => [field_at(line: l, index: 1)] })
+  })
+  map_keys(sites) |> sort_by(k => k) |> map(fn(k) {
+    let source = field_at(line: k, index: 0)
+    let spelling = field_at(line: k, index: 1)
+    let target = field_at(line: k, index: 2)
+    let modules = distinct_lines(lines: match map_get(mods, k) { Present { value: xs } => xs  Absent => [] })
+    "disposition\t" + spelling + "\t" + source + "\t" + target
+      + "\t" + to_string(match map_get(sites, k) { Present { value: n } => n  Absent => 0 })
+      + "\t" + to_string(count(modules))
+      + "\t" + to_string(in_closure_modules(modules: modules, attribution: attribution)) + "/" + to_string(count(modules))
+      + "\t" + classify_row(spelling: spelling, source: source, target: target, decls: decls)
+  })
+}
+
+fn class_count(rows: List<String>, class: String) -> Int {
+  count(rows |> filter(r => field_at(line: r, index: 7) == class))
+}
+
+fn ambient_operation_summary(rows: List<String>) -> List<String> {
+  ["in-flight", "A", "B", "C", "D"] |> map(c => "disposition_summary\t" + c + "\t" + to_string(class_count(rows: rows, class: c)))
+}
+
+// The reading, over the same run the ambient-name census reads. Its controls are that census's own
+// (fixture join, exactly one source per occurrence, the unindexed root, consistency, completeness): a
+// control that did not hold, or a run that observed nothing, is returned unchanged, with its exit.
+// This reading adds one refusal of its own: a run that printed no `binding_declaration` row at all
+// observed no declarations, so no row could be told A from B, and that is no observation (exit 2).
+fn ambient_operation_disposition_standing(
+  fixture_stdout: String,
+  fixture_status: Int,
+  unindexed_status: Int,
+  tree_stdout: String,
+  tree_runs: String,
+  rewritten: String
+) -> CliWireResponse {
+  match ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten) {
+    CliWireUnprintable { cause: c } => CliWireUnprintable { cause: c }
+    CliWirePrintable { bytes: b, exit: x } =>
+      match x {
+        ExitSuccess => disposition_response(tree_stdout: tree_stdout)
+        ExitFailure { code: _, reason: _ } => CliWirePrintable { bytes: b, exit: x }
+      }
+  }
+}
+
+fn disposition_response(tree_stdout: String) -> CliWireResponse {
+  let rows = ambient_operation_rows(tree_stdout: tree_stdout)
+  let header = "subjects\t" + join(ambient_census_subjects(), separator: ",") + "\n"
+  let bytes = header + (rows |> join(separator: "\n")) + "\n" + (ambient_operation_summary(rows: rows) |> join(separator: "\n")) + "\n"
+  if count(declaration_lines(stdout: tree_stdout)) == 0 {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "the run printed no binding_declaration row: no declaration was observed, so no row can be told A from B" } }
+  } else if count(rows) == 0 {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "no ambient primitive binding was observed in the closure: an empty census is no observation" } }
+  } else {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+  }
+}
