@@ -39,3 +39,8 @@ fn p_unique_count_is_2() -> Bool { blocking_count(unique_src) == 2 }
 fn p_unique_count_is_3() -> Bool { blocking_count(unique_src) == 3 }
 fn p_unique_count_is_4() -> Bool { blocking_count(unique_src) == 4 }
 fn p_unique_notrunnable() -> Bool { blocking_count(unique_src) == 0 - 1 }
+data decl_only_src: String = "module probe_um_d\n\nimport std.types { Int }\n\ntype Solo {\n  n: Int\n}\n\ntype Nothing2 {\n  tag: Int\n}\n\ntype PickUnique = Solo | Nothing2\n"
+fn q_decl_accepted() -> Bool { blocking_count(decl_only_src) == 0 }
+fn q_decl_unit_struct_minted() -> Bool { compile_dag_rust_emit_check(decl_only_src, "src/probe_um_d.rs", ["pub struct Solo;"], []) }
+fn q_decl_record_struct_present() -> Bool { compile_dag_rust_emit_check(decl_only_src, "src/probe_um_d.rs", ["pub struct Solo {"], []) }
+fn q_decl_enum_present() -> Bool { compile_dag_rust_emit_check(decl_only_src, "src/probe_um_d.rs", ["pub enum PickUnique"], []) }
