@@ -145,7 +145,7 @@ type GoogleEnrolmentRefusal
   | GoogleEnrolmentAttestKeyMismatch
   | GoogleEnrolmentAndroidUnrealized
   | GoogleEnrolmentRevokedKey
-  | GoogleEnrolmentStoredMismatch { field: NonEmptyStr }
+  | GoogleEnrolmentStoredMismatch { field: StoredEnrolmentField }
   | GoogleEnrolmentStoreUnreadable { detail: NonEmptyStr }
 
 type GoogleApproverAdmission
@@ -277,16 +277,26 @@ fn stored_attest_key_id(e: GoogleDeviceEnrollment) -> String {
   }
 }
 
+// The fields a request determines in its stored record, one arm each, so a mismatch names its field
+// as a constructor the wire and the app match exhaustively, never a spelling.
+type StoredEnrolmentField
+  = StoredFieldEnrollmentId
+  | StoredFieldGoogleSubject
+  | StoredFieldGoogleEmail
+  | StoredFieldDecisionKey
+  | StoredFieldPlatform
+  | StoredFieldAttestKeyId
+
 // THE REPLAY JOIN: a stored record answers this request only if it is this request's enrolment in
 // every field the request determines. The first field that disagrees is named, so a slot read at
 // the wrong key or a record that drifted refuses rather than being echoed back.
-fn stored_enrolment_disagreement(e: GoogleDeviceEnrollment, a: VerifiedGoogleApprover) -> NonEmptyStr? {
-  if (e.enrollment_id as String) != (google_enrollment_id(subject: a.subject, decision_key: a.keys.decision_key) as String) { Present { value: "enrollment_id" as NonEmptyStr } }
-  else if (e.google_subject as String) != (a.subject as String) { Present { value: "google_subject" as NonEmptyStr } }
-  else if (e.google_email as String) != (a.email as String) { Present { value: "google_email" as NonEmptyStr } }
-  else if (e.decision_key.point_b64url as String) != (a.keys.decision_key.point_b64url as String) { Present { value: "decision_key" as NonEmptyStr } }
-  else if e.platform != a.keys.platform { Present { value: "platform" as NonEmptyStr } }
-  else if stored_attest_key_id(e: e) != (a.keys.attest_key_id as String) { Present { value: "attest_key_id" as NonEmptyStr } }
+fn stored_enrolment_disagreement(e: GoogleDeviceEnrollment, a: VerifiedGoogleApprover) -> StoredEnrolmentField? {
+  if (e.enrollment_id as String) != (google_enrollment_id(subject: a.subject, decision_key: a.keys.decision_key) as String) { Present { value: StoredFieldEnrollmentId } }
+  else if (e.google_subject as String) != (a.subject as String) { Present { value: StoredFieldGoogleSubject } }
+  else if (e.google_email as String) != (a.email as String) { Present { value: StoredFieldGoogleEmail } }
+  else if (e.decision_key.point_b64url as String) != (a.keys.decision_key.point_b64url as String) { Present { value: StoredFieldDecisionKey } }
+  else if e.platform != a.keys.platform { Present { value: StoredFieldPlatform } }
+  else if stored_attest_key_id(e: e) != (a.keys.attest_key_id as String) { Present { value: StoredFieldAttestKeyId } }
   else { none }
 }
 

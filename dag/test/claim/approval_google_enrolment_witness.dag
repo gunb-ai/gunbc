@@ -27,7 +27,7 @@ import gunbc.auth.approval_google_enrolment {
   GoogleEnrolmentAdmission, GoogleEnrolmentWrites, GoogleEnrolmentReplays, GoogleEnrolmentRefused,
   GoogleEnrolmentTokenRefused, GoogleEnrolmentAudienceNotExact, GoogleEnrolmentAuthorizedPartyNotAdmitted,
   GoogleEnrolmentNotAnApprover, GoogleEnrolmentSubjectMismatch,
-  GoogleEnrolmentAttestationForOtherBytes, GoogleEnrolmentRevokedKey, GoogleEnrolmentStoredMismatch,
+  GoogleEnrolmentAttestationForOtherBytes, GoogleEnrolmentRevokedKey, GoogleEnrolmentStoredMismatch, StoredFieldEnrollmentId, StoredFieldGoogleEmail,
   google_enrolment_admission, new_device_notice,
 }
 
@@ -268,7 +268,7 @@ test fn a_slot_holding_another_keys_enrolment_refuses_instead_of_replaying() -> 
   match fresh(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_b), k: key_b) {
     GoogleEnrolmentWrites { enrollment: other } =>
       match again(slot: GoogleEnrolmentActive { enrollment: other }) {
-        GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: f } } => (f as String) == "enrollment_id"
+        GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: StoredFieldEnrollmentId } } => true
         _ => false
       }
     _ => false
@@ -282,7 +282,7 @@ test fn a_stored_record_differing_only_in_email_refuses_instead_of_replaying() -
   match fresh(claims: claims_as(email: fx_second_email, subject: fx_subject, signed_for: key_a), k: key_a) {
     GoogleEnrolmentWrites { enrollment: other } =>
       match again(slot: GoogleEnrolmentActive { enrollment: other }) {
-        GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: f } } => (f as String) == "google_email"
+        GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: StoredFieldGoogleEmail } } => true
         _ => false
       }
     _ => false
