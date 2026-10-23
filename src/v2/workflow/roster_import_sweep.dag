@@ -1550,6 +1550,7 @@ fn roster_controls_report() -> String {
         + roster_control_free_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_after_param(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_nested_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_label_bound_occurrence(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_beside_let(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_beside_pun(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_specimen(prepared: prepared, lex: dag_prepared_lex())
@@ -1685,6 +1686,17 @@ fn roster_control_free_call_after_param(prepared: PreparedGrammar, lex: Prepared
 // Nested free calls in one fn beside a parameter: outer/inner order must pair the same way in both trees.
 fn roster_control_nested_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   roster_control_imports_for_free_call(name: "nested-call-beside-param", text: "module c.guard3\n\nimport std.algebra { Cons }\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n\nfn f(x: String) -> Int {\n  chars(s: chars(s: x))\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
+}
+
+// Restored from #14338 with its result restated (review 85013): a nested free call that is also a label-carrying row,
+// beside a parameter of the same name used as a value. The free call imports and relabels; the bound value is untouched.
+fn roster_control_label_bound_occurrence(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n"
+  let after = "module c.bound\n\nimport std.algebra { Cons, collection_count_shape }\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n"
+  match roster_applied(before: before, outcome: roster_sweep_text(path: "control/bound.dag", text: before, prepared: prepared, lex: lex)) {
+    RosterApplyWritten { content: c } => if c == after { "" } else { "CONTROL-FAIL label-bound-occurrence: wrote [" + c + "]\n" }
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL label-bound-occurrence: refused " + roster_refusal_text(reason: r) + "\n"
+  }
 }
 
 fn roster_control_free_call_beside_let(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
