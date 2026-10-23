@@ -16,7 +16,7 @@ import gunbc.instruments.ambient_name_census_reading { binding_lines, field_at, 
 // CHECKS HERE: (1) no-import RED and (2) with-import GREEN, decided by the located binding record
 // (kit_binding_finding over the census's kit_fixture lines), exact declaration
 // identity, no count route. (3) retired contract absent is kit_contract_finding, with a control. (4) realization by
-// identity is kit_emit_identity_holds. (5) is the required self-host job, only named. (6) no second route is
+// identity is kit_emit_finding (typed, with a not-runnable arm). (5) is the required self-host job, only named. (6) no second route is
 // kit_ambient_route_count over the same census output; the template-row leg is named residue.
 //
 // WHERE THE INHABITANCE CLAIM EXECUTES (DESIGN section 3's pairing obligation): the fixtures below are SUPPLIED values
@@ -147,24 +147,56 @@ fn kit_contract_finding(row: AmbientNameHome, control_contract: String) -> Contr
 // (the HostRealizedSeam self-call hazard, gunbc.recurring_failure_mode host_seam_self_call_diverges_when_its_arm_is_absent).
 // host_symbol and self_path are the row's REALIZATION facts, read from extdeps.languages.rust.emit rt_function_registry
 // and the module's emitted path; they are supplied by the wave, not invented here.
-fn kit_emit_identity_holds(row: AmbientNameHome, host_symbol: String, self_path: String) -> Bool {
-  compile_dag_rust_emit_check(
-    kit_call_source(row: row, imported: true),
-    kit_emitted_path(row: row, imported: true),
-    [host_symbol],
-    [self_path]
-  )
+//
+// A VERDICT, NOT A BOOL: compile_dag_rust_emit_check answers false for "emitted, host symbol absent" and for "the fixture
+// never compiled", so a bare Bool is green on a not-yet-migrated name for a reason unrelated to emission. The fixture's
+// own blocking-row count (the producer the contract check uses) separates the arms: a fixture the census refuses has no
+// emission to read, and says so.
+type EmitFinding
+  = EmitNotRunnable { cause: NonEmptyStr }
+  | EmitIdentityHolds
+  | EmitIdentityDoesNotHold
+
+fn kit_emit_finding(row: AmbientNameHome, host_symbol: String, self_path: String) -> EmitFinding {
+  match kit_blocking_count(source: kit_call_source(row: row, imported: true)) {
+    Absent => EmitNotRunnable { cause: "the census did not run the imported fixture" as NonEmptyStr }
+    Present { value: blocking } =>
+      if blocking > 0 { EmitNotRunnable { cause: "the imported fixture is refused, so there is no emission to read" as NonEmptyStr } }
+      else {
+        if compile_dag_rust_emit_check(
+          kit_call_source(row: row, imported: true),
+          kit_emitted_path(row: row, imported: true),
+          [host_symbol],
+          [self_path]
+        ) { EmitIdentityHolds } else { EmitIdentityDoesNotHold }
+      }
+  }
 }
 
-// The pairing negative: the SAME call without the import must not select the declaration's emitted path (it is not
-// bound to it), so a emitter that selected by spelling would flip this and the positive together.
-fn kit_emit_unimported_does_not_select_declaration(row: AmbientNameHome, self_path: String) -> Bool {
-  compile_dag_rust_emit_check(
-    kit_call_source(row: row, imported: false),
-    kit_emitted_path(row: row, imported: false),
-    [],
-    [self_path]
-  )
+// The pairing negative: the SAME call without the import is either refused (nothing is emitted, nothing is selected) or
+// compiles through some other route and must not select the declaration's emitted path (it is not bound to it), so an
+// emitter that selected by spelling would flip this and the positive together. Three arms, so a compile failure cannot
+// satisfy a forbidden-only check by accident.
+type UnimportedEmitFinding
+  = UnimportedRefused
+  | UnimportedCompilesWithoutDeclaration
+  | UnimportedSelectsDeclaration
+  | UnimportedNotRunnable
+
+fn kit_emit_unimported_finding(row: AmbientNameHome, self_path: String) -> UnimportedEmitFinding {
+  match kit_blocking_count(source: kit_call_source(row: row, imported: false)) {
+    Absent => UnimportedNotRunnable
+    Present { value: blocking } =>
+      if blocking > 0 { UnimportedRefused }
+      else {
+        if compile_dag_rust_emit_check(
+          kit_call_source(row: row, imported: false),
+          kit_emitted_path(row: row, imported: false),
+          [],
+          [self_path]
+        ) { UnimportedCompilesWithoutDeclaration } else { UnimportedSelectsDeclaration }
+      }
+  }
 }
 
 // CHECK 6, NO SECOND ROUTE: over the census lines of the real population (the ambient-name-census stdout the wave diff

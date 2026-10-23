@@ -362,10 +362,17 @@ fn ambient_census_kit_module(row: AmbientNameHome, imported: Bool) -> String {
 }
 
 fn ambient_census_kit_source(row: AmbientNameHome, imported: Bool) -> String {
-  "module " + ambient_census_kit_module(row: row, imported: imported) + "\n"
-    + "import std.types { Int, List }\n"
-    + (if imported { "import " + row.home + " { " + row.name + " }\n" } else { "" })
-    + "fn probe(xs: List<Int>) -> List<Int> { " + row.name + "(xs, 1) }\n"
+  let header = "module " + ambient_census_kit_module(row: row, imported: imported) + "\n"
+  match row.kit_call {
+    Present { value: c } =>
+      header
+        + "import std.types { " + c.type_imports + " }\n"
+        + (if imported { "import " + row.home + " { " + row.name + " }\n" } else { "" })
+        + "fn probe(" + c.params + ") -> " + c.result + " { " + row.name + "(" + c.args + ") }\n"
+    // No call shape supplied: a fixture with no occurrence, so the census prints no binding row and the kit reads
+    // not-runnable; never a guessed shape that could pass or fail for a reason unrelated to the name.
+    Absent => header + "import std.types { Int }\nfn probe() -> Int { 0 }\n"
+  }
 }
 
 fn ambient_census_kit_files() -> List<AmbientCensusFixtureFile> {

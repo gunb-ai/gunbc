@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes }
 import gunbc.instruments.ambient_name_census_reading { ambient_census_kit_rows }
-import gunbc.namespace_cut.migration_kit { kit_binding_finding, kit_ambient_route_count, kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable }
+import gunbc.namespace_cut.migration_kit { kit_binding_finding, kit_ambient_route_count, kit_emit_finding, kit_emit_unimported_finding, EmitFinding, EmitIdentityHolds, EmitNotRunnable, UnimportedEmitFinding, UnimportedRefused, UnimportedCompilesWithoutDeclaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -92,13 +92,25 @@ test fn identity_verdict_other_home_does_not_clear() -> Bool {
 }
 
 // CHECK 4 (host_symbol per the Rust realization of list_push, v1_rt::rc_list_push; self path crate::std_algebra::list_push(
-// per the emitted path convention in resolved_call_emission_identity_witness).
+// per the emitted path convention in resolved_call_emission_identity_witness). The finding names WHICH arm fired: migrated
+// asserts the host symbol is emitted and the self-call is not; not migrated asserts the imported fixture is REFUSED
+// (so there is no emission to read), never a bare false that a non-compiling fixture would also give.
 test fn list_push_emission_matches_the_row_disposition() -> Bool {
-  with_row(r => kit_emit_identity_holds(row: r, host_symbol: "v1_rt::rc_list_push(", self_path: "crate::std_algebra::list_push(") == list_push_migrated())
+  with_row(r => match kit_emit_finding(row: r, host_symbol: "v1_rt::rc_list_push(", self_path: "crate::std_algebra::list_push(") {
+    EmitIdentityHolds => list_push_migrated()
+    EmitNotRunnable { cause: _ } => !list_push_migrated()
+    _ => false
+  })
 }
 
+// Migrated: the unimported call is refused (check 1's RED), so nothing is emitted. Not migrated: it resolves ambiently,
+// compiles, and does not select the declaration path.
 test fn list_push_unimported_does_not_select_the_declaration_path() -> Bool {
-  with_row(r => kit_emit_unimported_does_not_select_declaration(row: r, self_path: "crate::std_algebra::list_push("))
+  with_row(r => match kit_emit_unimported_finding(row: r, self_path: "crate::std_algebra::list_push(") {
+    UnimportedRefused => list_push_migrated()
+    UnimportedCompilesWithoutDeclaration => !list_push_migrated()
+    _ => false
+  })
 }
 
 // CHECK 6 on supplied census lines: an ambient row for the spelling is a second route; a declared one is not; and the
