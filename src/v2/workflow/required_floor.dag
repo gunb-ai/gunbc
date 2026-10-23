@@ -937,6 +937,18 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.seed_growth_admission_witness",
     "test.claim.route_gap_partition_witness",
     "test.claim.floor_eval_step_calibration_specimen",
+    // SEAT 16 N7 WALL ENROLMENT (M3 green-lit, msg_aae67e62): the two claim modules that own the
+    // application_argument_does_not_inhabit wall and the lowered-call occurrence/census-locatability
+    // fix, admitted EXACT-GRAIN (one module each, never the v2.test.claim.compiler. family -- a family
+    // row would silently enrol neighbours whose status nobody measured, the class of row
+    // gunbc.recurring_failure_mode witness_module_absent_from_the_executed_set running backwards).
+    // Admission was withheld until each was green by execution: claim_batch on each module at its head
+    // (cite the run, never transcribe its output -- the numbers are re-derivable from the producer).
+    // Before these rows both modules sat on disk, correct, and named in no schedule the required lane
+    // reads: every signal a reader consults says covered, none of them deciding. If a neighbour of
+    // these paths needs the gate, it earns its own row, for the same reason.
+    "v2.test.claim.compiler.infer_application_argument_inhabitance_witness",
+    "v2.test.claim.body_lowering_call_node_occurrence",
   ]
 }
 
