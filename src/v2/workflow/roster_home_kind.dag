@@ -55,8 +55,8 @@ import v2.lens.enforcement.standing_intent { whole_corpus_scope }
 //   KindUnclassified the rule COULD NOT decide: the head is unbound at a value/type position, but the census gives no
 //                    row that classifies the home (zero keyed rows, or only OtherItem rows). This is NOT a "no": the
 //                    sweep must refuse the module, located by home and name (review 83187: a home the census cannot
-//                    classify must not silently plan no import). The measured population is Wave 2's aliased type homes
-//                    (std.types List/Map/Set -> OtherItem; host item_kind, v1_compiler_infer_items.rs:274).
+//                    classify must not silently plan no import). A home the census holds no row for is the
+//                    measured shape; aliased type homes (std.types List/Map/Set) read TypeItem and are decided.
 type HomeKindVerdict
   = KindNotAsked
   | KindMatched
@@ -183,9 +183,9 @@ fn roster_home_declaration_side(home: String, import_name: String) -> HomeKindSi
 // function adds NOTHING to it: OtherItem leaves the side untouched, never defaulting either way. So the value side is
 // FnItem | ServiceItem | DataItem (a `data` row is referenced at VALUE positions -- review 83165 caught an earlier
 // revision classing DataItem as a type, which would have refused a data constant its import at a call head), the type
-// side is TypeItem alone, and OtherItem reaches neither: measured on the corpus, std.types.List -- declared
-// `type List<element> = FreeMonoid<element>` at dag/std/types.dag:119 -- keys a row whose kind is OtherItem, while the
-// opaque `type FreeMonoid<a>` at dag/std/algebra.dag:34 keys TypeItem. Nothing downstream can repair OtherItem: the
+// side is TypeItem alone, and OtherItem reaches neither. An ALIASED type declaration (std.types List, `type List<element> =
+// FreeMonoid<element>`) is no longer an OtherItem: decl_index item_kind reads TypeItem from the declaration's own kind, like
+// the opaque `type FreeMonoid<a>`. Nothing downstream can repair a genuine OtherItem: the
 // host marshals its fact's node as a unit node (coproduct_reflection.rs marshal_decl_fact_node:1794, the
 // `_ => unit_type_node(ctx)` arm), so v2.std.type_binder type_decl_view has no shape to read, and v2.std.decl_index
 // type_declarer_qualified_names -- the type-declarer seam -- filters on TypeItem only (coproduct_reflection.rs:2012).
