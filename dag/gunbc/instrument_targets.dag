@@ -6,6 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -52,8 +53,7 @@ import gunbc.target_binding {
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, BindingDiffReading, NativeProcessMemoryReading,
-  DependencyDemandCensusProducer,
-  DeclRefCensusProducer,
+  NativeCensusVerbProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -829,11 +829,11 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 }
 
 fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
 }
 
 fn decl_ref_census_binding() -> TargetBinding {
-  TargetBinding { target: decl_ref_census_label() producer: DeclRefCensusProducer {} }
+  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
 }
 
 fn generic_identity_census_binding() -> TargetBinding {
