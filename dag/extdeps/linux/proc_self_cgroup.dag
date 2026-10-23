@@ -254,8 +254,11 @@ fn read_unified_cgroup_membership_drift_sketch(content: String) -> ProcPidCgroup
 }
 
 // PERMANENT CROSS-REALIZATION FIXTURE LAW: unified_membership_outcome_tag_from_content is the
-// parser-side projection; bash_proc_self_cgroup classifies executed shell results into the same
-// tag. proc_self_cgroup_is_unified_v2_line_drift_sketch and
+// parser-side projection; it was one of two readings until 2026-10-19, when the bash side
+// (v2.extdeps.languages.bash_proc_self_cgroup, which classified executed shell results into the same
+// tag) was deleted as a bridge with no production caller -- the surviving law is the parser's own
+// line-parse vs tag-fold, witnessed in test.claim.proc_self_cgroup_witness.
+// proc_self_cgroup_is_unified_v2_line_drift_sketch and
 // read_unified_cgroup_membership_drift_sketch are mutation sketches ONLY — they omit the
 // empty-controller guard so a witness can prove drift in that branch reds without shipping the
 // defect.

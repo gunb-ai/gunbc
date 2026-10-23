@@ -7,7 +7,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Branch, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.node { Atom, Branch, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
@@ -90,8 +90,8 @@ fn ror_transform(operand: Optional<Node>) -> RorVerdict {
     Absent => RorUnread
     Present { value: o } =>
       ror_reify(body: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [
-        Edge { label: Positional, target: ror_head() },
-        Edge { label: Positional, target: o }
+        Edge { label: Positional, target: ror_head(), declaration: NotADeclaration },
+        Edge { label: Positional, target: o, declaration: NotADeclaration }
       ]))
   }
 }
@@ -101,9 +101,9 @@ fn ror_branch(operand: Optional<Node>) -> RorVerdict {
     Absent => RorUnread
     Present { value: o } =>
       ror_reify(body: node_synthetic(kind: ComputationNode { behavior: Branch }, children: [
-        Edge { label: Positional, target: ror_head() },
-        Edge { label: Positional, target: o },
-        Edge { label: Positional, target: ror_head() }
+        Edge { label: Positional, target: ror_head(), declaration: NotADeclaration },
+        Edge { label: Positional, target: o, declaration: NotADeclaration },
+        Edge { label: Positional, target: ror_head(), declaration: NotADeclaration }
       ]))
   }
 }

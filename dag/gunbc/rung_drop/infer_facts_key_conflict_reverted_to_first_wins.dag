@@ -1,7 +1,8 @@
 module gunbc.rung_drop.infer_facts_key_conflict_reverted_to_first_wins
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, OutsideTheLadder }
 
 // THE DECLARED RUNG DROP for v2 infer's facts table (DESIGN 4b(3)), landed with the revert of
@@ -32,15 +33,11 @@ data infer_facts_key_conflict_reverted_to_first_wins: RungDrop = RungDrop {
 
   declared: "2026-10-01",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "infer's facts keyed by site (the injective (edge label, ordinal) path from the root of one InferredTree), declared as a keying relation at the DESIGN 3b keys home, every facts lookup converted to the site key, and the infer_facts_key_conflict refusal re-landed in the same change" },
-    population: [
-      "every v2 infer run whose gather produces two entries under one structural Node key with different facts; the measured specimen is the childless synthetic Conj shared by a qualified-name spine terminator and an int-literal digit-list terminator",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "every v2 infer run whose gather produces two entries under one structural Node key with different facts; the measured specimen is the childless synthetic Conj shared by a qualified-name spine terminator and an int-literal digit-list terminator", tail: [] } },
     restoration_trigger: "infer distinguishes every site of one InferredTree in its facts relation: facts keyed by an injective site path (two structurally equal positional siblings get two keys), no facts lookup reading the structural Node key, a site key unusable outside the tree that produced it, and the infer_facts_key_conflict refusal restored on the real path -- one site with two different facts refuses, located; equal facts at two sites are admitted; kc_g/kc_f infers with each of its two equal-looking terminators carrying its own fact (green FOR THAT REASON, not through first-wins). This row retires in that change."
-  }
+  } }
 }

@@ -27,6 +27,8 @@ import extdeps.rust.cargo {
   CargoBuildJobsEnv,
   RustcWrapperEnv,
   cargo_environment_variable_name,
+  cargo_default_release_profile,
+  cargo_profile_dir_under_target_dir,
 }
 import extdeps.rust.rustup { rustup_home_env_name }
 import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
@@ -1233,7 +1235,16 @@ fn devboot_serve_built(
       detail: join(["the build failed (cargo exit ", to_string(built.exit_code), "): ", trim(s: built.stderr)], ""),
     )
   } else {
-    let artifact_path = join([target_dir, "/release/", bin_name], "")
+    let artifact_path = join(
+      [
+        cargo_profile_dir_under_target_dir(
+          target_dir: target_dir, profile: cargo_default_release_profile
+        ),
+        "/",
+        bin_name,
+      ],
+      ""
+    )
     match file_sha256(repo_root: repo_root, path: artifact_path) {
       FileSha256CommandFailed { exit_code, stderr } =>
         serve_refusal(

@@ -28,7 +28,7 @@ use v1_compiler::v1_std_core::{make_pattern_binder_declaration_node, no_span, No
 #[test]
 fn kernel_method_only_names_are_algebra_method_templates() {
     for profile in kernel_algebra_profile().values() {
-        for t in algebra_templates_for_profile(profile.clone()).iter() {
+        for t in algebra_templates_for_profile(*profile).iter() {
             if matches!(
                 bare_call_non_declaration_binding(t.name.clone()),
                 NonDeclarationBinding::KernelMethodOnly

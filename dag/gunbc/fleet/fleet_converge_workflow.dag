@@ -1,5 +1,6 @@
 module gunbc.fleet.fleet_converge_workflow
 
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.fleet.flex_pass_run { flex_pass_receipt_path }
 import product.fabric.flex_vast_template_control { flex_vast_template_receipt_path }
@@ -40,9 +41,12 @@ import gunbc.auth.mtjade1_arrival_pair {
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.ci.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
+import gunbc.auth.access_token_source { workload_identity_token_env }
 import std.measure { Second, minute_count, second_count }
+import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget, runner_host_cap_step_budget_env_name }
 
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
@@ -71,6 +75,7 @@ import gunbc.fabric.workspace_source { workspace_source_receipt_path, workspace_
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path, workspace_source_object_env }
 import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
+import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
@@ -97,7 +102,7 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, fleet_subject_mutation_group_approval_device_store, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -171,7 +176,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_workspace_checkpoint_restore_invoke,
   gunbc_ci_workspace_transcript_rate_observe_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
-  gunbc_ci_approval_device_enrolment_code_issue_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_microvm_runner_group_ensure_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_invoke,
@@ -188,6 +192,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_runner_host_file_observe_invoke,
   gunbc_ci_host_memory_envelope_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
+  gunbc_ci_runner_host_cap_release_invoke,
   gunbc_ci_site_pxe_edge_observe_invoke,
   gunbc_ci_site_pxe_edge_converge_invoke,
   gunbc_ci_runner_microvm_boot_probe_invoke,
@@ -351,12 +356,12 @@ type FleetConvergeWorkflowMode
   | WorkspaceCheckpointRestore
   | WorkspaceTranscriptRateObserve
   | ApprovalKeyringConverge
-  | ApprovalDeviceEnrolmentCodeIssue
   | MtCollins1Boot
   | MtCollins1FanObserve
   | MtCollins1KvmObserverObserve
   | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
+  | MtCollins1RunnerImagePublish
   | MtCollins1CensusMemberReadback
   | MtCollins1CensusQemuHostObserve
   | MtCollins1CensusQemuToolchainConverge
@@ -427,7 +432,6 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     WorkspaceCheckpointRestore => "workspace_checkpoint_restore"
     WorkspaceTranscriptRateObserve => "workspace_transcript_rate_observe"
     ApprovalKeyringConverge => "approval_keyring_converge"
-    ApprovalDeviceEnrolmentCodeIssue => "approval_device_enrolment_code_issue"
     MtCollins1Boot => "mtcollins1_boot"
     GcpIamConverge => "gcp_iam_converge"
     NamecheapObserve => "namecheap_observe"
@@ -437,6 +441,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MtCollins1KvmObserverObserve => "mtcollins1_kvm_observer_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
+    MtCollins1RunnerImagePublish => "mtcollins1_runner_image_publish"
     MtCollins1CensusMemberReadback => "mtcollins1_census_member_readback"
     MtCollins1CensusQemuHostObserve => "mtcollins1_census_qemu_host_observe"
     MtCollins1CensusQemuToolchainConverge => "mtcollins1_census_qemu_toolchain_converge"
@@ -467,7 +472,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, FlexPass, FlexTemplateEnsure, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, FlexPass, FlexTemplateEnsure, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -532,11 +537,11 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     WorkspaceTranscriptRateObserve => CompilerPairOnly
     OrgRunnerRosterObserve => SixteenBinaryPack
     ApprovalKeyringConverge => SixteenBinaryPack
-    ApprovalDeviceEnrolmentCodeIssue => CompilerPairOnly
     MtCollins1Boot => SixteenBinaryPack
     MtCollins1FanObserve => SixteenBinaryPack
     MtCollins1KvmObserverObserve => SixteenBinaryPack
     MtCollins1CensusImagePublish => SixteenBinaryPack
+    MtCollins1RunnerImagePublish => SixteenBinaryPack
     MtCollins1CensusMemberReadback => SixteenBinaryPack
     MtCollins1CensusQemuHostObserve => SixteenBinaryPack
     MtCollins1CensusQemuToolchainConverge => SixteenBinaryPack
@@ -643,7 +648,6 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     WorkspaceCheckpointRestore => none
     WorkspaceTranscriptRateObserve => none
     ApprovalKeyringConverge => none
-    ApprovalDeviceEnrolmentCodeIssue => none
     MtCollins1Boot => none
     GcpIamConverge => none
     NamecheapObserve => none
@@ -653,6 +657,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MtCollins1KvmObserverObserve => none
     FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
+    MtCollins1RunnerImagePublish => none
     MtCollins1CensusMemberReadback => none
     MtCollins1CensusQemuHostObserve => none
     MtCollins1CensusQemuToolchainConverge => none
@@ -829,12 +834,12 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
     ApprovalKeyringConverge => FleetSshKeyConsumed
-    ApprovalDeviceEnrolmentCodeIssue => FleetSshKeyConsumed
     MtCollins1Boot => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
     MtCollins1KvmObserverObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyConsumed
+    MtCollins1RunnerImagePublish => FleetSshKeyConsumed
     MtCollins1CensusMemberReadback => FleetSshKeyConsumed
     MtCollins1CensusQemuHostObserve => FleetSshKeyNotConsumed
     MtCollins1CensusQemuToolchainConverge => FleetSshKeyNotConsumed
@@ -906,9 +911,15 @@ data fleet_converge_mode_options: List<String> = map(fleet_converge_dispatchable
 // wording slip: it is one fact with two incompatible spellings (DESIGN section 3's meaning fork), and
 // the one a later worker would most plausibly act on is the one that disarms the corroboration.
 // gunbc.host.host_reset_return carries the full argument, above reset_return_verdict_of_mint.
+data fleet_converge_reset_subjects: List<NonEmptyStr> = reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
+
 data fleet_converge_reset_assignment: ResetDispatchAssignment = reset_dispatch_pairings(
-  subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
-  peer_roster: reset_observer_peer_roster(),
+  // The COMMITTED EVIDENCE REGISTRY, not a per-unit row: this is fleet-generic code and naming a unit
+  // here would be the host-name branch DESIGN forbids. The registry is the aggregate of committed
+  // operation evidence and the current-build fold keys it by the controller endpoint inside, so one
+  // value answers for every unit the roster contains.
+  subject_roster: fleet_converge_reset_subjects,
+  peer_roster: reset_observer_peer_roster(subjects: fleet_converge_reset_subjects),
 )
 
 // THE OPTION LIST IS DERIVED FROM THE ASSIGNMENT. The empty list is never serialized, and the reason
@@ -1565,12 +1576,6 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // executor serialization, the class this projection exists to prevent. The concurrency expression
 // is derived from it.
 //
-// A SUBJECT IS NOT ALWAYS AN ARM: the enrolment-code issue mutates only the approval device store,
-// which no other mode writes, so it carries that store's own group (gunbc.fleet.fleet_workflow_steps
-// fleet_subject_mutation_group_approval_device_store) and no longer queues behind -- or is cancelled
-// as a superseded pending by -- the work that shares srv1's key. The keyring converge and the
-// broker install do NOT move.
-//
 // THE GROUP A MODES ARE GONE. D0, the V4.1 checkpoint/row-store/differential/load modes and the arm
 // produce/materialize/launch/load modes keyed on Group A were deleted with the group (decommissioned and
 // sold, 2026-10-07). The pair-serving apply keeps the srv1 control-plane key it shared with them.
@@ -1649,12 +1654,12 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     WorkspaceCheckpointRestore => ExecutorDomain
     WorkspaceTranscriptRateObserve => ExecutorDomain
     ApprovalKeyringConverge => ExecutorDomain
-    ApprovalDeviceEnrolmentCodeIssue => SubjectDomain { group: fleet_subject_mutation_group_approval_device_store }
     MtCollins1Boot => ExecutorDomain
     MtCollins1FanObserve => ExecutorDomain
     MtCollins1KvmObserverObserve => ExecutorDomain
     FabricWriterIdentityObserve => ExecutorDomain
     MtCollins1CensusImagePublish => ExecutorDomain
+    MtCollins1RunnerImagePublish => ExecutorDomain
     MtCollins1CensusMemberReadback => ExecutorDomain
     MtCollins1CensusQemuHostObserve => ExecutorDomain
     MtCollins1CensusQemuToolchainConverge => ExecutorDomain
@@ -2118,13 +2123,50 @@ fn fleet_converge_host_memory_observe_step() -> Step {
   )
 }
 
+// THE CONVERGE STEP HOLDS THE WHOLE CAP BRACKET (drain + operations + release) ON TOP OF THE RESOLVE
+// BUDGET, both read from the policy row runner_host_cap_drain_policy; the same figure goes to the driver in
+// its environment, which refuses BEFORE masking when it is less than the bracket needs.
 fn fleet_converge_runner_host_file_converge_step() -> Step {
-  fleet_converge_runner_host_file_step(
-    id: "runner_host_file_converge",
-    name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back",
-    invoke: gunbc_ci_runner_host_file_converge_invoke(),
-    if_condition: fleet_converge_runner_host_file_converge_step_if,
-  )
+  RunStep {
+    name: Present { value: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back" },
+    id: Present { value: "runner_host_file_converge" },
+    run: gunbc_ci_runner_host_file_converge_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: runner_host_cap_step_budget_env_name, value: yaml_string(s: to_string(second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy))))),
+        kv(key: workload_identity_token_env as String, value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_runner_host_file_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)]) }
+  }
+}
+
+// THE CAP BRACKET'S always() RELEASE: runs after the converge step whatever its fate (success, failure,
+// cancel or its own timeout) and re-admits the declared-live slots, reading each back. always() is a
+// status-check function, so the step also runs when the job is cancelled or times out (GitHub Actions
+// "Status check functions": always() causes the step to always execute and returns true even when
+// canceled). Its own timeout is the policy row's release allowance on top of the resolve budget.
+fn fleet_converge_runner_host_cap_release_step() -> Step {
+  RunStep {
+    name: Present { value: "Runner host cap bracket: re-admit this host's slots and read them back (always)" },
+    id: Present { value: "runner_host_cap_release" },
+    run: gunbc_ci_runner_host_cap_release_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_file_converge_step_if, ")"], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [runner_host_cap_drain_policy.release_allowance]) }
+  }
 }
 
 // IT REUSES THE RUNNER-HOST STEP SHAPER rather than spelling a fifth Step literal: same population
@@ -2237,6 +2279,24 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
 }
 
 
+fn fleet_converge_runner_host_cap_release_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload runner host cap release receipt" },
+    id: Present { value: "runner_host_cap_release_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-host-cap-release-receipt")),
+      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_cap_release_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_file_converge_step_if, ")"], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload runner host file converge receipt" },
@@ -2244,7 +2304,7 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "runner-host-file-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-host-file-converge-receipt.txt")),
+      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_file_converge_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
@@ -2869,6 +2929,44 @@ fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step 
   }
 }
 
+// THE RUNNER IMAGE (gunbc.runner.runner_host_medium_publish), the image leg of the mtcollins1 route:
+// derived from gunbc.runner.runner_host_medium runner_host_medium_image, built and published create-only
+// in /srv/bmc over fleet SSH from any runner. The receipt names the published image and its measured
+// digest -- the fact the boot leg's runner_host_boot_medium row carries. Uploaded whatever the outcome.
+data fleet_converge_mtcollins1_runner_image_publish_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1RunnerImagePublish)
+
+fn fleet_converge_mtcollins1_runner_image_publish_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins runner image: over fleet SSH to srv2, build the derived runner image and publish it create-only in /srv/bmc" },
+    id: Present { value: "mtcollins1_runner_image_publish" },
+    run: gunbc_ci_mtcollins1_runner_image_publish_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_runner_image_publish_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_mtcollins1_census_image_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins runner image receipt" },
+    id: Present { value: "mtcollins1_runner_image_publish_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-runner-image")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_runner_image_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_runner_image_publish_step_if) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 // THE PUBLISHED CENSUS IMAGE'S BOOT CHAIN, READ BACK AGAINST THE STOCK MEDIUM on the host that serves
 // both (gunbc.machine_intake.mtcollins1_census_member_readback), over fleet SSH from any runner: srv2
 // has no runner slots. It writes only scratch files under srv2's /tmp, removed after each measure.
@@ -3121,7 +3219,6 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
 }
 
 data fleet_converge_approval_keyring_converge_step_if: String = fleet_converge_mode_step_if(mode: ApprovalKeyringConverge)
-data fleet_converge_approval_device_enrolment_code_issue_step_if: String = fleet_converge_mode_step_if(mode: ApprovalDeviceEnrolmentCodeIssue)
 data fleet_converge_mtcollins1_boot_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1Boot)
 
 // THE BOOT RUNS ONLY ON AN OBSERVED FAN READING (operator ruling 2026-10-16: 'stop the boot for all'):
@@ -3227,29 +3324,6 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
     if_condition: Present { value: fleet_converge_approval_keyring_converge_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-// THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_enrolment_code
-// issue_device_enrolment_code on the approval broker host as the operator's user, from the release the dispatch names;
-// the step prints the delivery receipt and NEVER the code (decision msg_a1d8d1b9 -- the code goes
-// over the operator's ntfy topic, whose deny-by-default policy is DECLARED and not yet read back:
-// gunbc.auth.approval_ntfy_deployment's access rows are NoDischargeSiteModeled). No WIF token: the verb needs no secret the host does not
-// already hold.
-fn fleet_converge_approval_device_enrolment_code_issue_step() -> Step {
-  RunStep {
-    name: Present { value: "Issue a device enrolment code on the approval broker host and deliver it to the operator channel (receipt only in this log)" },
-    id: Present { value: "approval_device_enrolment_code_issue" },
-    run: gunbc_ci_approval_device_enrolment_code_issue_invoke(),
-    shell: none,
-    env: Present { value: [
-      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-    ] },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_approval_device_enrolment_code_issue_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
@@ -4562,6 +4636,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_fabric_writer_identity_observe_receipt_upload_step(),
         fleet_converge_mtcollins1_census_image_publish_step(),
         fleet_converge_mtcollins1_census_image_publish_receipt_upload_step(),
+        fleet_converge_mtcollins1_runner_image_publish_step(),
+        fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step(),
         fleet_converge_mtcollins1_census_member_readback_step(),
         fleet_converge_mtcollins1_census_member_readback_receipt_upload_step(),
         fleet_converge_mtcollins1_census_qemu_host_observe_step(),
@@ -4601,7 +4677,6 @@ fn fleet_converge_job() -> Job {
         fleet_converge_workspace_transcript_rate_observe_step(),
         fleet_converge_workspace_transcript_rate_observe_receipt_upload_step(),
         fleet_converge_approval_keyring_converge_step(),
-        fleet_converge_approval_device_enrolment_code_issue_step(),
         fleet_converge_microvm_runner_group_ensure_step(),
         fleet_converge_microvm_runner_group_ensure_receipt_upload_step(),
         fleet_converge_service_runner_lost_boot_sweep_step(),
@@ -4631,6 +4706,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_host_memory_observe_step(),
         fleet_converge_runner_host_file_converge_step(),
+        fleet_converge_runner_host_cap_release_step(),
+        fleet_converge_runner_host_cap_release_receipt_upload_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_browser_toolchain_converge_step(),
@@ -4647,6 +4724,21 @@ fn fleet_converge_job() -> Job {
 }
 
 // The shared job envelope owns selection and credentials independently of its step producers.
+// THE JOB TIMEOUT COVERS THE BRACKET AND ITS RELEASE, OR THE RELEASE IS NOT AFTER A STEP TIMEOUT. A job-level
+// timeout is a cancellation, so the always() release then runs inside the cancellation envelope, which it does
+// not fit (gunbc.runner.runner_host_cap_bracket release_envelope_standing). The tier backstop counts the
+// other steps of the worst-case dispatch and has no term for the bracket, so the job timeout is the backstop
+// plus the converge step's, the release step's and the release receipt upload's declared timeouts, folded
+// from the steps themselves, and the platform ceiling is checked against this one answer.
+fn fleet_converge_host_cap_job_floor_minutes() -> Int {
+  gunbc_ci_fleet_job_backstop_timeout_minutes()
+    + step_declared_timeout_minutes(st: fleet_converge_runner_host_file_converge_step())
+    + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_step())
+    + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())
+}
+
+fn fleet_converge_job_timeout_minutes() -> Int { fleet_converge_host_cap_job_floor_minutes() }
+
 fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
   Job {
     id: fleet_converge_shared_job_id as String,
@@ -4658,7 +4750,7 @@ fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_shared_job_if },
-    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: fleet_converge_job_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -4833,11 +4925,11 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     R2ObjectWriteMint => fleet_converge_shared_job_id
     OrgRunnerRosterObserve => fleet_converge_shared_job_id
     ApprovalKeyringConverge => fleet_converge_shared_job_id
-    ApprovalDeviceEnrolmentCodeIssue => fleet_converge_shared_job_id
     MtCollins1Boot => "mtcollins1-boot" as NonEmptyStr
     MtCollins1FanObserve => fleet_converge_shared_job_id
     MtCollins1KvmObserverObserve => fleet_converge_shared_job_id
     MtCollins1CensusImagePublish => fleet_converge_shared_job_id
+    MtCollins1RunnerImagePublish => fleet_converge_shared_job_id
     MtCollins1CensusMemberReadback => fleet_converge_shared_job_id
     MtCollins1CensusQemuHostObserve => fleet_converge_shared_job_id
     MtCollins1CensusQemuToolchainConverge => fleet_converge_shared_job_id
@@ -5725,7 +5817,7 @@ fn fleet_converge_reset_assignment_refusal_reason(cause: ResetDispatchAssignment
     AssignmentPairingRefused { cause: inner } =>
       match inner {
         ObserverIsSubject { host: h } =>
-          join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", h as String, " is rostered as BOTH a reset subject and a reset observer, so the two rosters disagree about what that machine is. gunbc.host.host_reset_subject_roster derives subjects from BMC power-control admission and peers from fleet_hosts(); a host in both needs one of those two answers withdrawn."], "")
+          join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", h as String, " is rostered as both a reset subject and a reset observer. The observer roster is derived with every reset subject excluded (gunbc.host.host_reset_subject_roster reset_observer_peer_roster), so a real derivation cannot reach this; it means a roster was passed to gunbc.host.host_reset_return select_reset_observer without that exclusion."], "")
         SubjectNotRostered { subject: sname } =>
           join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", sname as String, " is not an admitted reset subject (gunbc.host.host_reset_subject_roster admits a host only when a landed BMC access observation and its capability row admit power control)."], "")
         ObserverNotRostered { observer: o } =>
@@ -5776,7 +5868,7 @@ fn fleet_converge_yml_after_reset_assignment() -> FleetConvergeYamlGenerationOut
 
 fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGenerationOutcome {
   if fleet_converge_build_job_capability_closure_holds() {
-    match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
+    match checked_job_timeout_minutes(computed: fleet_converge_job_timeout_minutes()) {
       JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
         FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet.fleet_workflow_steps)" }
       JobTimeoutWithinCeiling { minutes: _ } =>

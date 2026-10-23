@@ -1,7 +1,10 @@
 module test.claim.runner.runner_host_file_converge_witness
 
 import extdeps.ssh.known_hosts { known_hosts_host_field }
-import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
+import std.list { distinct_by_key }
+import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
@@ -217,6 +220,112 @@ fn fixture_unread_job_user_uid() -> RunnerJobUserUidReading {
   JobUserUidUnobserved { cause: "fixture: getent passwd was not answered" as NonEmptyStr }
 }
 
+// THE PER-SLOT ROLE DROP-INS ARE A FOURTH POPULATION THE HOST-WIDE COUNTS DO NOT OWN. Their number is the
+// deploy-slot population of the host, so the host-wide literals above count the files with the role
+// subject removed, and the role population is joined by role_population_joins against the declared deploy-slot set.
+fn not_role_files(fs: List<RunnerHostFileDesired>) -> List<RunnerHostFileDesired> {
+  filter(fs, f => (f.subject as String) != "runner-slot-role-dropin")
+}
+
+fn not_role_withheld(w: List<RunnerHostFileWithheld>) -> List<RunnerHostFileWithheld> {
+  filter(w, x => (x.subject as String) != "runner-slot-role-dropin")
+}
+
+// THE ROLE POPULATION IS JOINED AT IDENTITY GRAIN AGAINST AN ORACLE THE PRODUCER DOES NOT BUILD. The contract is
+// one outcome per deploy slot of the host: a rendered file at that slot's instance drop-in path, or a role
+// entry in withheld, and nothing beyond. The expected set is the host's slots read from their declared source
+// (gunbc.runner.runner_slot_job_role deploy_slot_identities, not runner_host_file_converge's own role lists), each
+// at the path systemd.unit(5) gives an instance drop-in, spelled here from the instance name and the declared
+// file name rather than taken from runner_unit_slot_role_dropin_path. A missing slot, an extra well-shaped row,
+// a doubled row and a lost withheld entry each fail the join.
+//
+// RESIDUAL, TYPED (role_join_residual): RunnerHostFileWithheld carries a subject and a cause and no slot identity,
+// so a withheld entry is COUNTED against the slot population and never attributed to a particular slot.
+fn expected_role_dropin_paths(host: HostIdentity) -> List<String> {
+  map(
+    filter(deploy_slot_identities, s => (s.host as String) == (host as String)),
+    s => concat(concat("/etc/systemd/system/actions-runner@", runner_slot_instance_name(slot: s)), ".service.d/20-slot-role.conf"),
+  )
+}
+
+fn role_population_joins(expected: List<String>, files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> Bool {
+  let roles = filter(files, f => (f.subject as String) == "runner-slot-role-dropin")
+  let role_withheld = filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin")
+  all(roles, f => any(expected, e => e == (f.path as String)) && starts_with(s: f.content, prefix: "[Service]\n"))
+    && length(distinct_by_key(roles, f => f.path as String)) == length(roles)
+    && length(roles) + length(role_withheld) == length(expected)
+}
+
+// THE RESIDUAL OF THE COUNT-ONLY WITHHELD JOIN, AS DATA. When every slot has its own rendered file the join is
+// fully attributed. Otherwise the slots without a file are satisfied by anonymous withheld entries, which are
+// counted and not attributed: files=[a] plus one withheld entry satisfies a [a, b] oracle without proving that
+// entry is b's.
+type RoleJoinResidual
+  = RoleJoinFullyAttributed
+  | RoleJoinWithheldCountedNotAttributed { anonymous_withheld: Int, slots_without_a_file: List<String> }
+
+// The capability that retires the residual, at capability grain (not an artifact): a withheld entry names the
+// slot it stands for, so the join can match it to a slot without counting.
+type RoleJoinResidualRetirement {
+  requires_withheld_entries_to_carry_slot_identity: Bool
+}
+
+data role_join_residual_retirement: RoleJoinResidualRetirement = RoleJoinResidualRetirement { requires_withheld_entries_to_carry_slot_identity: true }
+
+fn role_join_residual(expected: List<String>, files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> RoleJoinResidual {
+  let rendered = map(filter(files, f => (f.subject as String) == "runner-slot-role-dropin"), f => f.path as String)
+  let without = filter(expected, e => !any(rendered, r => r == e))
+  let anonymous = length(filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin"))
+  if length(without) == 0 && anonymous == 0 { RoleJoinFullyAttributed } else { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: anonymous, slots_without_a_file: without } }
+}
+
+fn role_file_at(path: String) -> RunnerHostFileDesired {
+  RunnerHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+}
+
+fn role_withheld_entry() -> RunnerHostFileWithheld {
+  RunnerHostFileWithheld { subject: "runner-slot-role-dropin" as NonEmptyStr, cause: "supplied refusal" as NonEmptyStr }
+}
+
+// the oracle itself: srv1 deploys exactly one slot, srv1-02 (runner_slot_job_role srv1_deploy_slot_index), written as a literal
+test fn the_role_oracle_for_srv1_is_its_one_declared_deploy_slot() -> Bool {
+  expected_role_dropin_paths(host: operator_host_srv1) == ["/etc/systemd/system/actions-runner@srv1-02.service.d/20-slot-role.conf"]
+}
+
+// the RED controls, over a two-slot supplied oracle so that dropping one row is distinguishable from an empty host:
+// both rendered, one rendered plus one withheld, and each of a dropped row, a dropped withheld entry, an extra
+// well-shaped row, a doubled row and a misplaced row refuse
+test fn the_role_join_refuses_a_dropped_row_an_extra_row_a_doubled_row_and_a_lost_withheld_entry() -> Bool {
+  let pa = "/etc/systemd/system/actions-runner@a.service.d/20-slot-role.conf"
+  let pb = "/etc/systemd/system/actions-runner@b.service.d/20-slot-role.conf"
+  let expected = [pa, pb]
+  let a = role_file_at(path: pa)
+  let b = role_file_at(path: pb)
+  role_population_joins(expected: expected, files: [a, b], withheld: [])
+    && role_population_joins(expected: expected, files: [a], withheld: [role_withheld_entry()])
+    && !role_population_joins(expected: expected, files: [a], withheld: [])
+    && !role_population_joins(expected: expected, files: [], withheld: [role_withheld_entry()])
+    && !role_population_joins(expected: expected, files: [a, b, role_file_at(path: "/etc/systemd/system/actions-runner@c.service.d/20-slot-role.conf")], withheld: [])
+    && !role_population_joins(expected: expected, files: [a, a], withheld: [])
+    && !role_population_joins(expected: expected, files: [a, role_file_at(path: "/etc/elsewhere/20-slot-role.conf")], withheld: [])
+    && !role_population_joins(expected: expected, files: [a, b], withheld: [role_withheld_entry()])
+}
+
+// the residual is recorded for exactly the count-only shape: one file plus one anonymous withheld entry over a
+// two-slot oracle joins, and the residual names one anonymous entry and the slot with no file; two files are
+// fully attributed; and the trigger is the declared capability
+test fn the_count_only_withheld_shape_records_its_residual_and_a_full_render_does_not() -> Bool {
+  let pa = "/etc/systemd/system/actions-runner@a.service.d/20-slot-role.conf"
+  let pb = "/etc/systemd/system/actions-runner@b.service.d/20-slot-role.conf"
+  let expected = [pa, pb]
+  let counted = role_join_residual(expected: expected, files: [role_file_at(path: pa)], withheld: [role_withheld_entry()])
+  let full = role_join_residual(expected: expected, files: [role_file_at(path: pa), role_file_at(path: pb)], withheld: [])
+  role_population_joins(expected: expected, files: [role_file_at(path: pa)], withheld: [role_withheld_entry()])
+    && (match counted { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: n, slots_without_a_file: ss } => n == 1 && ss == [pb] RoleJoinFullyAttributed => false })
+    && (match full { RoleJoinFullyAttributed => true RoleJoinWithheldCountedNotAttributed { anonymous_withheld: _, slots_without_a_file: _ } => false })
+    && role_join_residual_retirement.requires_withheld_entries_to_carry_slot_identity
+}
+
 fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
   runner_host_file_desired_population_from_uid_reading(
     host: "srv1" as HostIdentity,
@@ -284,8 +393,9 @@ test fn an_unread_uid_withholds_depriv_and_still_delivers_teardown_and_cpu() -> 
   match runner_host_file_desired_population_from_uid_reading(host: "srv1" as HostIdentity, reading: fixture_unread_job_user_uid()) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 4
-        && length(w) == 2
+      length(not_role_files(fs)) == 4
+        && length(not_role_withheld(w)) == 2
+        && role_population_joins(expected: expected_role_dropin_paths(host: operator_host_srv1), files: fs, withheld: w)
         && !runner_host_files_deliver_fragment(files: fs)
         && any(fs, f => (f.subject as String) == "runner-cpu-dropin")
         && any(w, x => (x.subject as String) == "runner-depriv-dropin" && string_contains(s: x.cause as String, pattern: "was not read"))
@@ -302,9 +412,10 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
-      length(fs) == 6
+      length(not_role_files(fs)) == 6
         && any(fs, f => (f.subject as String) == "runner-host-sudoers")
-        && length(w) == 0
+        && length(not_role_withheld(w)) == 0
+        && role_population_joins(expected: expected_role_dropin_paths(host: operator_host_srv1), files: fs, withheld: w)
         && desired_content(subject: "runner-teardown-dropin") == expected_teardown_dropin_text
         && desired_path(subject: "runner-cpu-dropin") == "/etc/systemd/system/actions-runner@.service.d/60-fleet-cpu.conf"
         && starts_with(s: desired_content(subject: "runner-cpu-dropin"), prefix: "[Service]\nCPUQuota=")

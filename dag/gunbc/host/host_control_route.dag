@@ -6,13 +6,13 @@ import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse }
 import product.host_identity { HostIdentity }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.host.managed_host {
-  ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
-  ManagedHostNotSecured, ManagedHostEndpointMismatch, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged,
+  ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged,
   managed_host_binding_for,
 }
+import gunbc.host.bmc_control_binding { BmcControlBinding, BmcControlStanding, BmcControlBound }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.fleet.fleet_host_backing {
-  OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest,
+  OwnedMachine, OwnedProvisioning, Bmc, NoOutOfBand, ProviderGuest,
   ProviderResourceAwaited, ProviderResourceAcquired,
 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
@@ -27,11 +27,16 @@ import gunbc.fleet.hetzner_cloud_server_reading {
 // controlled through its BMC; a rented guest has no BMC, and its provider's API is the same route.
 //
 // gunbc.host.managed_host stays what it is -- a host driven through a secured baseboard controller, whose
-// row carries BMC and Altra facts (SMpro site, firmware capability) every consumer of it needs.
-// Widening it to a guest would give that name a second meaning, so the generic fact lives here and
-// the BMC route carries a managed-host binding unchanged.
+// row carries the board facts (SMpro site, firmware capability) every consumer of it needs. Widening
+// it to a guest would give that name a second meaning, so the generic fact lives here. The BMC route
+// carries the bound control route (gunbc.host.bmc_control_binding BmcControlBoundRoute): the secured
+// control binding -- endpoint, unit and the secured standing -- plus the access observation the join
+// checked the endpoint against. Both are minted only by that module; neither endpoint nor account is
+// copied here. The host identity is NOT on the binding -- it is the enrollment intent's host, threaded
+// beside it below, because the binding proves the credential reaches a controller, not which fleet host
+// that controller serves.
 type HostControlRoute
-  = BmcControlRoute { binding: ManagedHostBinding }
+  = BmcControlRoute { route: BmcControlBoundRoute }
   | ProviderApiControlRoute { route: ProviderRoute, acquisition: ProviderResourceAcquisition, observed: HetznerServerResponse }
 
 // A HOST THE FLEET CAN RECOVER WITHOUT ITS OS. sole_constructor: the producers below mint it only on
@@ -45,7 +50,7 @@ type ControlledHost sole_constructor {
 }
 
 type HostControlRefusal
-  = BmcRouteNotBound { standing: ManagedHostBindingStanding }
+  = BmcRouteNotBound { standing: BmcControlStanding }
   | BmcHostNotManaged { host: HostIdentity }
   | NoOutOfBandRoute { host: HostIdentity }
   | ProviderResourceNotAcquired { host: HostIdentity, read_obligation: NonEmptyStr }
@@ -55,32 +60,35 @@ type HostControlStanding
   = HostControlled { controlled: ControlledHost }
   | HostControlRefused { refusal: HostControlRefusal }
 
-// THE BMC ROUTE, from a managed host's binding standing as gunbc.host.managed_host decided it. A refusal
-// carries that standing unchanged rather than a re-coined cause.
-fn bmc_controlled_host(standing: ManagedHostBindingStanding) -> HostControlStanding {
+// THE BMC ROUTE, from the secured control standing as gunbc.host.bmc_control_binding decided it. The
+// host identity is the enrollment intent's host -- the binding carries no host identity, only the
+// controller it proves the credential reaches. A refusal carries that standing unchanged rather than
+// a re-coined cause.
+fn bmc_controlled_host(host: HostIdentity, standing: BmcControlStanding) -> HostControlStanding {
   match standing {
-    ManagedHostBound { binding: b } =>
-      HostControlled { controlled: ControlledHost { host: b.host.host, route: BmcControlRoute { binding: b } } }
-    ManagedHostAccessUnobserved { endpoint: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
-    ManagedHostNotSecured { cause: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
+    BmcControlBound { route: r } =>
+      HostControlled { controlled: ControlledHost { host: host, route: BmcControlRoute { route: r } } }
+    BmcControlAccessUnobserved { endpoint: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
+    BmcControlNotSecured { cause: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
+    BmcControlEndpointMismatch { observed: _, secured: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
   }
 }
 
-// AN ENROLLED HOST'S ROUTE, decided by its backing. A board installed over BMC virtual media is
-// controlled only once gunbc.host.managed_host binds it; an appliance that provisions itself through first
-// boot has no out-of-band route at all, and says so; a provider guest is controlled through the
+// AN ENROLLED HOST'S ROUTE, decided by its backing's control route alone, never its OS delivery. A board
+// with a BMC is controlled only once gunbc.host.managed_host binds it, however its OS arrives; a host with
+// no out-of-band route says so; a provider guest is controlled through the
 // account its acquisition is held under, and only on a provider read that answered about exactly
 // that resource -- an unrecorded acquisition, no read, or a refused one each refuse with its cause.
 fn enrolled_host_control(intent: HostEnrollmentIntent, provider_reads: List<AcquiredServerRead>) -> HostControlStanding {
   match intent.backing {
-    OwnedMachine { provisioning: p } => match p {
-      BmcVirtualMediaInstall => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
+    OwnedMachine { provisioning: OwnedProvisioning { control: ctl, delivery: dlv }, unit: _ } => match ctl {
+      Bmc => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
         ManagedHostNotManaged { host: _ } => HostControlRefused { refusal: BmcHostNotManaged { host: intent.host } }
-        ManagedHostFound { standing: s } => bmc_controlled_host(standing: s)
-        ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } => bmc_controlled_host(standing: s)
+        ManagedHostFound { control: c } => bmc_controlled_host(host: intent.host, standing: c)
+        ManagedHostFoundUnderDeclaredDrop { control: c, drop: _, standing_subject: _, current_subject: _ } =>
+          bmc_controlled_host(host: intent.host, standing: c)
       }
-      ApplianceFirstBoot => HostControlRefused { refusal: NoOutOfBandRoute { host: intent.host } }
+      NoOutOfBand => HostControlRefused { refusal: NoOutOfBandRoute { host: intent.host } }
     }
     ProviderGuest { route: r, entitlement: _, resource: res } => match res {
       ProviderResourceAwaited { read_obligation: o } =>
