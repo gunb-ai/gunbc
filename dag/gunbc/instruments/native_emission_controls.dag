@@ -685,6 +685,7 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
 data native_emission_expected_identities: List<String> = [
   "generic_callee_lambda_param_bound_by_list_alias_actual_field_read",
   "generic_callee_lambda_param_red_list_alias_actual_absent_key_is_zero",
+  "generic_callee_fold_empty_list_seed_keeps_later_solve",
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
   "set_struct_eq_red_set_member_differs",
@@ -869,10 +870,17 @@ fn control_row_weight_of(rows: List<ControlRow>, key: Int) -> Int {
   fold_list(xs: rows, empty: 0, cons: fn(acc, r) { if r.key == key { r.weight } else { acc } })
 }
 
+// A fold seeded with [] must keep the element of its accumulator for the later solve: denoting the
+// unsolved empty-list placeholder would bind the callee generic to it (self-host source_root_eval).
+fn control_row_keys_of(rows: List<ControlRow>) -> List<Int> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) { concat(acc, [r.key]) })
+}
+
 fn list_alias_actual_fold_closure_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "generic_callee_lambda_param_bound_by_list_alias_actual_field_read", held: control_row_weight_of(rows: [ControlRow { key: 1, weight: 10 }, ControlRow { key: 2, weight: 20 }], key: 2) == 20 },
     NativeEmissionCase { identity: "generic_callee_lambda_param_red_list_alias_actual_absent_key_is_zero", held: control_row_weight_of(rows: [ControlRow { key: 1, weight: 10 }], key: 9) == 0 }
+    NativeEmissionCase { identity: "generic_callee_fold_empty_list_seed_keeps_later_solve", held: (control_row_keys_of(rows: [ControlRow { key: 1, weight: 10 }, ControlRow { key: 2, weight: 20 }]) |> count) == 2 }
   ]
 }
 
