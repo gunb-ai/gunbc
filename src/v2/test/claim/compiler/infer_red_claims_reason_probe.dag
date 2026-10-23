@@ -1,0 +1,146 @@
+module v2.test.claim.compiler.infer_red_claims_reason_probe
+
+// SEAT 16, SCRATCH PROBE (never-merge branch; claims only; nothing here lands). Purpose: NAME the
+// post-#14749 fatal of the two red claims' OWN tree fixtures, verbatim, so the real-regression vs
+// fixture-drift decision (M3 msg_1e0159e5) is made on measured behavior, not on a 40-hunk static
+// read. Both fixtures are imported from the red module itself -- this probe runs their exact trees
+// through infer and prints the fatal reason via the established != idiom (a failing line names the
+// reason the run actually produced).
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.diagnostic {
+  Accepted,
+  NonEmptyDiagnostics,
+  Rejected,
+  diagnostics_fatal_reason,
+  diagnostics_has_reason
+}
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_one,
+  dag_type_atom_node
+}
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness {
+  inhabitance_generic_formal_tree,
+  inhabitance_generic_formal_tree_over,
+  inhabitance_named_conj_domain
+}
+
+// SEED DISCIPLINE: diagnostics_fatal_reason runs behind an annotated parameter (M3 msg_1e0159e5).
+fn rp_fatal_sym(d: NonEmptyDiagnostics) -> String {
+  symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+}
+
+// Claim (a)'s fixture: formal x: T-headed Instantiation of the declared param T; argument 1.
+// Pre-#14749: REFUSED with application_argument_does_not_inhabit. M3 measured: FAILS at c5d5b2025e4e.
+fn rp_a_reason() -> String {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => concat("infer:", rp_fatal_sym(d: d))
+  }
+}
+
+// Claim (c)'s fixture: formal x: (Int) -> T (T in the arrow RETURN); argument 1.
+// Pre-#14749: ACCEPTED with inhabitance_undecidable_generic_formal counted. M3: FAILS at c5d5b2025e4e.
+fn rp_c_reason() -> String {
+  match infer(tree: rp_c_tree()) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => concat("infer:", rp_fatal_sym(d: d))
+  }
+}
+
+// ---- (a) readout: which world? ----
+// W1 ACCEPTED  => #14749 made the application pass: regression-shaped (Int inhabits a T-headed
+//                formal for no T) -- UNLESS the formal itself degenerated (drift).
+// W2 refused, label => claim (a) would PASS; its FAIL would then be an ordering artifact (a later
+//                non-fatal moved), which the companions disambiguate.
+// W3 refused, other reason => the reason NAMES itself in the failing line below.
+
+test fn rp_a_is_not_accepted() -> Bool {
+  rp_a_reason() != "ACCEPTED"
+}
+
+test fn rp_a_fatal_is_the_label() -> Bool {
+  rp_a_reason() != "infer:application_argument_does_not_inhabit"
+}
+
+test fn rp_a_fatal_is_not_undecidable_generic_formal() -> Bool {
+  rp_a_reason() != "infer:inhabitance_undecidable_generic_formal"
+}
+
+test fn rp_a_fatal_is_not_undecidable_argument_type_not_derived() -> Bool {
+  rp_a_reason() != "infer:inhabitance_undecidable_argument_type_not_derived"
+}
+
+test fn rp_a_fatal_is_not_unbound_symbol() -> Bool {
+  rp_a_reason() != "infer:resolve_reason_unbound_symbol"
+}
+
+test fn rp_a_fatal_is_not_grounding_not_derived() -> Bool {
+  rp_a_reason() != "infer:infer_grounding_not_derived"
+}
+
+// ---- (c) readout ----
+// Pre-#14749 world: ACCEPTED (so rp_c_is_accepted PASSes) with the reason counted.
+// Post-#14749 suspects: now REFUSED (leaf rule made T decidable somewhere) -- rp_c_is_accepted
+// FAILs and rp_c_is_not_accepted PASSes; or accepted WITHOUT the counted reason -- both acceptance
+// claims' truth values pin it.
+
+test fn rp_c_is_not_accepted() -> Bool {
+  rp_c_reason() != "ACCEPTED"
+}
+
+// Claim (c)'s assertion has TWO axes: ACCEPTED *and* the non-fatal counted reason
+// inhabitance_undecidable_generic_formal. This second axis distinguishes 'accepted, reason still
+// counted' (pre-#14749 world; claim PASSes) from 'accepted WITHOUT the count' (the reason silently
+// disappeared -- the leaf-rule exemption's blast radius). Read with rp_c_is_not_accepted:
+//   is_not_accepted FAIL + counted FAIL => accepted, count GONE: the exemption swallowed the counted
+//     frontier -- the drift-vs-regression question for the counter's owner.
+//   is_not_accepted FAIL + counted PASS => world unchanged; (c)'s own FAIL would then be noise/artifact.
+//   is_not_accepted PASS => refused; the fatal lines name the reason.
+fn rp_c_tree() -> ResolvedTree {
+  claim_resolved_tree_without_declarations(
+    root: inhabitance_generic_formal_tree_over(
+      declared: dag_arrow_with_body_node(
+        domain: inhabitance_named_conj_domain(
+          parameter: ^inhabitance_param_x,
+          declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+        ),
+        return_type_binding: ^inhabitance_type_param_t,
+        body: dag_int_literal_fixture_one()
+      )
+    )
+  )
+}
+
+fn rp_c_counted() -> Bool {
+  match infer(tree: rp_c_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+  }
+}
+
+test fn rp_c_counted_reason_present() -> Bool {
+  rp_c_counted()
+}
+
+test fn rp_c_fatal_is_not_the_label() -> Bool {
+  rp_c_reason() != "infer:application_argument_does_not_inhabit"
+}
+
+test fn rp_c_fatal_is_not_undecidable_generic_formal() -> Bool {
+  rp_c_reason() != "infer:inhabitance_undecidable_generic_formal"
+}
+
+test fn rp_c_fatal_is_not_undecidable_formal_unresolved() -> Bool {
+  rp_c_reason() != "infer:inhabitance_undecidable_formal_unresolved"
+}
+
+test fn rp_c_fatal_is_not_unbound_symbol() -> Bool {
+  rp_c_reason() != "infer:resolve_reason_unbound_symbol"
+}
