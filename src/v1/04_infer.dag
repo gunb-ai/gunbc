@@ -2147,7 +2147,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                         Node {
                           occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
                           children: sf.children, connective: sf.connective, params: sf.params,
-                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: si), subst: subst, source_indices: si) } },
+                          inferred: Present { value: Resolved { node: substitute_generics(n: stamp_field_type_from_decl_params(field_type: field_substitution_carrier(sf: sf, source_indices: si), serving_decl: decl, source_indices: si), subst: subst, source_indices: si) } },
                           return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                           transport: sf.transport, properties: sf.properties,
                           type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
