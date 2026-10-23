@@ -1,0 +1,223 @@
+module v2.test.claim.compiler.infer_generic_formal_shape_mismatch_reason_witness
+
+// SEAT 16, DEFECT B -- NEVER-MERGE WITNESS. Scratch branch, provisional by construction: this
+// records what a defect does TODAY; it is not a landed contract and carries no floor claim.
+//
+// THE DEFECT. v2.compiler.infer infer_judge_generic_formal (infer.dag:4927) asks its matcher whether
+// a generic formal's SHAPE admits the argument's derived type. When the answer is
+// InferFormalShapeMismatch it mints the refusal with a HARDCODED cause:
+//     find_witness_reason: ^find_witness_reason_no_candidate        (infer.dag:4959)
+// The enclosing judge calls neither find_witness nor declared_type_inhabitance on that arm (the
+// Matched arm at :4962 is the only one that reaches infer_judge_declared_position), so no candidate
+// set is enumerated and no preservation predicate runs -- yet v2.std.inhabitance
+// application_argument_does_not_inhabit_diagnostic (:797) projects that constant, at a call
+// argument, to application_argument_does_not_inhabit via inhabitance_application_refusal_reason
+// (:700) / inhabitance_no_candidate_application_reason (:659). What a reader sees is exactly the
+// label a real candidate failure emits, stating a cause ("the candidate set had no passing witness",
+// v2.std.find_witness NoPassingCandidate) the path never established.
+//
+// WHAT THESE CLAIMS MEASURE, in order: (A) the shape arm fires on a minimal call and what label it
+// emits; (B) the very declared/produced pair the refusal reports, put to the inhabitance relation
+// itself, answers UNDECIDABLE -- a candidate test over that pair could not have emitted no_candidate
+// because the pair is undecidable while the callee's type variable stays unbound; (C) the contrast:
+// what Refused-no_candidate looks like when a candidate test really ran (a variable-free pair), so
+// (B) is a receipt and not a tautology; (D) the minting itself: at this position the emitted label IS
+// the projection of the no_candidate constant, which is what makes (A)'s word a claim.
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_one,
+  dag_type_atom_node
+}
+import v2.std.diagnostic {
+  Accepted,
+  Rejected,
+  diagnostics_fatal_reason
+}
+import std.algebra { Empty, list_snoc_item }
+import std.optional { Absent }
+import v2.std.type_binder { type_binder_set_children, type_params_edge }
+import v2.std.node_query { binder_edge }
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  InhabitanceUndecidable,
+  Inhabits,
+  PositionDirectCallArgument,
+  declared_type_inhabitance,
+  inhabitance_application_refusal_reason
+}
+import v2.std.node {
+  Authored,
+  ComputationNode,
+  Conj,
+  Edge,
+  Instantiation,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  node_synthetic
+}
+
+// `fn g<T>(x: <declared>) -> Int { 1 }` applied to (<argument>). T rides the Arrow's type_params
+// edge (v2.std.type_binder type_params_edge :103), so it is a declared type variable and not a name
+// to resolve, and the judge carries no instance for it.
+fn aai_generic_application(declared: Node, argument: Node) -> Node {
+  let arrow = dag_arrow_with_body_node(
+    domain: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        binder_edge(
+          name: ^aai_param_x,
+          type_node: declared
+        )
+      ]
+    ),
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_int_literal_fixture_one()
+  )
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: type_params_edge(
+              conj: node_synthetic(
+                kind: TypeNode { connective: Conj },
+                children: type_binder_set_children(binders: [
+                  Edge {
+                    label: Authored { name: ^aai_type_param_t },
+                    target: dag_type_atom_node(identity: ^aai_type_param_t)
+                  }
+                ], source: dag_type_atom_node(identity: ^aai_type_param_t))
+              )
+            )
+          )
+        )
+      },
+      Edge { label: Positional, target: argument }
+    ]
+  )
+}
+
+fn aai_box_of(operand: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^aai_type_box) },
+      Edge { label: Positional, target: operand }
+    ]
+  )
+}
+
+// THE SHAPE ARM'S INPUT, and why no other arm is available. The callee declares one variable T and
+// its one formal is `x: Box<T>`. The instance-less formal mentions a variable the callee declares
+// and its instance still mentions it, so v2.compiler.infer infer_judge_formals (:4996-5003) routes
+// it to infer_judge_generic_formal rather than deciding it. The argument is the Int literal 1, whose
+// derived type is the Int Atom (infer_literal_value_type :1865, DagCanonicalIntLiteral =>
+// dag_binding_type_int). In infer_match_generic_formal (:4302): :4303 does not fire (the formal is
+// `Box<T>`, not the bare variable); :4311 fires (an Instantiation formal) and the produced is an
+// Atom, so :4330 (`TypeNode { connective: _ }` produced against an Instantiation formal) is the arm
+// -- head inequality (:4320) and arity (:4316) are unreachable, and the binder arm cannot bind T to
+// the Atom because T never stands alone as a formal. refinement_declared_carrier
+// (infer_match_generic_formal_or_carrier :4501) offers nothing for a plain Int Atom over the empty
+// index. So this refusal is the SHAPE arm's and nothing else.
+fn aai_shape_mismatch_tree() -> Node {
+  aai_generic_application(
+    declared: aai_box_of(operand: dag_type_atom_node(identity: ^aai_type_param_t)),
+    argument: dag_int_literal_fixture_one()
+  )
+}
+
+// (A) WHAT THE SHAPE ARM EMITS TODAY: the fatal label a real candidate failure would emit.
+test fn generic_formal_shape_mismatch_refuses_application_argument_does_not_inhabit_holds() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: aai_shape_mismatch_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
+  }
+}
+
+// THE PAIR THE REFUSAL REPORTS, AS AN OBLIGATION. declared:Box<T> comes from
+// infer_declared_type_denotation applied to formal.declared (infer.dag:4958); produced is the
+// literal's derived Int Atom; produced_declared_carrier is Absent exactly as
+// infer_declared_type_obligation (:4547) computes it for an unrefined produced type over the empty
+// index; type_variables is the callee's [T] (:4958, type_params).
+fn aai_shape_obligation() -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: PositionDirectCallArgument,
+    parameter_identity: ^aai_param_x,
+    declared: aai_box_of(operand: dag_type_atom_node(identity: ^aai_type_param_t)),
+    produced: dag_type_atom_node(identity: ^dag_binding_type_int),
+    produced_declared_carrier: Absent,
+    application: dag_int_literal_fixture_one(),
+    type_variables: [^aai_type_param_t]
+  }
+}
+
+// (B) THE RECEIPT THAT THE CAUSE WAS NEVER ESTABLISHED. Put the refusal's own pair to the relation
+// it borrows a reason from: declared_type_inhabitance (:506) reaches the structural route and
+// inhabitance_pair_undecidable_reason (:289). Heads do NOT decide it -- neither side denotes a
+// declaration (an unbound variable under an unmarked Atom head, a kernel-bound Int atom), so
+// inhabitance_declaration_heads_differ (:278) answers false -- and the declared side mentions the
+// unbound T (:225), so the answer is Undecidable (UndecidableGenericFormal), NOT Refused. A
+// candidate test over THIS pair could not have emitted no_candidate: the pair refutes nothing, it is
+// undecidable while T stays unbound. The reason the infer arm stamps is a cause that path cannot
+// have earned.
+test fn the_same_pair_is_undecidable_under_the_relation_not_no_candidate_holds() -> Bool {
+  match declared_type_inhabitance(obligation: aai_shape_obligation()) {
+    Inhabits { homomorphism: _ } => false
+    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceUndecidable { reason: _ } => true
+  }
+}
+
+// (C) THE CONTRAST THAT MAKES (B) A RECEIPT: WHERE no_candidate IS EARNED. The same obligation
+// shape with no variable anywhere -- a concrete Box<Int> formal, a concrete Int produced, both
+// closed -- is decidable, so the relation reaches find_witness over the one-element declared
+// singleton (inhabitance_declared_singleton :211, closed under
+// inhabitance_declared_singleton_closed) with the exact-structural-equality predicate; the single
+// candidate fails, NoPassingCandidate (v2.std.find_witness :162) yields the reason, and the verdict
+// is Refused. That is what the label means when a candidate test actually ran. (B) against (C): the
+// identical reason leaves the relation's own answer unbacked on the shape arm -- the mislabel.
+fn aai_closed_obligation() -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: PositionDirectCallArgument,
+    parameter_identity: ^aai_param_x,
+    declared: aai_box_of(operand: dag_type_atom_node(identity: ^dag_binding_type_int)),
+    produced: dag_type_atom_node(identity: ^dag_binding_type_int),
+    produced_declared_carrier: Absent,
+    application: dag_int_literal_fixture_one(),
+    type_variables: Empty
+  }
+}
+
+test fn a_variable_free_mismatch_is_a_real_candidate_refusal_holds() -> Bool {
+  match declared_type_inhabitance(obligation: aai_closed_obligation()) {
+    InhabitanceRefused { find_witness_reason: _ } => true
+    Inhabits { homomorphism: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+// (D) THE NAME IS THE CLAIM. At a call argument the refusal's reason IS the projection of the
+// no_candidate constant: the constant maps to application_argument_does_not_inhabit
+// (inhabitance_application_refusal_reason :700, via inhabitance_no_candidate_reason :689 and
+// inhabitance_no_candidate_application_reason :659). So (A) does not merely record a refusal at a
+// call argument; in that position the word itself asserts that a candidate enumeration failed -- the
+// assertion (B) shows was never made. THE FIX, DRAFTED NOT BUILT: the shape arm gets a reason of its
+// own projected through the SIBLING of inhabitance_no_candidate_reason -- what each of its six
+// position names already is -- never a per-site string at infer.dag:4959 (DESIGN 6b: an ambient
+// operation demanded at a consumer is the boundary-violation class that gets rejected).
+test fn the_emitted_label_is_the_projection_of_the_no_candidate_constant_holds() -> Bool {
+  inhabitance_application_refusal_reason(
+    position: PositionDirectCallArgument,
+    find_witness_reason: ^find_witness_reason_no_candidate
+  ) == ^application_argument_does_not_inhabit
+}
