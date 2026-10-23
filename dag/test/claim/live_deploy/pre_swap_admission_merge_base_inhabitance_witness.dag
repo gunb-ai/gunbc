@@ -14,6 +14,7 @@ import gunbc.live_deploy.pre_swap_admission {
 import extdeps.git
 import extdeps.git.inspect { merge_base_outcome, MergeBaseOutcome }
 import extdeps.shell
+import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
