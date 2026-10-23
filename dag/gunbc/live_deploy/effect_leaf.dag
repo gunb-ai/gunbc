@@ -60,11 +60,6 @@ data live_deploy_systemctl_operation_path: String = "dag/extdeps/systemd/systemc
 data live_deploy_systemctl_operation_service: String = "systemd.Systemctl"
 data live_deploy_systemctl_unit_input: String = "unit"
 
-data live_deploy_apt_operation_path: String = "dag/extdeps/package_managers/apt.dag"
-data live_deploy_apt_operation_service: String = "apt.PackageManager"
-data live_deploy_dpkg_operation_path: String = "dag/extdeps/package_managers/dpkg.dag"
-data live_deploy_dpkg_operation_service: String = "dpkg.Package"
-data live_deploy_package_input: String = "package"
 
 // EVERY MUTATION ON THIS HOST CROSSES A PRIVILEGE BOUNDARY, so these constructors elevate rather
 // than taking a `privileged` flag: the deploy principal is the unprivileged CI-runner account
@@ -85,68 +80,8 @@ fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashPlanEffect
   )
 }
 
-fn systemctl_daemon_reload_effect() -> BashPlanEffect {
-  bash_bind_operation_invocation_elevated(
-    at: OperationRef {
-      path: live_deploy_systemctl_operation_path,
-      service: live_deploy_systemctl_operation_service,
-      operation: "DaemonReload",
-    },
-    bindings: [],
-  )
-}
-
-fn systemctl_enable_effect(unit: NonEmptyStr) -> BashPlanEffect {
-  systemctl_unit_effect(operation: "Enable", unit: unit)
-}
-
 fn systemctl_restart_effect(unit: NonEmptyStr) -> BashPlanEffect {
   systemctl_unit_effect(operation: "Restart", unit: unit)
-}
-
-// apt-get install IS elevated and dpkg -s is NOT, and the asymmetry is the two operations'
-// own: installing writes the package database, querying it reads. The former `privileged: Bool`
-// parameter made that a caller's choice at both leaves; here the read has no elevated form to pass.
-fn apt_install_effect(package: NonEmptyStr) -> BashPlanEffect {
-  bash_bind_operation_invocation_elevated(
-    at: OperationRef {
-      path: live_deploy_apt_operation_path,
-      service: live_deploy_apt_operation_service,
-      operation: "Install",
-    },
-    bindings: [operation_argv_bind_text(
-      name: live_deploy_package_input,
-      text: package as String,
-    )],
-  )
-}
-
-fn apt_install_unelevated_effect(package: NonEmptyStr) -> BashPlanEffect {
-  bash_bind_operation_invocation(
-    at: OperationRef {
-      path: live_deploy_apt_operation_path,
-      service: live_deploy_apt_operation_service,
-      operation: "Install",
-    },
-    bindings: [operation_argv_bind_text(
-      name: live_deploy_package_input,
-      text: package as String,
-    )],
-  )
-}
-
-fn dpkg_status_effect(package: NonEmptyStr) -> BashPlanEffect {
-  bash_bind_operation_invocation(
-    at: OperationRef {
-      path: live_deploy_dpkg_operation_path,
-      service: live_deploy_dpkg_operation_service,
-      operation: "Status",
-    },
-    bindings: [operation_argv_bind_text(
-      name: live_deploy_package_input,
-      text: package as String,
-    )],
-  )
 }
 
 // THE OBSERVED-SHA-256 ENV FILE IS A LEAF, NOT A COMMAND: the constructor names the file observed at
