@@ -676,12 +676,11 @@ test fn ram_image_boot_owes_no_install_phases() -> Bool {
 }
 
 // The two facts are independent in both directions: the BMC credential is owed by the control route alone,
-// the install phases by the delivery alone. Control: a virtual-media install keeps all four, and an install
-// without a BMC is refused by gunbc.fleet.fleet_host_backing admit_owned_provisioning and owes nothing, and an
-// appliance without a BMC owes neither the credential nor an install.
+// the install phases by the delivery alone. Control: a virtual-media install keeps all four, and an
+// appliance without a BMC owes neither the credential nor an install. The impossible pair never reaches here: it
+// is refused at the enrollment boundary (host_control_route_witness).
 test fn bmc_credential_follows_control_and_install_follows_delivery() -> Bool {
   let full = owned_backing(control: Bmc, delivery: InstalledViaVirtualMedia)
-  let no_bmc = owned_backing(control: NoOutOfBand, delivery: InstalledViaVirtualMedia)
   let appliance = owned_backing(control: NoOutOfBand, delivery: ApplianceImage)
   let ram = owned_backing(control: Bmc, delivery: RamImageBoot)
   prefix_phase_applies(p: BmcCredentialConverge, backing: ram)
@@ -689,8 +688,6 @@ test fn bmc_credential_follows_control_and_install_follows_delivery() -> Bool {
     && prefix_phase_applies(p: OsInstallMechanismResolved, backing: full)
     && prefix_phase_applies(p: OsInstallActuated, backing: full)
     && prefix_phase_applies(p: HostConvergePolicyDerived, backing: full)
-    && !prefix_phase_applies(p: BmcCredentialConverge, backing: no_bmc)
-    && !prefix_phase_applies(p: OsInstallActuated, backing: no_bmc)
     && !prefix_phase_applies(p: BmcCredentialConverge, backing: appliance)
     && !prefix_phase_applies(p: OsInstallActuated, backing: appliance)
 }
