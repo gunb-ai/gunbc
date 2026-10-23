@@ -10,7 +10,7 @@ import std.algebra {
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
   OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable,
-  free_monoid_scalar_templates, kernel_algebra_profile
+  free_monoid_scalar_templates, kernel_algebra_profile, map_support_keys, map_lookup
 }
 
 import v1.std.core { Unmarked,
@@ -469,8 +469,11 @@ fn is_empty_set_constructor(name: String) -> Bool {
 // reads (algebra_templates_for_profile over kernel_algebra_profile), so the two cannot drift. Only a
 // name is known before typecheck. Which receiver a method needs is decided by inference.
 fn is_kernel_method_name(name: String) -> Bool {
-  kernel_algebra_profile |> map_values |> any(profile =>
-    algebra_templates_for_profile(profile: profile) |> any(t => t.name == name)
+  map_support_keys(m: kernel_algebra_profile) |> any(kind =>
+    match map_lookup(m: kernel_algebra_profile, key: kind) {
+      Present { value: profile } => algebra_templates_for_profile(profile: profile) |> any(t => t.name == name)
+      Absent => false
+    }
   )
 }
 
