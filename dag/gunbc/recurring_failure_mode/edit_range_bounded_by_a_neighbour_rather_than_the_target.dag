@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.edit_range_bounded_by_a_neighbour_rather_than_the_target
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data edit_range_bounded_by_a_neighbour_rather_than_the_target: RecurringFailureMode = RecurringFailureMode {
   identity: "edit_range_bounded_by_a_neighbour_rather_than_the_target" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**a scripted edit locates its subject CORRECTLY and then delimits the extent with a landmark the subject does not own, so it consumes whatever sits between** (INVALID STATE: a rewrite whose START bound is the subject's own identity and whose END bound is the next occurrence of an unrelated construct -- the following declaration, the next blank line, the closing delimiter of an enclosing form. HARM: everything between the subject's true end and that landmark is rewritten or deleted, and it is material the edit was never about.",

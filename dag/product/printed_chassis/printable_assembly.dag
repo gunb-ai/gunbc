@@ -85,18 +85,20 @@ fn interface_json(i: MechanicalInterface) -> JsonValue {
  json_object(members:[json_kv(key:"id",value:text(s:i.id)),json_kv(key:"members",value:json_array(elements:i.members |> map(x=>text(s:x)))),json_kv(key:"fastener",value:text(s:fastener_display(f:i.fastener))),json_kv(key:"quantity",value:json_int(n:i.quantity)),json_kv(key:"status",value:text(s:status_display(s:i.status))),json_kv(key:"requirement",value:text(s:i.requirement))])
 }
 
-// THE ONE MANIFEST THE CHECK ADAPTER READS. The root's presentation members sit beside the common
-// facts at the top level, so an existing reader of the cassette package keeps its fields where it
-// found them.
+// THE ONE MANIFEST THE CHECK ADAPTER READS. A root's presentation members are nested under their own
+// key rather than spliced beside the common facts: the JSON object model does not refuse a repeated
+// key, so a root contributing its own "root" or "parts" would otherwise produce a manifest whose
+// meaning depends on which duplicate a reader keeps. No consumer reads a presentation member by a
+// top-level key.
 fn printable_manifest(a: PrintableAssembly) -> JsonValue {
- json_object(members: concat([
+ json_object(members: [
   json_kv(key:"schema",value:text(s:a.schema)),
   json_kv(key:"root",value:text(s:printed_assembly_root_wire(root:a.root))),
   json_kv(key:"quantum",value:text(s:"micrometre")),
   json_kv(key:"release",value:text(s:review_release)),
   json_kv(key:"package",value:text(s:a.package)),
   json_kv(key:"readme",value:text(s:a.readme)),
- ], concat(a.presentation, [
+  json_kv(key:"presentation",value:json_object(members:a.presentation)),
   json_kv(key:"export",value:json_object(members:[json_kv(key:"linear_tolerance_um",value:json_int(n:micrometer_count(m:exercised_stl_knobs.linear_tolerance))),json_kv(key:"angular_tolerance_radians",value:text(s:exercised_stl_knobs.angular_tolerance_text as String))])),
   json_kv(key:"print_envelope_mm",value:json_array(elements:[json_int(n:millimeter_count(m:build_envelope_x(e:a1_mini_build_envelope))),json_int(n:millimeter_count(m:build_envelope_y(e:a1_mini_build_envelope))),json_int(n:millimeter_count(m:build_envelope_z(e:a1_mini_build_envelope)))])),
   json_kv(key:"desired_inventory",value:required_slots_json(parts:a.parts)),
@@ -104,5 +106,5 @@ fn printable_manifest(a: PrintableAssembly) -> JsonValue {
   json_kv(key:"interfaces",value:json_array(elements:map(a.interfaces,i=>interface_json(i:i)))),
   json_kv(key:"required_keepouts",value:json_array(elements:map(a.required_keepouts,s=>text(s:s)))),
   json_kv(key:"assembly_members",value:json_array(elements:map(a.assembly_members,s=>text(s:s)))),
- ])))
+ ])
 }

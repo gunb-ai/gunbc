@@ -1,11 +1,14 @@
 module gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data optional_admitted_where_a_required_value_is_declared: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_admitted_where_a_required_value_is_declared" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
   receipts: [
+    "NEIGHBOUR: optional_payload_never_judged_against_declared_carrier is a different invalid state (a Present payload never judged against the declared T, the Present{\"s\"} at Int? hole); both shared the former undecidable-carrier mechanism.",
     "INVALID STATE: a value that carries optionality -- a CardOptional T? or the nominal Optional coproduct -- stands at a position whose declared type is Required and non-generic: a direct-call argument, a list element, or a member of a list literal whose type was elected from a Required head element. Absent inhabits no Required type, so the program has no meaning at that position; the floor obligation 'values inhabit declared types' (DESIGN 4b, the floor first) is broken.",
     "RECEIPT, gunbc#11626 (2026-09-19): NUMERIC-BIT-0 #11643 changed std.encoding base64_encode to return String?; the approval_device_wire site from #11660 calls join([prefix, base64_encode(..)], \"\"). No diagnostic. The regenerated vectors.json on CRYPTO-0's #11647 branch rendered the URL path as `id-Present { value: ZXNj... }` instead of `id-ZXNj...`, and the ci-auto-heal bot committed those bytes (e7b8ad2 on session/royal-stag-544) -- fabricated plausible output reaching a committed fixture.",
     "DISTINGUISHING FACTS, measured on main 3fabccc35f: a String? at a String direct-call parameter and at a List<String> argument's element compiled with only an advisory, v1.compiler.infer declared_type_inhabitance filing both under UndecidableOptionalCarrier -- a reason written for the LIFT direction (a T standing in an Optional<T> position) and applied to the converse, which is decided. A list literal with NO expected type (join's receiver) typed as List<head> and judged no member at all: 0 diagnostics. Neighbouring walls were silent by construction: kernel_value_declared_type_mismatch bails unless the ACTUAL is a kernel type, and nominal_call_arg_brand_mismatch requires equal structural-carrier templates.",

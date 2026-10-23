@@ -315,6 +315,7 @@ pub enum TargetProducer {
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
+    DeclRefCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -464,6 +465,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("rfm-rung-census"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/rfm_rung_census.dag",
+            },
+        ),
+        (
             instrument_label("native-app-attest"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_app_attest.dag",
@@ -584,6 +591,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("dependency-demand-census"),
             TargetProducer::DependencyDemandCensus,
+        ),
+        (
+            instrument_label("decl-ref-census"),
+            TargetProducer::DeclRefCensus,
         ),
         (
             instrument_label("generic-identity-census"),
@@ -1087,9 +1098,16 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::DependencyDemandCensus => {
-            run_dependency_demand_census(&self_host_source_roots())
-        }
+        TargetProducer::DependencyDemandCensus => run_census_verb(
+            "demand-census",
+            "dependency-demand-census",
+            &self_host_source_roots(),
+        ),
+        TargetProducer::DeclRefCensus => run_census_verb(
+            "decl-ref-census",
+            "decl-ref-census",
+            &self_host_source_roots(),
+        ),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -2148,6 +2166,11 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     } else {
         None
     };
+    if use_base {
+        eprintln!(
+            "namespace-wave-binding-diff: phase=base-census start base_ref={base_ref} head={head}"
+        );
+    }
     let (base, base_tree) = if !use_base {
         ((String::new(), None), String::new())
     } else {
@@ -2164,6 +2187,16 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     };
     // The base tree stays until the standing has read the texts the edit proof is computed from.
     let _base_tree = BaseTreeGuard(base_tree.clone());
+    if use_base {
+        eprintln!(
+            "namespace-wave-binding-diff: phase=base-census done exit={:?} bytes={}",
+            base.1,
+            base.0.len()
+        );
+    }
+    if use_head {
+        eprintln!("namespace-wave-binding-diff: phase=head-census start head={head}");
+    }
     let head_run = if use_head {
         match run_head_ambient_name_census(&head) {
             Ok(run) => run,
@@ -2172,6 +2205,13 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     } else {
         (String::new(), None)
     };
+    if use_head {
+        eprintln!(
+            "namespace-wave-binding-diff: phase=head-census done exit={:?} bytes={}",
+            head_run.1,
+            head_run.0.len()
+        );
+    }
     let runs = match cli_run::run_census_infer_root_sets(
         source_roots,
         &[
@@ -5796,17 +5836,17 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
-fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_demand_census(source_roots) {
+/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
+/// the exit are decided by the emitted verb; the host adds no verdict.
+fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_census_verb(verb, source_roots) {
         Ok(code) => InvocationOutcome {
             termination: match code {
                 0 => Termination::ObservationHeld,
                 1 => Termination::ObservationDidNotHold,
                 _ => Termination::SubjectUnreached,
             },
-            message: format!(
-                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
-            ),
+            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
