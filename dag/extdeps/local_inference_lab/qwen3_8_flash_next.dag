@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest, HubFileDigest, hub_file_digest }
 import std.algebra { list_append, length, string_contains }
+import std.list { distinct_by_key }
 
 // THE LOCAL-INFERENCE-LAB QWEN3.8-FLASH-NEXT NVFP4 CHECKPOINT, AS ITS PUBLISHER'S OWN EXTDEPS AUTHORITY.
 // This is the carrier gunbc.plans.flex_supplier_generalization (deleted 2026-11-08) generalization_55 declared and nothing
@@ -46,8 +47,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // THE PINNED REVISION. It is pinned because the host proves the tree moves: serving downloads by
 // revision, and the same tree was read on srv1's download cache at this revision (blob names matched,
-// 2026-10-25). The manifest is the Hub model API's own answer for this revision — 39 files, 21 of them
-// safetensors — read through the public model API 2026-10-25; the numbers are the API's, not a local
+// 2026-10-25). The manifest is the Hub model API's own answer for this revision — 37 files (an
+// earlier reading here said 39; the complete roster below accounts for every byte of the repository
+// total in 37), 21 of them safetensors — read through the public model API 2026-10-25; the numbers are the API's, not a local
 // walk, and the read record below says so.
 data qwen3_8_flash_next_pinned_revision: NonEmptyStr =
   "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2" as NonEmptyStr
@@ -109,12 +111,37 @@ data qwen3_8_flash_next_shard_pins: List<HubFileDigest> = [
   hub_file_digest(path_in_repo: "tensors/model-00021-of-00021.safetensors" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 2700016864), sha256_hex: "48203838f2c76921bddbf1cc51d20a23858c128821a21add55fa1778e5e25283" as NonEmptyStr, lfs_stored: true),
 ]
 
+// THE REMAINING FOURTEEN FILES, so the roster is the revision's COMPLETE file set and a placement can refuse
+// a file the pin does not name. tokenizer.json is LFS-stored (its lfs.oid, from the tree API). The thirteen
+// git-stored files were fetched from the Hub's resolve endpoint at the pinned revision on 2026-11-25; each
+// file's `git hash-object` equalled the blob oid the tree API reports for it, and only then was its sha256
+// taken locally. config.json, fetched the same way, reproduced qwen3_8_flash_next_config_pin's digest,
+// which is the cross-check that the route reads the revision's bytes. The tokenizer and chat template are
+// behavior-bearing (they decide what the model is asked); the license and README rows are pinned only
+// because completeness, not content, is what lets a verifier refuse an extra file.
+data qwen3_8_flash_next_auxiliary_pins: List<HubFileDigest> = [
+  hub_file_digest(path_in_repo: ".gitattributes" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 166), sha256_hex: "8237eb95e69c239c1e6d842039e720117d7907478b67433bb16215b2dbc4d002" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "LICENSE" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 31799), sha256_hex: "5d11715a16f3072bf7ea3a37832ddc96d461b375e43bfb3f953a04fab2722f10" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "LICENSES/LicenseRef-LIL-1.0.txt" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 31799), sha256_hex: "5d11715a16f3072bf7ea3a37832ddc96d461b375e43bfb3f953a04fab2722f10" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "LICENSES/LicenseRef-qwen-community-1.0.txt" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 3236), sha256_hex: "4a326fe61c27aa551d169cd1d03d1241e1ebb3addddb017c91c7183edca6b61f" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "NOTICE" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 2346), sha256_hex: "c81e8b21648d2fada508b82b2b91dad7b39c20b934ca242a04cb72ac94ef7c63" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "README.md" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 4272), sha256_hex: "ce707c28ac16f080ae6ac11554f35c561c59dc1bbcf51473778e499feaf3d245" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "chat_template.jinja" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 8952), sha256_hex: "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "generation_config.json" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 202), sha256_hex: "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "merges.txt" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 3353259), sha256_hex: "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "preprocessor_config.json" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 390), sha256_hex: "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "tokenizer.json" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 12809320), sha256_hex: "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3" as NonEmptyStr, lfs_stored: true),
+  hub_file_digest(path_in_repo: "tokenizer_config.json" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 17928), sha256_hex: "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "video_preprocessor_config.json" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 385), sha256_hex: "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13" as NonEmptyStr, lfs_stored: false),
+  hub_file_digest(path_in_repo: "vocab.json" as NonEmptyStr, revision: qwen3_8_flash_next_pinned_revision, bytes: byte_size(count: 6722759), sha256_hex: "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003" as NonEmptyStr, lfs_stored: false),
+]
+
 fn qwen3_8_flash_next_pinned_files() -> List<HubFileDigest> {
-  [qwen3_8_flash_next_config_pin, qwen3_8_flash_next_index_pin]
+  list_append(left: [qwen3_8_flash_next_config_pin, qwen3_8_flash_next_index_pin], right: qwen3_8_flash_next_auxiliary_pins)
 }
 
-// THE WHOLE PIN ROSTER the provision route carries: 21 shards + config.json + the index = 23 digested
-// files at the pinned revision. This is the CONSUMER that makes the per-file digests load-bearing:
+// THE WHOLE PIN ROSTER the provision route carries: 21 shards + config.json + the index + the fourteen
+// auxiliary files = all 37 files of the pinned revision. This is the CONSUMER that makes the per-file digests load-bearing:
 // gunbc.serving.serving_provision_derivation's vllm arm puts it into VllmServingProvisionInputs
 // (weights_digests), so a route DOES hold the shard digests a verifier checks against, and the witness
 // test.claim.serving.srv1_serving_launch_witness folds it against the manifest totals below. Without a
@@ -124,12 +151,11 @@ fn qwen3_8_flash_next_pin_roster() -> List<HubFileDigest> {
   list_append(left: qwen3_8_flash_next_shard_pins, right: qwen3_8_flash_next_pinned_files())
 }
 
-// The roster folded against the manifest: 23 files, one revision everywhere, shard bytes summing EXACTLY
-// to the manifest's safetensors total, and the roster's bytes bounded by the repository total. The roster
-// pins 23 of the repository's 39 files (the 21 shards, config.json and the index), so its bytes cannot
-// equal the 39-file total: the other 16 files (102262354720 - 102239367907 = 22986813 bytes) are not
-// pinned here. An equality there was false from #15222 on and went unseen because no witness over it
-// resolved until #15367; this states what the rows support (gunbc.design_argument::epistemic_humility). Pure rows — this is
+// The roster folded against the manifest: 37 files, one revision everywhere, no path named twice, shard
+// bytes summing EXACTLY to the manifest's safetensors total, and all bytes summing EXACTLY to the
+// repository total. Until 2026-11-25 the roster pinned 23 files and this was a `<=`, with 22986813 bytes
+// unaccounted for; the fourteen auxiliary rows are exactly those bytes, so the equality now holds and a
+// roster that dropped or added a file would fail it. Pure rows — this is
 // decidable without the network, and the witness asserts it. Shards are recognised by the "-of-00021"
 // segment their names carry (config.json and the index do not contain it), so no path-prefix vocabulary
 // is needed here.
@@ -138,8 +164,10 @@ fn qwen3_8_flash_next_pins_cohere() -> Bool {
   let shard_sum = fold(roster, init: 0, f: (acc, d) => if string_contains(s: d.path_in_repo as String, pattern: "-of-00021") { acc + (byte_size_count(b: d.bytes) as Int) } else { acc })
   let total_sum = fold(roster, init: 0, f: (acc, d) => acc + (byte_size_count(b: d.bytes) as Int))
   let one_revision = fold(roster, init: true, f: (acc, d) => acc && ((d.revision as String) == (qwen3_8_flash_next_manifest.revision as String)))
-  length(xs: roster) == 23
+  let distinct = distinct_by_key(xs: roster, key: d => d.path_in_repo as String)
+  length(xs: roster) == 37
+    && length(xs: distinct) == 37
     && one_revision
     && shard_sum == (byte_size_count(b: qwen3_8_flash_next_manifest.safetensors_bytes) as Int)
-    && total_sum <= (byte_size_count(b: qwen3_8_flash_next_manifest.repository_total_bytes) as Int)
+    && total_sum == (byte_size_count(b: qwen3_8_flash_next_manifest.repository_total_bytes) as Int)
 }
