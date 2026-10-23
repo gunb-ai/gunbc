@@ -248,6 +248,8 @@ test fn each_instance_sudoers_body_pins_its_named_instance_root() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  // live's root /opt/gunbc is a string prefix of the lab's /opt/gunbc-lab/...; sudoers words are
+  // space-separated, so the negative check is the whole word.
   let live_word = sudoers_instance_root_word(root: live.instance_root as String)
   let lab_word = sudoers_instance_root_word(root: lab.instance_root as String)
   match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: live, revision: rev)) {
@@ -261,7 +263,7 @@ test fn each_instance_sudoers_body_pins_its_named_instance_root() -> Bool {
             && string_contains(s: live_body, pattern: live_word)
             && !string_contains(s: live_body, pattern: lab_word)
             && string_contains(s: lab_body, pattern: lab_word)
-            && !string_contains(s: lab_body, pattern: live_word)
+            && !string_contains(s: lab_body, pattern: join([live_word, " "], ""))
       }
   }
 }
@@ -432,7 +434,7 @@ test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => false
     AttemptSystemUnitStartDerived { facts } =>
-      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole, record_owner: inst.directory_owner) {
         AttemptExitHookRefused { reason: _ } => false
         AttemptExitHookRendered { exec_line } =>
           (facts.exit_hook as String) == (exec_line as String)
@@ -698,6 +700,7 @@ test fn the_launcher_execstoppost_uses_short_property_words_and_keeps_a_single_d
     node_id: "n",
     attempt_key: "k",
     role: AttemptWorkerRole,
+    record_owner: inst.directory_owner,
   ) {
     AttemptExitHookRefused { reason: _ } => false
     AttemptExitHookRendered { exec_line } =>
