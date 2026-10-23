@@ -32,7 +32,7 @@ import gunbc.instruments.ambient_name_census_reading {
 //   in-flight  the spelling is claimed by a change already under way (ambient_operation_claims, each naming its change and when it ends); counted,
 //              never classified, so the work is not duplicated;
 //   kernel-grounding  the binding source is an `ambient:kernel_*` table: a kernel token or type spelling, not an
-//              operation; a separate class by the manager's ruling, no migration;
+//              operation; a separate class by manager direction, no migration;
 //   C          the binding source is `generated`: the compiler minted the reference;
 //   D          the primitive-egress ledger (gunbc.primitive_egress.dispositions) records the spelling as
 //              observing or mutating something outside the value graph; the evidence is that row's
@@ -57,7 +57,7 @@ type AmbientOperationClaim {
 // A spelling claimed by a change already under way: counted, never classified, so the work is not duplicated.
 // The claim ENDS when the spelling resolves to a declaration: a `binding_declaration` row outside std.primitives
 // carries its name. A claim that outlives its change therefore refuses the reading (stale_claim) instead of
-// counting in-flight forever. The manager's brief (tidy-ant-251) is the authority for the two entries.
+// counting in-flight forever.
 data ambient_operation_claims: List<AmbientOperationClaim> = [
   AmbientOperationClaim { spelling: "list_push", change_pr: Present { value: 14751 }, owner_session: "sunny-bee-153" },
   AmbientOperationClaim { spelling: "map_get", change_pr: Absent, owner_session: "wise-moth-707" }
@@ -80,7 +80,7 @@ type DispositionClass
 
 type DispositionBasis
   = BasisInFlight
-  | BasisOperatorRuling
+  | BasisManagerDirection
   | BasisGeneratedSource
   | BasisEgressEvidence
   | BasisBindingIdentity
@@ -90,7 +90,7 @@ type DispositionBasis
 fn disposition_basis_text(basis: DispositionBasis) -> String {
   match basis {
     BasisInFlight => "in-flight"
-    BasisOperatorRuling => "operator-ruling"
+    BasisManagerDirection => "manager direction (tidy-ant-251); no design_ruling recorded"
     BasisGeneratedSource => "generated-source"
     BasisEgressEvidence => "egress-evidence"
     BasisBindingIdentity => "binding-identity"
@@ -178,7 +178,7 @@ fn classify_row(spelling: String, source: String, target: String, decls: List<St
 
 fn classify_unclaimed_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
   if starts_with(s: source, prefix: "ambient:kernel_") {
-    verdict(class: DispositionKernelGrounding, basis: BasisOperatorRuling, evidence: "kernel grounding: the spelling is a kernel token or type spelling, not an operation; no migration (manager ruling, tidy-ant-251)")
+    verdict(class: DispositionKernelGrounding, basis: BasisManagerDirection, evidence: "kernel grounding: the spelling is a kernel token or type spelling, not an operation; no migration")
   } else if source == "generated" {
     verdict(class: DispositionC, basis: BasisGeneratedSource, evidence: "the compiler minted this reference (binding source generated) and it binds " + target)
   } else {
