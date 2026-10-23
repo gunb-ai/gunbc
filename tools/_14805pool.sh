@@ -13,7 +13,8 @@ WETFLAG=""; [ "$WET" = 1 ] && WETFLAG="--wet"; N=${N:-2}; CHUNK=${CHUNK:-12}; CH
 REPO=/tmp/c4v/disp2
 [ -d $REPO ] || REPO=/root/workspace/repo-root
 cd $REPO || exit 9
-HEAD_SHA=dfe7025c3903e98f988530e523f0a47e945faf19
+HEAD_SHA=${HEAD_SHA:?NEED_HEAD_SHA}
+BASETGZ=${BASETGZ:-tools/base14805.tgz}
 [ -d /sys/fs/cgroup ] || { echo "NO_CGROUP2 -- STOP"; exit 9; }
 echo +memory > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
 rm -rf /sys/fs/cgroup/ver805p 2>/dev/null || true; mkdir -p /sys/fs/cgroup/ver805p
@@ -38,7 +39,7 @@ fi
 echo "BUILD_COMMIT=$HEAD_SHA CB_SHA=$(sha $CB) TREE=$TREE WET=$WETFLAG"
 WT=/tmp/w805p_$TREE
 rm -rf $WT; git worktree add -q --detach $WT $HEAD_SHA || { echo WT_FAIL; exit 9; }
-if [ "$TREE" = base ]; then tar xzf tools/base14805.tgz -C $WT || exit 9; echo BASE_OVERLAY_OK; fi
+if [ "$TREE" = base ]; then tar xzf $BASETGZ -C $WT || exit 9; echo BASE_OVERLAY_OK; fi
 WL=tools/wl14805_${TREE}${WLFILE:+_$WLFILE}.tsv
 [ -s $WL ] || { echo "EMPTY_WORKLIST $WL -- STOP"; exit 9; }
 END=$(( $(date +%s) + DEADLINE_MIN*60 - 60 ))   # stop 60s before own deadline
