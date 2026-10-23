@@ -6,7 +6,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
   OperationInputBinding,
@@ -97,6 +97,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bounded_get_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_stdin_then_exec_command"),
@@ -137,6 +138,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.kopia", decl_name: "kopia_snapshot_create_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_files_sha256_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owner_executable_files_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_metadata_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_regular_files_sha256_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_children_named_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_untrusted_entries_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
@@ -168,8 +172,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.linux.ethtool_ioctl", decl_name: "linux_ethtool_channels_command"),
     decl_ref(module_path: "extdeps.tools.make", decl_name: "make_command"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_command_of"),
-    decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_install_pinned_command"),
-    decl_ref(module_path: "extdeps.package_managers.conda_forge", decl_name: "micromamba_create_command"),
+    decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_module_install_command"),
+    decl_ref(module_path: "extdeps.package_managers.micromamba", decl_name: "micromamba_create_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
@@ -258,6 +262,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_regular_file_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_exists_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_symbolic_link_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_writable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
@@ -298,6 +303,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.crypto.hash", decl_name: "sha256sum_file_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_as_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_list_command_as"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_version_command"),
     decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_elevate_command"),
     decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_check_command"),
     decl_ref(module_path: "extdeps.sudo.visudo", decl_name: "visudo_policy_check_command"),
@@ -313,6 +320,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
     decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
+    decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_off_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_default_report_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_is_socket_command"),
@@ -329,6 +337,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
   ]

@@ -1,7 +1,7 @@
 module gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged, population_from_list }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_live_forecast_rows }
 
@@ -66,15 +66,13 @@ data roadmap_live_forecast_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   declared: "2026-09-19",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "the live graph's per-node sizing derivation reaching a claim frame as a served value rather than being re-derived inside it, so asserting that the loss is total stops costing one derivation per active node",
     },
-    population: roadmap_live_forecast_new_witness_eval_step_cost_population,
+    population: population_from_list(xs: roadmap_live_forecast_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER. (i) The per-node sizing derivation over the LIVE graph reaches this claim as a value it does not compute in its own frame -- concretely, gunbc.roadmap.roadmap_forecast derived_node_sizings over the live active node set is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path, the way roadmap_authority_projection already is. WHAT THAT FILL MUST BE SUFFICIENT FOR, stated because a trigger naming less than the capability is satisfied while the capability stays dead: a required-floor claim asserting the TOTAL unsized set over the live graph must not re-derive a sizing per active node inside its own frame. A share row that does not cover this identity's demand does not satisfy this clause, and neither does any change that makes the claim assert over fewer nodes. (ii) AND this identity measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives on the acceptance path, while STILL executing on every pull request, still recording eval_steps, and still asserting the refusal set and the active set agree in both directions. Deleting the identity, weakening it to a supplied fixture, moving it to a home that does not execute it on the change it exists to catch, or the stub deriver merely being replaced without clause (i) holding, satisfies neither clause. Note that replacing the stub does NOT by itself retire this row: a deriver that answers sends the fold on to schedule_forecast instead, which is a different and not necessarily cheaper path, so the retiring evidence is clause (ii)'s measurement and not the replacement.",
-  }
+  } }
 }

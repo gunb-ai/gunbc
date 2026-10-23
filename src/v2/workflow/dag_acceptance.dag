@@ -1,6 +1,5 @@
 module v2.workflow.dag_acceptance
 
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality }
 import std.types { List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import v2.compiler.compile {
@@ -1386,7 +1385,7 @@ fn acceptance_verdict(receipt: DagAcceptanceReceipt) -> DagAcceptanceVerdict {
   }
 }
 
-data nfr_reason_acceptance_obligation_eq: String = "structural equality over DagStageObligation (obligation_eq): the three claim-carrying arms compare their claim identities through nested matches with off-variant wildcard false arms, and the outer wildcard compares discriminants for the five unit arms — the eq-row class the structural-equality rows above name, landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
+data nfr_reason_acceptance_obligation_eq: String = "KEYED-IDENTITY equality over DagStageObligation (obligation_eq): the three claim-carrying arms compare claim.identity, a key projection rather than the whole claim, with off-variant wildcard false arms, and the outer wildcard compares discriminants for the five unit arms; a derived == would compare whole claims and change the answer (landed with the .dag acceptance harness #8821 unrostered, surfaced by the whole-corpus nfr receipt on 2026-08-29)"
 
 data nfr_reason_acceptance_verdict_append: String = "one-variant append over DagAcceptanceVerdict (three arms): verdict_with_further_rejection extends AcceptanceContractRejected and verdict_with_further_unfinished extends AcceptanceContractIncomplete, each returning the other two verdicts unchanged through one wildcard identity arm. Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
@@ -1396,7 +1395,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "obligation_eq" },
       reason: nfr_reason_acceptance_obligation_eq,
-      dissolution: nfr_dissolve_derived_equality,
+      dissolution: unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: ClaimRef declares claim.identity as its declared identity, so DagStageObligation equality is the derived == over that declared key and obligation_eq deletes with this row"),
     },
   FrontierRow {
       subject: PathSubject { path: "verdict_with_further_rejection" },

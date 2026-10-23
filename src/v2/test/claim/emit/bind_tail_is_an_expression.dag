@@ -21,7 +21,7 @@ import v2.std.node {
   ArrowBodyEdge,
   core_edge,
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   TargetValueExpression,
@@ -88,6 +88,7 @@ data bind_tail_probe_param: Node = probe_atom(id: ^dag_token_kw_true)
 
 fn probe_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: node_synthetic(
       kind: TypeNode { connective: Conj },

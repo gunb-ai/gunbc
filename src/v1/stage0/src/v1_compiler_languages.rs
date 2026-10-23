@@ -1377,12 +1377,6 @@ pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
     language_spec_for_target(target.clone()).sharing.clone()
 }
 
-pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSemantics> {
-    language_spec_for_target(target.clone())
-        .expression_semantics
-        .clone()
-}
-
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
         let tmpl = sharing_for_target(target.clone()).wrap_template.clone();

@@ -5,8 +5,9 @@ use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
 pub use crate::std_algebra::{collection_concat_shape, collection_join_shape};
+pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
-pub use crate::std_types::{Bool, NonEmptyStr};
+pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -95,8 +96,29 @@ pub fn structural_content_hash(digest: String) -> Rc<Fnv1a64Structural> {
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HexCodePointRange {
+    pub first: i64,
+    pub last: i64,
+}
+
+pub fn lower_hex_code_point_ranges() -> Rc<Vec<HexCodePointRange>> {
+    thread_local! {
+        static CACHED: Rc<Vec<HexCodePointRange>> = {
+            serde_json::from_str("[{\"first\": 48, \"last\": 57}, {\"first\": 97, \"last\": 102}]")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<HexCodePointRange>>| c.clone())
+}
+
 pub fn content_hash_is_lower_hex_code_point(cp: i64) -> bool {
-    (((cp.clone() >= 48) && (cp.clone() <= 57)) || ((cp.clone() >= 97) && (cp.clone() <= 102)))
+    lower_hex_code_point_ranges()
+        .iter()
+        .cloned()
+        .fold(false, |acc: bool, r: HexCodePointRange| {
+            (acc || ((cp.clone() >= r.first.clone()) && (cp.clone() <= r.last.clone())))
+        })
 }
 
 pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
@@ -128,8 +150,12 @@ pub fn lower_hex_40(value: String) -> bool {
     content_hash_validate_lower_hex_length(value.clone(), 40)
 }
 
+pub fn sha256_hex_digit_count() -> i64 {
+    64
+}
+
 pub fn lower_hex_64(value: String) -> bool {
-    content_hash_validate_lower_hex_length(value.clone(), 64)
+    content_hash_validate_lower_hex_length(value.clone(), sha256_hex_digit_count())
 }
 
 pub fn lower_hex_128(value: String) -> bool {

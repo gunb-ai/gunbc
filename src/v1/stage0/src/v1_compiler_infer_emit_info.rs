@@ -127,17 +127,31 @@ pub fn type_summary_index_insert(
     leaf: String,
     summary: Rc<TypeSummary>,
 ) -> Rc<TypeSummaryIndex> {
-    Rc::new(TypeSummaryIndex {
-        by_key: v1_rt::rc_map_insert(index.by_key.clone(), key.clone(), summary.clone()),
-        keys_by_leaf: v1_rt::rc_map_insert(
+    {
+        let __rb_0_0 = v1_rt::rc_map_insert(index.by_key.clone(), key.clone(), summary.clone());
+        let __rb_1_0 = v1_rt::rc_map_insert(
             index.keys_by_leaf.clone(),
             leaf.clone(),
             type_decl_leaf_identities_with(
                 v1_rt::map_get(&index.keys_by_leaf.clone(), leaf.clone()),
                 key.clone(),
             ),
-        ),
-    })
+        );
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.by_key = __rb_0_0;
+                __rb_r.keys_by_leaf = __rb_1_0;
+            }
+            None => {
+                __rb_h = Rc::new(TypeSummaryIndex {
+                    by_key: __rb_0_0,
+                    keys_by_leaf: __rb_1_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn type_summary_keys_of_leaf(index: Rc<TypeSummaryIndex>, leaf: String) -> Rc<Vec<String>> {
@@ -529,38 +543,55 @@ pub fn type_decl_index_insert(
 ) -> Rc<TypeDeclIndex> {
     {
         let identity = type_decl_identity(owner_module.clone(), decl_name.clone());
-        Rc::new(TypeDeclIndex {
-            by_identity: v1_rt::rc_map_insert(
-                index.by_identity.clone(),
-                identity.clone(),
-                item.clone(),
-            ),
-            identity_by_declaring_span: match item.ident_span.clone() {
+        {
+            let __rb_0_0 =
+                v1_rt::rc_map_insert(index.by_identity.clone(), identity.clone(), item.clone());
+            let __rb_1_0 = match item.ident_span.clone() {
                 Some(sp) => v1_rt::rc_map_insert(
                     index.identity_by_declaring_span.clone(),
                     declaring_span_key(sp.clone()),
                     identity.clone(),
                 ),
                 std::option::Option::None => index.identity_by_declaring_span.clone(),
-            },
-            leaf_owners: v1_rt::rc_map_insert(
+            };
+            let __rb_2_0 = v1_rt::rc_map_insert(
                 index.leaf_owners.clone(),
                 decl_name.clone(),
                 type_decl_leaf_owner_after(
                     v1_rt::map_get(&index.leaf_owners.clone(), decl_name.clone()),
                     owner_module.clone(),
                 ),
-            ),
-            identities_by_leaf: v1_rt::rc_map_insert(
+            );
+            let __rb_3_0 = v1_rt::rc_map_insert(
                 index.identities_by_leaf.clone(),
                 decl_name.clone(),
                 type_decl_leaf_identities_with(
                     v1_rt::map_get(&index.identities_by_leaf.clone(), decl_name.clone()),
                     identity.clone(),
                 ),
-            ),
-            qualified_names: index.qualified_names.clone(),
-        })
+            );
+            let __rb_4_0 = index.qualified_names.clone();
+            let mut __rb_h = index;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.by_identity = __rb_0_0;
+                    __rb_r.identity_by_declaring_span = __rb_1_0;
+                    __rb_r.leaf_owners = __rb_2_0;
+                    __rb_r.identities_by_leaf = __rb_3_0;
+                    __rb_r.qualified_names = __rb_4_0;
+                }
+                None => {
+                    __rb_h = Rc::new(TypeDeclIndex {
+                        by_identity: __rb_0_0,
+                        identity_by_declaring_span: __rb_1_0,
+                        leaf_owners: __rb_2_0,
+                        identities_by_leaf: __rb_3_0,
+                        qualified_names: __rb_4_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 
@@ -862,13 +893,33 @@ pub fn type_decl_index_with_qualified_names(
     index: Rc<TypeDeclIndex>,
     qualified_names: Rc<SymbolIndex>,
 ) -> Rc<TypeDeclIndex> {
-    Rc::new(TypeDeclIndex {
-        by_identity: index.by_identity.clone(),
-        identity_by_declaring_span: index.identity_by_declaring_span.clone(),
-        leaf_owners: index.leaf_owners.clone(),
-        identities_by_leaf: index.identities_by_leaf.clone(),
-        qualified_names: qualified_names.clone(),
-    })
+    {
+        let __rb_0_0 = index.by_identity.clone();
+        let __rb_1_0 = index.identity_by_declaring_span.clone();
+        let __rb_2_0 = index.leaf_owners.clone();
+        let __rb_3_0 = index.identities_by_leaf.clone();
+        let __rb_4_0 = qualified_names.clone();
+        let mut __rb_h = index;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.by_identity = __rb_0_0;
+                __rb_r.identity_by_declaring_span = __rb_1_0;
+                __rb_r.leaf_owners = __rb_2_0;
+                __rb_r.identities_by_leaf = __rb_3_0;
+                __rb_r.qualified_names = __rb_4_0;
+            }
+            None => {
+                __rb_h = Rc::new(TypeDeclIndex {
+                    by_identity: __rb_0_0,
+                    identity_by_declaring_span: __rb_1_0,
+                    leaf_owners: __rb_2_0,
+                    identities_by_leaf: __rb_3_0,
+                    qualified_names: __rb_4_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn referencing_module_declarer_route_dissolves_on() -> Rc<DissolutionCondition> {
@@ -956,6 +1007,7 @@ pub struct EmitGraphInfo {
     pub expected_type: Option<Rc<Node>>,
     pub tco_cursor_params: Rc<Vec<String>>,
     pub tco_cursor_tails: Rc<HashMap<String, i64>>,
+    pub dying_base_sites: Rc<HashMap<String, String>>,
     pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
 
@@ -998,6 +1050,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         expected_type: std::option::Option::None,
         tco_cursor_params: Rc::new(vec![]),
         tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+        dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
     })
 }
 
@@ -1006,105 +1059,306 @@ pub fn emit_info_with_fn_type_context(
     generic_param_names: Rc<Vec<String>>,
     env: Rc<TypeEnv>,
 ) -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
-        item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
-        type_summaries: emit_info.type_summaries.clone(),
-        type_decl_items: emit_info.type_decl_items.clone(),
-        data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
-        fn_decl_items: emit_info.fn_decl_items.clone(),
-        fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
-        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
-        recursive_type_set: emit_info.recursive_type_set.clone(),
-        fielded_variants: emit_info.fielded_variants.clone(),
-        positional_payload_variants: emit_info.positional_payload_variants.clone(),
-        shared_types: emit_info.shared_types.clone(),
-        ownership_index: emit_info.ownership_index.clone(),
-        movable: emit_info.movable.clone(),
-        variant_to_enum: emit_info.variant_to_enum.clone(),
-        owned_bindings: emit_info.owned_bindings.clone(),
-        read_only_params_index: emit_info.read_only_params_index.clone(),
-        read_only_params: emit_info.read_only_params.clone(),
-        clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
-        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
-        clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
-        map_key_bounded_type_params: emit_info.map_key_bounded_type_params.clone(),
-        fn_generic_param_names: generic_param_names.clone(),
-        fn_type_env: env.clone(),
-        fn_return_type: emit_info.fn_return_type.clone(),
-        expected_type: emit_info.expected_type.clone(),
-        tco_cursor_params: emit_info.tco_cursor_params.clone(),
-        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
-    })
+    {
+        let __rb_0_0 = emit_info.item_leaf_owner_modules.clone();
+        let __rb_1_0 = emit_info.type_summaries.clone();
+        let __rb_2_0 = emit_info.type_decl_items.clone();
+        let __rb_3_0 = emit_info.data_variant_wire_spellings.clone();
+        let __rb_4_0 = emit_info.fn_decl_items.clone();
+        let __rb_5_0 = emit_info.fn_decl_identity_items.clone();
+        let __rb_6_0 = emit_info.fn_map_key_bounds.clone();
+        let __rb_7_0 = emit_info.recursive_type_set.clone();
+        let __rb_8_0 = emit_info.fielded_variants.clone();
+        let __rb_9_0 = emit_info.positional_payload_variants.clone();
+        let __rb_10_0 = emit_info.shared_types.clone();
+        let __rb_11_0 = emit_info.ownership_index.clone();
+        let __rb_12_0 = emit_info.movable.clone();
+        let __rb_13_0 = emit_info.variant_to_enum.clone();
+        let __rb_14_0 = emit_info.owned_bindings.clone();
+        let __rb_15_0 = emit_info.read_only_params_index.clone();
+        let __rb_16_0 = emit_info.read_only_params.clone();
+        let __rb_17_0 = emit_info.clone_bounded_type_params.clone();
+        let __rb_18_0 = emit_info.map_key_required_type_names.clone();
+        let __rb_19_0 = emit_info.clone_impl_required_type_params.clone();
+        let __rb_20_0 = emit_info.map_key_bounded_type_params.clone();
+        let __rb_21_0 = generic_param_names.clone();
+        let __rb_22_0 = env.clone();
+        let __rb_23_0 = emit_info.fn_return_type.clone();
+        let __rb_24_0 = emit_info.expected_type.clone();
+        let __rb_25_0 = emit_info.tco_cursor_params.clone();
+        let __rb_26_0 = emit_info.tco_cursor_tails.clone();
+        let __rb_27_0 = emit_info.dying_base_sites.clone();
+        let mut __rb_h = emit_info;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.item_leaf_owner_modules = __rb_0_0;
+                __rb_r.type_summaries = __rb_1_0;
+                __rb_r.type_decl_items = __rb_2_0;
+                __rb_r.data_variant_wire_spellings = __rb_3_0;
+                __rb_r.fn_decl_items = __rb_4_0;
+                __rb_r.fn_decl_identity_items = __rb_5_0;
+                __rb_r.fn_map_key_bounds = __rb_6_0;
+                __rb_r.recursive_type_set = __rb_7_0;
+                __rb_r.fielded_variants = __rb_8_0;
+                __rb_r.positional_payload_variants = __rb_9_0;
+                __rb_r.shared_types = __rb_10_0;
+                __rb_r.ownership_index = __rb_11_0;
+                __rb_r.movable = __rb_12_0;
+                __rb_r.variant_to_enum = __rb_13_0;
+                __rb_r.owned_bindings = __rb_14_0;
+                __rb_r.read_only_params_index = __rb_15_0;
+                __rb_r.read_only_params = __rb_16_0;
+                __rb_r.clone_bounded_type_params = __rb_17_0;
+                __rb_r.map_key_required_type_names = __rb_18_0;
+                __rb_r.clone_impl_required_type_params = __rb_19_0;
+                __rb_r.map_key_bounded_type_params = __rb_20_0;
+                __rb_r.fn_generic_param_names = __rb_21_0;
+                __rb_r.fn_type_env = __rb_22_0;
+                __rb_r.fn_return_type = __rb_23_0;
+                __rb_r.expected_type = __rb_24_0;
+                __rb_r.tco_cursor_params = __rb_25_0;
+                __rb_r.tco_cursor_tails = __rb_26_0;
+                __rb_r.dying_base_sites = __rb_27_0;
+            }
+            None => {
+                __rb_h = Rc::new(EmitGraphInfo {
+                    item_leaf_owner_modules: __rb_0_0,
+                    type_summaries: __rb_1_0,
+                    type_decl_items: __rb_2_0,
+                    data_variant_wire_spellings: __rb_3_0,
+                    fn_decl_items: __rb_4_0,
+                    fn_decl_identity_items: __rb_5_0,
+                    fn_map_key_bounds: __rb_6_0,
+                    recursive_type_set: __rb_7_0,
+                    fielded_variants: __rb_8_0,
+                    positional_payload_variants: __rb_9_0,
+                    shared_types: __rb_10_0,
+                    ownership_index: __rb_11_0,
+                    movable: __rb_12_0,
+                    variant_to_enum: __rb_13_0,
+                    owned_bindings: __rb_14_0,
+                    read_only_params_index: __rb_15_0,
+                    read_only_params: __rb_16_0,
+                    clone_bounded_type_params: __rb_17_0,
+                    map_key_required_type_names: __rb_18_0,
+                    clone_impl_required_type_params: __rb_19_0,
+                    map_key_bounded_type_params: __rb_20_0,
+                    fn_generic_param_names: __rb_21_0,
+                    fn_type_env: __rb_22_0,
+                    fn_return_type: __rb_23_0,
+                    expected_type: __rb_24_0,
+                    tco_cursor_params: __rb_25_0,
+                    tco_cursor_tails: __rb_26_0,
+                    dying_base_sites: __rb_27_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn emit_info_with_fn_return(
     emit_info: Rc<EmitGraphInfo>,
     fn_return_type: Option<Rc<Node>>,
 ) -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
-        item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
-        type_summaries: emit_info.type_summaries.clone(),
-        type_decl_items: emit_info.type_decl_items.clone(),
-        data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
-        fn_decl_items: emit_info.fn_decl_items.clone(),
-        fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
-        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
-        recursive_type_set: emit_info.recursive_type_set.clone(),
-        fielded_variants: emit_info.fielded_variants.clone(),
-        positional_payload_variants: emit_info.positional_payload_variants.clone(),
-        shared_types: emit_info.shared_types.clone(),
-        ownership_index: emit_info.ownership_index.clone(),
-        movable: emit_info.movable.clone(),
-        variant_to_enum: emit_info.variant_to_enum.clone(),
-        owned_bindings: emit_info.owned_bindings.clone(),
-        read_only_params_index: emit_info.read_only_params_index.clone(),
-        read_only_params: emit_info.read_only_params.clone(),
-        clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
-        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
-        clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
-        map_key_bounded_type_params: emit_info.map_key_bounded_type_params.clone(),
-        fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
-        fn_type_env: emit_info.fn_type_env.clone(),
-        fn_return_type: fn_return_type.clone(),
-        expected_type: fn_return_type.clone(),
-        tco_cursor_params: emit_info.tco_cursor_params.clone(),
-        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
-    })
+    {
+        let __rb_0_0 = emit_info.item_leaf_owner_modules.clone();
+        let __rb_1_0 = emit_info.type_summaries.clone();
+        let __rb_2_0 = emit_info.type_decl_items.clone();
+        let __rb_3_0 = emit_info.data_variant_wire_spellings.clone();
+        let __rb_4_0 = emit_info.fn_decl_items.clone();
+        let __rb_5_0 = emit_info.fn_decl_identity_items.clone();
+        let __rb_6_0 = emit_info.fn_map_key_bounds.clone();
+        let __rb_7_0 = emit_info.recursive_type_set.clone();
+        let __rb_8_0 = emit_info.fielded_variants.clone();
+        let __rb_9_0 = emit_info.positional_payload_variants.clone();
+        let __rb_10_0 = emit_info.shared_types.clone();
+        let __rb_11_0 = emit_info.ownership_index.clone();
+        let __rb_12_0 = emit_info.movable.clone();
+        let __rb_13_0 = emit_info.variant_to_enum.clone();
+        let __rb_14_0 = emit_info.owned_bindings.clone();
+        let __rb_15_0 = emit_info.read_only_params_index.clone();
+        let __rb_16_0 = emit_info.read_only_params.clone();
+        let __rb_17_0 = emit_info.clone_bounded_type_params.clone();
+        let __rb_18_0 = emit_info.map_key_required_type_names.clone();
+        let __rb_19_0 = emit_info.clone_impl_required_type_params.clone();
+        let __rb_20_0 = emit_info.map_key_bounded_type_params.clone();
+        let __rb_21_0 = emit_info.fn_generic_param_names.clone();
+        let __rb_22_0 = emit_info.fn_type_env.clone();
+        let __rb_23_0 = fn_return_type.clone();
+        let __rb_24_0 = fn_return_type.clone();
+        let __rb_25_0 = emit_info.tco_cursor_params.clone();
+        let __rb_26_0 = emit_info.tco_cursor_tails.clone();
+        let __rb_27_0 = emit_info.dying_base_sites.clone();
+        let mut __rb_h = emit_info;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.item_leaf_owner_modules = __rb_0_0;
+                __rb_r.type_summaries = __rb_1_0;
+                __rb_r.type_decl_items = __rb_2_0;
+                __rb_r.data_variant_wire_spellings = __rb_3_0;
+                __rb_r.fn_decl_items = __rb_4_0;
+                __rb_r.fn_decl_identity_items = __rb_5_0;
+                __rb_r.fn_map_key_bounds = __rb_6_0;
+                __rb_r.recursive_type_set = __rb_7_0;
+                __rb_r.fielded_variants = __rb_8_0;
+                __rb_r.positional_payload_variants = __rb_9_0;
+                __rb_r.shared_types = __rb_10_0;
+                __rb_r.ownership_index = __rb_11_0;
+                __rb_r.movable = __rb_12_0;
+                __rb_r.variant_to_enum = __rb_13_0;
+                __rb_r.owned_bindings = __rb_14_0;
+                __rb_r.read_only_params_index = __rb_15_0;
+                __rb_r.read_only_params = __rb_16_0;
+                __rb_r.clone_bounded_type_params = __rb_17_0;
+                __rb_r.map_key_required_type_names = __rb_18_0;
+                __rb_r.clone_impl_required_type_params = __rb_19_0;
+                __rb_r.map_key_bounded_type_params = __rb_20_0;
+                __rb_r.fn_generic_param_names = __rb_21_0;
+                __rb_r.fn_type_env = __rb_22_0;
+                __rb_r.fn_return_type = __rb_23_0;
+                __rb_r.expected_type = __rb_24_0;
+                __rb_r.tco_cursor_params = __rb_25_0;
+                __rb_r.tco_cursor_tails = __rb_26_0;
+                __rb_r.dying_base_sites = __rb_27_0;
+            }
+            None => {
+                __rb_h = Rc::new(EmitGraphInfo {
+                    item_leaf_owner_modules: __rb_0_0,
+                    type_summaries: __rb_1_0,
+                    type_decl_items: __rb_2_0,
+                    data_variant_wire_spellings: __rb_3_0,
+                    fn_decl_items: __rb_4_0,
+                    fn_decl_identity_items: __rb_5_0,
+                    fn_map_key_bounds: __rb_6_0,
+                    recursive_type_set: __rb_7_0,
+                    fielded_variants: __rb_8_0,
+                    positional_payload_variants: __rb_9_0,
+                    shared_types: __rb_10_0,
+                    ownership_index: __rb_11_0,
+                    movable: __rb_12_0,
+                    variant_to_enum: __rb_13_0,
+                    owned_bindings: __rb_14_0,
+                    read_only_params_index: __rb_15_0,
+                    read_only_params: __rb_16_0,
+                    clone_bounded_type_params: __rb_17_0,
+                    map_key_required_type_names: __rb_18_0,
+                    clone_impl_required_type_params: __rb_19_0,
+                    map_key_bounded_type_params: __rb_20_0,
+                    fn_generic_param_names: __rb_21_0,
+                    fn_type_env: __rb_22_0,
+                    fn_return_type: __rb_23_0,
+                    expected_type: __rb_24_0,
+                    tco_cursor_params: __rb_25_0,
+                    tco_cursor_tails: __rb_26_0,
+                    dying_base_sites: __rb_27_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn emit_info_with_expected_type(
     emit_info: Rc<EmitGraphInfo>,
     expected_type: Option<Rc<Node>>,
 ) -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo {
-        item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
-        type_summaries: emit_info.type_summaries.clone(),
-        type_decl_items: emit_info.type_decl_items.clone(),
-        data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
-        fn_decl_items: emit_info.fn_decl_items.clone(),
-        fn_decl_identity_items: emit_info.fn_decl_identity_items.clone(),
-        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
-        recursive_type_set: emit_info.recursive_type_set.clone(),
-        fielded_variants: emit_info.fielded_variants.clone(),
-        positional_payload_variants: emit_info.positional_payload_variants.clone(),
-        shared_types: emit_info.shared_types.clone(),
-        ownership_index: emit_info.ownership_index.clone(),
-        movable: emit_info.movable.clone(),
-        variant_to_enum: emit_info.variant_to_enum.clone(),
-        owned_bindings: emit_info.owned_bindings.clone(),
-        read_only_params_index: emit_info.read_only_params_index.clone(),
-        read_only_params: emit_info.read_only_params.clone(),
-        clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
-        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
-        clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
-        map_key_bounded_type_params: emit_info.map_key_bounded_type_params.clone(),
-        fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
-        fn_type_env: emit_info.fn_type_env.clone(),
-        fn_return_type: emit_info.fn_return_type.clone(),
-        expected_type: expected_type.clone(),
-        tco_cursor_params: emit_info.tco_cursor_params.clone(),
-        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
-    })
+    {
+        let __rb_0_0 = emit_info.item_leaf_owner_modules.clone();
+        let __rb_1_0 = emit_info.type_summaries.clone();
+        let __rb_2_0 = emit_info.type_decl_items.clone();
+        let __rb_3_0 = emit_info.data_variant_wire_spellings.clone();
+        let __rb_4_0 = emit_info.fn_decl_items.clone();
+        let __rb_5_0 = emit_info.fn_decl_identity_items.clone();
+        let __rb_6_0 = emit_info.fn_map_key_bounds.clone();
+        let __rb_7_0 = emit_info.recursive_type_set.clone();
+        let __rb_8_0 = emit_info.fielded_variants.clone();
+        let __rb_9_0 = emit_info.positional_payload_variants.clone();
+        let __rb_10_0 = emit_info.shared_types.clone();
+        let __rb_11_0 = emit_info.ownership_index.clone();
+        let __rb_12_0 = emit_info.movable.clone();
+        let __rb_13_0 = emit_info.variant_to_enum.clone();
+        let __rb_14_0 = emit_info.owned_bindings.clone();
+        let __rb_15_0 = emit_info.read_only_params_index.clone();
+        let __rb_16_0 = emit_info.read_only_params.clone();
+        let __rb_17_0 = emit_info.clone_bounded_type_params.clone();
+        let __rb_18_0 = emit_info.map_key_required_type_names.clone();
+        let __rb_19_0 = emit_info.clone_impl_required_type_params.clone();
+        let __rb_20_0 = emit_info.map_key_bounded_type_params.clone();
+        let __rb_21_0 = emit_info.fn_generic_param_names.clone();
+        let __rb_22_0 = emit_info.fn_type_env.clone();
+        let __rb_23_0 = emit_info.fn_return_type.clone();
+        let __rb_24_0 = expected_type.clone();
+        let __rb_25_0 = emit_info.tco_cursor_params.clone();
+        let __rb_26_0 = emit_info.tco_cursor_tails.clone();
+        let __rb_27_0 = emit_info.dying_base_sites.clone();
+        let mut __rb_h = emit_info;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.item_leaf_owner_modules = __rb_0_0;
+                __rb_r.type_summaries = __rb_1_0;
+                __rb_r.type_decl_items = __rb_2_0;
+                __rb_r.data_variant_wire_spellings = __rb_3_0;
+                __rb_r.fn_decl_items = __rb_4_0;
+                __rb_r.fn_decl_identity_items = __rb_5_0;
+                __rb_r.fn_map_key_bounds = __rb_6_0;
+                __rb_r.recursive_type_set = __rb_7_0;
+                __rb_r.fielded_variants = __rb_8_0;
+                __rb_r.positional_payload_variants = __rb_9_0;
+                __rb_r.shared_types = __rb_10_0;
+                __rb_r.ownership_index = __rb_11_0;
+                __rb_r.movable = __rb_12_0;
+                __rb_r.variant_to_enum = __rb_13_0;
+                __rb_r.owned_bindings = __rb_14_0;
+                __rb_r.read_only_params_index = __rb_15_0;
+                __rb_r.read_only_params = __rb_16_0;
+                __rb_r.clone_bounded_type_params = __rb_17_0;
+                __rb_r.map_key_required_type_names = __rb_18_0;
+                __rb_r.clone_impl_required_type_params = __rb_19_0;
+                __rb_r.map_key_bounded_type_params = __rb_20_0;
+                __rb_r.fn_generic_param_names = __rb_21_0;
+                __rb_r.fn_type_env = __rb_22_0;
+                __rb_r.fn_return_type = __rb_23_0;
+                __rb_r.expected_type = __rb_24_0;
+                __rb_r.tco_cursor_params = __rb_25_0;
+                __rb_r.tco_cursor_tails = __rb_26_0;
+                __rb_r.dying_base_sites = __rb_27_0;
+            }
+            None => {
+                __rb_h = Rc::new(EmitGraphInfo {
+                    item_leaf_owner_modules: __rb_0_0,
+                    type_summaries: __rb_1_0,
+                    type_decl_items: __rb_2_0,
+                    data_variant_wire_spellings: __rb_3_0,
+                    fn_decl_items: __rb_4_0,
+                    fn_decl_identity_items: __rb_5_0,
+                    fn_map_key_bounds: __rb_6_0,
+                    recursive_type_set: __rb_7_0,
+                    fielded_variants: __rb_8_0,
+                    positional_payload_variants: __rb_9_0,
+                    shared_types: __rb_10_0,
+                    ownership_index: __rb_11_0,
+                    movable: __rb_12_0,
+                    variant_to_enum: __rb_13_0,
+                    owned_bindings: __rb_14_0,
+                    read_only_params_index: __rb_15_0,
+                    read_only_params: __rb_16_0,
+                    clone_bounded_type_params: __rb_17_0,
+                    map_key_required_type_names: __rb_18_0,
+                    clone_impl_required_type_params: __rb_19_0,
+                    map_key_bounded_type_params: __rb_20_0,
+                    fn_generic_param_names: __rb_21_0,
+                    fn_type_env: __rb_22_0,
+                    fn_return_type: __rb_23_0,
+                    expected_type: __rb_24_0,
+                    tco_cursor_params: __rb_25_0,
+                    tco_cursor_tails: __rb_26_0,
+                    dying_base_sites: __rb_27_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn variant_has_fields(
@@ -2148,7 +2402,7 @@ pub fn add_emit_item_summary(
                                                 source_indices.clone(),
                                             );
                                             type_summary_index_insert(
-                                                acc.clone(),
+                                                acc,
                                                 variant_key.clone(),
                                                 qualified_vname.clone(),
                                                 Rc::new(TypeSummary {
@@ -2176,7 +2430,7 @@ pub fn add_emit_item_summary(
                                             )
                                         }
                                     } else {
-                                        acc.clone()
+                                        acc
                                     }
                                 },
                             )
@@ -2208,17 +2462,45 @@ pub fn add_emit_item_summary(
 }
 
 pub fn type_summary_with_key(summary: Rc<TypeSummary>, key: String) -> Rc<TypeSummary> {
-    Rc::new(TypeSummary {
-        name: summary.name.clone(),
-        key: key.clone(),
-        repr: summary.repr.clone(),
-        field_summaries: summary.field_summaries.clone(),
-        field_type_map: summary.field_type_map.clone(),
-        field_import_surface_names: summary.field_import_surface_names.clone(),
-        variant_name_set: summary.variant_name_set.clone(),
-        generic_param_names: summary.generic_param_names.clone(),
-        has_fn_fields: summary.has_fn_fields.clone(),
-    })
+    {
+        let __rb_0_0 = summary.name.clone();
+        let __rb_1_0 = key.clone();
+        let __rb_2_0 = summary.repr.clone();
+        let __rb_3_0 = summary.field_summaries.clone();
+        let __rb_4_0 = summary.field_type_map.clone();
+        let __rb_5_0 = summary.field_import_surface_names.clone();
+        let __rb_6_0 = summary.variant_name_set.clone();
+        let __rb_7_0 = summary.generic_param_names.clone();
+        let __rb_8_0 = summary.has_fn_fields.clone();
+        let mut __rb_h = summary;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.name = __rb_0_0;
+                __rb_r.key = __rb_1_0;
+                __rb_r.repr = __rb_2_0;
+                __rb_r.field_summaries = __rb_3_0;
+                __rb_r.field_type_map = __rb_4_0;
+                __rb_r.field_import_surface_names = __rb_5_0;
+                __rb_r.variant_name_set = __rb_6_0;
+                __rb_r.generic_param_names = __rb_7_0;
+                __rb_r.has_fn_fields = __rb_8_0;
+            }
+            None => {
+                __rb_h = Rc::new(TypeSummary {
+                    name: __rb_0_0,
+                    key: __rb_1_0,
+                    repr: __rb_2_0,
+                    field_summaries: __rb_3_0,
+                    field_type_map: __rb_4_0,
+                    field_import_surface_names: __rb_5_0,
+                    variant_name_set: __rb_6_0,
+                    generic_param_names: __rb_7_0,
+                    has_fn_fields: __rb_8_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn emit_dependency_registration_dissolve_on_note() -> Rc<DissolutionCondition> {

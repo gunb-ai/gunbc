@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The sources are ASCII so byte and scalar offsets agree; the unit question is gunbc#12285's.
 fn token_starts(source: String) -> String {
-  match lex_walk_artifact(source: chars(s: source), file: ^probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: source, file: ^probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       fold_list(
         xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
@@ -35,7 +35,7 @@ fn token_starts(source: String) -> String {
 }
 
 fn annotation_texts(source: String) -> String {
-  match lex_walk_artifact(source: chars(s: source), file: ^probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: source, file: ^probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       fold_list(
         xs: lex_artifact_annotations(artifact: a),

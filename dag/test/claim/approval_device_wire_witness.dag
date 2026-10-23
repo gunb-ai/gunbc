@@ -17,6 +17,7 @@ import gunbc.auth.approval_device_wire {
   push_update_json, decode_push_update, ReadAuthentication, read_authentication_json, decode_read_request, PushUpdateRequest, push_update_request_json, decode_push_update_request, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
 }
 import extdeps.apple.apns { ApnsProduction }
+import gunbc.auth.approval_device_redemption_fixtures { refusal_vectors, RefusalVector }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
 data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
@@ -228,6 +229,20 @@ test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
     WireRefused { at: a, cause: _ } => a as String == "push.kind"
     WireDecoded { value: _ } => false
   }
+}
+
+// The refusal vectors the app's XCTest is joined to: each is refused, the fcm kind with the provider
+// cause at push.kind, and the missing member located under push.
+test fn witness_refusal_vectors_are_refused_with_the_provider_cause_and_push_rooted_member() -> Bool {
+  all(refusal_vectors, v => match decode_push_update(text: v.body) { WireRefused { at: _, cause: _ } => true  WireDecoded { value: _ } => false })
+    && match decode_push_update(text: "{\"kind\":\"fcm\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}") {
+      WireRefused { at: a, cause: c } => a as String == "push.kind" && c as String == "not an admitted push provider"
+      WireDecoded { value: _ } => false
+    }
+    && match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\"}") {
+      WireRefused { at: a, cause: c } => a as String == "push.token" && c as String == "missing"
+      WireDecoded { value: _ } => false
+    }
 }
 
 // PATHS: every identity has a route, "id-" + base64url(UTF-8). The expected strings were computed

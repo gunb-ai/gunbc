@@ -172,7 +172,7 @@ fn megarac_kvm_observer_observe_held(host: AdmittedMegaRacHost, password_file: N
   let established = match admission { KvmHandoffAdmitted { session: _ } => true  KvmHandoffRefused { cause: _ } => false }
   let admission_text = match admission { KvmHandoffAdmitted { session: s } => concat("established, web session ", s)  KvmHandoffRefused { cause: c } => c }
   let rec = megarac_kvm_observer_finish(start: start, attempt: attempt, terminal_order: 1)
-  let subject = host.binding.observation.endpoint.host
+  let subject = admitted_megarac_host_identity(host: host)
   KvmProbeHeldRun { outcome: kvm_probe_conclude(subject: subject, paths: paths, rec: rec, verdict: kvm_probe_verdict(admission: admission_text, established: established, rec: rec)), record: rec }
 }
 
@@ -276,5 +276,4 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "kvm_probe_hashed_stills" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "kvm_probe_still_answered" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "kvm_probe_teardown_gap" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "megarac_kvm_observer_release" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

@@ -1,4 +1,5 @@
 module test.claim.brand_mark_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.types { Bool, Int, String }
 import std.optional { Absent, Present }
@@ -122,8 +123,8 @@ test fn the_antenna_is_centred_and_stands_on_the_shell() -> Bool {
 // over it is the same stencil Stencil draws.
 test fn treatments_share_one_silhouette() -> Bool {
   let r = brand_mark(kind: RobotMark)
-  let plain = join(map(brand_mark_figure(mark: r, treatment: Stencil), f => serialize_html_source(node: f)), "")
-  let under = join(map(brand_mark_figure(mark: r, treatment: UnderpaintedStencil { underpaint: "var(--surface)" }), f => serialize_html_source(node: f)), "")
+  let plain = join(map(brand_mark_figure(mark: r, treatment: Stencil), f => render_html(serialize_html_source(node: f))), "")
+  let under = join(map(brand_mark_figure(mark: r, treatment: UnderpaintedStencil { underpaint: "var(--surface)" }), f => render_html(serialize_html_source(node: f))), "")
   string_contains(s: under, pattern: plain)
     && string_contains(s: under, pattern: join(["d=\"", brand_mark_box_path(b: r.shell), "\""], ""))
     && !string_contains(s: plain, pattern: "var(--surface)")
@@ -131,7 +132,7 @@ test fn treatments_share_one_silhouette() -> Bool {
 
 // The rendered robot carries its antenna; the face does not.
 test fn only_the_robot_renders_an_antenna() -> Bool {
-  let face = serialize_html_source(node: brand_mark_svg(kind: FaceMark, class_name: "f", label: "f"))
-  let robot = serialize_html_source(node: brand_mark_svg(kind: RobotMark, class_name: "r", label: "r"))
+  let face = render_html(serialize_html_source(node: brand_mark_svg(kind: FaceMark, class_name: "f", label: "f")))
+  let robot = render_html(serialize_html_source(node: brand_mark_svg(kind: RobotMark, class_name: "r", label: "r")))
   !string_contains(s: face, pattern: antenna_spelling) && string_contains(s: robot, pattern: antenna_spelling)
 }

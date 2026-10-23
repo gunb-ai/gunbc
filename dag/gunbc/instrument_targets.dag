@@ -53,6 +53,7 @@ import gunbc.target_binding {
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, BindingDiffReading, NativeProcessMemoryReading,
   DependencyDemandCensusProducer,
+  DeclRefCensusProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -373,6 +374,19 @@ fn native_crypto_vectors_entry() -> String {
   "dag/gunbc/instruments/native_crypto_vectors.dag"
 }
 
+// THE RECURRING-FAILURE-MODE RUNG CENSUS: the typed `rung` field of every
+// gunbc.recurring_failure_mode row folded by the NativeClaimDriver program
+// gunbc.instruments.rfm_rung_census -- counts of read / below-ceiling / unread-by-cause rows, a
+// refusal of any malformed standing (current at or above ceiling, blank trigger capability), and the
+// discriminating REDs with positive controls. `gunbc test //gunbc/instruments:rfm-rung-census`.
+fn rfm_rung_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "rfm-rung-census" } }
+}
+
+fn rfm_rung_census_entry() -> String {
+  "dag/gunbc/instruments/rfm_rung_census.dag"
+}
+
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion
 // executed natively over Apple's published sample rows by the NativeClaimDriver program
 // gunbc.instruments.native_app_attest -- the P-384 chain links and the P-256 assertion signature on
@@ -470,6 +484,44 @@ fn native_serve_startup_refusal_binding() -> TargetBinding {
     producer: NativeServeProgramProducer {
       entry: native_serve_startup_refusal_entry()
       probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_refusal_probe.dag" phases: [NativeServeRefusedLaunch] }
+    }
+  }
+}
+
+// THE SLOW-STARTUP POSITIVE: a startup of a calibrated spin (about 0.6 to 2.4 s) launched with a 100 ms request deadline must still announce, bind and serve, because startup is bounded by its own gunbc.native_serve native_serve_startup_deadline and not the request deadline. `gunbc test //gunbc/instruments:native-serve-startup-slow`. Run by name, not a merge gate.
+fn native_serve_startup_slow_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-startup-slow" } }
+}
+
+fn native_serve_startup_slow_entry() -> String {
+  "dag/gunbc/instruments/native_serve_startup_slow_fixture.dag"
+}
+
+fn native_serve_startup_slow_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_startup_slow_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_startup_slow_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_slow_probe.dag" phases: [] }
+    }
+  }
+}
+
+// THE OVERRUN RED: the entry declares its own 1 s startup bound and a startup far past it; the main must exit with the startup exit code before it binds. `gunbc test //gunbc/instruments:native-serve-startup-overrun`. Run by name, not a merge gate.
+fn native_serve_startup_overrun_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-startup-overrun" } }
+}
+
+fn native_serve_startup_overrun_entry() -> String {
+  "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag"
+}
+
+fn native_serve_startup_overrun_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_startup_overrun_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_startup_overrun_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_startup_overrun_probe.dag" phases: [NativeServeRefusedLaunch] }
     }
   }
 }
@@ -627,6 +679,15 @@ fn dependency_demand_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
 }
 
+// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (v2.compiler.source_root_eval
+// native_decl_ref_census_output, the emitted compiler's `decl-ref-census` verb): resolves every
+// std.decl_ref DeclarationRef literal and every backtick symbol span in the recurring-failure-mode and
+// rung_drop ledgers against the native ingest's ResolutionContext; exit 1 on any unresolved reference
+// or stale span. `gunbc test //gunbc/instruments:decl-ref-census`.
+fn decl_ref_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "decl-ref-census" } }
+}
+
 // THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
 // class gunbc.recurring_failure_mode generic_identity_decided_by_spelling). The seed's own
 // v1.tests.claim.generic_identity_census reads the typed graph and reports, per stored type node,
@@ -771,6 +832,10 @@ fn dependency_demand_census_binding() -> TargetBinding {
   TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
 }
 
+fn decl_ref_census_binding() -> TargetBinding {
+  TargetBinding { target: decl_ref_census_label() producer: DeclRefCensusProducer {} }
+}
+
 fn generic_identity_census_binding() -> TargetBinding {
   TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
 }
@@ -805,6 +870,62 @@ fn roster_import_sweep_controls_function() -> String {
 
 fn roster_import_sweep_controls_binding() -> TargetBinding {
   TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
+}
+
+fn claim_coverage_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "claim-coverage-census" } }
+}
+
+fn claim_coverage_census_entry() -> String {
+  "dag/gunbc/claim_coverage_census_live.dag"
+}
+
+fn claim_coverage_census_function() -> String {
+  "claim_coverage_census_exit"
+}
+
+fn claim_coverage_census_binding() -> TargetBinding {
+  TargetBinding { target: claim_coverage_census_label() producer: CliWireProgramProducer { entry: claim_coverage_census_entry() function: claim_coverage_census_function() } }
+}
+
+// THE KNOWN-RED DERIVATION. The label exists to print a list no file holds: which ExpectedToHold claims
+// fail at the head this run executed on. Its producer is asked only for a head and a population — it
+// reads the schedule from the wet lane's own accessor and the enrollment from floor_expected_red — so
+// the printed rows can only come from a run. See the module header for what each refusal arm refuses.
+fn known_red_derivation_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "known-red-derivation" } }
+}
+
+fn known_red_derivation_entry() -> String {
+  "dag/gunbc/instruments/known_red_derivation.dag"
+}
+
+fn known_red_derivation_function() -> String {
+  "known_red_derivation_exit"
+}
+
+fn known_red_derivation_binding() -> TargetBinding {
+  TargetBinding { target: known_red_derivation_label() producer: CliWireProgramProducer { entry: known_red_derivation_entry() function: known_red_derivation_function() } }
+}
+
+// THE ROSTER-REACH INHABITANCE CLAIM (gunbc.instruments.roster_reach_inhabitance): the one real call-reach walk
+// that pairs test.claim.fleet.fleet_converge_roster_token_prelude_witness, which is handed its target. Hours of
+// interpreter time, so it is dispatched by an operator at the head that changes the supplied target and on no lane.
+// `gunbc test //gunbc/instruments:roster-reach-inhabitance`.
+fn roster_reach_inhabitance_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-reach-inhabitance" } }
+}
+
+fn roster_reach_inhabitance_entry() -> String {
+  "dag/gunbc/instruments/roster_reach_inhabitance.dag"
+}
+
+fn roster_reach_inhabitance_function() -> String {
+  "roster_reach_inhabitance_exit"
+}
+
+fn roster_reach_inhabitance_binding() -> TargetBinding {
+  TargetBinding { target: roster_reach_inhabitance_label() producer: CliWireProgramProducer { entry: roster_reach_inhabitance_entry() function: roster_reach_inhabitance_function() } }
 }
 
 fn compute_run_unit_cold_label() -> Label {
@@ -905,6 +1026,10 @@ fn native_claim_policy_child_deadline() -> Millisecond {
 // so one noisy runner cannot false-RED a 1.1 s green.
 fn value_position_block_nests_child_deadline() -> Millisecond {
   millisecond(count: 15000)
+}
+
+fn rfm_rung_census_binding() -> TargetBinding {
+  TargetBinding { target: rfm_rung_census_label() producer: NativeClaimProgramProducer { entry: rfm_rung_census_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_crypto_vectors_binding() -> TargetBinding {
@@ -1130,16 +1255,16 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), claim_coverage_census_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
-    native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
+    native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), brand_mark_assets_label()
+    native_emission_controls_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
   ]
 }
 
@@ -1152,16 +1277,16 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), claim_coverage_census_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
+    native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
   ]
 }
 

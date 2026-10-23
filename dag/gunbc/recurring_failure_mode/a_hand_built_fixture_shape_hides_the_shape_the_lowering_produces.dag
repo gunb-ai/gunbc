@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, CeilingNotStated }
+
+data a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "a hand-built fixture shape hides the shape the lowering produces: a witness constructs the producer's output by hand in a shape the producer never emits, so the consumer is exercised only on the fixture and a defect on the real shape stays green. The invalid state is a consumer that answers one shape and is never run on the other.",
+
+    "SPECIMEN, found 2026-10-20 on #14531. Swift's `T?` type position: main lowered the source `T?` (body_lower_type_wrap_occupancy) to a ONE-child Occupancy node, and the Swift type-expression projection serialized it as the malformed `X<>`. The claim swift_occupancy_emits_optional_with_every_layer_spelled_holds passed because it hand-built a TWO-child Occupancy (an `Optional` atom head plus the payload), a shape no lowering produced. Executed route and answer were both unexamined: the fixture agreed with the consumer, not with the producer.",
+
+    "THE SECOND HALF, same PR: after the cut the lowered `T?` is an Instantiation over the std.optional Optional declaration reference, and the Swift claim was re-pinned to `Gunbc.std.optional.Optional<X>` -- the consumer's output taken as the oracle. The keyed optional_instantiation_form selected the `<...>` shape but the head was projected as an ordinary declaration reference, so Swift never spelled its own Optional (The Swift Programming Language, Language Reference > Types > Optional Type: `T?` is sugar for `Optional<T>`). The repair is a target-owned head spelling on the projection row (TargetTypeExpressionProjection optional_head: Swift Optional, Rust Option), supplied to the fold by the row and never read off the declaration path.",
+
+    "RUNG FOUND AT: mitigatable (a green hand-built claim). RUNG NOW: mechanically preventable for the spelling (the Swift claim pins the spec spelling); NOT yet for the shape question, because swift_te_optional still builds the Instantiation by hand. NEXT-RUNG TRIGGER: one claim whose Swift `T?` input is produced by the body lowering itself, which is the pairing obligation of DESIGN section 3. The head spelling stays a per-target row until std.optional carries its own per-language projection row (DESIGN section 4, one grammar read in both directions).",
+
+"RECOGNITION RULE: a claim whose input node is built with Node { ... } literals beside a lowering that produces that node must also carry one input produced BY the lowering (the pairing obligation of DESIGN section 3), and an expected string that is the consumer's current output is not an oracle -- cite the language spec for the spelling.",
+  ],
+
+  evidence: [],
+}

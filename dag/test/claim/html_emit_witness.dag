@@ -1,4 +1,5 @@
 module test.claim.html_emit_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
 
 import std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr }
@@ -29,7 +30,7 @@ test fn witness_html_emit_reduces_and_serializes() -> Bool {
 
 test fn witness_html_emit_matches_markup_fold() -> Bool {
   match try_serialize_html_source(node: sample_button()) {
-    EmitOk { html: h } => h == serialize_html_source(node: sample_button())
+    EmitOk { html: h } => h == render_html(serialize_html_source(node: sample_button()))
     EmitRejected { reason: _ } => false
   }
 }
@@ -53,7 +54,7 @@ fn hostile_data_href() -> Fragment {
 test fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
   match try_serialize_html_source(node: hostile_javascript_href()) {
     EmitRejected { reason: _ } => {
-      let unchecked = serialize_html_source(node: hostile_javascript_href())
+      let unchecked = render_html(serialize_html_source(node: hostile_javascript_href()))
       unchecked == "<a href=\"javascript:alert(1)\">click</a>"
     }
     EmitOk { html: _ } => false
@@ -63,7 +64,7 @@ test fn witness_javascript_reject_discriminates_from_char_escape() -> Bool {
 test fn witness_data_reject_discriminates_from_char_escape() -> Bool {
   match try_serialize_html_source(node: hostile_data_href()) {
     EmitRejected { reason: _ } => {
-      let unchecked = serialize_html_source(node: hostile_data_href())
+      let unchecked = render_html(serialize_html_source(node: hostile_data_href()))
       unchecked.starts_with(prefix: "<a href=\"data:")
     }
     EmitOk { html: _ } => false
