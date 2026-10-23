@@ -52,7 +52,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.node { Node }
+import v2.std.node { Node, node_same_occurrence }
 import v2.std.text { String }
 import v2.std.witness {
   Holds,
@@ -149,7 +149,7 @@ fn direct_rust_door_canonical_grounding(
 }
 
 fn direct_rust_door_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == rust_fixture_emitted_add_fn {
+  if node_same_occurrence(a: node, b: rust_fixture_emitted_add_fn) {
     Holds {
       value: direct_rust_door_canonical_grounding(
         node: node,

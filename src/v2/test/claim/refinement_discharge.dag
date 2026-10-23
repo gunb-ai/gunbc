@@ -7,7 +7,7 @@ import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
+import v2.std.node { node_same_occurrence, ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { binder_edge }
 
@@ -166,7 +166,7 @@ test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       match discharge_refinement_obligations(t: t) {
-        Accepted { value: d, diagnostics: _ } => d.root == t.root
+        Accepted { value: d, diagnostics: _ } => node_same_occurrence(a: d.root, b: t.root)
         Rejected { diagnostics: _ } => false
       }
   }

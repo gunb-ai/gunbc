@@ -23,6 +23,7 @@ import v2.std.diagnostic {
   WholeFile
 }
 import v2.std.node {
+  node_equal_ignoring_provenance,
   Arrow,
   Atom,
   Behavior,
@@ -366,7 +367,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
       match bv {
         Zero => a
         Succ { prev: _ } =>
-          if a == b {
+          if node_equal_ignoring_provenance(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
