@@ -30,7 +30,7 @@ git fetch -q origin +refs/pull/14805/head:refs/verifier/f14805p || { echo FETCH_
 CB=/root/workspace/repo-root/.t14805/release/claim_batch
 if [ ! -x $CB ]; then
   echo "CB_MISSING building at head $(date -u +%H:%M:%S)Z"
-  rm -rf /tmp/w805pgb; git worktree add -q --detach /tmp/w805pgb $HEAD_SHA || { echo WT_FAIL; exit 9; }
+  git worktree prune >/dev/null 2>&1 || true; rm -rf /tmp/w805pgb; git worktree add -q --force --detach /tmp/w805pgb $HEAD_SHA || { echo WT_FAIL; exit 9; }
   cd /tmp/w805pgb && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
   be=$?; cd $REPO || exit 9
   [ $be -eq 0 ] || { echo "BUILD_FAIL $be -- STOP"; exit 9; }
@@ -38,7 +38,7 @@ fi
 [ -x $CB ] || { echo "NO_BINARY -- STOP (never run without head-built CB)"; exit 9; }
 echo "BUILD_COMMIT=$HEAD_SHA CB_SHA=$(sha $CB) TREE=$TREE WET=$WETFLAG"
 WT=/tmp/w805p_$TREE
-rm -rf $WT; git worktree add -q --detach $WT $HEAD_SHA || { echo WT_FAIL; exit 9; }
+git worktree prune >/dev/null 2>&1 || true; rm -rf $WT; git worktree add -q --force --detach $WT $HEAD_SHA || { echo WT_FAIL; exit 9; }
 if [ "$TREE" = base ]; then tar xzf $BASETGZ -C $WT || exit 9; echo BASE_OVERLAY_OK; fi
 WL=tools/wl14805_${TREE}${WLFILE:+_$WLFILE}.tsv
 [ -s $WL ] || { echo "EMPTY_WORKLIST $WL -- STOP"; exit 9; }
