@@ -50,8 +50,16 @@ run_chunk() { # tag entry fns... ; prints POOLROW lines for its claims; rc 0=ver
   local out=/tmp/w805p_out/$tag.out rc=124
   ( echo $BASHPID > $cg/cgroup.procs 2>/dev/null
     cd $WT && timeout $CHUNK_T $CB --claim-run --source-root dag --source-root src/v2 --entry $entry --functions "$(printf '%s,' "$@" | sed 's/,$//')" > $out 2>&1 ) &
-  local pid=$!; wait $pid; rc=$?
-  local pk=$(mempeak_kb $cg); rm -rf $cg 2>/dev/null || true
+  local pid=$!
+  # memory.current sampler (memory.peak absent on this kernel): max seen while the proc lives
+  local pkfile=/tmp/w805p_out/$tag.peak pkmax=0
+  while kill -0 $pid 2>/dev/null; do
+    if [ -f $cg/memory.current ]; then cur=$(cat $cg/memory.current 2>/dev/null || echo 0); else cur=0; fi
+    [ "$cur" -gt "$pkmax" ] 2>/dev/null && pkmax=$cur
+    sleep 0.5
+  done
+  wait $pid; rc=$?
+  local pk=$((pkmax/1024)); rm -rf $cg 2>/dev/null || true
   local got=0 line nm
   for nm in "$@"; do
     line=$(grep -aE "^(PASS|FAIL|UNOBSERVED) $nm$" $out | head -1)
