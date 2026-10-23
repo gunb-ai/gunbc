@@ -12790,6 +12790,10 @@ pub struct ExclusiveCostPartition {
     pub spans: u64,
     pub nested_spans: u64,
     pub exclusive: Vec<CostPartitionRow>,
+    /// Stage time recorded outside every top-level resolve span (e.g. the whole-corpus
+    /// parse the edge index build forces before the first span opens). It is not part of
+    /// the parent, so it is never a row of the partition, but it is reported here, typed.
+    pub out_of_span: Vec<CostPartitionRow>,
     pub inclusive: Vec<InclusiveCostRow>,
     /// Parent minus the exclusive rows: the work inside a resolve span that no row claims.
     pub remainder_nanos: u128,
@@ -12843,14 +12847,54 @@ impl ExclusiveCostPartition {
 /// separate reason that they corrupt the slot the rows come from.
 pub fn exclusive_cost_partition() -> ExclusiveCostPartition {
     let account = resolve_span_account();
-    exclusive_cost_partition_from(
-        &resolve_stage_totals(),
-        "summed_top_level_resolve_span_nanos",
-        account.span_nanos,
-        account.spans,
-        account.nested_spans,
-        resolve_span_rows_by_entry(),
-    )
+    // THE ROWS ARE DRAWN FROM THE SAME UNIVERSE AS THE PARENT: the per-entry rows each
+    // span captured at its own exit. `resolve_stage_totals()` also holds every stage add
+    // made OUTSIDE a top-level span (the whole-corpus `pool_parse` is forced by the edge
+    // index build before the first span opens, so every in-span `pool_parse` is 0), and a
+    // child drawn from a larger universe than its parent is not a partition of it: the
+    // exclusive rows then summed past the span total by exactly the out-of-span parse.
+    let mut in_span = ResolveStageNanos::default();
+    for entry_rows in resolve_stage_rows_by_entry().values() {
+        in_span.accumulate(entry_rows);
+    }
+    let totals = resolve_stage_totals();
+    let basis = "summed_top_level_resolve_span_nanos";
+    let args = |st: &ResolveStageNanos| {
+        exclusive_cost_partition_from(
+            st,
+            basis,
+            account.span_nanos,
+            account.spans,
+            account.nested_spans,
+            resolve_span_rows_by_entry(),
+        )
+    };
+    let partition = args(&in_span);
+    // The out-of-span cost does not vanish by narrowing the universe: it is carried as its
+    // own typed rows beside the partition (totals minus the span-captured rows), never a
+    // child of the parent span and never summed into `sum_exclusive`.
+    let whole = args(&totals);
+    let out_of_span = whole
+        .exclusive
+        .iter()
+        .zip(partition.exclusive.iter())
+        .filter_map(|(all, inside)| {
+            let outside = all.nanos.saturating_sub(inside.nanos);
+            (outside > 0).then_some(CostPartitionRow {
+                name: all.name,
+                nanos: outside,
+            })
+        })
+        .collect();
+    // Counts and volumes (builds, modules, scan bytes) are events of the whole thread, not
+    // span-bound durations, so they and the inclusive observations keep the totals.
+    ExclusiveCostPartition {
+        exclusive: partition.exclusive,
+        remainder_nanos: partition.remainder_nanos,
+        verdict: partition.verdict,
+        out_of_span,
+        ..whole
+    }
 }
 
 /// Same law over a caller-supplied parent/children pair drawn from ONE universe.
@@ -13121,6 +13165,7 @@ pub fn exclusive_cost_partition_from(
         spans: account.spans,
         nested_spans: account.nested_spans,
         exclusive,
+        out_of_span: Vec::new(),
         inclusive,
         remainder_nanos,
         verdict,
@@ -13167,6 +13212,18 @@ pub fn render_exclusive_cost_partition_json(
 
     out.push_str(",\"exclusive\":{");
     for (i, row) in p.exclusive.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&esc(row.name.to_string()));
+        out.push_str("\":");
+        out.push_str(&json_num(row.nanos));
+    }
+    out.push('}');
+
+    out.push_str(",\"out_of_span\":{");
+    for (i, row) in p.out_of_span.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
@@ -32138,6 +32195,46 @@ mod exclusive_cost_partition_law {
             typecheck_compute: typecheck,
             ..ResolveStageNanos::default()
         }
+    }
+
+    /// A stage add made outside every top-level span (the pool parse forced by the edge
+    /// index build) is in `resolve_stage_totals()` and in no span's parent, so the
+    /// partition over the totals refused OverAttributed by exactly that add.
+    /// RED WITHOUT THE FIX: the partition is drawn from the totals and refuses.
+    /// POSITIVE CONTROL: the same span with nothing outside it reconciles.
+    #[test]
+    fn a_stage_add_outside_every_span_is_not_a_row_of_the_partition() {
+        let in_span = |outside_pool_parse: u128| {
+            std::thread::spawn(move || {
+                resolve_stage_slot_add(|st| st.pool_parse += outside_pool_parse);
+                let depth = resolve_span_enter();
+                resolve_stage_slot_reset();
+                resolve_stage_slot_add(|st| st.typecheck_compute += 400);
+                resolve_span_exit(depth, "dag/probe.dag", 1_000);
+                exclusive_cost_partition()
+            })
+            .join()
+            .expect("partition thread")
+        };
+        assert!(
+            matches!(in_span(0).verdict, CostAccountingVerdict::Reconciled { .. }),
+            "control: a span with no outside add must reconcile"
+        );
+        let outside = in_span(5_000);
+        assert!(
+            matches!(outside.verdict, CostAccountingVerdict::Reconciled { .. }),
+            "a 5000ns pool parse outside the span must not enter the partition"
+        );
+        assert_eq!(
+            outside
+                .out_of_span
+                .iter()
+                .map(|r| (r.name, r.nanos))
+                .collect::<Vec<_>>(),
+            vec![("pool_parse", 5_000)],
+            "the out-of-span parse must be reported, typed, not dropped"
+        );
+        assert!(in_span(0).out_of_span.is_empty());
     }
 
     #[test]
