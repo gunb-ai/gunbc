@@ -4522,11 +4522,11 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
 // claim shape, from `==` over lists down to a bare String-literal equality in a module importing
 // nothing but std.types, refuses at prepare/eval with the grounding-not-derived chain, because
 // claim grounding is itself admitted through the contract rows this ruling removes. An un-executed
-// claim is not a guard (DESIGN section 5), so none is landed. THE GUARD IS THE INSTRUMENT:
-// //gunbc/instruments:v2-native-census-scoped runs THIS census over supplied subjects beside the
-// route's own first fatal at the same identity; an append inside this function -- the exact wrongness
-// of the first fix -- changes the census's first fatal or binding rows against the route's, and the
-// comparison refuses at exactly that. It does not catch a bypass at the call site below or a second
+// claim is not a guard (DESIGN section 5), so none is landed. THE GUARD IS THE EXECUTED RUN-PAIR:
+// //gunbc/instruments:v2-native-census-scoped (its census report, baseline-diffed by census_run_diff)
+// run in ONE dispatch at ONE identity beside the route's own parse-label run, as in the acceptance
+// runs recorded in the ledger row; an append inside this function shows up there as a census-side
+// divergence in rows or first fatal against the route's. It does not catch a bypass at the call site below or a second
 // acquisition route; that prevention is the row's open ceiling, not this comment's claim.
 fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
   subjects
