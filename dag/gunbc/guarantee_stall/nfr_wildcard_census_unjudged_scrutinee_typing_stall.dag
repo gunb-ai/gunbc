@@ -1,0 +1,39 @@
+module gunbc.guarantee_stall.nfr_wildcard_census_unjudged_scrutinee_typing_stall
+
+import std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, UncountedNotEnumerable, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE UNJUDGED ROWS OF THE NON-FOLD-RESIDUE WILDCARD CENSUS. The instrument is
+// v2.compiler.source_root_eval native_nfr_wildcard_census_output (the //gunbc/instruments:nfr-wildcard-census
+// verb): its summary line reports unjudged_rows and the split unjudged_expression /
+// unjudged_non_parameter / unjudged_ambient_head / unjudged_refused_file, and the census exits 2 while any
+// row is unjudged. No count is written here: a transcribed number rots unreachably (DESIGN section 6), and
+// the census re-measures this population every run.
+//
+// Why this is a stall and not a bug to patch in the census: the host reader types these scrutinees; the
+// NATIVE reader cannot, and the gap is not the census's -- root_member_reads refuses an expression or a
+// local scrutinee because typing it requires INFERENCE OVER THE CLOSURE (a let-bound scrutinee's value
+// type, a call-result scrutinee's return type), which is self-host frontier work, not a census capability.
+// The census records such rows as unjudged (exiting 2, incomplete) instead of skipping them: DESIGN
+// section 5, an uncounted row is not an observed one, and a skip that looks like a pass is the failure
+// this ledger exists to make impossible.
+//
+// The population is UNCOUNTED rather than a list of keys because the class is open-ended -- every wildcard
+// site whose scrutinee is an expression or a non-parameter binding rather than a closed-coproduct
+// parameter -- and the census's summary line is its counter; a list copied from one run would be a
+// second, stale census.
+//
+// This row does NOT cover the census's refused files: those are body-lowering walls in
+// v2.compiler.normalize, each NAMED on its refused line by the census's refusal-cause instrumentation
+// (the cause is a typed Symbol carried on the NativeNfrRefusal record), and each owned by the compiler
+// front end, not this census.
+data nfr_wildcard_census_unjudged_scrutinee_typing_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the nfr-wildcard-census leaves rows unjudged because the native reader cannot type a non-parameter scrutinee",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable { reason: "the class is every wildcard site whose scrutinee is an expression or a non-parameter binding rather than a closed-coproduct parameter; the instrument that counts them is v2.compiler.source_root_eval native_nfr_wildcard_census_output, whose summary line reports unjudged_rows with its unjudged_expression / unjudged_non_parameter / unjudged_ambient_head / unjudged_refused_file split, and typing any one of them needs inference over the enclosing closure -- so the population cannot be enumerated by a reader that is precisely what is missing" },
+  next_rung_trigger: climbs_when(capability: "the native reader types expression and non-parameter scrutinees through closure inference (self-host frontier), and the census summary reports unjudged_rows=0 with refused=0")
+}
