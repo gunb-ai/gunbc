@@ -3546,17 +3546,13 @@ data equality_extensional_container_rows: Map<String, Bool> = carrier_container_
 // IDENTITY, read before any member walk. v2.std.node Edge carries Edge.declaration, a provenance
 // field outside content_hash and the erasure routes, which derived == nevertheless reads; a derived
 // == reaching an Edge therefore compares provenance and answers differently from the erasure routes.
-// Node reaches Edge through its children and joins this set when its existing == sites are moved.
+// Node reaches Edge through its children, so it is declared inadmissible too: a Node comparison names
+// its question through v2.std.node node_equal_ignoring_provenance (structural) or node_same_occurrence
+// (identity).
 // SEED PATH ONLY: the native v2 infer has no == operand judgment; the capability that retires that
 // gap is a native v2 == operand judgment (gunbc.rung_drop native_equality_operand_judgment).
 data equality_inadmissible_declaration_identities: List<String> = [
-  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Edge")
-]
-
-// THE WALK STOPS AT THESE: Node's children reach Edge, but Node == is not yet inadmissible (ruling A:
-// Edge now, Node when its existing == sites are moved to the erasure route). Each row is a site-debt
-// boundary that leaves with the Node row above, not a second admission.
-data equality_walk_boundary_declaration_identities: List<String> = [
+  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Edge"),
   type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
 ]
 
@@ -3607,8 +3603,6 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
         let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
         if equality_inadmissible_type_refusal(identity: identity, name: name) != none {
           equality_inadmissible_type_refusal(identity: identity, name: name)
-        } else if equality_walk_boundary_declaration_identities |> any(i => i == identity) {
-          none
         } else if (peeled.connective == Arrow) {
           equality_refused(carrier: name, member: "function value", member_judged: true)
         } else if (peeled.connective == Conj) {
