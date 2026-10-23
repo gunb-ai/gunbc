@@ -29,6 +29,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.occurrence_identity {
+  NodeOccurrenceIdentity,
   OccurrenceId,
   OccurrenceMinted,
   OccurrencePending,
@@ -911,18 +912,9 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
   // THE JOIN IS ON IDENTITY, NOT ORDER (DESIGN section 5): each value-position site is placed by the source offset its occurrence
   // records, each parse head by the offset of its own node, and a head is paired with the site that starts at the same byte.
   // A site or head with no recorded offset, an offset two sites share, or a head no site starts at REFUSES the module.
-  let value_sites = fold_list(xs: sites, empty: [], cons: fn(acc, st) {
-    if roster_spelling_is(qn: st.site.spelling, call: row.call) {
-      match st.position {
-        ValuePosition => list_snoc_item(xs: acc, item: st)
-        _ => acc
-      }
-    } else {
-      acc
-    }
-  })
+  let value_sites = roster_value_sites(sites: sites, call: row.call)
   let all_heads = roster_primary_heads(parse_root: parse_root, call: row.call)
-  let site_starts = list_map(xs: value_sites, f: fn(st) { roster_occurrence_start(occurrence: st.occurrence, spans: spans) })
+  let site_starts = roster_site_starts(sites: value_sites, spans: spans)
   let head_starts = list_map(xs: all_heads, f: fn(h) { roster_node_start(node: h, spans: spans) })
   let unplaced = roster_absent_count(xs: site_starts) + roster_absent_count(xs: head_starts)
   let joined = list_map(xs: all_heads, f: fn(h) {
@@ -1007,8 +999,25 @@ fn roster_site_is_free(sides: List<RosterHomeSide>, site: ScopedReferenceSite, r
 }
 
 // The start byte of one occurrence / node, from the span index the parse recorded. Absent when no extent is recorded.
-fn roster_occurrence_start(occurrence: OccurrenceId, spans: SpanIndex) -> Int? {
-  match roster_id_byte_range(id: occurrence, spans: spans) {
+fn roster_site_starts(sites: List<ScopedReferenceSite>, spans: SpanIndex) -> List<Int?> {
+  list_map(xs: sites, f: fn(st) { roster_identity_start(identity: st.occurrence, spans: spans) })
+}
+
+fn roster_value_sites(sites: List<ScopedReferenceSite>, call: String) -> List<ScopedReferenceSite> {
+  fold_list(xs: sites, empty: [], cons: fn(acc, st) {
+    if roster_spelling_is(qn: st.site.spelling, call: call) {
+      match st.position {
+        ValuePosition => list_snoc_item(xs: acc, item: st)
+        _ => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn roster_identity_start(identity: NodeOccurrenceIdentity, spans: SpanIndex) -> Int? {
+  match roster_identity_byte_range(identity: identity, spans: spans) {
     Present { value: r } => Present { value: r.start }
     Absent => Absent
   }
@@ -1437,7 +1446,11 @@ type RosterByteRange {
 }
 
 fn roster_node_byte_range(node: Node, spans: SpanIndex) -> RosterByteRange? {
-  match node.occurrence_id {
+  roster_identity_byte_range(identity: node.occurrence_id, spans: spans)
+}
+
+fn roster_identity_byte_range(identity: NodeOccurrenceIdentity, spans: SpanIndex) -> RosterByteRange? {
+  match identity {
     OccurrenceMinted { id: id } => roster_id_byte_range(id: id, spans: spans)
     OccurrenceProjected { id: id, caused_by: _ } => roster_id_byte_range(id: id, spans: spans)
     OccurrenceSynthetic => Absent

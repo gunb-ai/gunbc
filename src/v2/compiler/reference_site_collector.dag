@@ -29,7 +29,7 @@ import v2.std.qualified_name {
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import std.occurrence_identity {
-  OccurrenceId,
+  NodeOccurrenceIdentity,
   ReferencePosition,
   ValuePosition
 }
@@ -297,7 +297,7 @@ fn collection_snoc_site(
   acc: ScopedReferenceSiteCollection,
   scope: SiteScope,
   position: ReferencePosition,
-  occurrence: OccurrenceId,
+  occurrence: NodeOccurrenceIdentity,
   site: ReferenceSite
 ) -> ScopedReferenceSiteCollection {
   ScopedReferenceSiteCollection {
@@ -475,7 +475,7 @@ type ScopedReferenceSite {
   position: ReferencePosition
   // The occurrence of the node the mention was read at: the identity a consumer joins to its own tree's node, where `site.position`
   // is only a path in the normalized tree.
-  occurrence: OccurrenceId
+  occurrence: NodeOccurrenceIdentity
   head: SiteHeadBinding
 }
 
