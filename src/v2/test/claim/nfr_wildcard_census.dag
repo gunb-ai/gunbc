@@ -148,10 +148,12 @@ data nfr_zero_arity_src: String = "module m.z\n\ntype C = A | B\n\nfn pick() -> 
 // nothing). Fixture: a production-scope candidate the NATIVE FRONT END refuses at lower
 // (return-not-in-tail-position, the form v2.test.claim.namespace_xl0.let_match_early_return's nontail
 // drives), one production-scope file the front end ACCEPTS, and a holder rostering both. The refused line
-// must name its cause; the accepted file must not be refused; no line may fall through to the unattributed
-// fallback; the census exits 2 (incomplete, not wrong) with the accepted row verified and nothing stale --
-// the row under the refused file is unobserved, already counted as refused. Before the cause rode the line,
-// the exact-equality claim below was RED: the line stopped after the path.
+// must name its cause and the accepted file must not be refused; the census exits 2 (incomplete, not
+// wrong) with the accepted row verified and nothing stale -- the row under the refused file is unobserved,
+// already counted as refused. Attribution needs no claim here: a refusal is one NativeNfrRefusal record
+// carrying its cause, so a cause-less refusal is unwritable (DESIGN section 5, construction over
+// validation). Before the cause rode the line, the exact-equality claim below was RED: the line stopped
+// after the path.
 data nwc_control_refused_src: String = "module nfr.control.refused\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype C = A | B\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn nwc_probe(c: Bool, s: LmeS, k: Int) -> Int {\n  let y = if c {\n    let x = match s {\n      LmeA { v: v } => v\n      LmeB => return k\n      LmeC { w: w } => return w\n      LmeD => return k\n    }\n    x\n  } else { k }\n  y\n}\n\nfn nwc_wild(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n"
 
 data nwc_control_accepted_src: String = "module nfr.control.accepted\n\ntype C = A | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n"
@@ -203,13 +205,12 @@ test fn nwc_control_refused_line_names_the_fatal_cause() -> Bool {
   nwc_has_line(lines: nwc_control_lines(), want: "[nfr-wildcard-census] refused dag/fixture/nfr_control_refused.dag body_lowering_reason_return_not_in_tail_position")
 }
 
-// Nothing else was refused, and nothing fell through to the unattributed fallback: the cause rides every
-// refused line, not a hand-typed few.
-test fn nwc_control_only_the_refused_file_is_refused_and_attributed() -> Bool {
+// Only the file the front end refuses is refused: the accepted file and the holder are not. Attribution
+// needs no check here -- a refusal is one NativeNfrRefusal record carrying its cause, so a refused line
+// without a cause cannot be written.
+test fn nwc_control_refuses_only_the_file_the_front_end_refuses() -> Bool {
   !nwc_has_line_containing(lines: nwc_control_lines(), pattern: "refused dag/fixture/nfr_control_accepted.dag")
     && !nwc_has_line_containing(lines: nwc_control_lines(), pattern: "refused dag/fixture/nfr_control_holder.dag")
-    && !nwc_has_line_containing(lines: nwc_control_lines(), pattern: "refused dag/std/roster_frontier.dag")
-    && !nwc_has_line_containing(lines: nwc_control_lines(), pattern: " unattributed")
 }
 
 // The census is INCOMPLETE, not wrong: exit 2; the summary line counts refused=1, unread=0,
