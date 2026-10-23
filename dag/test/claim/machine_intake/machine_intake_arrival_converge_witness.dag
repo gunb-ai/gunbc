@@ -1017,7 +1017,7 @@ fn mtjade1_grant_with_foreign_interlock() -> StandingOperatorGrant {
     ruling: StandingDestructiveAuthorization {
       ruling_text: g.ruling.ruling_text,
       effect_subject: g.ruling.effect_subject,
-      interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
+      interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write") },
     },
     scope: g.scope,
     effects: g.effects,
