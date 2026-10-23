@@ -1,0 +1,344 @@
+module product.fabric.flex_aws_row
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.decimal { ExactDecimal, canonical_exact_decimal, exact_decimal_wire }
+import std.integer { int_to_decimal_string }
+import std.measure { Mebibyte, mebibyte, mebibyte_count, gigabyte_count, money_per_hour_micros, exact_decimal_to_money_per_hour_ceil, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.cloud.aws_ec2 {
+  AwsEc2Region, AwsEc2NotOptedIn, AwsEc2InstanceTypeOffering, AwsEc2InstanceTypeInfo, AwsEc2SpotPrice, AwsEc2Instance,
+  aws_ec2_product_description_linux, aws_ec2_quote_currency,
+}
+import extdeps.cloud.aws_service_quotas { AwsServiceQuota, aws_service_quotas_ec2_service_code, aws_quota_code_g_vt_spot_vcpus, aws_quota_code_g_vt_on_demand_vcpus }
+import extdeps.cloud.aws_cli {
+  AwsCliRead, AwsCliReadOk, AwsCliReadRefused,
+  aws_cli_describe_regions, aws_cli_describe_type_offerings, aws_cli_describe_instance_types, aws_cli_describe_spot_prices,
+  aws_cli_describe_owned_instances, aws_cli_get_service_quota,
+  aws_cli_read_regions, aws_cli_read_offerings, aws_cli_read_instance_types, aws_cli_read_spot_prices, aws_cli_read_instances,
+  aws_cli_read_service_quota,
+}
+import product.fabric.serving_recipe { ServingRecipe }
+
+// THE AWS EC2 SUPPLIER ROW OF THE FLEX PASS, PLAN MODE ONLY (gunbc.plans.flex_supplier_generalization
+// section 3c, 4b). It OBSERVES (regions, g7e offerings per zone, instance types, the current spot price
+// per zone, the applied G and VT quotas, the owned roster by owner tag), SCREENS every
+// (region, zone, size, spot | on-demand) candidate against the recipe's hard constraints, and REPORTS each
+// candidate with every wall in front of it. It chooses nothing: selection over both rows is the shared
+// frontier product.fabric.flex_vast_loop flex_select_supply_consumer_frontier, closed for Vast and AWS at
+// once. It writes nothing: no RunInstances, no tag, no parameter.
+
+data flex_aws_type_pattern: NonEmptyStr = "g7e.*" as NonEmptyStr
+data flex_aws_owner_tag_key: NonEmptyStr = "gunbc-flex-owner" as NonEmptyStr
+// DescribeRegions is answered by any region; this one is only the endpoint the region list is asked from.
+data flex_aws_region_list_endpoint: NonEmptyStr = "us-east-1" as NonEmptyStr
+
+// THE HOST RAM FLOOR: the recipe's PLE table resident in host memory, unswappable because it is read at
+// random per token. The figure is the operator's (calm-crab-645, 2026-10-23: 26.8 GiB plus process
+// overhead), so its standing is uncited and the overhead is unread. No g7e size is near it (the smallest
+// has 64 GiB, extdeps.cloud.aws_ec2 aws_ec2_g7e_sizes), so the unread overhead decides no verdict in this
+// family; a family whose RAM sits near the floor would have to read it first.
+data flex_aws_host_ram_floor: Mebibyte = mebibyte(count: 27444)
+data flex_aws_host_ram_floor_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "read the Flash-Next PLE table size and the serving process's resident overhead from the lil image (lil-serve --print-config or a measured RSS on a served card); the 26.8 GiB is the operator's figure" }
+
+// THE GPU NAME DescribeInstanceTypes reports for the RTX PRO 6000 Server card has not been read, so no
+// name maps yet and every candidate carries the wall; the receipt prints the observed name for the row
+// to be added from the first Plan-mode read (the name is an observation, never guessed here).
+type FlexAwsGpuNameRow {
+  aws_gpu_name: NonEmptyStr
+  catalog_identity: NonEmptyStr
+}
+
+data flex_aws_gpu_names: List<FlexAwsGpuNameRow> = []
+
+type FlexAwsMarket
+  = FlexAwsSpot
+  | FlexAwsOnDemand
+
+type FlexAwsWall
+  = FlexAwsQuotaBelowVcpus { quota_vcpus: Int, needs: Int }
+  | FlexAwsNoLocalNvme
+  | FlexAwsHostRamBelowFloor { ram: Mebibyte }
+  | FlexAwsTpExceedsGpus { tp: Int, gpus: Int }
+  | FlexAwsGpuNameUnmapped { names: List<String> }
+  | FlexAwsUsageClassNotOffered
+  | FlexAwsSpotPriceUnobserved
+  | FlexAwsPriceUnconvertible
+  | FlexAwsOnDemandPriceUnobserved
+  | FlexAwsTypeUndescribed
+
+type FlexAwsCandidate {
+  region: NonEmptyStr
+  zone: NonEmptyStr
+  instance_type: NonEmptyStr
+  market: FlexAwsMarket
+  gpus: Int
+  vcpus: Int
+  rate: ExactDecimal?
+  per_gpu_hour_micros: Int?
+  walls: List<FlexAwsWall>
+}
+
+type FlexAwsRegionObservation
+  = FlexAwsRegionNotOptedIn { region: NonEmptyStr }
+  | FlexAwsRegionNoOffering { region: NonEmptyStr }
+  | FlexAwsRegionRefused { region: NonEmptyStr, step: NonEmptyStr, cause: String }
+  | FlexAwsRegionObserved {
+      region: NonEmptyStr
+      offerings: List<AwsEc2InstanceTypeOffering>
+      types: List<AwsEc2InstanceTypeInfo>
+      prices: List<AwsEc2SpotPrice>
+      spot_quota_vcpus: Int
+      on_demand_quota_vcpus: Int
+      owned: List<AwsEc2Instance>
+    }
+
+type FlexAwsPassObservation
+  = FlexAwsRegionsRefused { cause: String }
+  | FlexAwsRegionsObserved { regions: List<FlexAwsRegionObservation> }
+
+// ---- RUN ONE CLI OPERATION AND READ ITS PROJECTION. A process refusal and an unreadable answer are
+// both refusals, named, never an empty list read as no supply. The program spawned is `env` (the
+// credential environment of extdeps.cloud.aws_cli), so a host without the AWS CLI answers an ordinary
+// non-zero exit here, a typed refusal of this row, and never aborts the pass the Vast row shares.
+fn flex_aws_outcome_text(outcome: ProcessOutcome) -> AwsCliRead<String> {
+  match outcome {
+    ProcessOutputPresent { text: t } => AwsCliReadOk { value: t }
+    ProcessOutputAbsent => AwsCliReadRefused { cause: "the CLI printed nothing" }
+    ProcessRefused { exit_code: c, stderr: e } => AwsCliReadRefused { cause: join(["the CLI exited ", to_string(c), ": ", e], "") }
+  }
+}
+
+// The integer floor of a quota value (vCPUs), so a fractional quota never admits more than it grants.
+fn flex_aws_drop_digits(units: Int, digits: Int) -> Int {
+  if digits <= 0 { units } else { flex_aws_drop_digits(units: units / 10, digits: digits - 1) }
+}
+
+fn flex_aws_floor_int(d: ExactDecimal) -> Int {
+  let c = canonical_exact_decimal(d: d)
+  flex_aws_drop_digits(units: c.units, digits: c.fraction_digits)
+}
+
+fn flex_aws_quota(credentials: FilePath, region: NonEmptyStr, code: NonEmptyStr) -> AwsCliRead<Int> {
+  match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_get_service_quota(credentials_file: credentials, region: region, service_code: aws_service_quotas_ec2_service_code, quota_code: code), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: t } =>
+      match aws_cli_read_service_quota(stdout: t) {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: q } => AwsCliReadOk { value: flex_aws_floor_int(d: q.value) }
+      }
+  }
+}
+
+fn flex_aws_distinct_types(offerings: List<AwsEc2InstanceTypeOffering>) -> List<NonEmptyStr> {
+  fold(offerings, init: [], f: (acc, o) => if any(acc, t => (t as String) == (o.instance_type as String)) { acc } else { concat(acc, [o.instance_type]) })
+}
+
+fn flex_aws_observe_region(credentials: FilePath, region: NonEmptyStr, now_epoch_seconds: Int) -> FlexAwsRegionObservation {
+  match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_describe_type_offerings(credentials_file: credentials, region: region, type_pattern: flex_aws_type_pattern), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-instance-type-offerings" as NonEmptyStr, cause: c }
+    AwsCliReadOk { value: t } =>
+  match aws_cli_read_offerings(stdout: t) {
+    AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-instance-type-offerings" as NonEmptyStr, cause: c }
+    AwsCliReadOk { value: offerings } =>
+  if length(offerings) == 0 { FlexAwsRegionNoOffering { region: region } } else {
+    let types = flex_aws_distinct_types(offerings: offerings)
+    match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_describe_instance_types(credentials_file: credentials, region: region, types: types), transport: LocalExec)) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-instance-types" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: tt } =>
+    match aws_cli_read_instance_types(stdout: tt) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-instance-types" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: infos } =>
+    match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_describe_spot_prices(credentials_file: credentials, region: region, types: types, product: aws_ec2_product_description_linux, now_epoch_seconds: now_epoch_seconds), transport: LocalExec)) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-spot-price-history" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: pt } =>
+    match aws_cli_read_spot_prices(stdout: pt) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-spot-price-history" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: prices } =>
+    match flex_aws_quota(credentials: credentials, region: region, code: aws_quota_code_g_vt_spot_vcpus) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "get-service-quota spot" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: spot_quota } =>
+    match flex_aws_quota(credentials: credentials, region: region, code: aws_quota_code_g_vt_on_demand_vcpus) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "get-service-quota on-demand" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: od_quota } =>
+    match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_describe_owned_instances(credentials_file: credentials, region: region, tag_key: flex_aws_owner_tag_key, owner: "gunbc-flex" as NonEmptyStr), transport: LocalExec)) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-instances" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: it } =>
+    match aws_cli_read_instances(stdout: it) {
+      AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-instances" as NonEmptyStr, cause: c }
+      AwsCliReadOk { value: owned } =>
+        FlexAwsRegionObserved { region: region, offerings: offerings, types: infos, prices: prices, spot_quota_vcpus: spot_quota, on_demand_quota_vcpus: od_quota, owned: owned }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+  }
+  }
+  }
+}
+
+fn flex_aws_observe(credentials: FilePath, now_epoch_seconds: Int) -> FlexAwsPassObservation {
+  match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_describe_regions(credentials_file: credentials, region: flex_aws_region_list_endpoint), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => FlexAwsRegionsRefused { cause: c }
+    AwsCliReadOk { value: t } =>
+      match aws_cli_read_regions(stdout: t) {
+        AwsCliReadRefused { cause: c } => FlexAwsRegionsRefused { cause: c }
+        AwsCliReadOk { value: regions } =>
+          FlexAwsRegionsObserved {
+            regions: map(regions, r => match r.opt_in_status {
+              AwsEc2NotOptedIn => FlexAwsRegionNotOptedIn { region: r.region_name }
+              _ => flex_aws_observe_region(credentials: credentials, region: r.region_name, now_epoch_seconds: now_epoch_seconds)
+            }),
+          }
+      }
+  }
+}
+
+// ---- THE SCREEN. Pure: one region's observation and the recipe give every candidate and its walls.
+
+fn flex_aws_gpu_count(info: AwsEc2InstanceTypeInfo) -> Int {
+  fold(info.gpus, init: 0, f: (acc, g) => acc + g.count)
+}
+
+fn flex_aws_has_local_nvme(info: AwsEc2InstanceTypeInfo) -> Bool {
+  match info.instance_storage {
+    Absent => false
+    Present { value: s } => (gigabyte_count(s.total_size_in_gb) > 0) && (((s.nvme_support as String) == "required") || ((s.nvme_support as String) == "supported"))
+  }
+}
+
+fn flex_aws_gpu_names_mapped(info: AwsEc2InstanceTypeInfo, names: List<FlexAwsGpuNameRow>) -> Bool {
+  (length(info.gpus) > 0) && all(info.gpus, g => any(names, row => (row.aws_gpu_name as String) == (g.name as String)))
+}
+
+fn flex_aws_type_walls(info: AwsEc2InstanceTypeInfo, recipe: ServingRecipe, names: List<FlexAwsGpuNameRow>, market: FlexAwsMarket, quota_vcpus: Int) -> List<FlexAwsWall> {
+  let tp = length(recipe.cards)
+  let gpus = flex_aws_gpu_count(info: info)
+  let class = match market { FlexAwsSpot => "spot"  FlexAwsOnDemand => "on-demand" }
+  concat(concat(concat(
+    if quota_vcpus < info.default_vcpus { [FlexAwsQuotaBelowVcpus { quota_vcpus: quota_vcpus, needs: info.default_vcpus }] } else { [] },
+    if flex_aws_has_local_nvme(info: info) { [] } else { [FlexAwsNoLocalNvme] }),
+    concat(
+      if mebibyte_count(info.memory_size_in_mib) < mebibyte_count(flex_aws_host_ram_floor) { [FlexAwsHostRamBelowFloor { ram: info.memory_size_in_mib }] } else { [] },
+      if gpus < tp { [FlexAwsTpExceedsGpus { tp: tp, gpus: gpus }] } else { [] })),
+    concat(
+      if flex_aws_gpu_names_mapped(info: info, names: names) { [] } else { [FlexAwsGpuNameUnmapped { names: map(info.gpus, g => g.name as String) }] },
+      if any(info.supported_usage_classes, c => (c as String) == class) { [] } else { [FlexAwsUsageClassNotOffered] }))
+}
+
+fn flex_aws_per_gpu_micros(rate: ExactDecimal, gpus: Int) -> FlexAwsPerGpu {
+  match exact_decimal_to_money_per_hour_ceil(d: rate, currency: aws_ec2_quote_currency) {
+    DecimalMoneyPerHourRefused { conversion: _ } => FlexAwsPerGpuUnconvertible
+    DecimalMoneyPerHourConverted { rate: r } =>
+      if gpus < 1 { FlexAwsPerGpuUnconvertible } else {
+        // Rounded UP, so a per-GPU price never reads cheaper than the instance price divided.
+        FlexAwsPerGpuMicros { micros: ((money_per_hour_micros(q: r) as Int) + (gpus - 1)) / gpus }
+      }
+  }
+}
+
+type FlexAwsPerGpu
+  = FlexAwsPerGpuMicros { micros: Int }
+  | FlexAwsPerGpuUnconvertible
+
+fn flex_aws_zone_price(prices: List<AwsEc2SpotPrice>, zone: NonEmptyStr, instance_type: NonEmptyStr) -> AwsEc2SpotPrice? {
+  first_where(prices, p => ((p.availability_zone as String) == (zone as String)) && ((p.instance_type as String) == (instance_type as String)))
+}
+
+fn flex_aws_candidate(region: NonEmptyStr, o: AwsEc2InstanceTypeOffering, infos: List<AwsEc2InstanceTypeInfo>, prices: List<AwsEc2SpotPrice>, recipe: ServingRecipe, names: List<FlexAwsGpuNameRow>, market: FlexAwsMarket, quota: Int) -> FlexAwsCandidate {
+  match first_where(infos, i => (i.instance_type as String) == (o.instance_type as String)) {
+    Absent => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: 0, vcpus: 0, rate: none, per_gpu_hour_micros: none, walls: [FlexAwsTypeUndescribed] }
+    Present { value: i } => {
+      let gpus = flex_aws_gpu_count(info: i)
+      let base = flex_aws_type_walls(info: i, recipe: recipe, names: names, market: market, quota_vcpus: quota)
+      match market {
+        FlexAwsOnDemand => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: none, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsOnDemandPriceUnobserved]) }
+        FlexAwsSpot =>
+          match flex_aws_zone_price(prices: prices, zone: o.location, instance_type: o.instance_type) {
+            Absent => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: none, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsSpotPriceUnobserved]) }
+            Present { value: p } =>
+              match flex_aws_per_gpu_micros(rate: p.spot_price, gpus: gpus) {
+                FlexAwsPerGpuUnconvertible => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: Present { value: p.spot_price }, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsPriceUnconvertible]) }
+                FlexAwsPerGpuMicros { micros: m } => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: Present { value: p.spot_price }, per_gpu_hour_micros: Present { value: m }, walls: base }
+              }
+          }
+      }
+    }
+  }
+}
+
+// Every offered (zone, size) twice: once as spot against the spot quota, once as on-demand against the
+// on-demand quota. Two separately priced candidates, never a fallback inside one.
+fn flex_aws_candidates(observation: FlexAwsRegionObservation, recipe: ServingRecipe, names: List<FlexAwsGpuNameRow>) -> List<FlexAwsCandidate> {
+  match observation {
+    FlexAwsRegionObserved { region: r, offerings: os, types: ts, prices: ps, spot_quota_vcpus: sq, on_demand_quota_vcpus: oq, owned: _ } =>
+      concat(
+        map(os, o => flex_aws_candidate(region: r, o: o, infos: ts, prices: ps, recipe: recipe, names: names, market: FlexAwsSpot, quota: sq)),
+        map(os, o => flex_aws_candidate(region: r, o: o, infos: ts, prices: ps, recipe: recipe, names: names, market: FlexAwsOnDemand, quota: oq)),
+      )
+    _ => []
+  }
+}
+
+// ---- THE RECEIPT. Each line names what was decided and every wall, never a secret, never a price
+// tied to buying (the rates printed are the public spot prices the API answered).
+
+fn flex_aws_wall_wire(w: FlexAwsWall) -> String {
+  match w {
+    FlexAwsQuotaBelowVcpus { quota_vcpus: q, needs: n } => join(["quota-below-vcpus quota=", to_string(q), " needs=", to_string(n)], "")
+    FlexAwsNoLocalNvme => "no-local-nvme"
+    FlexAwsHostRamBelowFloor { ram: m } => join(["host-ram-below-floor mib=", to_string(mebibyte_count(m))], "")
+    FlexAwsTpExceedsGpus { tp: t, gpus: g } => join(["tp-exceeds-gpus tp=", to_string(t), " gpus=", to_string(g)], "")
+    FlexAwsGpuNameUnmapped { names: ns } => join(["gpu-name-unmapped names=", join(ns, "|")], "")
+    FlexAwsUsageClassNotOffered => "usage-class-not-offered"
+    FlexAwsSpotPriceUnobserved => "spot-price-unobserved"
+    FlexAwsPriceUnconvertible => "price-unconvertible"
+    FlexAwsOnDemandPriceUnobserved => "on-demand-price-unobserved"
+    FlexAwsTypeUndescribed => "type-undescribed"
+  }
+}
+
+fn flex_aws_candidate_line(c: FlexAwsCandidate) -> String {
+  join([
+    "aws ", c.region as String, " ", c.zone as String, " ", c.instance_type as String, " ",
+    match c.market { FlexAwsSpot => "spot"  FlexAwsOnDemand => "on-demand" },
+    " gpus=", to_string(c.gpus), " vcpus=", to_string(c.vcpus),
+    " rate=", match c.rate { Present { value: d } => exact_decimal_wire(d: d)  Absent => "-" },
+    " per_gpu_micros=", match c.per_gpu_hour_micros { Present { value: m } => to_string(m)  Absent => "-" },
+    " walls=", if length(c.walls) == 0 { "none" } else { join(map(c.walls, w => flex_aws_wall_wire(w: w)), ",") },
+  ], "")
+}
+
+fn flex_aws_region_line(o: FlexAwsRegionObservation) -> String {
+  match o {
+    FlexAwsRegionNotOptedIn { region: r } => join(["aws-region ", r as String, " not-opted-in"], "")
+    FlexAwsRegionNoOffering { region: r } => join(["aws-region ", r as String, " no-g7e-offering"], "")
+    FlexAwsRegionRefused { region: r, step: s, cause: c } => join(["aws-region ", r as String, " refused step=", s as String, " ", c], "")
+    FlexAwsRegionObserved { region: r, offerings: os, types: _, prices: ps, spot_quota_vcpus: sq, on_demand_quota_vcpus: oq, owned: ow } =>
+      join(["aws-region ", r as String, " offerings=", to_string(length(os)), " prices=", to_string(length(ps)), " spot_quota_vcpus=", to_string(sq), " on_demand_quota_vcpus=", to_string(oq), " owned=", to_string(length(ow))], "")
+  }
+}
+
+fn flex_aws_receipt(observation: FlexAwsPassObservation, recipe: ServingRecipe, names: List<FlexAwsGpuNameRow>) -> String {
+  match observation {
+    FlexAwsRegionsRefused { cause: c } => concat("aws=refused ", c)
+    FlexAwsRegionsObserved { regions: rs } => {
+      let candidates = flat_map(rs, o => flex_aws_candidates(observation: o, recipe: recipe, names: names))
+      let clear = candidates |> filter(c => length(c.walls) == 0)
+      join([
+        join(["aws regions=", to_string(length(rs)), " candidates=", to_string(length(candidates)), " clear=", to_string(length(clear))], ""),
+        join(map(rs, o => flex_aws_region_line(o: o)), "\n"),
+        join(map(candidates, c => flex_aws_candidate_line(c: c)), "\n"),
+        "aws-selection=needs-evidence (select_supply unwired: product.fabric.flex_vast_loop flex_select_supply_consumer_frontier)",
+      ], "\n")
+    }
+  }
+}

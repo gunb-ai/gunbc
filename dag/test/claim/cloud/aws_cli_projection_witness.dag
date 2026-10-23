@@ -64,7 +64,7 @@ test fn incomplete_or_malformed_answers_refuse_with_their_reason() -> Bool {
 
 // The argv names the region explicitly and asks for JSON, and carries no credential, only its file path.
 test fn the_cli_argv_pins_the_region_and_carries_no_credential() -> Bool {
-  let words = argv_words(command: aws_cli_describe_spot_prices(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "eu-west-1", types: ["g7e.2xlarge"], product: "Linux/UNIX", now_iso8601: "2026-10-23T09:00:00Z"))
+  let words = argv_words(command: aws_cli_describe_spot_prices(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "eu-west-1", types: ["g7e.2xlarge"], product: "Linux/UNIX", now_epoch_seconds: 1792746000))
   words.contains("--region") && words.contains("eu-west-1") && words.contains("json")
     && words.contains("AWS_SHARED_CREDENTIALS_FILE=/etc/gunbc-flex/aws-credentials")
     && !(join(words, " ").contains("AWS_SECRET_ACCESS_KEY="))

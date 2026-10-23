@@ -1,6 +1,8 @@
 module gunbc.fleet.flex_pass_run
 
-import std.types { Bool, Int, List, NonEmptyStr, Secret, String, EpochMs }
+import product.fabric.flex_aws_row { flex_aws_observe, flex_aws_receipt, flex_aws_gpu_names }
+import gunbc.flex_aws_credential { flex_aws_credentials_host_path }
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String, EpochMs, FilePath }
 import std.optional { Present, Absent }
 import std.list { first_where }
 import std.resources { Network }
@@ -343,15 +345,28 @@ fn pass() -> ProcessExit uses net: Network {
   match observer_clock_read() {
     ObserverClockUnreadable { detail: d } => exit_failure(reason: concat("THE CLOCK COULD NOT BE READ: ", d))
     ObserverClockObserved { instant: at } =>
-      match flex_vast_key() {
-        FlexVastKeyRefused { cause: cause } => exit_failure(reason: cause as String)
-        FlexVastKeyReady { key: key, resolved_version: v } => {
-          let text = flex_pass_with_key(key: key, resolved_version: v, now: observer_instant_millis(instant: at))
-          let written = Filesystem.Write(path: flex_pass_receipt_path, content: text)
-          if !written.success {
-            exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
-          } else {
-            ExitSuccess
+      {
+        let now = observer_instant_millis(instant: at)
+        // THE AWS ROW, independent of the Vast row: it runs whatever the Vast key's standing, and its own
+        // refusal (no CLI, no credential file, a region unreadable) is a line of the receipt, never an exit.
+        let aws = flex_aws_receipt(
+          observation: flex_aws_observe(credentials: flex_aws_credentials_host_path as String as FilePath, now_epoch_seconds: now / milliseconds_per_second()),
+          recipe: flex_serving_recipe,
+          names: flex_aws_gpu_names,
+        )
+        match flex_vast_key() {
+          FlexVastKeyRefused { cause: cause } => {
+            let written = Filesystem.Write(path: flex_pass_receipt_path, content: join(["vast=refused ", cause as String, "\n", aws], ""))
+            exit_failure(reason: cause as String)
+          }
+          FlexVastKeyReady { key: key, resolved_version: v } => {
+            let text = join([flex_pass_with_key(key: key, resolved_version: v, now: now), "\n", aws], "")
+            let written = Filesystem.Write(path: flex_pass_receipt_path, content: text)
+            if !written.success {
+              exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
+            } else {
+              ExitSuccess
+            }
           }
         }
       }
