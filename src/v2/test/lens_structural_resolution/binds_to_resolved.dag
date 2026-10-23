@@ -1,7 +1,7 @@
 module v2.test.lens_structural_resolution.binds_to_resolved
 
 import v2.std.node { NotADeclaration }
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+
 
 
 
@@ -53,8 +53,7 @@ fn sr_claim_tree() -> InferredTree {
   let facts = sr_claim_facts()
   InferredTree {
     root: sr_decl,
-    facts: sr_claim_fact_map(facts: facts),
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: sr_claim_fact_map(facts: facts)
   }
 }
 
