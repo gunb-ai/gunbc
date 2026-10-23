@@ -1,7 +1,6 @@
 module gunbc.live_deploy.emit
 import std.optional { Absent, Optional, Present }
 
-
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.workspace_image_delivery { workspace_image_staging_root }
 import gunbc.runner.workspace_guest_image { workspace_image_path, workspace_installed_image_root }
@@ -196,13 +195,16 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
 }
 import gunbc.roadmap.attempt_system_unit_launch {
-  attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
-  AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
+  attempt_system_unit_launch_gunbc_argv_at,
+  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
   attempt_system_unit_launch_argv_refused_detail,
-  attempt_system_unit_launcher_locus, attempt_system_unit_launcher_revision_receipt_path,
+  attempt_system_unit_launcher_locus,
 }
 import gunbc.live_deploy.lab_host_plan {
-  LabPlanReady, LabPlanRefused, SystemManagerLauncherSelected,
+  LabPlanReady,
+  LabPlanRefused,
+  lab_plan_worker_sandbox_choice,
+  SystemManagerLauncherSelected,
 }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
@@ -227,7 +229,7 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -242,6 +244,8 @@ import gunbc.live_deploy.spec {
   deployment_retired_belt_timer_unit_name,
   deployment_publication_service_unit_path,
   deployment_publication_path_unit_path,
+  deployment_attempt_unit_drain_service_unit_name, deployment_attempt_unit_drain_path_unit_name,
+  deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path,
   deployment_publication_timer_unit_path,
   deployment_retired_belt_timer_unit_path,
   deployment_fleet_converge_service_unit_name,
@@ -276,7 +280,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -319,8 +323,6 @@ import v2.std.orchestration {
 }
 import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None }
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import v2.extdeps.languages.bash_build {
   bash_build_assign,
   bash_build_command_from_lits,
@@ -371,16 +373,6 @@ data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 // effect_plan_bash_materialize's UnsupportedEffectPlanStep arms currently refuse; class 3 has no
 // dissolution -- a marker that must not parse as shell is correctly a String; class 4 is owned by
 // the module that authors the body.
-// THE OPTION SET THAT MAKES BOTH FOLDS REQUIRE A BASH RECEIVER, DECLARED ONCE.
-//
-// `pipefail` is not POSIX sh -- it is the option that decides the emitted program cannot be handed
-// to `sh -s`, which is exactly what `extdeps.shell.exec` pins on the transport side. The literal was
-// spelled twice here, once at the head of each fold, and nothing named it: a witness that wanted to
-// read the fact had to render the entire program and grep it, at a cost the required floor's
-// per-claim ceiling refuses. Naming it makes the apply's own shell contract readable at its
-// producer, and keeps the two folds from drifting apart on the option set they set.
-data deploy_shell_strict_options_command: String = "set -euo pipefail"
-
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
     run: Run {
@@ -389,28 +381,6 @@ fn deploy_raw(command: String) -> PipelineStep {
       redirect: Absent,
       capture: Absent
     }
-  }
-}
-
-// The staging directory is a BINDING, not a command whose text happens to assign. PipelineStep
-// already carries Let with an ExprCmdSubst value, so the name, the callee and its argument are
-// three modeled parts instead of one quoted line an author assembled — and the variable name is
-// the same single authority the staged-path word reads (operations.deploy_stage_dir_var).
-fn deploy_mktemp_dir_let_step(name: String) -> PipelineStep {
-  Let {
-    name: name,
-    value: ExprCmdSubst { callee: "mktemp", args: ["-d"] },
-  }
-}
-
-fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
-  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.carried
-        Some { diagnostics: _ } => refused
-      }
-    Rejected { diagnostics: _ } => refused
   }
 }
 
@@ -609,12 +579,6 @@ fn live_deploy_tailnet_door_unit_file(
   }
 }
 
-fn live_deploy_tailnet_door_unit_file_at(
-  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second,
-) -> LiveDeployTailnetDoorUnitEmission {
-  live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
-}
-
 // THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
 // gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle, bound to LOOPBACK ONLY -- tailscale serve is the sole
 // route to it (FabricStorageServeMapping), which is the deployment fact extdeps.tailscale.identity says
@@ -808,13 +772,9 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)))
 }
 
-
 fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision)))
 }
-
-
-
 
 fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   let svc = spec.service
@@ -958,6 +918,76 @@ data attempt_unit_spool_answer_mode: FileMode = FileMode {
   sticky: false,
 }
 
+// THE ROOT SIDE OF THE ATTEMPT-UNIT SPOOL IS A SYSTEM ONESHOT STARTED BY A .path UNIT, the publication
+// helper's shape (PublicationHelperPathUnit): a request was written, so the service runs the
+// launcher entry from the root-owned release and answers the spool. No requester holds a sudo grant
+// for it and none waits on it. systemd runs one activation of the service at a time, which is the
+// mutual exclusion the retired drain.lock flock provided; a request written while a drain runs
+// leaves requests/ non-empty, and the path unit starts the service again when it finishes.
+// TimeoutStartSec is the start path's own watchdog (belt_tick_run_bound): a start-wait request holds
+// the activation for one worker's whole lifetime.
+type AttemptUnitDrainServiceFile
+  = AttemptUnitDrainServiceReady { file: SystemdUnitFile }
+  | AttemptUnitDrainServiceRefused { cause: NamedArgumentAdmission }
+
+fn live_deploy_attempt_unit_drain_service_unit_file(
+  spec: DeploymentSpec,
+  instance: HostDashboardInstance,
+  revision: ReleaseRevisionBinding,
+) -> AttemptUnitDrainServiceFile {
+  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
+    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptUnitDrainServiceRefused { cause: cause }
+    AttemptSystemUnitLaunchArgvReady { argv } =>
+      AttemptUnitDrainServiceReady { file: ServiceUnitFile {
+        unit: [
+          Description { text: "gunbc attempt-unit spool drain (starts the dashboard's attempt worker units as the system manager)" as NonEmptyStr },
+          Condition { kind: ConditionDirectoryNotEmpty, negated: true, argument: attempt_unit_spool_stalled_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+        ],
+        service: [
+          ServiceType { mode: OneshotMode },
+          TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+          // THE DEPLOYMENT SLICE, like every other service that runs gunbc: without Slice= the oneshot lands in
+          // system.slice, where gunbc refuses to run (user_work_scope: UncappedSystemSlice) and the .path
+          // unit then trips its start limit. Measured on the srv1 lab, 2026-10-21.
+          ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+          ExecStart { command: join(argv, " ") as NonEmptyStr },
+        ],
+        install: NotInstallable,
+      } }
+  }
+}
+
+fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [
+      Description { text: "gunbc attempt-unit spool drain: a start request was written" as NonEmptyStr },
+    ],
+    path: [
+      PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
+      TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+// THE RETIRED SUDO ROUTE, REMOVED FROM HOSTS THAT CONVERGED UNDER IT. Before the root drain was a path-triggered
+// oneshot, apply installed a per-instance sudoers drop-in for the launcher, an `installed-revision` receipt in the
+// helper locus, and the requester flocked `drain.lock` in the spool. This apply deletes all three (rm -f is
+// idempotent), so a host that held the grant does not keep a standing root-by-sudo route beside the new one
+// (DESIGN section 3: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
+// SHAPE FOLLOWS leftover_systemd_timer_retire_steps (named retired-artifact rows, rm -f, then a readback that fails
+// the apply); the dissolution is attempt_unit_sudo_route_retire_dissolution.
+data attempt_unit_sudo_route_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete retired_attempt_unit_sudo_route_paths and its apply step once every deployed instance's apply has run the removal and passed the sudoers check" as NonEmptyStr)
+
+fn retired_attempt_unit_sudo_route_paths(instance: HostDashboardInstance) -> List<String> {
+  [
+    join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], ""),
+    join([attempt_system_unit_launcher_locus(instance: instance).base, "/installed-revision"], ""),
+    join([attempt_unit_spool_root(instance_root: instance.instance_root as String), "/drain.lock"], ""),
+  ]
+}
 
 // THE BELT'S EVENT UNITS (dogfood intervention #4). Each service is one `gunbc run` entry of
 // gunbc.roadmap.roadmap_belt_tick_cli under the belt service's principal, slice and spawn root, so the two
@@ -1166,6 +1196,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         TailscaleServeMapping => none
         DeployedTreeRemoteUnit => none
         PublicationHelperPathUnit => none
+        AttemptUnitDrainPathUnit => none
         ApprovalBrokerFrontDoor => none
       }
       ComposeOwned { kind: ck } => match ck {
@@ -1439,21 +1470,6 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
     decl_name: "install_d_shared_mode",
     field: WholeDeclaration,
   }
-)
-
-// THE BELT'S RECEIPT WRITE IS NOT CRASH-SAFE, AND THAT IS ADMITTED RATHER THAN OVERLOOKED. The tick
-// writes its receipt in place instead of through the same-directory staging + rename that
-// gunbc.fleet.fleet_converge_cli uses. In-place is correct on ownership grounds — the directory is
-// service-user-owned and the file is not a stale root-owned artifact — but a tick interrupted
-// mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a
-// wrong verdict. Adopting the atomic publish is the strictly better construction and is not done
-// here, so the weaker one is a decision on the record.
-//
-// The trigger is UNBOUND deliberately. The discharge is the belt tick adopting the atomic publish,
-// and no declaration carries that today — binding forward to a name nobody has written is the §3
-// fabricated-citation class std.dissolution refuses by name.
-data belt_receipt_in_place_write_residue_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "dissolves-on: the belt tick publishes its receipt through the same-directory staging + rename gunbc.fleet.fleet_converge_cli uses, so an interrupted tick cannot leave a truncated receipt behind." as NonEmptyStr
 )
 
 fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
@@ -1877,14 +1893,6 @@ fn helper_snapshot_readback_command_at(ancestors: List<String>, dir: String, own
   join(map(helper_snapshot_readback_intents(ancestors: ancestors, dir: dir, owner: owner), n => helper_snapshot_intent_text(intent: n)), "\n")
 }
 
-fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
-  helper_snapshot_readback_command_at(
-    ancestors: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base),
-    dir: dir,
-    owner: bash_build_word_lit(text: approval_broker_helper_root_principal as String),
-  )
-}
-
 // THE ISSUING VERB LEARNS ITS OWN RELEASE FROM THE STEP THAT RUNS IT. The verb is invoked with
 // `gunbc run` from the release directory, and nothing in a run tells the function which release
 // that is. It cannot name its helper without that. The deployment step already binds the revision
@@ -1946,37 +1954,6 @@ fn member_effect_step(e: MemberEffect<DeploymentStep>) -> DeploymentStep {
     EffectReplace { from: _, to } => to
     EffectRemove { from } => from
   }
-}
-
-fn deploy_stage_cleanup_frame_pipeline(bind_vars: List<String>, trap_vars: List<String>) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      [deploy_raw(command: deploy_shell_strict_options_command)],
-      concat(
-        fold(bind_vars, init: [], f: (acc, v) => concat(acc, [deploy_mktemp_dir_let_step(name: v)])),
-        [deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: trap_vars))],
-      ),
-    ),
-    on_failure: FailFast,
-  }
-}
-
-fn deploy_stage_cleanup_frame_script(bind_vars: List<String>, trap_vars: List<String>) -> String {
-  emit_pipeline_or_poison(
-    p: deploy_stage_cleanup_frame_pipeline(bind_vars: bind_vars, trap_vars: trap_vars),
-    refused: "__GUNBC_STAGE_CLEANUP_FRAME_REFUSED__",
-  )
-}
-
-fn deploy_retract_stage_cleanup_frame_script() -> String {
-  deploy_stage_cleanup_frame_script(bind_vars: [deploy_stage_dir_var], trap_vars: [deploy_stage_dir_var])
-}
-
-fn deploy_two_dir_trap_one_var_mutant_script() -> String {
-  deploy_stage_cleanup_frame_script(
-    bind_vars: [deploy_stage_dir_var],
-    trap_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
-  )
 }
 
 fn spec_has_artifact_kind(spec: DeploymentSpec, kind: OwnedArtifactKind) -> Bool {
@@ -2051,20 +2028,11 @@ fn deployment_serve_route_command(endpoint: TailscaleServeEndpoint, enabled: Boo
 // tree_sync_restart_step_with_diagnosis and tailscale_serve_apply_step (the roadmap nodes
 // shell-dag-live-deploy-restart-tailscale and shell-dag-live-deploy-install-owned own their typed
 // replacement), so the row binds the first of them: it dissolves when that rendered step does.
-data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "tree_sync_restart_step_with_diagnosis",
-    field: WholeDeclaration
-  }
-}
-
 data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    decl_name: "tree_sync_restart_step_with_diagnosis",
     field: WholeDeclaration,
   }
 }

@@ -434,7 +434,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     expected: ExpectWitnessHolds,
     reason: "First Transform derivation discriminating receipt (#8395): one normalize→resolve→infer pass over add_probe asserts Transform body DerivedGrounding while Arrow stays GroundingNotDerived. Measured ~12274ms thread-CPU locally vs 5001ms fast-lane abort on PR CI discovery (BudgetExceeded) — cost is the production frontend+infer crossing. Fast per-PR control: infer_transform_non_add_remains_frontier_holds (subtract dispatch gate). Owner: v2-inferred-tree-completeness.",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
-  }
+  },
 ]
 
 fn explicit_witness_admission_matches(

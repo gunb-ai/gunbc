@@ -1,6 +1,5 @@
 module v2.test.claim.manual.dissolution_subsumption_reverification
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -408,8 +407,7 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
     root: root,
     facts: PartialFunction {
       lookup: subsumption_fact_lookup
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 
