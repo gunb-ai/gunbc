@@ -1475,6 +1475,8 @@ fn roster_controls_report() -> String {
         + roster_control_unbound_qualified_tag(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_d4_value_call_positive(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_free_call_after_param(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_nested_call_beside_param(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_beside_let(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_free_call_beside_pun(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_specimen(prepared: prepared, lex: dag_prepared_lex())
@@ -1600,6 +1602,16 @@ fn roster_d4_tag_subject(with_import: Bool) -> String {
 // order, lengths must agree), so the bound `chars` in `h(s: chars)` is a head the collector explains as bound, not a disagreement.
 fn roster_control_free_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   roster_control_imports_for_free_call(name: "free-call-beside-param", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
+}
+
+// The pairing is by document order, so the parameter fn comes FIRST here (the bound head precedes the free one).
+fn roster_control_free_call_after_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  roster_control_imports_for_free_call(name: "free-call-after-param", text: "module c.guard2\n\nimport std.algebra { Cons }\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
+}
+
+// Nested free calls in one fn beside a parameter: outer/inner order must pair the same way in both trees.
+fn roster_control_nested_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  roster_control_imports_for_free_call(name: "nested-call-beside-param", text: "module c.guard3\n\nimport std.algebra { Cons }\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n\nfn f(x: String) -> Int {\n  chars(s: chars(s: x))\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
 }
 
 fn roster_control_free_call_beside_let(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
