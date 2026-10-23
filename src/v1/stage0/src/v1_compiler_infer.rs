@@ -11081,17 +11081,13 @@ pub fn type_node_names_declaration(
     wanted: Rc<DeclarationRef>,
     scope: Rc<InferScope>,
 ) -> bool {
-    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
         n.clone(),
         scope.type_env.source_indices.clone(),
         scope.type_env.clone(),
-    ))
-    .clone()
-    {
-        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-            declaration: d, ..
-        } => crate::std_decl_ref::declaration_ref_eq(d.clone(), wanted.clone()),
-        _ => false,
+    ) {
+        Some(d) => crate::std_decl_ref::declaration_ref_eq(d.clone(), wanted.clone()),
+        std::option::Option::None => false,
     }
 }
 
@@ -11136,7 +11132,39 @@ pub fn non_text_kernel_cast_into_non_empty_text_diags(
                     )])
                 }
             } else {
-                Rc::new(vec![])
+                if (crate::v1_std_core::authored_name_at(
+                    scope.type_env.source_indices.clone(),
+                    src_node.clone(),
+                ) == "Nat".to_string())
+                {
+                    {
+                        let probe_file = match src_node.ident_span.clone() {
+                            Some(sp) => sp.file.clone(),
+                            std::option::Option::None => "<no ident_span>".to_string(),
+                        };
+                        let probe_ref =
+                            match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                                src_node.clone(),
+                                scope.type_env.source_indices.clone(),
+                                scope.type_env.clone(),
+                            ) {
+                                Some(d) => v1_rt::concat(
+                                    v1_rt::concat(d.module_path.clone(), ".".to_string()),
+                                    d.decl_name.clone(),
+                                ),
+                                std::option::Option::None => "<no ref>".to_string(),
+                            };
+                        Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("NATPROBE target=".to_string(), match crate::v1_compiler_infer_env::type_reference_declaration_ref(target_type.clone(), scope.type_env.source_indices.clone(), scope.type_env.clone()) {
+    Some(td) => v1_rt::concat(v1_rt::concat(td.module_path.clone(), ".".to_string()), td.decl_name.clone()),
+    std::option::Option::None => "<no target ref>".to_string(),
+}), " name=".to_string()), src_node.name.clone()), " file=".to_string()), probe_file.clone()), " children=".to_string()), ((src_node.children.clone().len() as i64)).to_string()), " ref=".to_string()), probe_ref.clone()),
+    span: span.clone(),
+}), scope.module_name.clone())])
+                    }
+                } else {
+                    Rc::new(vec![])
+                }
             }
         }
         _ => Rc::new(vec![]),
