@@ -192,21 +192,23 @@ fn occurrence_binding_contribution(module: String, tree: ResolvedTree, loci: Map
 // THE MODULE'S DECLARED CALLABLES, in member (source) order -- a list read off the module body, never a
 // host map, so the order is deterministic. Only a member whose target is an Arrow is a callable.
 fn occurrence_binding_declarations(tree: ResolvedTree) -> List<OccurrenceBindingDeclaration> {
-  fold_list(xs: occurrence_binding_member_edges(tree: tree), empty: [], cons: fn(acc, edge) {
-    match edge.label {
-      Authored { name: n } =>
-        match edge.target.kind {
-          TypeNode { connective: Arrow } =>
-            list_snoc_item(xs: acc, item: OccurrenceBindingDeclaration {
-              name: symbol_lexeme(sym: n),
-              signature: "(" + occurrence_binding_declaration_params(arrow: edge.target) + ") -> " + ref_text(t: as_arrow_return(arrow: edge.target))
-            })
-          _ => acc
-        }
-      StructuralLabel { label: _ } => acc
-      Positional => acc
-    }
-  })
+  fold_list(xs: occurrence_binding_member_edges(tree: tree), empty: [], cons: fn(acc, edge) { occurrence_binding_declaration_step(acc: acc, edge: edge) })
+}
+
+fn occurrence_binding_declaration_step(acc: List<OccurrenceBindingDeclaration>, edge: Edge) -> List<OccurrenceBindingDeclaration> {
+  match edge.label {
+    Authored { name: n } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } =>
+          list_snoc_item(xs: acc, item: OccurrenceBindingDeclaration {
+            name: symbol_lexeme(sym: n),
+            signature: "(" + occurrence_binding_declaration_params(arrow: edge.target) + ") -> " + ref_text(t: as_arrow_return(arrow: edge.target))
+          })
+        _ => acc
+      }
+    StructuralLabel { label: _ } => acc
+    Positional => acc
+  }
 }
 
 fn occurrence_binding_member_edges(tree: ResolvedTree) -> List<Edge> {
