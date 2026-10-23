@@ -49,6 +49,8 @@ test fn a_module_the_base_resolved_and_the_head_refuses_exits_one_and_is_named()
         && !(string_contains(s: reason, pattern: "already_refused"))
         && string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\tnewly_refused")
         && string_contains(s: bytes, pattern: "refused_rewritten\talready_refused\tresolve\tpreviously_refused")
+        && !(string_contains(s: bytes, pattern: "no module newly refused"))
+        && string_contains(s: bytes, pattern: "1 module(s) newly refused")
     _ => false
   }
 }

@@ -358,7 +358,7 @@ fn ambient_name_census_standing(
     + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" }) + "\t" + refused_standing_text(standing: refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout))) |> join(separator: "\n")) + "\n"
     + (carried |> map(m => "carried_refused\t" + m) |> join(separator: "\n")) + "\n"
     + "carried_refused_count\t" + to_string(count(carried)) + "\n"
-    + "ambient-name-census: a ratchet, no module newly refused against the merge base; " + to_string(count(carried)) + " carried (refused at the base too, their edits not judged)\n"
+    + (if count(newly_refused) == 0 { "ambient-name-census: a ratchet, no module newly refused against the merge base; " + to_string(count(carried)) + " carried (refused at the base too, their edits not judged)\n" } else { "ambient-name-census: a ratchet, " + to_string(count(newly_refused)) + " module(s) newly refused against the merge base; " + to_string(count(carried)) + " carried\n" })
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"
