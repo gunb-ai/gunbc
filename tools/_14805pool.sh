@@ -8,7 +8,8 @@
 # chunk timeout CHUNK_T then bisect; single-claim timeout/OOM -> UNOBSERVED row with cause, never omitted.
 # Env: TREE=head|base  DEADLINE_MIN (default 42)  N (default 2)  CHUNK (default 12)  CHUNK_T (default 600)  PCAP (default 26G)
 set -u
-TREE=${TREE:-head}; DEADLINE_MIN=${DEADLINE_MIN:-42}; N=${N:-2}; CHUNK=${CHUNK:-12}; CHUNK_T=${CHUNK_T:-600}; PCAP=${PCAP:-26G}
+TREE=${TREE:-head}; WET=${WET:-0}; DEADLINE_MIN=${DEADLINE_MIN:-42}
+WETFLAG=""; [ "$WET" = 1 ] && WETFLAG="--wet"; N=${N:-2}; CHUNK=${CHUNK:-12}; CHUNK_T=${CHUNK_T:-600}; PCAP=${PCAP:-26G}
 REPO=/tmp/c4v/disp2
 [ -d $REPO ] || REPO=/root/workspace/repo-root
 cd $REPO || exit 9
@@ -34,7 +35,7 @@ if [ ! -x $CB ]; then
   [ $be -eq 0 ] || { echo "BUILD_FAIL $be -- STOP"; exit 9; }
 fi
 [ -x $CB ] || { echo "NO_BINARY -- STOP (never run without head-built CB)"; exit 9; }
-echo "BUILD_COMMIT=$HEAD_SHA CB_SHA=$(sha $CB) TREE=$TREE"
+echo "BUILD_COMMIT=$HEAD_SHA CB_SHA=$(sha $CB) TREE=$TREE WET=$WETFLAG"
 WT=/tmp/w805p_$TREE
 rm -rf $WT; git worktree add -q --detach $WT $HEAD_SHA || { echo WT_FAIL; exit 9; }
 if [ "$TREE" = base ]; then tar xzf tools/base14805.tgz -C $WT || exit 9; echo BASE_OVERLAY_OK; fi
@@ -49,7 +50,7 @@ run_chunk() { # tag entry fns... ; prints POOLROW lines for its claims; rc 0=ver
   echo $PCAP > $cg/memory.max 2>/dev/null || true
   local out=/tmp/w805p_out/$tag.out rc=124
   ( echo $BASHPID > $cg/cgroup.procs 2>/dev/null
-    cd $WT && timeout $CHUNK_T $CB --claim-run --source-root dag --source-root src/v2 --entry $entry --functions "$(printf '%s,' "$@" | sed 's/,$//')" > $out 2>&1 ) &
+    cd $WT && timeout $CHUNK_T $CB --claim-run $WETFLAG --source-root dag --source-root src/v2 --entry $entry --functions "$(printf '%s,' "$@" | sed 's/,$//')" > $out 2>&1 ) &
   local pid=$!
   # memory.current sampler (memory.peak absent on this kernel): max seen while the proc lives
   local pkmax=0
