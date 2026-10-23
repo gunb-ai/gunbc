@@ -37,6 +37,8 @@ data float_source: String = "module probe_non_text_cast_float\nimport std.types 
 
 data unit_source: String = "module probe_non_text_cast_unit\nimport std.types { Unit, NonEmptyStr }\nfn label(u: Unit) -> NonEmptyStr { u as NonEmptyStr }\n"
 
+data nat_source: String = "module probe_non_text_cast_nat\nimport std.types { NonEmptyStr }\nimport std.nat { Nat }\nfn label(k: Nat) -> NonEmptyStr { k as NonEmptyStr }\n"
+
 data literal_source: String = "module probe_text_cast_literal\nimport std.types { NonEmptyStr }\nfn label() -> NonEmptyStr { \"ready\" as NonEmptyStr }\n"
 
 data string_value_source: String = "module probe_text_cast_string\nimport std.types { String, NonEmptyStr }\nfn label(s: String) -> NonEmptyStr { s as NonEmptyStr }\n"
@@ -54,6 +56,8 @@ test fn w_bool_as_non_empty_text_is_refused() -> Bool { blocking_count(source: b
 test fn w_float_as_non_empty_text_is_refused() -> Bool { blocking_count(source: float_source) >= 1 }
 
 test fn w_unit_as_non_empty_text_is_refused() -> Bool { blocking_count(source: unit_source) >= 1 }
+
+test fn w_nat_as_non_empty_text_is_refused() -> Bool { blocking_count(source: nat_source) >= 1 }
 
 test fn w_string_literal_cast_is_accepted() -> Bool { blocking_count(source: literal_source) == 0 }
 
