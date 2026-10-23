@@ -81,11 +81,19 @@ fn verified_signature() -> OidcIdTokenSignature {
 }
 
 // Stage 1 through the sealed fold, on a two-address witness roster.
-fn fx_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> GoogleApproverAdmission {
+fn fx_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> GoogleApproverAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "enrol"),
+  ]
+{
   admit_google_approver_on_roster(roster: [fx_email, fx_second_email], claims: claims, signature: verified_signature(), keys: keys_for(k: submitted), observed_at: NumericDateWholeSeconds { seconds: 1500 })
 }
 
-fn fx_production_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> GoogleApproverAdmission {
+fn fx_production_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> GoogleApproverAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "the_production_roster_refuses_an_address_it_does_not_name"),
+  ]
+{
   admit_google_approver(claims: claims, signature: verified_signature(), keys: keys_for(k: submitted), observed_at: NumericDateWholeSeconds { seconds: 1500 })
 }
 
@@ -97,9 +105,18 @@ fn fx_attestation(attested_for: VerifyingKey) -> AttestationVerification
   attestation_verification_from_implementation(key_id: fx_attest_key_id, public_key_point_b64url: "BATTEST", receipt_b64: "RECEIPT", environment: AppAttestProduction, client_data: google_enrolment_transcript(platform: MobileIos, decision_key: attested_for, attest_key_id: fx_attest_key_id), refusal: none)
 }
 
+// EVERY DEPUTY IS SEALED TO ITS CALLERS, down to the test fn leaves: a fixture that reaches a sealed
+// fold is itself a capability, so each names exactly the claims (or the one helper) that call it.
 // THE WHOLE PATH: approver, pin, enrolment. A refusal at an earlier stage is returned as a refused
 // admission, so each claim reads one outcome.
-fn enrol(claims: OidcIdTokenClaims, submitted: VerifyingKey, attested_for: VerifyingKey, pin: SubjectPinCreateOrRead, slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission {
+fn enrol(claims: OidcIdTokenClaims, submitted: VerifyingKey, attested_for: VerifyingKey, pin: SubjectPinCreateOrRead, slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "again"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "an_attestation_over_another_transcript_refuses"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fresh"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "the_loser_of_a_two_subject_pin_race_leaves_no_enrolment"),
+  ]
+{
   match fx_approver_admission(claims: claims, submitted: submitted) {
     GoogleApproverRefused { cause: c } => GoogleEnrolmentRefused { cause: c }
     GoogleApproverAdmitted { approver: a } =>
@@ -110,16 +127,43 @@ fn enrol(claims: OidcIdTokenClaims, submitted: VerifyingKey, attested_for: Verif
   }
 }
 
-fn fresh(claims: OidcIdTokenClaims, k: VerifyingKey) -> GoogleEnrolmentAdmission {
+fn fresh(claims: OidcIdTokenClaims, k: VerifyingKey) -> GoogleEnrolmentAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_dashboard_authorized_party_refuses"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_dashboard_token_refuses_at_the_audience"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_slot_holding_another_keys_enrolment_refuses_instead_of_replaying"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_stored_record_differing_only_in_email_refuses_instead_of_replaying"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_token_for_both_clients_with_dashboard_azp_refuses"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_token_replayed_beside_another_decision_key_refuses_at_the_nonce"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_workspace_member_off_the_roster_refuses"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "an_ios_authorized_party_is_admitted"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "first_write"),
+  ]
+{
   enrol(claims: claims, submitted: k, attested_for: k, pin: SubjectPinCreatedForPresented, slot: GoogleEnrolmentAbsent)
 }
 
-fn first_write() -> GoogleEnrolmentAdmission {
+fn first_write() -> GoogleEnrolmentAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_first_sign_in_writes_the_enrolment_and_notifies"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_resent_sign_in_replays_its_own_record_and_does_not_notify"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_revoked_key_cannot_re_enrol"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "the_loser_of_a_two_subject_pin_race_leaves_no_enrolment"),
+  ]
+{
   fresh(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), k: key_a)
 }
 
 // The same request against a stored slot (the pin already holds this subject).
-fn again(slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission {
+fn again(slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_lost_pin_cas_whose_reread_is_this_subject_proceeds"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_resent_sign_in_replays_its_own_record_and_does_not_notify"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_revoked_key_cannot_re_enrol"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_slot_holding_another_keys_enrolment_refuses_instead_of_replaying"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "a_stored_record_differing_only_in_email_refuses_instead_of_replaying"),
+  ]
+{
   enrol(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), submitted: key_a, attested_for: key_a, pin: SubjectPinReread { subject: fx_subject }, slot: slot)
 }
 
@@ -290,14 +334,26 @@ test fn an_unadmitted_caller_holding_a_verified_signature_cannot_mint_an_approve
   keyed_refusals(source: forged_approver_source, callee: "admit_google_approver") >= 1
 }
 
+data laundered_deputy_source: String = "module probe_laundered_google_deputy\nimport std.types { NonEmptyStr }\nimport extdeps.auth.jwt { JwtBareString, JwtAudienceSingle }\nimport extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }\nimport gunbc.auth.approval_google_enrolment { GoogleEnrolmentAdmission, GoogleApproverAdmission, SubjectPinCreatedForPresented, GoogleEnrolmentAbsent }\nimport test.claim.approval_google_enrolment_witness { enrol, fresh, first_write, again, fx_approver_admission, fx_production_approver_admission, claims_as, key_a }\nfn via_enrol() -> GoogleEnrolmentAdmission {\n  enrol(claims: claims_as(email: \"operator@gunb.ai\" as NonEmptyStr, subject: \"forger\" as NonEmptyStr, signed_for: key_a), submitted: key_a, attested_for: key_a, pin: SubjectPinCreatedForPresented, slot: GoogleEnrolmentAbsent)\n}\nfn via_fresh() -> GoogleEnrolmentAdmission {\n  fresh(claims: claims_as(email: \"operator@gunb.ai\" as NonEmptyStr, subject: \"forger\" as NonEmptyStr, signed_for: key_a), k: key_a)\n}\nfn via_first_write() -> GoogleEnrolmentAdmission {\n  first_write()\n}\nfn via_again() -> GoogleEnrolmentAdmission {\n  again(slot: GoogleEnrolmentAbsent)\n}\nfn via_approver() -> GoogleApproverAdmission {\n  fx_approver_admission(claims: claims_as(email: \"operator@gunb.ai\" as NonEmptyStr, subject: \"forger\" as NonEmptyStr, signed_for: key_a), submitted: key_a)\n}\nfn via_production_approver() -> GoogleApproverAdmission {\n  fx_production_approver_admission(claims: claims_as(email: \"operator@gunb.ai\" as NonEmptyStr, subject: \"forger\" as NonEmptyStr, signed_for: key_a), submitted: key_a)\n}\n"
+
+data sealed_deputies: List<String> = ["enrol", "fresh", "first_write", "again", "fx_approver_admission", "fx_production_approver_admission"]
+
+// THE DEPUTY RED: an outside module calling any witness deputy (not the protected fold) is refused,
+// keyed by that deputy's own name.
+test fn an_outside_module_cannot_launder_an_enrolment_through_a_witness_deputy() -> Bool {
+  all(sealed_deputies, d => keyed_refusals(source: laundered_deputy_source, callee: d) >= 1)
+}
+
 test fn an_unadmitted_caller_cannot_supply_its_own_roster() -> Bool {
   keyed_refusals(source: forged_roster_fold_source, callee: "admit_google_approver_on_roster") >= 1
 }
 
-// THE GREEN HALF OF THE SEAL: this witness module's own source compiles with no admission refusal on
-// either fold, so the REDs above are the seals and not a broken closure.
+// THE GREEN HALF OF THE SEALS: this witness module's own source compiles with no admission refusal on
+// either fold or on any deputy, so the REDs above are the seals and not a broken closure; every
+// claim above running true is the named callers still resolving and executing.
 test fn the_admitted_fixtures_resolve_under_the_seals() -> Bool {
   let own = filesystem_read(path: "dag/test/claim/approval_google_enrolment_witness.dag").content
   keyed_refusals(source: own, callee: "admit_google_approver") == 0
     && keyed_refusals(source: own, callee: "admit_google_approver_on_roster") == 0
+    && all(sealed_deputies, d => keyed_refusals(source: own, callee: d) == 0)
 }
