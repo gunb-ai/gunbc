@@ -558,26 +558,6 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_build_step"),
-      authority: gunbc_cli_bin,
-      disposition: retired(reason: "fleet-desired withdrawal deleted gunbc.fleet.fleet_desired_admission_workflow; this consumer no longer exists. The admitted revision is origin/main."),
-    ),
-    medium: WorkflowArgv,
-    subject: V1Cli,
-    discovered_by: producer_workflow_argv,
-  },
-  {
-    boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.fleet.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_decide_push_step"),
-      authority: gunbc_cli_bin,
-      disposition: retired(reason: "fleet-desired withdrawal deleted the decide-push step with its workflow. No remaining production consumer of that argv."),
-    ),
-    medium: WorkflowArgv,
-    subject: V1Cli,
-    discovered_by: producer_workflow_argv,
-  },
-  {
-    boundary: v1cc_boundary(
       consumer: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
       authority: invoked_bins_row,
       disposition: retained_open(justification: "the converge build job packs every bin this roster names; the roster names claim_executor and gunbc. Closes with the two CLI rows above; a separate relation because the consumer reaches the bins through a .dag roster row rather than through a literal, and gunbc.ci.ci_release_bins records that this exact roster stranded fleet-converge for two days after FLOOR-Y when a member was removed without draining the row"),
