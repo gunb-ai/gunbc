@@ -42,7 +42,6 @@ import v2.compiler.lexical_scope {
   ChildValueScope,
   arrow_slot,
   arrow_slot_is_carried,
-  child_is_declaring_occurrence,
   child_value_scope,
   declaration_names_value,
   module_root_bindings,
@@ -264,10 +263,7 @@ fn reference_sites_in_children(
   let frame = node_value_frame(n: node)
   fold(node.children, init: SiteChildWalk { acc: acc, ordinal: 0, positional_ordinal: 0 }, f: fn(walk, edge) {
     SiteChildWalk {
-      acc: if child_is_declaring_occurrence(frame: frame, edge: edge, positional_ordinal: walk.positional_ordinal) {
-        walk.acc
-      } else {
-      reference_sites_in_edge(
+      acc: reference_sites_in_edge(
         acc: walk.acc,
         position: position,
         // ONE STEP OF THE SOLE POSITION AUTHORITY, taken as the walk descends: the issuer gets the
@@ -280,8 +276,7 @@ fn reference_sites_in_children(
           seen: child_value_scope(frame: frame, edge: edge, ordinal: walk.ordinal, positional_ordinal: walk.positional_ordinal)
         ),
         edge: edge
-      )
-      },
+      ),
       ordinal: walk.ordinal + 1,
       positional_ordinal: match edge.label {
         Positional => walk.positional_ordinal + 1
