@@ -1,6 +1,5 @@
 module v2.test.claim.emit.rust_record_construct_emit
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -41,8 +40,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_record_construct_emit_inferred_tree: InferredTree = InferredTree {
   root: dag_fixture_emitted_rec_fn,
-  facts: PartialFunction { lookup: rust_record_construct_emit_facts_miss },
-  arm_resolutions: constructed_root_arm_resolutions()
+  facts: PartialFunction { lookup: rust_record_construct_emit_facts_miss }
 }
 
 fn rust_record_construct_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
