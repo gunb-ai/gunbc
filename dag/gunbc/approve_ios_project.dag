@@ -1,6 +1,6 @@
 module gunbc.approve_ios_project
 
-import std.types { String, List, NonEmptyStr, Port, Bool, string_length, substring }
+import std.types { String, List, NonEmptyStr, Port, Bool }
 import std.optional { Optional, Present, Absent }
 import extdeps.apple.property_list { PlistEntry, plist_entry, plist_string }
 import extdeps.apple.info_plist {
