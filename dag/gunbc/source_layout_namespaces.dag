@@ -396,6 +396,7 @@ fn layout_namespaces() -> List<String> {
     "test.fixture.sole_constructor_sealed",
     "test.fixture.sole_constructor_variant_probe",
     "test.fixture.unit_variant_binding",
+    "test.fixture.union_member_shadow",
     "test.fixture.v1_consumer_census",
     "test.fixture.v1_witness_census",
     "test.fixture.variant_owner_homonym",
