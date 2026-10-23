@@ -1,0 +1,7 @@
+module test.fixture.derive_identity_collision.consumer
+
+import test.fixture.derive_identity_collision.value_word
+import test.fixture.derive_identity_collision.heap_word
+import std.types { Int }
+
+data one: Int = 1
