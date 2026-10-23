@@ -46,7 +46,7 @@ import gunbc.host.host_standup {
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution, bound_dissolution }
-import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest, OwnedProvisioningAdmitted, OwnedProvisioningRefused, admit_owned_provisioning }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
   CiRunnerParticipation,
@@ -94,15 +94,18 @@ import gunbc.fleet.fleet_enrollment {
 // over both enums, so a new phase or a new provisioning path does not compile until it is placed.
 fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool {
   match backing {
-    OwnedMachine { provisioning: OwnedProvisioning { control: c, delivery: d } } => match p {
-      BmcCredentialConverge => match c {
-        Bmc => true
-        NoOutOfBand => false
+    OwnedMachine { provisioning: OwnedProvisioning { control: c, delivery: d }, unit: _ } => match admit_owned_provisioning(provisioning: OwnedProvisioning { control: c, delivery: d }) {
+      OwnedProvisioningRefused { cause: _ } => false
+      OwnedProvisioningAdmitted => match p {
+        BmcCredentialConverge => match c {
+          Bmc => true
+          NoOutOfBand => false
+        }
+        OsInstallMechanismResolved => delivery_owes_install(d: d)
+        OsInstallActuated => delivery_owes_install(d: d)
+        ProviderGuestAdopted => false
+        HostConvergePolicyDerived => delivery_owes_install(d: d)
       }
-      OsInstallMechanismResolved => delivery_owes_install(d: d)
-      OsInstallActuated => delivery_owes_install(d: d)
-      ProviderGuestAdopted => false
-      HostConvergePolicyDerived => delivery_owes_install(d: d)
     }
     ProviderGuest { route: _, entitlement: _, resource: _ } => match p {
       BmcCredentialConverge => false

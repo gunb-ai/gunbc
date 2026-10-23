@@ -13,6 +13,7 @@ import gunbc.host.bmc_control_binding { BmcControlBinding, BmcControlStanding, B
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.fleet.fleet_host_backing {
   OwnedMachine, OwnedProvisioning, Bmc, NoOutOfBand, ProviderGuest,
+  OwnedProvisioningAdmitted, OwnedProvisioningRefused, OwnedProvisioningRefusalCause, admit_owned_provisioning,
   ProviderResourceAwaited, ProviderResourceAcquired,
 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
@@ -53,6 +54,7 @@ type HostControlRefusal
   = BmcRouteNotBound { standing: BmcControlStanding }
   | BmcHostNotManaged { host: HostIdentity }
   | NoOutOfBandRoute { host: HostIdentity }
+  | OwnedProvisioningNotAdmitted { host: HostIdentity, cause: OwnedProvisioningRefusalCause }
   | ProviderResourceNotAcquired { host: HostIdentity, read_obligation: NonEmptyStr }
   | ProviderControlUnobserved { host: HostIdentity, resource_id: NonEmptyStr, cause: String }
 
@@ -81,7 +83,9 @@ fn bmc_controlled_host(host: HostIdentity, standing: BmcControlStanding) -> Host
 // that resource -- an unrecorded acquisition, no read, or a refused one each refuse with its cause.
 fn enrolled_host_control(intent: HostEnrollmentIntent, provider_reads: List<AcquiredServerRead>) -> HostControlStanding {
   match intent.backing {
-    OwnedMachine { provisioning: OwnedProvisioning { control: ctl, delivery: _ } } => match ctl {
+    OwnedMachine { provisioning: OwnedProvisioning { control: ctl, delivery: dlv }, unit: _ } => match admit_owned_provisioning(provisioning: OwnedProvisioning { control: ctl, delivery: dlv }) {
+     OwnedProvisioningRefused { cause: cause } => HostControlRefused { refusal: OwnedProvisioningNotAdmitted { host: intent.host, cause: cause } }
+     OwnedProvisioningAdmitted => match ctl {
       Bmc => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
         ManagedHostNotManaged { host: _ } => HostControlRefused { refusal: BmcHostNotManaged { host: intent.host } }
         ManagedHostFound { control: c } => bmc_controlled_host(host: intent.host, standing: c)
@@ -89,6 +93,7 @@ fn enrolled_host_control(intent: HostEnrollmentIntent, provider_reads: List<Acqu
           bmc_controlled_host(host: intent.host, standing: c)
       }
       NoOutOfBand => HostControlRefused { refusal: NoOutOfBandRoute { host: intent.host } }
+     }
     }
     ProviderGuest { route: r, entitlement: _, resource: res } => match res {
       ProviderResourceAwaited { read_obligation: o } =>

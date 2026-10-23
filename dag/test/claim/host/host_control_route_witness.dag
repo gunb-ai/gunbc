@@ -10,13 +10,13 @@ import product.supplier.hetzner { hetzner_helsinki_route }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.decl_ref { decl_ref }
 import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
-import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited, OwnedMachine, OwnedProvisioning, OwnedControlRoute, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot }
+import gunbc.fleet.fleet_host_backing { ProviderGuest, ProviderResourceAwaited, OwnedMachine, OwnedProvisioning, OwnedControlRoute, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, VirtualMediaInstallWithoutBmc, OwnedProvisioningAdmitted, OwnedProvisioningRefused, admit_owned_provisioning }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation }
 import gunbc.host.host_control_route {
   HostControlStanding, HostControlled, HostControlRefused, ProviderApiControlRoute, BmcControlRoute,
-  BmcHostNotManaged, NoOutOfBandRoute, ProviderResourceNotAcquired, ProviderControlUnobserved, enrolled_host_control,
+  BmcHostNotManaged, NoOutOfBandRoute, OwnedProvisioningNotAdmitted, ProviderResourceNotAcquired, ProviderControlUnobserved, enrolled_host_control,
 }
 
 // THE PROVIDER'S ANSWER IS SUPPLIED AT THE API BOUNDARY and judged by the production judge
@@ -149,5 +149,21 @@ fn owned_intent(control: OwnedControlRoute, delivery: OwnedOsDelivery) -> HostEn
     host: operator_host_mtcollins1,
     participation: ci_runner_enrollment_participation,
     backing: OwnedMachine { provisioning: OwnedProvisioning { control: control, delivery: delivery }, unit: Absent },
+  }
+}
+
+// RED: an OS installed over virtual media has no route to run through without a BMC, so the pair refuses with
+// its typed cause through the one admission. CONTROL: the same delivery over a BMC is admitted.
+test fn a_virtual_media_install_without_a_bmc_is_refused_by_the_one_admission() -> Bool {
+  match enrolled_host_control(intent: owned_intent(control: NoOutOfBand, delivery: InstalledViaVirtualMedia), provider_reads: []) {
+    HostControlRefused { refusal: OwnedProvisioningNotAdmitted { host: _, cause: VirtualMediaInstallWithoutBmc } } => true
+    _ => false
+  }
+}
+
+test fn a_virtual_media_install_over_a_bmc_is_admitted() -> Bool {
+  match admit_owned_provisioning(provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }) {
+    OwnedProvisioningAdmitted => true
+    OwnedProvisioningRefused { cause: _ } => false
   }
 }
