@@ -7509,13 +7509,54 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String) -> ErrorNode? {
+// The solver's Unit placeholder is the synthesized core `unit_type` node, which has no declaration by
+// construction (OccurrenceSynthetic, kernel span): it is recognized as that node, so a source-authored
+// type spelled Unit, which carries a real occurrence and span, is never mistaken for it.
+fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
+  match source_node.occurrence_identity {
+    OccurrenceSynthetic => source_node.ident_span == unit_type.ident_span
+    _ => false
+  }
+}
+
+// A cast source is a nominal value with no declared conversion unless its DECLARATION is grounded onto
+// a kernel type or is the std.types `Unit` placeholder. Both exemptions are keyed on the exact
+// DeclarationRef read by type_reference_declaration_ref, never a module-path substring and never a
+// spelling: Nat is exempt because gunbc.structural_realization_bindings kernel_grounding_rows carries a
+// row whose carrier IS that declaration (a Nat is an Int, so `n as Int` is a declared identity), and a
+// foreign type spelled `Unit` is not std.types Unit. `Unit` is what the call-site generic solve answers
+// for a parameter it did not solve and what an absent literal infers as, so it is no established
+// nominal identity. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
+// itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
+// located, so it is counted by the diagnostic census rather than waved through.
+fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match type_reference_declaration_ref(n: source_node, source_indices: source_indices, env: env) {
+    Absent => !cast_source_is_solver_unit_placeholder(source_node: source_node)
+    Present { value: d } =>
+      !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
+        && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+  }
+}
+
+// A NOMINAL PRODUCT OR COPRODUCT HAS NO IMPLICIT ROUTE THROUGH `as`
+// (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text,
+// chain (i)). std.coercion dag_cast_rules rosters only Int, Float and Bool, so a nominal source
+// has no declared conversion to any target; abstaining here (the is_dag_cast_domain_type arms
+// below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
+// source_is_nominal is the head exposure of the source's declaration identity, the same authority
+// product_at_scalar_declared_type reads, never a bare spelling.
+fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
       if source_name == target_name { none }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
+        let diag = InternalError { message: msg, span: span }
+        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+      }
+      else if source_is_nominal {
+        let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
@@ -10541,7 +10582,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let inner_emissions = inner_result.emissions
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name)
+      let source_is_nominal = match inner_typed.inferred {
+        Present { value: Resolved { node: source_node } } =>
+          (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
+            || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: source_node, scope: scope)))
+            && cast_source_is_declared_nominal(source_node: source_node, source_indices: si, env: scope.type_env)
+        _ => false
+      }
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
