@@ -4516,13 +4516,18 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
 // ambient primitive contracts as a resolution authority -- the route's entries come from
 // native_lane_candidate_entries with no contract module, and neither do these. THE CLASS IS OPEN
 // (runs of different subject lists still load different populations); it closes at Seat 12's per-name
-// dispositions, added HERE and nowhere else, naming the tier each serves. The guard is
-// v2.test.claim.census_scoped_entries_boundary: it pins THIS function returning its input unchanged,
-// argv order, nothing appended -- a regression tripwire that REDs on any append inside the function.
-// It does not prevent a bypass at the call site below or a second acquisition route; that
-// prevention is the row's open ceiling, not this comment's claim. The executed same-subject agreement
-// with the route is read from the instrument //gunbc/instruments:v2-native-census-scoped beside the
-// route's own first fatal, never restated here.
+// dispositions, added HERE and nowhere else, naming the tier each serves. NO CLAIM FORM CAN GUARD
+// THIS BOUNDARY WHILE THE CONTRACT ROWS STAY OFF THE POPULATION -- measured, four probe rounds
+// (banked scratch/qc503-boundary-probe1 through probe4, causes recorded in the ledger row): every
+// claim shape, from `==` over lists down to a bare String-literal equality in a module importing
+// nothing but std.types, refuses at prepare/eval with the grounding-not-derived chain, because
+// claim grounding is itself admitted through the contract rows this ruling removes. An un-executed
+// claim is not a guard (DESIGN section 5), so none is landed. THE GUARD IS THE INSTRUMENT:
+// //gunbc/instruments:v2-native-census-scoped runs THIS census over supplied subjects beside the
+// route's own first fatal at the same identity; an append inside this function -- the exact wrongness
+// of the first fix -- changes the census's first fatal or binding rows against the route's, and the
+// comparison refuses at exactly that. It does not catch a bypass at the call site below or a second
+// acquisition route; that prevention is the row's open ceiling, not this comment's claim.
 fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
   subjects
 }
