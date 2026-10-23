@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_host_property_refusal_missing_from_the_infra_allowlist
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_host_property_refusal_missing_from_the_infra_allowlist: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_host_property_refusal_missing_from_the_infra_allowlist" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**a refusal whose cause is a property of the host is attributed to the subject because its signature is not in the floor step's infra allowlist** (the reclassifier is an enumeration of known infra signatures, so any NEW host-side refusal -- a cgroup file the runner lacks, a mount the slot never got, a quota the pool changed -- defaults to the structural bucket and reads as a defect in what was built rather than in where it ran.",
+
+    "ATTRIBUTION ONLY, NEVER ABSOLUTION (manager ruling, framed on the governing ruling memory_envelope_is_part_of_the_verdict): reclassifying an infra signature may change ONLY WHO the failure is attributed to -- the runner slot, whose shape is owned by gunbc.runner.runner_slot_desired -- never WHETHER the run fails. The refusal must keep failing the lane; silent pass and silent retry are both forbidden, because a subject step that refuses an unbounded slot is the ruling working, not malfunctioning. The defect this row carries is the DEFAULT, not the refusal: unmodeled causes fall toward subject attribution, and a reader of floor_class=structural goes hunting in the diff.",
+
+    "SPECIMEN, GitHub Actions run 39980978427 (gunbc, v2-bootstrap lane, branch lane16/red-claim-b-reason at 012f1ed61d26, 2026-10-23). The witness step exited 2 printing MEMORY ENVELOPE REFUSED cause=MemoryEnvelopeAbsent -- GUNBC_MEMORY_ENVELOPE_REQUIRED=slot requires a cgroup memory.max, and no cgroup on the job's path to the root carries a numeric memory.max -- and the step classified the failure floor_class=structural, because the emitted step's infra-signature reclassifier enumerates a fixed allowlist (the page-thrash stall signature, the sccache signatures, the spawn failure) and MemoryEnvelopeAbsent is not in it. The diff under test had already been measured green by claim_batch on the named witness module at that same head (22 PASS / 0 FAIL, srv1), so the structural attribution pointed at a subject that was not the cause. The rerun request was filed; both rerun and original were then cancelled as the head advanced (superseded), so whether a re-placement on a bounded slot clears the signature is NOT yet established -- the row files the mis-attribution, not a flake story, and a re-placement result belongs in this row as a later receipt.",
+
+    "RECOGNITION RULE: a structural floor failure whose printed cause names a HOST OR SLOT PROPERTY (cgroup memory files, mounts, quotas, provisioning) rather than a subject artifact is this class until the slot authority itself says otherwise -- check gunbc.runner.runner_slot_desired for the slot the job should have had, and attribute there first. The repair is to the allowlist's completeness (every host-property cause classified by WHERE the property lives, attribution-only, refusal preserved), and -- because a completion predicate over signatures is its own known trap -- the classifier's residual must stay structural-by-default for UNKNOWN causes while each KNOWN host-property cause is enumerated; the fix adds named arms, it does not invert the default.",
+  ],
+
+  evidence: [],
+}
