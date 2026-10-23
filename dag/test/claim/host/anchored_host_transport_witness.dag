@@ -30,7 +30,10 @@ import gunbc.host.anchored_host_transport {
   anchored_host_key_scan_argv_text,
   anchored_host_pattern_citation,
   anchored_host_token_source_citation,
+  anchored_host_transport_frontier_rows,
 }
+import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
 }
@@ -313,4 +316,20 @@ test fn the_transport_route_cites_the_executed_selectors() -> Bool {
   let source_cited = anchored_host_token_source_citation()
   string_contains(s: pattern_cited, pattern: "select_authorization_pattern:")
   && string_contains(s: source_cited, pattern: "select_access_token_source:")
+}
+
+// THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries three frontier
+// rows for what this diff does NOT yet do in production: nothing routes a live transport through
+// anchored_host_transport_of, no live readback has run, and nothing on the host consumes the placed key
+// (no sshd in this slice). They must be well-formed and stand in the census-closure registry -- a gap in
+// a comment dissolves; a row's trigger is checked.
+
+fn anchored_census_has_frontier_subject(row: FrontierRow) -> Bool {
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+}
+
+test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
+  count(anchored_host_transport_frontier_rows) == 3
+  && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
+  && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
 }
