@@ -1980,11 +1980,12 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Ok(head) => head,
         Err(cause) => return unreached(format!("head commit: {cause}")),
     };
-    // PHASE PRINTS (Lane 3, census hermeticity): the base and head censuses are each a silent block of
-    // tens of minutes (base ~57 min, shard ~40 min at the fleet's last measurement) -- a runner watching
-    // the log cannot tell a live census from a hang. These markers name the phase boundary; the
-    // transport stamps each line with its own UTC time, so the duration is the gap between two markers.
-    // They change no decision: the census still decides its own standing.
+    // PHASE PRINTS (Lane 3, census hermeticity): the base and head censuses are each a long silent
+    // block (their measured cost is a receipt in the ledger row
+    // gunbc.recurring_failure_mode.census_rows_read_the_loaded_population, never restated here) -- a
+    // runner watching the log cannot tell a live census from a hang. These markers name the phase
+    // boundary; the transport stamps each line with its own UTC time, so the duration is the gap
+    // between two markers. They change no decision: the census still decides its own standing.
     eprintln!(
         "namespace-wave-binding-diff: phase=base-census start base_ref={base_ref} head={head}"
     );

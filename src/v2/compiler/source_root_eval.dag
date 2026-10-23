@@ -4504,23 +4504,25 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
   })
 }
 
-// THE ACQUISITION ENTRIES FOR A SCOPED CENSUS: THE SUBJECT MODULES, EXACTLY, in argv order. This is the
-// ONE boundary a per-name ambient disposition would be admitted at, and the reason it is a named function
-// rather than `subjects` inlined at the call site: the resolver's ambient primitive-authority tier binds
-// an unimported spelling (list_push, first, contains, ...) by reading the LOADED POPULATION's symbol
-// index (v2.compiler.resolve resolve_atom_primitive_authority), so ANY module appended here changes which
-// ambient names bind for every subject -- in the fleet that is the base-vs-shard comparison (1,948-module
-// base vs 165-module shards of the same tree), where a byte-identical module's rows can flip. Two closure
-// attempts were executed and reversed (recurring_failure_mode: census_rows_read_the_loaded_population):
-// appending the contract module made the census bind through rows the ROUTE refuses at; joining it onto
-// the route made the route resolve through a contract, which N7 retires. The surviving ruling: NEITHER
-// path admits ambient contracts -- the route's entries come from native_lane_candidate_entries with no
-// contract module, and neither do these. The CLASS IS OPEN (two arbitrary subject lists still produce
-// divergent ambient rows for one module); it closes at Seat 12's per-name dispositions, added HERE and
-// nowhere else, naming the tier each serves. The claims that keep this boundary honest as a tripwire are
-// in v2.test.claim.census_scoped_acquisition; the executed same-subject agreement with the route is the
-// census's first fatal being byte-identical to the route's (measured at this head:
-// resolve_reason_unbound_symbol @ dag/std/algebra.dag bytes 5195..5204, list_push).
+// THE ACQUISITION ENTRIES FOR A SCOPED CENSUS: THE SUBJECT MODULES, EXACTLY, in argv order. This is
+// the ONE boundary a per-name ambient disposition would be admitted at, and the reason it is a named
+// function rather than `subjects` inlined at the call site: the resolver's ambient primitive-authority
+// tier binds an unimported spelling (list_push, first, contains, ...) by reading the LOADED
+// POPULATION's symbol index (v2.compiler.resolve resolve_atom_primitive_authority), so ANY module
+// appended here changes which ambient names bind for every subject. Two closure attempts were
+// executed and reversed; the measurements, the direction that survived, and what still open-closes
+// this live in the ledger row gunbc.recurring_failure_mode.census_rows_read_the_loaded_population --
+// read it before changing this function. The surviving ruling: NEITHER acquisition path admits the
+// ambient primitive contracts as a resolution authority -- the route's entries come from
+// native_lane_candidate_entries with no contract module, and neither do these. THE CLASS IS OPEN
+// (runs of different subject lists still load different populations); it closes at Seat 12's per-name
+// dispositions, added HERE and nowhere else, naming the tier each serves. The guard is
+// v2.test.claim.census_scoped_entries_boundary: it pins THIS function returning its input unchanged,
+// argv order, nothing appended -- a regression tripwire that REDs on any append inside the function.
+// It does not prevent a bypass at the call site below or a second acquisition route; that
+// prevention is the row's open ceiling, not this comment's claim. The executed same-subject agreement
+// with the route is read from the instrument //gunbc/instruments:v2-native-census-scoped beside the
+// route's own first fatal, never restated here.
 fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
   subjects
 }
