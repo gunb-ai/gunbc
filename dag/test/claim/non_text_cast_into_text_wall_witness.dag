@@ -5,7 +5,8 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
-  census_total_count
+  census_total_count,
+  census_count_at_key
 }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -70,5 +71,20 @@ test fn w_non_text_cast_not_into_text_is_still_accepted() -> Bool { blocking_cou
 // KEYED ON IDENTITY, NOT SPELLING: a corpus type that happens to be named Int is not the kernel Int,
 // so the wall does not fire on it (a leaf-name check would). A record cast is outside the cast domain
 // and this wall's question, so the fixture compiles with no blocking diagnostic.
-test fn w_user_declared_type_spelled_int_is_not_the_kernel_int() -> Bool { blocking_count(source: user_declared_int_source) == 0 }
+// A user-declared type spelled Int is a nominal product, so the nominal-source wall (validate_cast
+// source_is_nominal, test.claim.nominal_cast_wall_witness) refuses it -- but under ITS message, never
+// this wall's. The discriminator is the subject: this wall's text (truncated at 80 chars, the census
+// subject width) must not appear, and the nominal wall's must.
+fn refusals_at(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "InternalError", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn w_user_declared_type_spelled_int_is_not_the_kernel_int() -> Bool {
+  refusals_at(source: user_declared_int_source, subject: "invalid cast: Int as NonEmptyStr -- a non-text value has no route into text; bui") == 0
+    && refusals_at(source: user_declared_int_source, subject: "invalid cast: Int as NonEmptyStr: a nominal value has no declared conversion") == 1
+}
 
