@@ -79,12 +79,12 @@ fn scratch_repository(index_lock: Bool, already_candidate: Bool, racing_fetch: B
   }
   let upload_pack = concat(root, "/upload-pack")
   let racing = if racing_fetch {
-    Filesystem.Write(path: upload_pack, content: "#!/bin/sh\ngit -C \"$1\" update-ref refs/remotes/origin/main \"$2\"\nshift 2\nexec git-upload-pack \"$@\"\n").success
+    Filesystem.Write(path: upload_pack, content: "#!/bin/sh\ngit -C $1 update-ref refs/remotes/origin/main $2\nshift 2\nexec git-upload-pack $@\n").success
       && shell.Exec.RunArgv(program: "chmod", arguments: ["+x", upload_pack]).exit_code == 0
       && git.Core.ConfigLocalSetInRepo(repo: repo_path, key: "remote.origin.uploadpack", value: join([upload_pack, repo, candidate_sha], " ")).success
   } else { true }
   let locking = if index_lock {
-    Filesystem.Write(path: upload_pack, content: "#!/bin/sh\n: > \"$1/.git/index.lock\"\nshift\nexec git-upload-pack \"$@\"\n").success
+    Filesystem.Write(path: upload_pack, content: "#!/bin/sh\n: > $1/.git/index.lock\nshift\nexec git-upload-pack $@\n").success
       && shell.Exec.RunArgv(program: "chmod", arguments: ["+x", upload_pack]).exit_code == 0
       && git.Core.ConfigLocalSetInRepo(repo: repo_path, key: "remote.origin.uploadpack", value: join([upload_pack, repo], " ")).success
   } else { true }
