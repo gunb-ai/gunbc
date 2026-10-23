@@ -185,7 +185,7 @@ import extdeps.google.issue_tracker {
 }
 import gunbc.roadmap.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
@@ -507,7 +507,10 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
 // (transition inhibited, revision unobserved or drifted, authority unobserved, sessions
 // unobservable, liveness unobserved, gate not evaluated) = 503, a retry can succeed; SpawnFailed =
 // 502 (actuation behind the server failed; the receipt carries step, detail and the admitted launch
-// identity).
+// identity); SpawnLaunchPending = 202 (the start request is on the attempt-unit spool and its answer
+// was not there at the single read made right after the enqueue; the body names the entry, and the
+// client follows the attempt through /attempts.json, which serves the placement slot's
+// attempt_record_json for the node).
 
 fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
   match r {
@@ -536,6 +539,7 @@ fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => 200
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => 202
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
   }
 }
@@ -594,6 +598,8 @@ fn serve_dispatch_with_follow_ups(instance: HostDashboardInstance, r: BeltSpawnO
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnNotAdmitted { node_id: _, refusal: _ } => response
   }
@@ -1248,6 +1254,8 @@ fn serve_fabric_assignment_response(node_id: String, assignee_display: String, e
       serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry } =>
+      serve_text_response(status: 202, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: launch pending at spool entry ", entry, "\n"], ""))
     SpawnNotAdmitted { node_id: _, refusal } =>
       serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
   }

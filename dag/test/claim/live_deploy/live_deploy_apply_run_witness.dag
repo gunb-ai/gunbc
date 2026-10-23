@@ -30,7 +30,7 @@ import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
-  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
+  ApplyLegRootHelperSnapshot, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
 }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe }
@@ -82,7 +82,7 @@ fn ports_serving(command_code: Int, stdin_code: Int, source: ObjectSourceServeAd
     stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
-    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
@@ -144,7 +144,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegRepairDirectoryEntries { command: _ } => false
         ApplyLegHelperGrant { revision: _ } => false
         ApplyLegObjectSource => false
-        ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
+        ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => false
         ApplyLegBrokerTree { revision: _ } => false
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
@@ -324,7 +324,7 @@ fn ports_command_out(out: RunArgvTransportOutcome) -> DeployApplyPorts {
     stdin: fn(c, p) { observed(code: 0, err: "") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
-    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
@@ -412,7 +412,7 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegRepairDirectoryEntries { command: _ } => false
         ApplyLegHelperGrant { revision: _ } => false
         ApplyLegObjectSource => false
-        ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
+        ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => false
         ApplyLegBrokerTree { revision: _ } => false
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
@@ -442,7 +442,7 @@ test fn the_unit_plan_installs_the_sandbox_grant_before_the_unit_and_restarts_af
   match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), oidc_now: Absent) {
     ApplyPlanReady { legs: legs } => {
       let slice = step_index(legs: legs, step: "attempt-worker-slice")
-      let grant = step_index(legs: legs, step: "attempt-launcher-grant")
+      let grant = step_index(legs: legs, step: "attempt-unit-helper-snapshot")
       let unit = step_index(legs: legs, step: "serve-unit")
       let restart = step_index(legs: legs, step: "serve-restart")
       slice >= 0 && slice < grant && grant < unit && unit < restart
@@ -468,7 +468,7 @@ test fn a_refused_launcher_grant_stops_the_run_before_the_serve_unit() -> Bool {
     ApplyPlanReady { legs: legs } =>
       match deploy_apply_run_legs(legs: legs, ports: ports(command_code: 0, stdin_code: 0)) {
         ApplyRunFailed { step: s, reason: r, legs_run: n } =>
-          s == "attempt-launcher-grant" && r == "root-grant-boom" && n == step_index(legs: legs, step: "attempt-launcher-grant")
+          s == "attempt-unit-helper-snapshot" && r == "root-grant-boom" && n == step_index(legs: legs, step: "attempt-unit-helper-snapshot")
         ApplyRunOk { legs_run: _, reports: _ } => false
       }
     ApplyPlanRefused { step: _, reason: _ } => false
@@ -503,7 +503,7 @@ test fn the_publication_upsert_runs_whole_and_stops_at_a_failing_leg() -> Bool {
     stdin: fn(c, p) { observed(code: 0, err: "") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
-    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),
@@ -532,7 +532,7 @@ fn env_ports(read_out: String) -> DeployApplyPorts {
     stdin: fn(c, p) { if p == "D=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\n" { observed(code: 0, err: "") } else { observed(code: 1, err: "wrong payload") } },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
     helper_grant: fn(r) { grant_boom() },
-    root_helper_grant: fn(g, rc, r) { root_grant_boom() },
+    root_helper_snapshot: fn(l, sp, r, a) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
     retract: retract_ports(),

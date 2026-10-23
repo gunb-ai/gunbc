@@ -72,9 +72,4 @@ data quarantine_outside_gate_declines: List<QuarantineOutsideGateDecline> = [
     function: "explicit_initializer_is_an_acceptance_fixture",
     trigger: "the module test.claim.algebra_receiver_alias_witness is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
   },
-  QuarantineOutsideGateDecline {
-    module: "test.claim.host.host_build_cache_daemon_ensure_contract_witness",
-    function: "binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges",
-    trigger: "TWO THINGS END THIS ROW AND THEY ARE NOT THE SAME EVENT. (a) The module test.claim.host.host_build_cache_daemon_ensure_contract_witness is admitted by v2.workflow.required_floor required_gate_admits, after which the floor executes this probe and it moves to v2.workflow.floor_expected_red. (b) The arm this probe quarantines is repaired -- gunbc.host.build_cache_daemon_ensure.build_cache_ensure_is_needed no longer answers false on the ObserveStatsOk arm, so the probe evaluates true with no edit, its known-red row in gunbc.explicit_witness_admission deletes in that same change, and a decline row holding a probe that is no longer admitted has nothing left to hold and goes with it. (a) alone is NOT sufficient: admitting an un-repaired red into the gate turns a recorded debt into a failing required check." as NonEmptyStr
-  },
 ]
