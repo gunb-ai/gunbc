@@ -179,6 +179,39 @@ test fn onc_unit_at_unit_accepts() -> Bool {
   onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Unit {\n  let z: Unit = u\n  z\n}\n")
 }
 
+test fn probe_generic_none_as_bool_reason_is_unsolved() -> Bool {
+  match onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_unsolved_constructor_type_variable
+      }
+  }
+}
+
+test fn probe_generic_none_as_bool_reason_is_annotation() -> Bool {
+  match onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^bound_value_does_not_inhabit_annotation
+      }
+  }
+}
+
+test fn probe_generic_none_unused_let_reason_is_unsolved() -> Bool {
+  match onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int {\n  let c = id(x: none)\n  1\n}\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_unsolved_constructor_type_variable
+      }
+  }
+}
+
 test fn onc_none_at_a_non_optional_position_refuses() -> Bool {
   onc_none_assembles(body: "fn mk() -> Int { none }\n") && !onc_none_infer_accepted(body: "fn mk() -> Int { none }\n")
 }
