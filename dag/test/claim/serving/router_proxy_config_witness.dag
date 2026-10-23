@@ -1,0 +1,25 @@
+module test.claim.serving.router_proxy_config_witness
+
+import std.types { String, Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.serving.router_proxy_config { router_proxy_config }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn cfg() -> String { router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002) }
+
+test fn the_upstream_comes_only_from_the_authz_answer() -> Bool {
+  string_contains(cfg(), "proxy_pass http://$up;") && !string_contains(cfg(), "upstream ") && !string_contains(cfg(), "least_conn")
+}
+
+test fn retries_and_buffering_are_off() -> Bool {
+  string_contains(cfg(), "proxy_next_upstream off;") && string_contains(cfg(), "proxy_buffering off;") && string_contains(cfg(), "proxy_request_buffering off;")
+}
+
+test fn a_refused_authz_answer_never_forwards() -> Bool {
+  string_contains(cfg(), "if res.status ~= 200 then return ngx.exit(503) end")
+}
+
+test fn stream_end_is_permit_gated_and_ports_come_from_arguments() -> Bool {
+  string_contains(cfg(), "if ngx.var.permit == '' then return end") && string_contains(cfg(), "127.0.0.1:8443") && string_contains(cfg(), "'127.0.0.1', 9002") && string_contains(cfg(), "127.0.0.1:9001/authz")
+}
