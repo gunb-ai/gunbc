@@ -179,9 +179,11 @@ test fn a_unit_that_is_not_a_runner_unit_refuses_without_costing_a_leg() -> Bool
   }
 }
 
-// THE OBSERVE RECEIPT CARRIES THE IDENTITY, AND APPLY READS NOTHING FROM THE HOST: an apply that consulted
-// the host after writing it could report an identity its own writes had just changed, so the leg is gated
-// out of apply entirely. Both halves are decided by the dispatcher's ledger, not by a comment.
+// THE OBSERVE RECEIPT CARRIES THE IDENTITY, AND APPLY READS NOTHING FROM THE HOST: the bracket will read the
+// identity itself in its cap phase and carry it in its own verdict, so an apply-mode read here would be a
+// redundant leg on the way to a WRITE -- and it would read the host after this run's writes had landed. The
+// leg is therefore gated out of apply entirely, and BOTH halves are decided by the dispatcher's ledger, not
+// by a comment: observe emits exactly one cat and apply emits none.
 test fn the_observe_receipt_reports_the_identity_and_apply_costs_no_leg() -> Bool {
   let observed = bracket_run(
     legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],

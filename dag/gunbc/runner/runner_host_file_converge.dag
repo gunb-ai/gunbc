@@ -2821,8 +2821,9 @@ fn runner_host_file_converge_ci_wet() -> ProcessExit
 // joins on the slot's BARE name, which is why every running idle listener is reported as having no
 // registration on the roster and caps are withheld. THIS CHANGE DOES NOT FIX THAT JOIN; it lands only the
 // read, so the bracket's later change can consume it. When that change lands it must call
-// slot_current_registration_over_unit rather than derive the identity again, and it should render this line
-// in apply mode too, from its own cap-phase verdict.
+// slot_current_registration_over_unit rather than derive the identity again, and the line should STAY empty
+// in apply mode: the bracket will read the identity itself in its cap phase and carry it in its own verdict,
+// so a second read here would be a redundant leg on the way to a WRITE, reading the host after writes landed.
 //
 // SO THE ONE CALLER OF THIS READ, AT THIS HEAD, IS THIS RECEIPT. No consumer exists in the bracket yet; the
 // claim made here is about the read's SHAPE, which a real host has to confirm and a witness cannot: the live
