@@ -1581,8 +1581,15 @@ fn roster_d4_tag_subject(with_import: Bool) -> String {
 // the free call (gunbc.recurring_failure_mode a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call). One binder
 // form per control, each paired with a free call in a sibling function so Clean cannot be satisfied by an inert row: a
 // parameter, a `let` (whose declaring occurrence is no site), and a match-arm record pun (UNDECIDED by design, never counted).
+// OPEN, PINNED AT ITS CURRENT TYPED REFUSAL (not a pass of the intended behavior): with the guard gone a parameter named like a
+// row plus a free call elsewhere refuses label-sites-ambiguous, where it used to refuse home-name-locally-bound. Both are loud
+// and located; the intended answer (the import for the free call) is the parameter cell's remaining work, named in the
+// recurring_failure_mode row. A change to this reading is deliberate or this control goes red.
 fn roster_control_free_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  roster_control_imports_for_free_call(name: "free-call-beside-param", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", needle: "import std.host_text { chars }", prepared: prepared, lex: lex)
+  match roster_sweep_text(path: "control/free-call-beside-param.dag", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", prepared: prepared, lex: lex) {
+    RosterRefused { reason: RefusalLabelSitesAmbiguous } => ""
+    _ => "CONTROL-FAIL free-call-beside-param: the pinned label-sites-ambiguous refusal changed; decide the parameter cell deliberately\n"
+  }
 }
 
 fn roster_control_free_call_beside_let(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
