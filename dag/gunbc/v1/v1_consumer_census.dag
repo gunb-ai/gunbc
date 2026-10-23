@@ -1156,7 +1156,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retired(reason: "the transport's cargo args name the v1-compiler package to run the interpreter-dispatch bijection roster, whose subject is the v1 interpreter's dispatch table. Same class as the recorded-fixture transport: an instrument built to measure a property OF the seed has no successor obligation once the seed is gone")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.live_deploy.emit", decl_name: "emit_artifact_upsert",
+      module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_executable_plan",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the DEPLOYED PRODUCT: the live-deploy pipeline installs the gunbc source tree and binary onto a served host, so v1 is not only a build-time dependency of this repository but a shipped artifact on srv1. This is the relation that makes ProductsV1Free a separate finish line from InterpreterDeleted -- deleting the crate does not by itself remove it from a machine that already runs it. Closes on: the deployment artifact naming a native binary AND the deployed hosts having converged onto it, which is a fleet condition rather than a repository one")
     ),
@@ -1198,7 +1198,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
     v1_dag_argv_consumer(
       module_path: "gunbc.live_deploy.member_observe", decl_name: "release_executable_source_path",
       authority: gunbc_cli_bin, subject: V1Cli,
-      disposition: retained_open(justification: "the path live-deploy READS to observe what a served member is running, the observation twin of gunbc.live_deploy.emit emit_artifact_upsert. Closes on the same fleet condition: a deployed member running a native binary AND this observation naming it, since an observer left pointed at the old path reports absence rather than the truth")
+      disposition: retained_open(justification: "the path live-deploy READS to observe what a served member is running, the observation twin of gunbc.live_deploy.apply_legs deploy_apply_executable_plan. Closes on the same fleet condition: a deployed member running a native binary AND this observation naming it, since an observer left pointed at the old path reports absence rather than the truth")
     ),
     v1_dag_argv_consumer(
       module_path: "gunbc.cli_invoke", decl_name: "claim_executor_bin_name",
