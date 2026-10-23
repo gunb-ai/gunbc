@@ -1,0 +1,55 @@
+module extdeps.proxy.openresty
+
+import std.types { NonEmptyStr, brand }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "openresty.org/en/ngx-lua-module.html"
+  }
+}
+
+data openresty_proxy_pass_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nginx.org/en/docs/http/ngx_http_proxy_module.html"
+  }
+}
+
+type OpenResty
+  = | OpenRestyProject
+
+data openresty: OpenResty = OpenRestyProject
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.proxy.openresty",
+      decl_name: "openresty",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.proxy.openresty.extdeps_external_authority_anchor,
+  further_citations: [extdeps.proxy.openresty.openresty_proxy_pass_authority]
+}
+
+type OpenRestyVersion = NonEmptyStr where brand("OpenRestyVersion")
+
+data openresty_1_27_1_1: OpenRestyVersion = "1.27.1.1" as OpenRestyVersion
+
+type ProxyNextUpstream
+  = | ProxyNextUpstreamOff
+
+type ProxyBuffering
+  = | ProxyBufferingOff
+
+type ProxyRequestBuffering
+  = | ProxyRequestBufferingOff
+
+type UpstreamBlockPresence
+  = | NoUpstreamBlock
+
+data openresty_streaming_directives_note: NonEmptyStr = "These are the directives of the pinned build that decide whether a response is relayed as it arrives and whether the proxy may pick a second upstream: proxy_pass with a variable target (no upstream block, so no balancing or health state), proxy_next_upstream off (no retry onto another peer), proxy_buffering off and proxy_request_buffering off (chunks pass through), and the lua phase hooks access_by_lua (before forwarding) and log_by_lua (after the request finishes, on every end). Whether the log phase fires on client abort and on upstream reset was observed on this build; its outcome variables were not reliable on abort, so they are not modeled here." as NonEmptyStr
