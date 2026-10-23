@@ -116,6 +116,22 @@ fn reading_is_bound_to(r: BindingReading, identity: String) -> Bool {
   match r { ReadBoundToDeclaration { target: t } => t == identity  _ => false }
 }
 
+// THE IDENTITY VERDICT for checks 1 and 2: the same KitFinding, decided by the judge over the census's printed output
+// for the unimported and imported fixture modules (one stdout each, as ambient-name-census prints them). This is the
+// verdict a wave's real census output feeds; kit_import_differential is the in-claim count stand-in that answers the
+// same question without that output, and a wave claim that has the stdout uses this one.
+fn kit_binding_finding(unimported_stdout: String, imported_stdout: String, row: AmbientNameHome) -> KitFinding {
+  let spelling = row.name
+  let red = binding_reading(stdout: unimported_stdout, module: "probe_migration_kit", spelling: spelling)
+  let green = binding_reading(stdout: imported_stdout, module: "probe_migration_kit", spelling: spelling)
+  if !reading_is_unbound(r: red) {
+    match red { ReadNotReached => KitNotRunnable { cause: "unimported occurrence not reached" as NonEmptyStr }  _ => KitNoImportDoesNotRefuse }
+  } else {
+    if reading_is_bound_to(r: green, identity: row.home + "." + spelling) { KitMigrated }
+    else { match green { ReadNotReached => KitNotRunnable { cause: "imported occurrence not reached" as NonEmptyStr }  _ => KitImportDoesNotClear } }
+  }
+}
+
 // CHECK 3, RETIRED CONTRACT ABSENT: a source that imports the retired *_contract from std.primitives must add blocking
 // rows over a baseline once the row is retired (the import refuses: nothing resolves through it), while a CONTROL
 // contract that still exists adds none (the pairing positive: it proves the fixture can import a contract at all, so a
