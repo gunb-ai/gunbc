@@ -1,0 +1,89 @@
+module v2.test.claim.compiler.unit_bool_native_controls
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.types { Bool, String }
+import v2.compiler.infer { infer }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ubn_artifact: Artifact = Artifact { kind: SourceFile, id: ^unit_bool_native_controls_artifact, file_path: "src/v2/pilot/ubn_pilot.dag" }
+data ubn_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^unit_bool_native_controls_std_artifact, file_path: "src/v2/pilot/ubn_std_pilot.dag" }
+
+// The NATIVE route of the two floor breaks the v1 seed accepts (gunbc.recurring_failure_mode v1_elaborates_bare_none_to_optional_unit_and_lets_unit_inhabit_bool): a Unit value at a Bool annotation, and a bare `none` whose element type nothing closes. Judged on assemble_program_from_ingest -> infer, the real acceptance path, not the v1 interpreter.
+fn ubn_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^unit_bool_native_controls_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ubn_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      ubn_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\n\ntype Unit\n\n", body), artifact: ubn_artifact),
+      ubn_witness(src: osd_std_optional(), artifact: ubn_std_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn ubn_accepted(body: String) -> Bool {
+  match ubn_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn ubn_refused_with(body: String, reason: Symbol) -> Bool {
+  match ubn_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+// RED: Unit at a Bool annotation refuses at the let position.
+test fn ubn_unit_at_a_bool_let_refuses() -> Bool {
+  ubn_refused_with(body: "fn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n", reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
+}
+
+// MUTATION CONTROL: the same source with only the parameter type changed Unit -> Bool is accepted, so the refusal above is the Unit at Bool judgment and nothing else.
+test fn ubn_bool_at_a_bool_let_accepts() -> Bool {
+  ubn_accepted(body: "fn f(u: Bool) -> Bool {\n  let z: Bool = u\n  z\n}\n")
+}
+
+// POSITIVE: Unit at its own annotation is accepted.
+test fn ubn_unit_at_a_unit_let_accepts() -> Bool {
+  ubn_accepted(body: "fn f(u: Unit) -> Unit {\n  let z: Unit = u\n  z\n}\n")
+}
+
+// RED: a bare `none` that no declared position closes is the unsolved-constructor refusal, never Optional<Unit>.
+test fn ubn_bare_none_binder_is_unsolved() -> Bool {
+  ubn_refused_with(body: "fn f() -> Bool {\n  let c = none\n  true\n}\n", reason: ^infer_unsolved_constructor_type_variable)
+}
+
+// POSITIVE: the same `none` at a declared Optional position takes its element type from the declaration.
+test fn ubn_none_at_a_declared_optional_accepts() -> Bool {
+  ubn_accepted(body: "fn f() -> String? {\n  let c: String? = none\n  c\n}\n")
+}
