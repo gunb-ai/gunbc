@@ -360,6 +360,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GUNBC_WAVE_SHARD: ${{ inputs.wave_shard }}
           WAVE_RECEIPT_STAGING: ${{ runner.temp }}/instrument-dispatch/wave-staging
+          QC503_READ_PROBE: '1'
+          GUNBC_FLATTEN_SITE_DUMP_SECS: '999999'
         if: inputs.label == '//gunbc/instruments:namespace-wave-binding-diff' && inputs.wave_shard != 'none'
       - name: Move the staged receipts into the reader's directory
         id: wave_receipt_import
@@ -384,6 +386,8 @@ jobs:
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
           GUNBC_WAVE_SHARD: ${{ inputs.wave_shard }}
+          QC503_READ_PROBE: '1'
+          GUNBC_FLATTEN_SITE_DUMP_SECS: '999999'
       - name: Copy the reader's receipts into the artifact tree
         id: wave_receipt_export
         run: |
