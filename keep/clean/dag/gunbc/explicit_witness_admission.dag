@@ -1,0 +1,933 @@
+module gunbc.explicit_witness_admission
+
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  WitnessKind,
+  CorpusWitnessKind,
+  ExecutionWitnessKind,
+  witness_kind_eq,
+  schedule_witness_entry_roster_contains
+}
+import std.witness_admission {
+  WitnessConsumerCadence,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
+  BinWitnessWet,
+  QuarantineProbeExpectRed,
+  OfflineLocalRecipe,
+  FixtureExplicitRoster,
+  NoConsumer,
+  WitnessExecutionBudget,
+  FastLaneEvalBudget,
+  SubstrateLongLaneEvalBudget,
+  WitnessExpectedVerdict,
+  ExpectWitnessHolds,
+  ExpectAssertionFalse,
+  ExpectTypedPreVerdictRefusal,
+  PreVerdictPhase,
+  PreVerdictResolve,
+  PreVerdictCause,
+  UnboundImportedVariantConstructor,
+  witness_cadence_has_scheduled_route
+}
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.algebra { Cons, Empty }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception_identities }
+
+// THE function-grain authority for exact witness admission. One row per admitted witness, carrying
+// the witness identity, the cadence that executes it, and its own reason and dissolve_on.
+// Everything else about that witness is DERIVED: the cadence roster the scheduler runs, the
+// discovery exclusion, and the consumer manifest all read these rows; none of them is authored
+// beside them. It replaces a DUAL REPRESENTATION carried until 2026-08-03 — a path-substring
+// WitnessExclusionRow classified QuarantineProbeExpectRed (removing a whole FILE from discovery)
+// sitting beside a probe_red(entry, f) roster row (enrolling one FUNCTION on the probe cadence).
+// Those are not the same fact, but they were two hand-kept representations of one admission
+// relationship with nothing deriving either from the other, and the reconciliation that guarded
+// them was weaker than its name: it proved only that some scheduled row's entry CONTAINED the
+// exclusion pattern as a substring. It proved neither exact identity, nor one schedule row per
+// exclusion, nor reverse coverage, nor that every function hidden by the file-level exclusion had a
+// consumer, nor that the pair deleted atomically. The cost was paid in a real merge: #7688 had to
+// delete one exclusion/probe pair while hand-preserving two newly added ones, and taking either
+// side wholesale would have dropped required admission rows with no conflict marker. The exact
+// grain also dissolves the trade that forced the workaround: a green sibling in a quarantined file
+// used to be excluded with it, so an author had to split the file or downgrade its classification
+// and say so in prose (the receipt is the self_host_03_normalize exclusion row, whose reason reads
+// that QuarantineProbeExpectRed on the file would orphan its sibling). A row here reaches exactly
+// one function; siblings are untouched.
+
+// SEPARATION FROM PATH POLICY (operator ruling, this lane). Exact witness admission and broad path
+// policy are different kinds of fact and must not share a substring-based representation — that
+// fusion is the root of the substring-overlap weakness above. Directory- and file-wide policies
+// (`test/claim/long/` is the long-test home; `test/manual/` is offline) stay in
+// gunbc.ci.ci_layer_roots witness_exclusion_frontier, which is now a PATH POLICY carrier only:
+// witness_exclusion_row_well_formed REFUSES a QuarantineProbeExpectRed row there, so the fused
+// representation is unwritable for this cadence rather than merely reconciled. PRECEDENCE, and it
+// is total: a function with an exact admission is decided by that admission; path policy applies
+// only to functions with none. That is why a path-offline file may legitimately contain an
+// exact-admitted function (self_host_03_normalize_behavioral_witness.dag: the receipt is
+// quarantined here, its sibling is offline by the file's path row) without either fact restating
+// the other. THE REMAINING FUSION IS COUNTED, NOT SILENT: BinWitnessWet, FalsifierRehomedBinWet,
+// FalsifierSubstrateLongLane and FalsifierSelfHostWet still author a path row beside their
+// function-grain rosters. Their populations are not the bad state today — every one is either a
+// file-grain roster row (ScheduleWitnessEntry's empty-function form, which covers every function in
+// the entry by construction) or fully enumerated, measured on this change's tree — so they are a
+// migration frontier, not a live defect. Dissolve-on: each cadence's roster moves into
+// explicit_witness_admissions and its path rows delete, at which point
+// witness_exclusion_row_well_formed refuses that cadence too and the last enum arm that can appear
+// in the path carrier is gone.
+
+// One row carries all three axes of std.witness_admission independently: cadence (which consumer
+// runs it), budget (how much eval time IT needs, never a property of the batch holding it) and
+// expected (which verdict is agreement, at FUNCTION grain). The row is the single authority for
+// each; the batch rosters, the scheduler ceiling and the expectation the executor matches per
+// result are all DERIVED from it. Before this split a row declaring a long budget had to join a
+// second batch to obtain one — see witness_admission_axis_separation_note for the measurement that
+// produced the correction.
+
+type ExplicitWitnessAdmission {
+  witness: ScheduleWitnessEntry
+  cadence: WitnessConsumerCadence
+  budget: WitnessExecutionBudget
+  expected: WitnessExpectedVerdict
+  reason: NonEmptyStr
+  dissolution: DissolutionCondition
+}
+
+fn known_red_probe_expecting(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  expected: WitnessExpectedVerdict,
+  reason: NonEmptyStr,
+  dissolution: DissolutionCondition
+) -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry { entry: entry, function: f, kind: kind },
+    cadence: QuarantineProbeExpectRed,
+    budget: budget,
+    expected: expected,
+    reason: reason,
+    dissolution: dissolution,
+  }
+}
+
+fn known_red_probe(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  reason: NonEmptyStr,
+  dissolution: DissolutionCondition
+) -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: entry,
+    f: f,
+    kind: kind,
+    budget: budget,
+    expected: ExpectAssertionFalse,
+    reason: reason,
+    dissolution: dissolution
+  )
+}
+
+// The narrow arm: a witness whose assertion never RUNS, because the run stops in an earlier phase.
+// Its agreement is a typed refusal at the declared phase and cause, not a false verdict, and
+// separating it is what stops an arbitrary corpus resolve failure from reading as every quarantine
+// holding — see std.witness_admission witness_expected_verdict_split_note for the defect and for
+// the bound on how exactly the observed cause is matched today. A row belongs here only when the
+// phase and the cause are BOTH known and named; a witness that merely happens to be failing to
+// resolve for an undiagnosed reason is ordinary known_red_probe, and its resolve failure is an
+// infrastructure fact rather than agreement.
+
+fn known_red_pre_verdict_probe(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  phase: PreVerdictPhase,
+  cause: PreVerdictCause,
+  reason: NonEmptyStr,
+  dissolution: DissolutionCondition
+) -> ExplicitWitnessAdmission {
+  known_red_probe_expecting(
+    entry: entry,
+    f: f,
+    kind: kind,
+    budget: budget,
+    expected: ExpectTypedPreVerdictRefusal { phase: phase, cause: cause },
+    reason: reason,
+    dissolution: dissolution
+  )
+}
+
+data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness red on main for a feature gap owned by a named lane. It is a RED CONTROL for that lane, not a broken test — deleting it would discard the discriminating input, while leaving it in per-PR discovery would red every wide PR on a debt that PR did not create. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) — the climb deletes the quarantine machinery, never the evidence). A DISSOLVE_ON MUST NAME A FACT THAT IS FALSE TODAY AND BECOMES TRUE EXACTLY WHEN THE FIX LANDS, and this requirement is here because two rows failed it in one night. A trigger keyed on a condition already satisfied is not a trigger, it is a deletion licence with a date on it: whoever next reads it dissolves a quarantine standing in for a defect that is still live, and the row reads as dissolved-per-its-own-terms while the wall it substituted for does not exist. RECEIPT 1, another lane's: the #8592 row's trigger read 'the mirrors are regenerated so the compiled harness CONTAINS declared_arg_types_for_method' — that symbol has been present in v1_compiler_infer_lookup.rs all along, so the trigger was satisfiable from the moment it was written, while the defect it quarantines is live (on main the function still takes no TypeEnv, which is precisely the bug). RECEIPT 2, MY OWN, AND IT IS THE MORE INSTRUCTIVE ONE BECAUSE THE DELETION WAS STILL CORRECT: the min-length row's trigger read 'the compiled harness contains the wall'. Measured, where_refinement_predicates_covered has 2 occurrences in that mirror on main and always did, so a reader checking 'the wall' would have dissolved the row at any point in the preceding weeks. It dissolved correctly only because the author happened to grep where_predicate_guaranteed_min_length, which was 0 on main and 2 after the regen. THE TRIGGER DID NOT ENCODE WHICH FACT DECIDED IT; the right answer came from the reader, not the row. So: name the symbol, signature or behaviour whose ABSENCE is the gap — a new parameter, a specific new function, a named repro passing — never a category word like 'the wall' or 'the fix', and never a symbol that predates the change. The test a reviewer applies: run the trigger's check against main TODAY, and if it passes, the trigger is defective and the row is unprotected. The roster must not grow silently: a new admission carries a reason naming the diagnosis and owner plus a dissolve_on, both refused empty by NonEmptyStr, and a row whose witness runs green locally is stale and deletes. Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function> -- AND FOR AN ExecutionWitnessKind ROW, --wet AS WELL, WITHOUT WHICH THE RECIPE CANNOT DO WHAT THE ROW ASKS OF IT. claim_batch is hermetic by default, so a wet row invoked by the recipe as written above never reaches its subject: measured 2026-08-26 on self_host_logic_behavioral_receipt_holds, it returns FAIL in 87 seconds with 'hermetic route has no arm for Dir: the claim never reached its subject, so this is a route gap and not a verdict', naming three undeclared dispatches (Filesystem.Read, git.Inspect.Toplevel, shell.Mktemp.Dir). The refusal is well-modeled and says plainly that it is not a verdict; the defect was in the recipe, which every wet dissolution condition below cites as the way its row greens. A row whose only recorded closing move cannot close it is the shape DESIGN records for a gate whose sole green is the forbidden action -- here arrived at from the other side, with no green reachable at all. CorpusWitnessKind rows run on the hermetic falsifier probe batch; ExecutionWitnessKind rows run on the falsifier wet quarantine batch."
+
+data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
+  known_red_probe(
+    entry: "dag/test/claim/constructor_tag_route_probe_red.dag",
+    f: "same_arm_one_t_two_coproducts_must_refuse",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Receipt for gunbc.recurring_failure_mode one_type_variable_bound_to_two_distinct_coproducts. The assertion RUNS and returns false: same_arm<T>(a: T, b: T) called with P1 (coproduct Pa) and Q1 (coproduct Pb) is ACCEPTED by infer and answers false, where the compiler floor (DESIGN section 4b, values inhabit declared types) owes a typecheck refusal. Measured on both the v1 route and the v2 route, remote runner, main b69fc48027. Owner: the infer lane stern-bat-401 dispatched; the constructor-tag carrier item (node adhoc-b2d312a6-1ee) is gated on it through its RED (iii).",
+    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations: this witness can no longer return a verdict (the call stops compiling), so it is NOT a regression control and does not green: the fix PR (#14037) deletes this row and both probe files in favour of its refusal-at-typecheck control on the real compile path, and updates the recurring_failure_mode row rung")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/manual/constructor_tag_route_probe_red.dag",
+    f: "same_arm_one_t_two_coproducts_must_refuse",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Receipt for gunbc.recurring_failure_mode one_type_variable_bound_to_two_distinct_coproducts. The assertion RUNS and returns false: same_arm<T>(a: T, b: T) called with P1 (coproduct Pa) and Q1 (coproduct Pb) is ACCEPTED by infer and answers false, where the compiler floor (DESIGN section 4b, values inhabit declared types) owes a typecheck refusal. Measured on both the v1 route and the v2 route, remote runner, main b69fc48027. Owner: the infer lane stern-bat-401 dispatched; the constructor-tag carrier item (node adhoc-b2d312a6-1ee) is gated on it through its RED (iii).",
+    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations: this witness can no longer return a verdict (the call stops compiling), so it is NOT a regression control and does not green: the fix PR (#14037) deletes this row and both probe files in favour of its refusal-at-typecheck control on the real compile path, and updates the recurring_failure_mode row rung")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/body_lowering/map_literal.dag",
+    f: "ml_an_elaborated_map_infers_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "map arm control: a well-typed elaborated map infers. RED beyond the map arm: measured with gunbc#12760 merged, infer refuses infer_grounding_not_derived located (NodeLocus) at the MapIntroductionEntry { .. } construct, identically for the HEADED spelling and under Map<String, Int>. The discriminating specimen ml_a_same_module_generic_entry_construct_infers_holds (generic record declared in the same module) refuses the same way, so this is neither cross-module declaration reading (#12726 PR2) nor the v2 Bool fork. Owner: smart-newt-725 (record construct typing, #12763 lineage), per quiet-gull-780.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/body_lowering/map_literal.dag",
+    f: "ml_a_same_module_generic_entry_construct_infers_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "the discriminating specimen for ml_an_elaborated_map_infers_holds: LocalEntry<K, V> and local_from_entries declared beside the data decl, so no cross-module declaration is read; infer refuses infer_grounding_not_derived at the LocalEntry { .. } construct (measured with gunbc#12760 merged; without it, unbound String refuses first). Owner: smart-newt-725.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag",
+    f: "w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "RE-ENROLLED ON THE RESIDUAL BY gunbc#12695: the original HostIdentity-at-Box specimen below now refuses through the produced-side refinement peel in kernel_value_declared_type_mismatch (its chain bottoms out in kernel String), so that witness is a permanent regression control; this row's TRIGGER DID NOT FIRE, and the enrolled RED is now a brand refinement over a PRODUCT (Tagged = Other where brand) at Box, measured admitted (0 refusals vs 1 for plain Other). The original text follows. THE DISCRIMINATING RED FOR A LIVE FLOOR HOLE, enrolled red because the defect is live rather than because it is new. A branded where-refinement value (HostIdentity, which is NonEmptyStr where brand(...)) passed at an ordinary product formal (Box) reaches NO refusal at the direct call argument seam, so a value of an unrelated constructor is admitted in silence at a declared position -- the DESIGN 4b floor sentence `values inhabit declared types`. The two chains share nothing, which makes this the STRONGER incompatibility: pairs whose chains merely MEET are at least reported undecidable, while this one mints a positive inhabitance claim. ATTRIBUTION IS MEASURED ON BOTH SIDES, NOT ASSERTED, and it is PRE-EXISTING rather than introduced: the same control over the same fixtures and the same corpus, run against two compilers differing only in the three stage0 infer mirrors, evaluates false under BOTH main`s mirrors and the candidate`s. It was surfaced by review 62172 as a consequence of a where-refinement exclusion in the nominal-product arm, and that attribution does not survive the measurement -- removing the exclusion does not change the result, because the product arm was not making the refusal the exclusion was thought to suppress. The assertion RUNS and returns false, so the expectation is ExpectAssertionFalse and not a pre-verdict refusal; the fixtures resolve cleanly. Owner: the declared-type inhabitance lane.",
+    dissolution: unbound_dissolution(description: "the declared-type inhabitance judgment's FINAL DEFAULT stops accepting: Inhabits for an identity-established pair requires a NAMED POSITIVE COMPATIBILITY AUTHORITY -- there is no implicit accepting residual -- sufficient for the HostIdentity-at-Box specimen to refuse. THE GRAIN IS DELIBERATE, because the obvious phrasing is a FALSE TRIGGER: `refuses every pair whose refinement chains are disjoint` is BROADER THAN THE DEFECT and would license an OVER-REFUSING repair, since disjointness is not itself evidence of incompatibility. The defect is the accepting residual at the final default, which is what this trigger names. It is the capability and not any artifact contributing to it: neither a control existing nor a diagnostic variant being declared retires this row. When that refusal lands, this witness greens with no edit to it and this admission row deletes in the same change, promoting the control to an ordinary permanent regression control for the disjoint case")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_callable_witness.dag",
+    f: "shorthand_match_binder_is_callable",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "The subject is measured on the real acceptance path, not inferred: the assertion RUNS and returns false, because the probe compiles the offending construct as a SOURCE STRING through gunbc.compile_census_probe blocking_subject_count_for rather than writing the call in this module -- a direct call would fail to RESOLVE and take the whole module with it, including the accepted controls, which are what make these reds mean 'this construct specifically' rather than 'this file does not compile' (DESIGN 4b(4)). The oracle is scoped to class InternalError and subject function:<name>, the exact form gunbc.compile_diagnostic_census endorses, so each cell asks only whether ITS OWN call refused and no unrelated row in the closure can redden or green it. Owner: the generic-alias callable lane. THE CAUSE IS GENERIC ALIAS INSTANTIATION SPECIFICALLY, and every other candidate is refuted by a cell in this same file. inline_typed_field_match_binder_is_callable PASSES -- a shorthand match binder at the same position over a field typed `g: fn(Int) -> Int` -- so binder kind and position are innocent. inline_typed_parameter_is_callable PASSES, so parameters are innocent; a census finds 115 sites bare-calling an fn-typed parameter and compiling, every one declaring a literal arrow. And non_generic_alias_field_match_binder_is_callable PASSES over `type IntFn = fn(Int) -> Int`, which is the cell that narrows this from 'no function-type alias is peeled' to 'a GENERIC alias is not instantiated to its arrow' -- the two name different repairs in different places, and a trigger naming the wrong one would be satisfied while the capability stayed dead. So a callable declared ApplicationUnary<Int> is not instantiated back to fn(Int) -> Int, and nothing downstream recognises it as callable, regardless of how or where it was bound. This is the same failure this branch exists to repair, one layer over: #10625 carries generic application evidence to where it is needed, and this is a generic alias not surviving to the call. WHY NOTHING EVER REDDENED, measured rather than inferred, and it is a property of the corpus rather than an absence of evidence: v2.lens.testgen CorpusLensDriver is the ONLY generic function-type alias in the tree, and the name occurs exactly once -- its own declaration. Nothing is declared with it and nothing calls it, so the single construct that could have exercised this class is itself dead. The working shape by contrast is live: six non-generic function-type aliases are declared, and cell K shows that form resolves. So the class is real and decidable with no live corpus site at all, which is exactly the situation where an enrolled RED is the only thing standing between it and silent reintroduction. A CAUTION FOR WHOEVER RE-DERIVES THESE COUNTS: this corpus embeds .dag and Rust source inside string literals -- 4310 of 5234 files carry at least one -- so a regex census over raw files reads fixture payloads as declarations, which produced six false positives in a parallel census of this same question. Strip string literals first, and require the match inside a parameter list anchored at line start. The assertion is written in the ACCEPTANCE direction on purpose: asserting the refusal would encode the defect as the expected state, and the fix would then require rewriting the witness instead of flipping it. CELL A -- match binder, shorthand, under a name a declaration elsewhere in the corpus also carries. Paired with C, which holds the spelling fixed and varies the name, and with D, which holds the name fixed and varies the spelling; the pair is what retires the spelling hypothesis. MEASURED CAUTION recorded because it cost this lane most of a night: under a narrow 4-module claim_batch closure this cell RESOLVED, and it refuses on the required floor at 2629 modules. The narrow resolution was an instrument artifact, and reading it as a language fact produced three hypotheses -- pool membership, shorthand-vs-explicit binding, and a variant-field-name scope leak -- all of which the floor answered uniformly for free." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a GENERIC function-type alias is instantiated to its arrow wherever a callable is recognised, so a value declared ApplicationUnary<Int> is callable exactly as one declared IntFn or fn(Int) -> Int already is -- the non-generic and literal forms pass today, so the capability owed is instantiation of the type ARGUMENT, not alias peeling, which already works; each of these assertions then flips to TRUE with no edit and this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_callable_witness.dag",
+    f: "explicit_match_binder_pool_free_name_is_callable",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "The subject is measured on the real acceptance path, not inferred: the assertion RUNS and returns false, because the probe compiles the offending construct as a SOURCE STRING through gunbc.compile_census_probe blocking_subject_count_for rather than writing the call in this module -- a direct call would fail to RESOLVE and take the whole module with it, including the accepted controls, which are what make these reds mean 'this construct specifically' rather than 'this file does not compile' (DESIGN 4b(4)). The oracle is scoped to class InternalError and subject function:<name>, the exact form gunbc.compile_diagnostic_census endorses, so each cell asks only whether ITS OWN call refused and no unrelated row in the closure can redden or green it. Owner: the generic-alias callable lane. THE CAUSE IS GENERIC ALIAS INSTANTIATION SPECIFICALLY, and every other candidate is refuted by a cell in this same file. inline_typed_field_match_binder_is_callable PASSES -- a shorthand match binder at the same position over a field typed `g: fn(Int) -> Int` -- so binder kind and position are innocent. inline_typed_parameter_is_callable PASSES, so parameters are innocent; a census finds 115 sites bare-calling an fn-typed parameter and compiling, every one declaring a literal arrow. And non_generic_alias_field_match_binder_is_callable PASSES over `type IntFn = fn(Int) -> Int`, which is the cell that narrows this from 'no function-type alias is peeled' to 'a GENERIC alias is not instantiated to its arrow' -- the two name different repairs in different places, and a trigger naming the wrong one would be satisfied while the capability stayed dead. So a callable declared ApplicationUnary<Int> is not instantiated back to fn(Int) -> Int, and nothing downstream recognises it as callable, regardless of how or where it was bound. This is the same failure this branch exists to repair, one layer over: #10625 carries generic application evidence to where it is needed, and this is a generic alias not surviving to the call. WHY NOTHING EVER REDDENED, measured rather than inferred, and it is a property of the corpus rather than an absence of evidence: v2.lens.testgen CorpusLensDriver is the ONLY generic function-type alias in the tree, and the name occurs exactly once -- its own declaration. Nothing is declared with it and nothing calls it, so the single construct that could have exercised this class is itself dead. The working shape by contrast is live: six non-generic function-type aliases are declared, and cell K shows that form resolves. So the class is real and decidable with no live corpus site at all, which is exactly the situation where an enrolled RED is the only thing standing between it and silent reintroduction. A CAUTION FOR WHOEVER RE-DERIVES THESE COUNTS: this corpus embeds .dag and Rust source inside string literals -- 4310 of 5234 files carry at least one -- so a regex census over raw files reads fixture payloads as declarations, which produced six false positives in a parallel census of this same question. Strip string literals first, and require the match inside a parameter list anchored at line start. The assertion is written in the ACCEPTANCE direction on purpose: asserting the refusal would encode the defect as the expected state, and the fix would then require rewriting the witness instead of flipping it. CELL B -- match binder, explicit, pool-free name. Differs from cell A in BOTH spelling and name, which is exactly why the obvious two-arm probe cannot decide anything: C and D are the cells that separate the two variables." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a GENERIC function-type alias is instantiated to its arrow wherever a callable is recognised, so a value declared ApplicationUnary<Int> is callable exactly as one declared IntFn or fn(Int) -> Int already is -- the non-generic and literal forms pass today, so the capability owed is instantiation of the type ARGUMENT, not alias peeling, which already works; each of these assertions then flips to TRUE with no edit and this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_callable_witness.dag",
+    f: "shorthand_match_binder_pool_free_name_is_callable",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "The subject is measured on the real acceptance path, not inferred: the assertion RUNS and returns false, because the probe compiles the offending construct as a SOURCE STRING through gunbc.compile_census_probe blocking_subject_count_for rather than writing the call in this module -- a direct call would fail to RESOLVE and take the whole module with it, including the accepted controls, which are what make these reds mean 'this construct specifically' rather than 'this file does not compile' (DESIGN 4b(4)). The oracle is scoped to class InternalError and subject function:<name>, the exact form gunbc.compile_diagnostic_census endorses, so each cell asks only whether ITS OWN call refused and no unrelated row in the closure can redden or green it. Owner: the generic-alias callable lane. THE CAUSE IS GENERIC ALIAS INSTANTIATION SPECIFICALLY, and every other candidate is refuted by a cell in this same file. inline_typed_field_match_binder_is_callable PASSES -- a shorthand match binder at the same position over a field typed `g: fn(Int) -> Int` -- so binder kind and position are innocent. inline_typed_parameter_is_callable PASSES, so parameters are innocent; a census finds 115 sites bare-calling an fn-typed parameter and compiling, every one declaring a literal arrow. And non_generic_alias_field_match_binder_is_callable PASSES over `type IntFn = fn(Int) -> Int`, which is the cell that narrows this from 'no function-type alias is peeled' to 'a GENERIC alias is not instantiated to its arrow' -- the two name different repairs in different places, and a trigger naming the wrong one would be satisfied while the capability stayed dead. So a callable declared ApplicationUnary<Int> is not instantiated back to fn(Int) -> Int, and nothing downstream recognises it as callable, regardless of how or where it was bound. This is the same failure this branch exists to repair, one layer over: #10625 carries generic application evidence to where it is needed, and this is a generic alias not surviving to the call. WHY NOTHING EVER REDDENED, measured rather than inferred, and it is a property of the corpus rather than an absence of evidence: v2.lens.testgen CorpusLensDriver is the ONLY generic function-type alias in the tree, and the name occurs exactly once -- its own declaration. Nothing is declared with it and nothing calls it, so the single construct that could have exercised this class is itself dead. The working shape by contrast is live: six non-generic function-type aliases are declared, and cell K shows that form resolves. So the class is real and decidable with no live corpus site at all, which is exactly the situation where an enrolled RED is the only thing standing between it and silent reintroduction. A CAUTION FOR WHOEVER RE-DERIVES THESE COUNTS: this corpus embeds .dag and Rust source inside string literals -- 4310 of 5234 files carry at least one -- so a regex census over raw files reads fixture payloads as declarations, which produced six false positives in a parallel census of this same question. Strip string literals first, and require the match inside a parameter list anchored at line start. The assertion is written in the ACCEPTANCE direction on purpose: asserting the refusal would encode the defect as the expected state, and the fix would then require rewriting the witness instead of flipping it. CELL C -- match binder, shorthand, pool-free name. Holds spelling fixed against A and varies the name. This cell independently refutes the variant-field-name hypothesis: the called name IS a field of its own type here and it still refuses." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a GENERIC function-type alias is instantiated to its arrow wherever a callable is recognised, so a value declared ApplicationUnary<Int> is callable exactly as one declared IntFn or fn(Int) -> Int already is -- the non-generic and literal forms pass today, so the capability owed is instantiation of the type ARGUMENT, not alias peeling, which already works; each of these assertions then flips to TRUE with no edit and this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_callable_witness.dag",
+    f: "explicit_match_binder_colliding_name_is_callable",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "The subject is measured on the real acceptance path, not inferred: the assertion RUNS and returns false, because the probe compiles the offending construct as a SOURCE STRING through gunbc.compile_census_probe blocking_subject_count_for rather than writing the call in this module -- a direct call would fail to RESOLVE and take the whole module with it, including the accepted controls, which are what make these reds mean 'this construct specifically' rather than 'this file does not compile' (DESIGN 4b(4)). The oracle is scoped to class InternalError and subject function:<name>, the exact form gunbc.compile_diagnostic_census endorses, so each cell asks only whether ITS OWN call refused and no unrelated row in the closure can redden or green it. Owner: the generic-alias callable lane. THE CAUSE IS GENERIC ALIAS INSTANTIATION SPECIFICALLY, and every other candidate is refuted by a cell in this same file. inline_typed_field_match_binder_is_callable PASSES -- a shorthand match binder at the same position over a field typed `g: fn(Int) -> Int` -- so binder kind and position are innocent. inline_typed_parameter_is_callable PASSES, so parameters are innocent; a census finds 115 sites bare-calling an fn-typed parameter and compiling, every one declaring a literal arrow. And non_generic_alias_field_match_binder_is_callable PASSES over `type IntFn = fn(Int) -> Int`, which is the cell that narrows this from 'no function-type alias is peeled' to 'a GENERIC alias is not instantiated to its arrow' -- the two name different repairs in different places, and a trigger naming the wrong one would be satisfied while the capability stayed dead. So a callable declared ApplicationUnary<Int> is not instantiated back to fn(Int) -> Int, and nothing downstream recognises it as callable, regardless of how or where it was bound. This is the same failure this branch exists to repair, one layer over: #10625 carries generic application evidence to where it is needed, and this is a generic alias not surviving to the call. WHY NOTHING EVER REDDENED, measured rather than inferred, and it is a property of the corpus rather than an absence of evidence: v2.lens.testgen CorpusLensDriver is the ONLY generic function-type alias in the tree, and the name occurs exactly once -- its own declaration. Nothing is declared with it and nothing calls it, so the single construct that could have exercised this class is itself dead. The working shape by contrast is live: six non-generic function-type aliases are declared, and cell K shows that form resolves. So the class is real and decidable with no live corpus site at all, which is exactly the situation where an enrolled RED is the only thing standing between it and silent reintroduction. A CAUTION FOR WHOEVER RE-DERIVES THESE COUNTS: this corpus embeds .dag and Rust source inside string literals -- 4310 of 5234 files carry at least one -- so a regex census over raw files reads fixture payloads as declarations, which produced six false positives in a parallel census of this same question. Strip string literals first, and require the match inside a parameter list anchored at line start. The assertion is written in the ACCEPTANCE direction on purpose: asserting the refusal would encode the defect as the expected state, and the fix would then require rewriting the witness instead of flipping it. CELL D -- match binder, explicit, bound to a colliding name over a pool-free FIELD, so the field label and the called name deliberately disagree and a resolution here cannot be coming from the field." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a GENERIC function-type alias is instantiated to its arrow wherever a callable is recognised, so a value declared ApplicationUnary<Int> is callable exactly as one declared IntFn or fn(Int) -> Int already is -- the non-generic and literal forms pass today, so the capability owed is instantiation of the type ARGUMENT, not alias peeling, which already works; each of these assertions then flips to TRUE with no edit and this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_callable_witness.dag",
+    f: "nested_let_in_match_arm_is_callable",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "The subject is measured on the real acceptance path, not inferred: the assertion RUNS and returns false, because the probe compiles the offending construct as a SOURCE STRING through gunbc.compile_census_probe blocking_subject_count_for rather than writing the call in this module -- a direct call would fail to RESOLVE and take the whole module with it, including the accepted controls, which are what make these reds mean 'this construct specifically' rather than 'this file does not compile' (DESIGN 4b(4)). The oracle is scoped to class InternalError and subject function:<name>, the exact form gunbc.compile_diagnostic_census endorses, so each cell asks only whether ITS OWN call refused and no unrelated row in the closure can redden or green it. Owner: the generic-alias callable lane. THE CAUSE IS GENERIC ALIAS INSTANTIATION SPECIFICALLY, and every other candidate is refuted by a cell in this same file. inline_typed_field_match_binder_is_callable PASSES -- a shorthand match binder at the same position over a field typed `g: fn(Int) -> Int` -- so binder kind and position are innocent. inline_typed_parameter_is_callable PASSES, so parameters are innocent; a census finds 115 sites bare-calling an fn-typed parameter and compiling, every one declaring a literal arrow. And non_generic_alias_field_match_binder_is_callable PASSES over `type IntFn = fn(Int) -> Int`, which is the cell that narrows this from 'no function-type alias is peeled' to 'a GENERIC alias is not instantiated to its arrow' -- the two name different repairs in different places, and a trigger naming the wrong one would be satisfied while the capability stayed dead. So a callable declared ApplicationUnary<Int> is not instantiated back to fn(Int) -> Int, and nothing downstream recognises it as callable, regardless of how or where it was bound. This is the same failure this branch exists to repair, one layer over: #10625 carries generic application evidence to where it is needed, and this is a generic alias not surviving to the call. WHY NOTHING EVER REDDENED, measured rather than inferred, and it is a property of the corpus rather than an absence of evidence: v2.lens.testgen CorpusLensDriver is the ONLY generic function-type alias in the tree, and the name occurs exactly once -- its own declaration. Nothing is declared with it and nothing calls it, so the single construct that could have exercised this class is itself dead. The working shape by contrast is live: six non-generic function-type aliases are declared, and cell K shows that form resolves. So the class is real and decidable with no live corpus site at all, which is exactly the situation where an enrolled RED is the only thing standing between it and silent reintroduction. A CAUTION FOR WHOEVER RE-DERIVES THESE COUNTS: this corpus embeds .dag and Rust source inside string literals -- 4310 of 5234 files carry at least one -- so a regex census over raw files reads fixture payloads as declarations, which produced six false positives in a parallel census of this same question. Strip string literals first, and require the match inside a parameter list anchored at line start. The assertion is written in the ACCEPTANCE direction on purpose: asserting the refusal would encode the defect as the expected state, and the fix would then require rewriting the witness instead of flipping it. CELL G -- a let inside a match arm, whose initializer reads a match binder. It was authored to test a POSITION axis (a let is callable at a body's top level, not one level in) and that reading is RETIRED: the two passing lets bind a function declaration directly while this one binds through the alias, so position was held against the alias and never varied alone. What the cell still establishes, and why it is kept, is that the binding SUCCEEDS and only the CALL fails -- the let initializer reads the binder without complaint and the refusal names the let's own name." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a GENERIC function-type alias is instantiated to its arrow wherever a callable is recognised, so a value declared ApplicationUnary<Int> is callable exactly as one declared IntFn or fn(Int) -> Int already is -- the non-generic and literal forms pass today, so the capability owed is instantiation of the type ARGUMENT, not alias peeling, which already works; each of these assertions then flips to TRUE with no edit and this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_callable_witness.dag",
+    f: "function_parameter_is_callable",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "The subject is measured on the real acceptance path, not inferred: the assertion RUNS and returns false, because the probe compiles the offending construct as a SOURCE STRING through gunbc.compile_census_probe blocking_subject_count_for rather than writing the call in this module -- a direct call would fail to RESOLVE and take the whole module with it, including the accepted controls, which are what make these reds mean 'this construct specifically' rather than 'this file does not compile' (DESIGN 4b(4)). The oracle is scoped to class InternalError and subject function:<name>, the exact form gunbc.compile_diagnostic_census endorses, so each cell asks only whether ITS OWN call refused and no unrelated row in the closure can redden or green it. Owner: the generic-alias callable lane. THE CAUSE IS GENERIC ALIAS INSTANTIATION SPECIFICALLY, and every other candidate is refuted by a cell in this same file. inline_typed_field_match_binder_is_callable PASSES -- a shorthand match binder at the same position over a field typed `g: fn(Int) -> Int` -- so binder kind and position are innocent. inline_typed_parameter_is_callable PASSES, so parameters are innocent; a census finds 115 sites bare-calling an fn-typed parameter and compiling, every one declaring a literal arrow. And non_generic_alias_field_match_binder_is_callable PASSES over `type IntFn = fn(Int) -> Int`, which is the cell that narrows this from 'no function-type alias is peeled' to 'a GENERIC alias is not instantiated to its arrow' -- the two name different repairs in different places, and a trigger naming the wrong one would be satisfied while the capability stayed dead. So a callable declared ApplicationUnary<Int> is not instantiated back to fn(Int) -> Int, and nothing downstream recognises it as callable, regardless of how or where it was bound. This is the same failure this branch exists to repair, one layer over: #10625 carries generic application evidence to where it is needed, and this is a generic alias not surviving to the call. WHY NOTHING EVER REDDENED, measured rather than inferred, and it is a property of the corpus rather than an absence of evidence: v2.lens.testgen CorpusLensDriver is the ONLY generic function-type alias in the tree, and the name occurs exactly once -- its own declaration. Nothing is declared with it and nothing calls it, so the single construct that could have exercised this class is itself dead. The working shape by contrast is live: six non-generic function-type aliases are declared, and cell K shows that form resolves. So the class is real and decidable with no live corpus site at all, which is exactly the situation where an enrolled RED is the only thing standing between it and silent reintroduction. A CAUTION FOR WHOEVER RE-DERIVES THESE COUNTS: this corpus embeds .dag and Rust source inside string literals -- 4310 of 5234 files carry at least one -- so a regex census over raw files reads fixture payloads as declarations, which produced six false positives in a parallel census of this same question. Strip string literals first, and require the match inside a parameter list anchored at line start. The assertion is written in the ACCEPTANCE direction on purpose: asserting the refusal would encode the defect as the expected state, and the fix would then require rewriting the witness instead of flipping it. CELL H -- a function PARAMETER whose type is the generic alias, called by name, with no match and no pattern involved. It shows the class is not about pattern binding at all. It does NOT show that parameters are uncallable: its literal-arrow twin inline_typed_parameter_is_callable PASSES, and a census finds 115 sites across dag and src that bare-call an fn-typed parameter and compile -- every one declaring the type as a literal arrow. That census was run as a falsifier for the broader framing and it fired, which is what relocated the cause to the alias." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "a GENERIC function-type alias is instantiated to its arrow wherever a callable is recognised, so a value declared ApplicationUnary<Int> is callable exactly as one declared IntFn or fn(Int) -> Int already is -- the non-generic and literal forms pass today, so the capability owed is instantiation of the type ARGUMENT, not alias peeling, which already works; each of these assertions then flips to TRUE with no edit and this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_alias_witness.dag",
+    f: "alias_return_is_a_refusal_fixture",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Discriminating RED for the container-alias owner-resolution gap tracked by gunbc.guarantee_stall.algebra_application_owner_resolution_stall: a declared container-alias owner identity does not reach variant_reference_inferred_node, so the MethodNotFound refusal this fixture asserts is not raised on the aliased subject. Admitted at FUNCTION grain rather than by excluding the file, because the same module carries nominal_return_is_an_acceptance_fixture, which PASSES, and DESIGN 4b(4) keeps that accepted positive control enrolled beside the red -- a file-grain exclusion de-enrolls it. The module's fourth cell, explicit_initializer_is_an_acceptance_fixture, is NOT available as a control: it is itself admitted red one row below, because main's own compiler fails it, so nominal_return is the only enrolled evidence that these reds discriminate the construct rather than the file." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node, so this fixture observes its MethodNotFound refusal and greens; greening is the counted un-quarantine event and this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_alias_witness.dag",
+    f: "alias_field_is_a_refusal_fixture",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "The field-position half of the same container-alias owner-resolution gap as alias_return_is_a_refusal_fixture, and red for the same reason: the aliased subject's declared owner identity is absent at variant_reference_inferred_node, so the asserted MethodNotFound refusal does not occur. Held per function for the same 4b(4) reason: nominal_return_is_an_acceptance_fixture is the enrolled accepted positive control beside it, and explicit_initializer_is_an_acceptance_fixture is not, being admitted red itself." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "the owner-resolution capability carries declared container-alias identity to variant_reference_inferred_node, so this fixture observes its MethodNotFound refusal and greens; this row deletes with it")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/algebra_receiver_alias_witness.dag",
+    f: "explicit_initializer_is_an_acceptance_fixture",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Red for a capability that does not exist on main, not for anything this change did, and that is measured rather than argued: claim_batch built from origin/main 801e12fd55 in a separate worktree -- main's own stage0 mirrors, no compiler source from this branch -- produces the identical four-cell table on this module, explicit_initializer_is_an_acceptance_fixture FAIL included. The cell is new here, so it has never passed anywhere; the compiler capability it asserts is simply absent, upstream of this PR. Eight one-variable arms were spent before that baseline was run: seven reverting individual mirror hunks and one reverting variant_reference_inferred_node's guard to main's shape, and every one of them is excluded at once by the baseline, because the failure survives a compiler containing NONE of this branch's fourteen semantic mirror differences. Recorded so the next reader does not repeat them. THIS ROW IS NOT A POSITIVE CONTROL FOR THE TWO REDS ABOVE IT and must not be cited as one -- nominal_return_is_an_acceptance_fixture is, and it passes. The two known_red rows above previously named this cell as an enrolled 4b(4) control; that sentence was false as written and is corrected in the same change." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "the compiler resolves an explicit initializer through a declared container-alias owner identity, so this cell's assertion executes true with no edit to the cell; the capability owed is owner-resolution reaching variant_reference_inferred_node for the initializer form, the same capability gunbc.guarantee_stall.algebra_application_owner_resolution_stall tracks for the return and field forms, and this row deletes when it lands rather than when any particular artifact appears")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/method_arg_declared_contract_witness.dag",
+    f: "w_method_arg_infers_against_declared_contract_not_element_type_test",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "THE DISCRIMINATING RED FOR #8592 (v1 infer: use each method arg's own declared parameter type, not the receiver's element_type), red on main for a reason that is not this fix's defect: the witness host builtin compile_dag_rust_emit_check executes the COMPILED stage0 mirror, and the fix lives in src/v1/04_infer.dag and src/v1/04_lookup.dag (declared_arg_types_for_method) authority only. Measured directly at 98d7147f9e (BuildBuddy 1047f203) by building gunbc from both 98d7147f9e and its parent and running each on the discriminating fixture (List<NonEmptyStr>.get called with a NonEmptyStr where the declared contract requires Int): BOTH binaries compile the fixture clean with zero diagnostics of any severity, byte-identical emitted output. grep on src/v1/stage0/src/v1_compiler_infer.rs confirms declared_arg_types_for_method appears in ZERO stage0 .rs files, and the pre-fix scalar_shaped_builtin_method_arg_type whitelist function is still present and still called — the #8592 commit touched only .dag authority plus 38 unrelated lines in required_regen_host.rs, and its own commit message records that required-regen's v2 self-compile refused with 11 source-annotation diagnostics, blocking the mirror regen for this exact change. This row is therefore NOT a feature gap in the fix; it is the identical authority/mirror gap independently found and quarantined the same day for the where-refinement wall — owned by the required-regen lane. THAT PRECEDENT ROW HAS SINCE DISSOLVED (2026-08-20): its 04_infer mirror was regenerated on gunbc#8619 and the row deleted in that same change, per its own trigger, so this sentence no longer names it as a live row. The precedent stands as a recorded instance of the class, not as a citation a reader can resolve. The witness function itself is written to assert the CORRECTED behavior (compile_dag_rust_emit_check must refuse) so that regenerating the mirror greens it with no edit; today, run against the committed (unmirrored) binary, it evaluates false because the ill-typed call is silently accepted. COVERAGE, checked rather than assumed (2026-08-20, per deep-ant-102): this witness's module (test.claim.method_arg_declared_contract_witness) is NOT under dag/test/claim/long/ and matches none of the required floor's long-home exclusion prefixes, so it IS discovered and executed by the required floor regardless of cadence — unlike the where-refinement precedent's witness file dag/test/claim/long/where_refinement_enforcement_witness.dag, which sits under that excluded directory and is discovered nowhere (the row itself is gone as recorded above; the fact was always about the FILE's home, and that home is unchanged by the row's dissolution). That floor execution is the row's real, present protection. Separately, this row's cadence field (QuarantineProbeExpectRed, from known_red_probe) also names it for the periodic falsifier re-probe cadence, whose consumer (falsifier.yml) was deleted in the 2026-08-15 floor cut and is not yet re-added — so the cadence tag should not be read as implying that second, currently-inert consumer.",
+    dissolution: unbound_dissolution(description: "the 04_infer and 04_lookup stage0 mirrors are regenerated so the compiled harness contains declared_arg_types_for_method — this row deletes in that same change, promoting the unchanged witness to ordinary DiscoverySelection as the permanent regression control for #8572/#8579/#8592 (infer method args against the declared param contract, never the receiver element type)")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance.dag",
+    f: "legacy_test_behavior_unclassified_frontier_is_zero",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "NO LONGER THE CLOSING VALIDATION FOR roadmap node v1-test-migration as of 2026-08-11 (gunbc#8146, review 51212) — that node rebound to test_migration_debt.dag retained_rust_kernel_wall_holds_against_live_tree when the authority inverted from classifying departures to declaring residents, and gunbc.roadmap.roadmap_authority is the single authority for that binding. RETAINED as an expecting-red probe only: it still measures a real derived quantity and greening it would still be progress. It was: the discriminating closing validation for roadmap node v1-test-migration, RED BY DESIGN while any independently discovered legacy #[test] function has no typed behavior disposition. Unlike the diff-scoped deletion guard it cannot pass on zero progress; stale, duplicate, unresolved and unclassified identities all refuse.",
+    dissolution: unbound_dissolution(description: "the derived unclassified legacy-behavior set reaches zero with every disposition admitted — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent migration regression wall")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/observation_raw_print_retirement_acceptance.dag",
+    f: "observation_emit_frontier_is_zero",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "the acceptance test for roadmap node observation-raw-print-retirement, red BY DESIGN: it asserts observation_emit_frontier_count() == 0 while the census still counts unmigrated emit sites. It is the discriminating validation on that node's WorkItemExecutionContract, so dispatch's Verify segment has a target that can actually FAIL — without a red validation somewhere, a green Verify proves only that the plumbing ran. Not relaxable: the only edit that may green it is migrating the sites it counts.",
+    dissolution: unbound_dissolution(description: "the frontier reaches zero — this row MUST delete in the same change that lands the last migration, promoting the witness to ordinary DiscoverySelection as a standing regression ratchet")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/long/g2_data_reference_under_selection_witness.dag",
+    f: "specimen_classifies_as_runtime_read",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "G2 under-selection through data declarations (adhoc-8026d859-7e4): scaffold_disposition_census_fixture_pool_is_nonempty reaches decl_facts only via a data initializer, and live_read_selection_manifest_live classifies it LocalRead on 341d3203bc2 (discriminating LocalRead-vs-Refused receipt, not Refused). LocalRead licenses a skip — under-selection. Owner: live-read / G2 computation-reachability lane ahead of #8130 data-root admission.",
+    dissolution: unbound_dissolution(description: "G2 computation reachability follows data initializers as well as function bodies, this witness greens, and this row deletes — promoting the unchanged witness to ordinary DiscoverySelection as the permanent under-selection regression control")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/long/g2_data_reference_under_selection_witness.dag",
+    f: "specimen_does_not_classify_as_local_read",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "The discriminating half of the under-selection pair (adhoc-8026d859-7e4). Its sibling specimen_classifies_as_runtime_read is false in two OPPOSITE states — Classified\{LocalRead\}, which licenses a skip and is the harm, and Refused, which is fail-closed and licenses nothing — so alone it cannot establish that the defect is under-selection rather than a refusal, and a note is not evidence a machine can read. This claim carries the other bit: the pair reads (false,false) on LocalRead today, (true,true) once traversal follows data initializers, and (false,TRUE) if the state drifts to Refused, which greens this row ALONE and surfaces as StaleKnownRed instead of hiding behind a sibling that stays red either way. Expected-red rather than an ordinary green witness because it costs the same ~14s evaluation and the long-eval budget is coupled to expected-red across today's population.",
+    dissolution: unbound_dissolution(description: "the traversal repair lands and BOTH rows for this entry delete in the same change — they are one obligation with one terminal construction and neither survives the other, so they are deliberately not split; the two witnesses stay as the permanent pair that keeps LocalRead, RuntimeRead and Refused distinguishable")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/source_integration_proof_kernel_acceptance.dag",
+    f: "witness_p1_proof_kernel_acceptance_contract_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "the discriminating closing validation for roadmap node 2-scm-p1-proof-kernel, RED BY DESIGN while the derived KernelAcceptanceCapability frontier is nonzero. The first slice supplies the bounded candidate-generation model check; the one public fold, occurrence dedup, context transport, commuting squares, batch invariance, n-way safety, all seven closure certificates and data-only invariant extension stay missing until executing scenarios establish them. Bound directly by scm_p1_proof_kernel_execution_contract, so it cannot pass on zero progress.",
+    dissolution: unbound_dissolution(description: "every required KernelAcceptanceCapability has a passing executing scenario — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance.dag",
+    f: "witness_namespace_reference_derived_closure_closing_contract_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "the discriminating closing validation for roadmap node namespace-reference-derived-closure, RED BY DESIGN while its six-clause production admission frontier carries typed unavailable rows naming #7515 and the Class-B pool-independence wall. The separately discovered fixture suite executes P1 and proves every clause rejects its planted wrong output; this witness imports no fixture admissions and is bound directly by namespace_reference_derived_closure_execution_contract, so zero implementation progress cannot verify as complete.",
+    dissolution: unbound_dissolution(description: "the production candidate producer and dependency projection establish all six ReferenceDerivedClosureCapability rows by execution — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent namespace-derived-closure regression wall")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness.dag",
+    f: "self_host_use_site_verdict_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (cargo/shim closure refuse — unresolved std_algebra/std_types/std_nat/List; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness.dag",
+    f: "self_host_discovery_enumeration_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (cargo/shim closure refuse — unresolved std_algebra/std_types/std_nat/List; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness.dag",
+    f: "self_host_target_carriers_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (target_carriers type-shape refuse; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_body_producer_behavioral_witness.dag",
+    f: "self_host_body_producer_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (cargo/shim closure refuse — unresolved std_algebra/std_types/std_nat/List; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble.",
+    dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness.dag",
+    f: "self_host_03_normalize_behavioral_receipt_holds",
+    kind: ExecutionWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "SelfEmitted wet behavioral receipt, red on assemble (cargo/shim closure refuse — unresolved std_algebra/std_types/std_nat/List; cadence run 30126573464). Owner: #7199 falsifier lane / self-host assemble. This is the row whose file-grain pairing forced the documented workaround: the file's sibling declared_source_refs_complete_holds is offline, so classifying the FILE QuarantineProbeExpectRed would have orphaned it and the file was downgraded to OfflineLocalRecipe in prose instead. At exact grain the receipt is admitted here and the sibling keeps the file's path policy, with neither fact restating the other.",
+    dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag",
+    f: "let_alias_is_proven_suspect",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "THE SUBJECT NEVER REACHES THE LENS: THE FIXTURE IS REFUSED BY PARSE. Measured by staged probe on the exact let_alias_snippet bytes, tokenize ACCEPTS and v2.compiler.parse parse_module REJECTS, so normalize never runs, findings are Empty, and the witness's `Absent => false` reports a STAGE REFUSAL as though the lens returned no suspect. The refusal is shape-specific and was narrowed by a six-cell ingest matrix over the same harness rather than guessed: `let grown = acc` followed by the call REFUSES; the same body with the binder renamed to `g` REFUSES; `let grown = mystery` (an unbound name) PARSES; `let seed = 0` PARSES; the transitive form `let g = acc` then `let h = g` then the call PARSES; and the identical alias with the `let` on the fn-literal's own line PARSES. So it is neither the binder name nor the statement count nor the RHS being an identifier -- the refusing combination is a let whose RHS names the fn literal's bound parameter standing immediately before a call statement. THIS ROW IS NOT A CLAIM ABOUT THE LENS. Whether the analyzer would prove the alias suspect is UNKNOWN and unmeasurable while parse refuses the specimen, and the sibling let_transitive_alias_is_proven_suspect -- which does parse -- PASSES, so the aliasing closure itself is exercised and green at the two-binding grain. THE ROW EXISTS BECAUSE THE WITNESS ONLY BECAME VISIBLE NOW: the whole module was dark on main with a NormalizedTree/.root type drift that this same PR repairs, so all 21 of its witnesses were unexecuted, and this red is pre-existing and unmasked rather than introduced -- established on a control worktree carrying ONLY the .root repair with the lens change absent, where it fails identically. Owner: the .dag grammar lane, not the complexity lens lane.",
+    dissolution: unbound_dissolution(description: "v2.compiler.parse parse_module ACCEPTS a fn-literal body whose let binds the literal's own parameter and is followed directly by a call statement, sufficient for the let_alias_snippet bytes to reach normalize -- the capability is the grammar admitting that statement shape, NOT any artifact contributing to it: a new fixture spelling, a reworded snippet, or a diagnostic variant retires nothing, because rewriting the fixture to a shape that already parses would delete the only executing evidence that this shape does not. When parse admits it, this witness reaches the lens and either greens or reds on a LENS fact for the first time; this row deletes in that same change and the assertion becomes an ordinary permanent regression control for the single-binding alias case")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag",
+    f: "named_step_fold_refuses_accumulator_unread",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "A SILENT FAIL-OPEN (DESIGN section 5), AND THE MOST SERIOUS THING THIS LANE FOUND: the lens does not see the fold at all, rather than refusing it. For `fold(xs, init: 0, f: step)` -- a fold whose step is passed BY NAME rather than as an fn literal -- the normalized tree measured by probe contains NO lowered Loop and NO surface fold call, and v2.lens.complexity_accumulator_copy.analyze count_fold_sites returns 0. The witness asserts the honest arm, ^fold_accumulator_unread, which v2.lens.complexity_accumulator_copy.analyze fold_family_carrier mints when the seam refuses to yield a carrier; that refusal is never reached because the traversal never recognises a fold site to refuse ABOUT. This is the failure arm widening into silence rather than refusing: a fold the source declares is absent from the lens's domain, so its accumulator is neither proven, nor refused, nor counted -- and unlike the named-argument defect this same PR repairs, nothing in the ledger records that a subject was skipped. The class is filed at gunbc.recurring_failure_mode.fold_shape_visible_to_no_lens. Attribution is measured: identical failure on a control worktree carrying ONLY the NormalizedTree/.root repair with this PR's lens change absent, so pre-existing and unmasked rather than introduced. NOT FIXED HERE ON A DELIBERATE RULING (eager-raven-113): the repair is plausibly in v2.compiler.fold_lowering or v2.compiler.body_lowering_fold rather than in the lens, and is therefore unbounded inside a PR whose subject is the port reading. Owner: dispatched from the recurring-failure-mode row.",
+    dissolution: unbound_dissolution(description: "v2.lens.complexity_accumulator_copy.analyze OBSERVES every fold the source declares, at every lowering shape a fold-family call can take -- including a step passed by name, which today lowers to neither a Loop nor a surviving surface fold call -- so count_fold_sites counts the site and the carrier-unread case reaches its ^fold_accumulator_unread refusal instead of vanishing. The capability is totality of the lens's fold domain over declared fold shapes; a diagnostic variant, a roster row, or a lowering that merely reports the shape retires nothing unless the site becomes VISIBLE to the traversal. When it lands this assertion and its report_counters sibling green with no edit and both rows delete in the same change")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag",
+    f: "report_counters_state_the_domain",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "THE SAME DEFECT AS ITS named_step_fold_refuses_accumulator_unread SIBLING, MEASURED AT THE COUNTER GRAIN, and rostered separately because it is a separate executing assertion rather than because it is a separate fact. The witness asserts the lens's domain census over two specimens: folds_seen 1 and carriers_bound 1 for the fold/list_append quadratic, and folds_seen 1 with carriers_bound 0 for the named-step fold. The first conjunct holds -- measured directly, count_fold_sites over the quadratic is non-zero in both the bound and unbound readings. The second does not: for `fold(xs, init: 0, f: step)` count_fold_sites returns 0, not 1, because the site is invisible to the traversal rather than seen-and-unbound. That is exactly the distinction the counters exist to publish -- a fold whose carrier could not be read is supposed to be COUNTED and unbound, and a fold that is not counted at all is the lens silently narrowing its own domain -- so this witness is the instrument that would have caught the fail-open had it ever executed. It never did: the module was dark on main with the NormalizedTree/.root drift this PR repairs. Attribution measured on a control worktree carrying ONLY that repair: identical failure with this PR's lens change absent. Class: gunbc.recurring_failure_mode.fold_shape_visible_to_no_lens.",
+    dissolution: unbound_dissolution(description: "the same capability its sibling row names -- v2.lens.complexity_accumulator_copy.analyze observes every fold the source declares at every lowering shape, so a named-step fold is counted by count_fold_sites with carriers_bound 0 rather than being absent from the census. This row deletes together with the named_step_fold_refuses_accumulator_unread row when that lands; neither retires on a counter being renamed, a specimen being changed, or the assertion being split")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag",
+    f: "declared_named_step_fold_copy_is_caught",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "THE CAPABILITY WITNESS FOR THE BY-NAME HALF OF gunbc.recurring_failure_mode fold_shape_visible_to_no_lens, and the answer to the DFS the row's dispatch ordered (eager-raven-113, 2026-09-13: establish whether a lens-side read of the referenced step declaration is available before proposing a Loop). The specimen declares `fn step(acc: Int, x: Int)` carrying the planted list_append copy in its own body and calls `fold(xs, init: 0, f: step)`. Measured 2026-09-13: the DECLARATION half of the read IS available at lens time -- the normalized root carries step's Arrow member with `acc` as the first named domain binding, readable by v2.std.node_query arrow_domain_named_param_bindings, and its body is a lowered Transform the lens's own lowered-call arm walks. The SITE half is not: `fold(xs, init: 0, f: step)` as the sole body statement lowers to a Transform whose operator is the dag_token_lbrace atom with `xs` and the callee dropped -- the exact shape gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering records for `{ g(x: 1) }` -- and after a let it lowers to the argument-less spine its let_prefixed sibling records. No spelling-specific residue survives that a reader could resolve FROM; recognising the site by the shape of the erasure would be reading a defect as a fact. So candidate (B), the lens-side callee read, is BLOCKED ON THE ERASURE CLASS and not on any missing resolution primitive, and candidate (A), the seam Loop over a step reference, is fierce-lark-661's ruling to revisit and would in any case not reach the let / match / if positions. This witness asserts the capability the row names -- the by-name step's accumulator flow is visible, so the planted copy mints a suspect -- rather than the weaker ^fold_accumulator_unread refusal its named_step_fold_refuses_accumulator_unread sibling asserts, because a resolvable step with a planted copy that only REFUSES would be the lens declining a proof it has in hand.",
+    dissolution: unbound_dissolution(description: "two capabilities in sequence, both named: first, gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering's trigger fires so the by-name fold-family call reaches the normalized tree with its callee and its `f: step` argument intact; second, v2.lens.complexity_accumulator_copy.analyze resolves the step reference to its Arrow member in the same root, takes the first domain binding as the carrier, and analyzes the step body under iteration -- or, where the step is not declared in the root, refuses ^fold_accumulator_unread with the site COUNTED. When both land this assertion greens with no edit to the specimen and this row deletes in the same change, together with the named_step_fold_refuses_accumulator_unread and report_counters_state_the_domain rows whose weaker assertions it subsumes. Treating an unresolved step as zero-cost, or an allow-list of step names, retires nothing")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag",
+    f: "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "Admitted RED whose cause MOVED, re-decided by execution at gunbc#10282 (ce937d0c4d) — a FixtureDerived row needs BOTH the mint callee and the fixture marker, the marshal held the callee half, gunbc#10282 cleared it, and the marker half alone is left. This row must not retire on the marshal. Over the subject this witness declares, derived_production_qualification_mint_sites_live returns a NON-EMPTY population — the mint callee is read at depth — yet count_derived_mint_sites_with_origin(FixtureDerived) is 0 because every discovered row classifies UnknownOrigin. The residual cause is the MARKER read, not the callee read: decl_has_fixture_marker reaches atom_identities_in_node, which sees a declaration root and its immediate children only, while the direct_rust_door_inferred_tree marker sits deeper in the body. Owner: witness-evidence-lifecycle / marker-depth frontier.",
+    dissolution: unbound_dissolution(description: "the fixture-marker read reaches declaration subtrees rather than a declaration root and its immediate children, so decl_has_fixture_marker can observe direct_rust_door_inferred_tree inside a block body; known_fixture_origin_mint_surface_count_in_scope over the subject this witness declares is then > 0, this witness greens, and this row deletes — re-enroll with a closed-subject expected population or a monotone debt contract, never a tree-copied literal. The superseded trigger named the G2 callee marshal and would have retired this row against a repair that cannot green it")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag",
+    f: "witness_live_structural_fixture_mint_site_discovered_reds",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "Admitted RED whose cause MOVED, decided by execution at gunbc#10282 (ce937d0c4d). The superseded reason was that the G2 fn-arrow marshal yields an empty skeleton for the live structural_red_control_mint_site_probe mint body, and it was true when written. It no longer is: the probe discovers a row carrying that declaration's qualified name on the SourceProduced axis, so the marshal repair is real and this row is not evidence against it. The row stays red on ORIGIN alone — the discovered row is UnknownOrigin, because the fixture marker is read at declaration-root-plus-immediate-children depth while direct_rust_door_inferred_tree sits inside the body. Owner: witness-evidence-lifecycle / marker-depth frontier.",
+    dissolution: unbound_dissolution(description: "the fixture-marker read reaches declaration subtrees, so the already-discovered structural_red_control_mint_site_probe row classifies FixtureDerived instead of UnknownOrigin; structural_red_control_live_fixture_mint_site_discovered then returns true without a taught qualified-name pin, this witness greens, and this row deletes. The superseded trigger asked the marshal to expose a mint callee it already exposes")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag",
+    f: "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "Admitted RED whose stated premise is FALSE IN THE SOURCE: generate_provenanced_rust_candidate_from_ingest does not call mint_provenanced_rust_artifact at all. Its body calls provenanced_rust_emission_observation_outcome over observe_provenanced_rust_emission_from_ingest, and the mint is at least two declarations further in; measured at gunbc#10282 (ce937d0c4d), the declaration is present in the population and neither it nor observe_provenanced_rust_emission_from_ingest contributes a row. No widening of the WITHIN-declaration horizon can green this witness. Owner: witness-evidence-lifecycle / call-occurrence reachability frontier.",
+    dissolution: unbound_dissolution(description: "the probe classifies through INTER-declaration call reachability rather than one declaration's own skeleton, so a mint reached transitively from generate_provenanced_rust_candidate_from_ingest is attributed to it; ingest_mint_surface_discovered_in_live_scope() is then true, this witness greens, and this row deletes. The superseded trigger named the marshal and could never have been satisfied, because the callee it asked to be exposed is not in that declaration")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag",
+    f: "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "Admitted RED whose cited boundary NO LONGER EXISTS: gunbc#10245 replaced the witness entry import closure with a caller-declared pool, so the population is exactly origin_probe_subject_files, and run_direct_rust_door_emit_write_compile_smoke lives in dag/test/claim/direct_rust_door_write_compile_witness.dag, which that subject does not name. The cause is the declared subject and is decidable by reading it; it is neither the marshal nor the reachability horizon. Owner: witness-evidence-lifecycle lane.",
+    dissolution: unbound_dissolution(description: "a population authority enumerates fn-arrow declarations repository-wide within this lane's budget, so the direct-door smoke declaration is in the probe's subject without the witness naming its file one by one; this witness greens and this row deletes. Naming that one file in origin_probe_subject_files would also green it and is NOT the trigger: it would green the row without the capability the row stands for")
+  ),
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry {
+      entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness.dag",
+      function: "infer_transform_add_vertical_witness_holds",
+      kind: CorpusWitnessKind
+    },
+    cadence: FalsifierSubstrateLongLane,
+    budget: SubstrateLongLaneEvalBudget,
+    expected: ExpectWitnessHolds,
+    reason: "First Transform derivation discriminating receipt (#8395): one normalize→resolve→infer pass over add_probe asserts Transform body DerivedGrounding while Arrow stays GroundingNotDerived. Measured ~12274ms thread-CPU locally vs 5001ms fast-lane abort on PR CI discovery (BudgetExceeded) — cost is the production frontend+infer crossing. Fast per-PR control: infer_transform_non_add_remains_frontier_holds (subtract dispatch gate). Owner: v2-inferred-tree-completeness.",
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
+  }
+]
+
+fn explicit_witness_admission_matches(
+  row: ExplicitWitnessAdmission,
+  entry: String,
+  function: String
+) -> Bool {
+  (row.witness.entry == entry)
+    && ((row.witness.function == function) || (row.witness.function == ""))
+}
+
+// The empty function is ScheduleWitnessEntry's declared file-grain form (the same authority
+// v1_claim_scoped_witness_batch_note names and expand_explicit_entries realizes for execution): it
+// admits every test declaration in the entry. It is still EXACT — the entry is a path identity, not
+// a substring — which is what separates it from the path policy carrier. Today no known-red row
+// uses it; the arm exists so the derivations stay one fold when a cadence that does use it migrates
+// in.
+
+fn explicit_witness_admission_covers_in(
+  rows: List<ExplicitWitnessAdmission>,
+  entry: String,
+  function: String
+) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: fn(found, row) {
+      found || explicit_witness_admission_matches(row: row, entry: entry, function: function)
+    }
+  )
+}
+
+fn explicit_witness_admission_covers(entry: String, function: String) -> Bool {
+  explicit_witness_admission_covers_in(
+    rows: explicit_witness_admissions,
+    entry: entry,
+    function: function
+  )
+}
+
+fn explicit_witness_admission_covers_entry(entry: String) -> Bool {
+  fold(
+    explicit_witness_admissions,
+    init: false,
+    f: fn(found, row) { found || (row.witness.entry == entry) }
+  )
+}
+
+fn explicit_witness_admission_count_for_in(
+  rows: List<ExplicitWitnessAdmission>,
+  entry: String,
+  function: String
+) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: fn(n, row) {
+      if explicit_witness_admission_matches(row: row, entry: entry, function: function) {
+        n + 1
+      } else {
+        n
+      }
+    }
+  )
+}
+
+fn explicit_witness_admission_duplicate_count_in(rows: List<ExplicitWitnessAdmission>) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: fn(n, row) {
+      if explicit_witness_admission_count_for_in(
+        rows: rows,
+        entry: row.witness.entry,
+        function: row.witness.function
+      ) > 1 {
+        n + 1
+      } else {
+        n
+      }
+    }
+  )
+}
+
+fn explicit_witness_admission_duplicate_count() -> Int {
+  explicit_witness_admission_duplicate_count_in(rows: explicit_witness_admissions)
+}
+
+// POLARITY IS READ FROM THE EXPECTATION AXIS, NOT THE CADENCE. This predicate matched row.cadence
+// until the axis split: QuarantineProbeExpectRed => true, every other arm false. That made the
+// batch a witness's polarity — an expensive known-red row moved onto a long batch to obtain its
+// budget silently became expected-GREEN, which is exactly how a witness that is red BY DESIGN
+// reached the falsifier alert as a component failure. Reading row.expected instead means moving a
+// row between consumers cannot change what counts as agreement, and a mixed batch is ordinary
+// rather than a trap.
+
+fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Bool {
+  match row.expected {
+    ExpectAssertionFalse => true
+    ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => true
+    ExpectWitnessHolds => false
+  }
+}
+
+fn explicit_witness_admission_is_executing_witness(row: ExplicitWitnessAdmission) -> Bool {
+  match row.expected {
+    ExpectWitnessHolds => true
+    ExpectAssertionFalse => false
+    ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => false
+  }
+}
+
+fn explicit_witness_admission_executing_witness_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      if explicit_witness_admission_is_executing_witness(row: row) {
+        Cons { head: row.witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+// Cadence projection for FalsifierSubstrateLongLane admission rows.
+// falsifier_substrate_long_lane_batch_schedule_entries unions this with the legacy
+// falsifier_substrate_long_lane_rows roster for batch 6 execution; declared-long-budget rows stay
+// off the legacy roster (witness_long_eval_budget_roster sizes the ceiling from admission alone).
+// dissolve-on: every substrate-long witness migrates to explicit admission and
+// falsifier_substrate_long_lane_rows deletes.
+
+fn explicit_witness_admission_substrate_long_lane_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      match row.cadence {
+        FalsifierSubstrateLongLane => Cons { head: row.witness, tail: acc }
+        DiscoverySelection => acc
+        FalsifierSelfHostWet => acc
+        FalsifierRehomedBinWet => acc
+        BinWitnessWet => acc
+        LocalRepoWetLane => acc
+        QuarantineProbeExpectRed => acc
+        OfflineLocalRecipe => acc
+        FixtureExplicitRoster => acc
+        NoConsumer => acc
+      }
+    }
+  ))
+}
+
+fn explicit_witness_admission_requires_long_eval_budget(row: ExplicitWitnessAdmission) -> Bool {
+  match row.budget {
+    SubstrateLongLaneEvalBudget => true
+    FastLaneEvalBudget => false
+  }
+}
+
+// The budget half of the split, derived. gunbc.ci.ci_layer_roots unions this with the long-lane BATCH
+// roster to give the scheduler its ceiling condition, so a row obtains its required eval time from
+// its own declaration and never by joining a second batch. The union is the whole mechanism: batch
+// membership still routes execution, this roster only sizes the ceiling, and the residual (declared
+// by neither) keeps the fast lane so an undeclared lane reds at 5s rather than running unbounded.
+
+fn witness_long_eval_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      if explicit_witness_admission_requires_long_eval_budget(row: row) {
+        Cons { head: row.witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_roster_of_kind(kind: WitnessKind) -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      if explicit_witness_admission_is_known_red(row: row)
+        && witness_kind_eq(a: row.witness.kind, b: kind) {
+        Cons { head: row.witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_entry_is_v1_scoped(entry: String) -> Bool {
+  starts_with(s: entry, prefix: "src/v1/")
+}
+
+data known_red_v1_envelope_dag_entries: List<String> = []
+
+// dag/test/claim witnesses that import v1.* AND are enrolled QuarantineProbeExpectRed in
+// explicit_witness_admissions — both are required for known_red_probe_v1_envelope_roster. Path
+// prefix alone cannot detect v1 imports; this list names dag witnesses that need the dag plus
+// src/v1 envelope beside v1_claim_scoped_witness_batch. Empty while no known-red row needs that
+// envelope; enrolling a row here without the companion clamp row in
+// gunbc_ci_floor_batch_clamp_params fails the ENROLLMENT COUPLING clause in
+// v1_claim_scoped_known_red_probe_batch_note. Dissolve-on when closure-independent binding makes
+// the envelope unnecessary.
+
+fn known_red_entry_is_v1_envelope_dag_entry(entry: String) -> Bool {
+  fold(
+    known_red_v1_envelope_dag_entries,
+    init: false,
+    f: fn(found, path) { found || (entry == path) }
+  )
+}
+
+fn known_red_entry_needs_v1_envelope(entry: String) -> Bool {
+  known_red_entry_is_v1_scoped(entry: entry)
+    || known_red_entry_is_v1_envelope_dag_entry(entry: entry)
+}
+
+fn known_red_probe_corpus_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_roster_of_kind(kind: CorpusWitnessKind),
+    init: Empty,
+    f: fn(acc, witness) {
+      if known_red_entry_needs_v1_envelope(entry: witness.entry) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+// The known-red probe lane partitions into BUDGET-HOMOGENEOUS batches, and the partition is DERIVED
+// from each row's declared budget rather than naming any witness (operator ruling, 2026-08-06). The
+// first shape of the budget separation left the lane one mixed batch and let the eval ceiling be
+// armed for it as a whole, because claim_executor scopes a ceiling to a batch; that raised the
+// ceiling for every fast row sharing the batch with one declared-long row — a real widening,
+// disclosed but still a widening, and the ceiling is the only thing standing between a runaway fast
+// witness and the step budget. Two batches over the same roster remove it: each batch is
+// homogeneous in declared budget, so the ceiling it arms is the budget its rows actually declared
+// and no row is widened by a neighbour. Nothing here is a singleton and nothing names direct_rust —
+// the long population is whatever declares SubstrateLongLaneEvalBudget, so it grows and shrinks
+// with the admission rows and an empty side schedules no batch at all. Dissolve-on is unchanged and
+// shared with witness_long_eval_budget_entries_note: per-witness declared cost envelopes replace
+// the lane ceiling entirely, at which point the partition collapses back to one batch because every
+// row carries its own bound.
+
+// The lane partitions on BOTH axes, and the second half was missing until review caught it (cursor
+// review 50216, 2026-08-07). Budget homogeneity alone still let an ExpectTypedPreVerdictRefusal row
+// share a batch with ExpectAssertionFalse rows, and those two cannot coexist: a pre-verdict row
+// stops the whole batch at RESOLVE, so no per-witness outcome exists for anyone, and the Err arm
+// admits that stop only when EVERY entry declared a pre-verdict refusal. One pre-verdict row in a
+// mixed batch therefore reds its siblings, which were holding quarantine correctly — the batch-wide
+// coupling this PR exists to remove, reintroduced one axis over. So the corpus lane splits first by
+// EXPECTATION KIND and then by DECLARED BUDGET: a batch is homogeneous in the fact that decides its
+// verdict AND in the ceiling it needs. Note the pre-verdict batches are non-green by construction
+// today (a declaration classifies a stop, it does not verify it), so the point of isolating them is
+// not to make them pass — it is that their refusal stays THEIR refusal, located and countable,
+// instead of being spread over rows it says nothing about.
+
+fn known_red_probe_corpus_assertion_false_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: known_red_pre_verdict_refusal_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: known_red_pre_verdict_refusal_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_long_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_pre_verdict_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_pre_verdict_fast_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_pre_verdict_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_long_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_assertion_false_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_corpus_fast_budget_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_corpus_assertion_false_roster(),
+    init: Empty,
+    f: fn(acc, witness) {
+      if schedule_witness_entry_roster_contains(
+        xs: witness_long_eval_budget_roster(),
+        w: witness
+      ) {
+        acc
+      } else {
+        Cons { head: witness, tail: acc }
+      }
+    }
+  ))
+}
+
+fn known_red_pre_verdict_refusal_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      match row.expected {
+        ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => Cons { head: row.witness, tail: acc }
+        ExpectAssertionFalse => acc
+        ExpectWitnessHolds => acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_v1_envelope_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    known_red_probe_roster_of_kind(kind: CorpusWitnessKind),
+    init: Empty,
+    f: fn(acc, witness) {
+      if known_red_entry_needs_v1_envelope(entry: witness.entry) {
+        Cons { head: witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn known_red_probe_execution_roster() -> List<ScheduleWitnessEntry> {
+  known_red_probe_roster_of_kind(kind: ExecutionWitnessKind)
+}
+
+// Only a cadence that EXECUTES may appear on an admission row: an admission is the statement that
+// this witness runs somewhere, so DiscoverySelection (which is the absence of an admission),
+// OfflineLocalRecipe and FixtureExplicitRoster (which are path policies, not executing consumers)
+// and NoConsumer (which is the refusal itself) are all refused here by
+// explicit_witness_admission_cadence_executes. The execution question itself is delegated to
+// std.witness_admission witness_cadence_has_scheduled_route (DESIGN §3 single authority), so all
+// five falsifier-family cadences whose workflow was deleted at #8283 are refused correctly
+// — no hand-edit can drift. Exempted rows on three cadences
+// (QuarantineProbeExpectRed, FalsifierSubstrateLongLane, BinWitnessWet) are rostered in
+// gunbc.rung_drop.transitional_admission_exception and consumed here as the single authority
+// (DESIGN §3) — the exception is bounded by identity, not cadence (§4b(3)).
+// FalsifierRehomedBinWet has zero admission rows and returns false via delegation.
+// Without the extra policy refusals an author could write an admission whose cadence runs nothing
+// and satisfy the every-witness-has-a-consumer wall with a row that executes nowhere
+// — the coverage-by-illusion tier.
+
+fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) -> Bool {
+  witness_cadence_has_scheduled_route(cadence: cadence)
+    && match cadence {
+      DiscoverySelection => false
+      OfflineLocalRecipe => false
+      FixtureExplicitRoster => false
+      NoConsumer => false
+      LocalRepoWetLane => true
+      FalsifierSelfHostWet => true
+      FalsifierRehomedBinWet => true
+      FalsifierSubstrateLongLane => true
+      BinWitnessWet => true
+      QuarantineProbeExpectRed => true
+    }
+}
+
+// BOUNDED TRANSITIONAL EXCEPTIONS for admission rows on cadences whose scheduled route was
+// deleted at #8283. Each row identity is named explicitly — a new row on those cadences is
+// refused (DESIGN §4b(3): the exception is bounded by identity, not cadence).
+// See docs/design-rung-drops.md gunbc.rung_drop.transitional_admission_exception.
+// TRIGGER: each named identity carries a cadence with a live scheduled route.
+// Remove an identity from this list when its row migrates to a scheduled-route cadence.
+// The population list is owned by gunbc.rung_drop.transitional_admission_exception
+// and consumed here as the single authority (DESIGN §3). Do not re-mint.
+
+fn is_transitional_admission_row(entry: String, function: String) -> Bool {
+  fold(
+    transitional_admission_exception_identities,
+    init: false,
+    f: fn(found, id) {
+      found || (id == concat(entry, "::", function))
+    }
+  )
+}
+
+fn explicit_witness_admission_well_formed(row: ExplicitWitnessAdmission) -> Bool {
+  !(row.witness.entry == "")
+    && (explicit_witness_admission_cadence_executes(cadence: row.cadence)
+        || (is_transitional_admission_row(entry: row.witness.entry, function: row.witness.function)
+            && match row.cadence {
+              QuarantineProbeExpectRed => true
+              FalsifierSubstrateLongLane => true
+              BinWitnessWet => true
+              DiscoverySelection => false
+              FalsifierSelfHostWet => false
+              FalsifierRehomedBinWet => false
+              LocalRepoWetLane => false
+              OfflineLocalRecipe => false
+              FixtureExplicitRoster => false
+              NoConsumer => false
+            }))
+}
+
+fn explicit_witness_admissions_well_formed_in(rows: List<ExplicitWitnessAdmission>) -> Bool {
+  fold(
+    rows,
+    init: true,
+    f: fn(ok, row) { ok && explicit_witness_admission_well_formed(row: row) }
+  )
+}
+
+fn explicit_witness_admissions_well_formed() -> Bool {
+  explicit_witness_admissions_well_formed_in(rows: explicit_witness_admissions)
+}

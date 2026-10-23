@@ -1,0 +1,42 @@
+user_work_scope: skip wrap into gunbc-user-work.slice (ExternallyBoundedExecutor:343467a8-63c2-4da5-9157-531fcd6311dd)
+memory-cgroup-bind: not requested
+gunbc test: binary fresh against its dep-info: /root/workspace/repo-root/target/release/gunbc inputs=265
+self-host: v1 -> v2 — seed emits src/v2/compiler/source_root_eval.dag, assembles the crate, and builds it
+v2-native-route: private probe root /tmp/gunbc-emit-compile-32302-1792225666552806833-0 for emit+build+fault+restore+spawn
+v2-native-route: emitting src/v2/compiler/source_root_eval.dag (seed, in-process)
+◐ started compile.frontend
+✓ compile.frontend done in 34 seconds
+✓ compile.normalize done in 749ms
+✓ compile.reconcile done in 71 seconds
+✓ compile.analyses done in 736ms
+V2-NATIVE REFUSAL cause=EmissionRefused stage=emit — compile of src/v2/compiler/source_root_eval.dag [rust] produced 30 hard diagnostic(s):
+type mismatch: expected 'type variable T bound as Node(String<Product(Char<Primitive(Int)>)>) (first argument)', got 'Node(FreeMonoid<Product(Char<Primitive(Int)>)>) (later argument)' (dag/std/algebra.dag:4733-4743)
+type mismatch: expected 'type variable A bound as Primitive(Int) (first argument)', got 'UnresolvedDecl(Int<Primitive(Nat)>) (later argument)' (src/v2/std/integer.dag:1583-1598)
+type mismatch: expected 'type variable T bound as Primitive(QualifiedName) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable A bound as Node(std.algebra.FreeMonoid<Product(Char<Primitive(Int)>)>) (first argument)', got 'Node(String<Product(Char<Primitive(Int)>)>) (later argument)' (src/v2/std/text.dag:310-320)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Edge)) (later argument)' (src/v2/std/compilers/target_model.dag:355361-355365)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Edge)) (later argument)' (src/v2/std/compilers/target_model.dag:358421-358425)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Edge)) (later argument)' (src/v2/std/compilers/target_model.dag:376073-376077)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Edge)) (later argument)' (src/v2/std/compilers/target_model.dag:503042-503046)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Symbol)) (later argument)' (src/v2/std/compilers/target_model.dag:513128-513132)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Symbol)) (later argument)' (src/v2/std/compilers/target_model.dag:596871-596875)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(TargetSemanticDeclDecorationLine<Primitive(Symbol)>)) (later argument)' (src/v2/std/compilers/semantic_decl_emission.dag:71706-71710)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Edge)) (later argument)' (src/v2/std/grammar.dag:48510-48514)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(FormalProduction<Product(FormalNonterminal<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(FormalGrammarSymbol))>)) (later argument)' (src/v2/std/grammar.dag:50894-50898)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Symbol)) (later argument)' (src/v2/std/grammar.dag:65736-65740)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(FormalProduction<Product(FormalNonterminal<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(FormalGrammarSymbol))>)) (later argument)' (src/v2/std/grammar.dag:75116-75120)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Symbol)) (later argument)' (src/v2/std/grammar.dag:65736-65740)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Primitive(Edge)) (later argument)' (src/v2/std/grammar.dag:101500-101504)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(AlgebraInhabitanceDecl<Primitive(Node),Primitive(Node),Primitive(Node)>)) (later argument)' (src/v2/extdeps/languages/typescript.dag:71371-71375)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(AlgebraLawObligation<Primitive(Node),Primitive(Node)>)) (later argument)' (src/v2/extdeps/languages/typescript.dag:115704-115708)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(AlgebraLawObligation<Primitive(Node),Primitive(Node)>)) (later argument)' (src/v2/extdeps/languages/typescript.dag:116019-116023)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(OccurrenceId<Primitive(Int)>)) (later argument)' (src/v2/compiler/parse.dag:35572-35576)
+type mismatch: expected 'type variable T bound as Primitive(QualifiedName) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable T bound as Primitive(QualifiedName) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable T bound as Primitive(QualifiedName) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable T bound as Primitive(QualifiedName) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable T bound as Primitive(QualifiedName) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable T bound as Primitive(QualifiedName) (first argument)', got 'Node(QualifiedName<Primitive(Symbol)>) (later argument)' (src/v2/std/qualified_name.dag:1492-1502)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(DemandCensusResolveRefusedBucket<Primitive(Symbol),Primitive(Int),Container(FreeMonoid,Node(QualifiedName<Primitive(Symbol)>))>)) (later argument)' (src/v2/compiler/dependency_demand_census.dag:51088-51092)
+type mismatch: expected 'type variable A bound as Coproduct(FreeMonoid) (first argument)', got 'Container(FreeMonoid,Product(DemandCensusUnboundBucket<Coproduct(DemandCensusUnboundLocus),Primitive(Int),Container(FreeMonoid,Node(QualifiedName<Primitive(Symbol)>))>)) (later argument)' (src/v2/compiler/dependency_demand_census.dag:55355-55359)

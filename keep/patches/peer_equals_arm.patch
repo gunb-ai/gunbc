@@ -1,0 +1,36 @@
+diff --git a/src/v1/04_types.dag b/src/v1/04_types.dag
+index 92e8ac9ec81..35a3f7d11e0 100644
+--- a/src/v1/04_types.dag
++++ b/src/v1/04_types.dag
+@@ -1336,6 +1336,12 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
+   }
+ }
+ 
++// ONE TYPE, SEVERAL PRINTINGS (gunbc.recurring_failure_mode optional_equality_answers_by_representation).
++// A declaration's unapplied spelling (a leaf, or a Disj coproduct that prints its name) and its
++// applied spelling (a NoConnective node carrying the arguments) name one type; only the applied side
++// carries arguments, so there is nothing to descend into and the head name decides, exactly as the
++// leaf-against-struct arms above decide. Two APPLIED spellings still descend element-wise below,
++// so FreeMonoid<Int> against FreeMonoid<Bool> keeps refusing.
+ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+   if text_crossing_in_judgment(left: left, right: right, text: text) {
+     false
+@@ -1347,6 +1353,8 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
+   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
+   let left_struct = left.connective != NoConnective
+   let right_struct = right.connective != NoConnective
++  let left_applied = left.connective == NoConnective && !left_leaf
++  let right_applied = right.connective == NoConnective && !right_leaf
+   let left_name = authored_name_at(source_indices: source_indices, node: left)
+   let right_name = authored_name_at(source_indices: source_indices, node: right)
+   if left_leaf && right_leaf {
+@@ -1371,6 +1379,9 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
+   else if left_struct && right_leaf {
+     type_name_compatible(a: left_name, b: right_name)
+   }
++  else if (left_applied && (right_leaf || right_struct)) || (right_applied && (left_leaf || left_struct)) {
++    type_name_compatible(a: left_name, b: right_name)
++  }
+   else {
+     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
+     let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
