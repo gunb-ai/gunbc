@@ -2451,13 +2451,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "extdeps.github.actions_runner",
-        "actions_runner_slot_extract_script_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
-        "",
-    ),
-    (
         "extdeps.git.publication_transport",
         "extdeps_model_scope",
         "extdeps.git.publication_transport",
@@ -2549,13 +2542,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.executor_privileged_operation",
-        "executor_privileged_operation_shell_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
-        "",
-    ),
-    (
         "gunbc.fabric.fabric_capacity_class_gap",
         "no_class_carrier",
         "product.fabric.supply",
@@ -2577,13 +2563,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.host.host_budget_source",
-        "host_budget_source_seed_mirror_disposition",
-        "gunbc.host.host_budget_source",
-        "host_budget_source_emitted_into_stage0",
-        "",
-    ),
-    (
         "gunbc.host.host_memory_observation",
         "gunbc_ci_legacy_host_fixed_overhead_disposition",
         "gunbc.ci.ci_floor_measurement",
@@ -2602,20 +2581,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "compiler_tests_harness_trigger",
         "v2.test.workflow.claim_witness_corpus_ci_runner",
         "ClaimWitnessCorpusClaimRunRow",
-        "",
-    ),
-    (
-        "gunbc.runner.runner_connectivity_repair_plan",
-        "runner_jit_installation_token_cache_scaffold",
-        "gunbc.runner.runner_lifecycle",
-        "EnsureRunnerJitWrapper",
-        "",
-    ),
-    (
-        "gunbc.runner.runner_slot_provision",
-        "runner_slot_provision_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
         "",
     ),
     (
@@ -2693,13 +2658,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "utf8_decode_bytes_host_realization_marker",
         "std.bytes",
         "builtin_function_registry",
-        "",
-    ),
-    (
-        "gunbc.instruments.rust_stage0_gates",
-        "unit_must_run_staged_note",
-        "gunbc.instruments.rust_stage0_gates",
-        "per_unit_test_selector",
         "",
     ),
 ];
