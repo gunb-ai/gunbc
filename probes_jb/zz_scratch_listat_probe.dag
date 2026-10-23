@@ -1,0 +1,72 @@
+module v2.test.claim.zz_scratch_listat_probe
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, fold_list }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess }
+
+data lap_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^lap_std_artifact_id, file_path: "src/v2/pilot/lap_std_pilot.dag" }
+data lap_artifact: Artifact = Artifact { kind: SourceFile, id: ^lap_artifact_id, file_path: "src/v2/pilot/lap_pilot.dag" }
+
+fn lap_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^lap_cu,
+    source_root: V2Tree
+  }
+}
+
+fn lap_reasons(r: NonEmptyDiagnostics) -> String {
+  fold(r.tail, init: symbol_lexeme(sym: r.head.reason), f: fn(acc, d) { acc + "/" + symbol_lexeme(sym: d.reason) })
+}
+
+data lap_alg_artifact: Artifact = Artifact { kind: SourceFile, id: ^lap_alg_artifact_id, file_path: "src/v2/pilot/lap_alg_pilot.dag" }
+
+fn lap_probe(body: String) -> String {
+  match assemble_program_from_ingest(
+    ingest: [
+      lap_witness(src: "module std.algebra\n\nimport std.optional { Optional, Absent }\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\nfn list_at_optional<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {\n  Absent\n}\n", artifact: lap_alg_artifact),
+      lap_witness(src: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", artifact: lap_std_artifact),
+      lap_witness(src: "module p\n\nimport std.optional { Optional, Absent, Present }\nimport std.algebra { FreeMonoid, list_at_optional }\n\n" + body, artifact: lap_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: r } => "RESOLVE_REFUSED:" + lap_reasons(r: r)
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: r } => "INFER_REJECTED:" + lap_reasons(r: r)
+        Accepted { value: _, diagnostics: d } =>
+          match d {
+            None => "INFER_ACCEPTED:clean"
+            Some { diagnostics: r } => "INFER_ACCEPTED:diag:" + lap_reasons(r: r)
+          }
+      }
+  }
+}
+
+fn lap_report() -> CliWireResponse {
+  CliWirePrintable {
+    bytes: "int_as_bool=" + lap_probe(body: "fn f(x: Int) -> Bool {\n  let n: Bool = x\n  n\n}\n")
+      + " | unit_as_bool=" + lap_probe(body: "type Unit\n\nfn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n")
+      + " | none_binder_as_bool=" + lap_probe(body: "fn f() -> Bool {\n  let r = none\n  match r {\n    Absent => false\n    Present { value: c } =>\n      let z: Bool = c\n      z\n  }\n}\n")
+      + " | none_through_generic=" + lap_probe(body: "fn same<A>(a: A) -> A {\n  a\n}\n\nfn f() -> Bool {\n  let r = same(a: none)\n  match r {\n    Absent => false\n    Present { value: c } =>\n      let z: Bool = c\n      z\n  }\n}\n")
+      + " | typed_none=" + lap_probe(body: "fn f() -> Bool {\n  let r: String? = none\n  match r {\n    Absent => false\n    Present { value: c } =>\n      let z: Bool = c\n      z\n  }\n}\n")
+      + " | planted=" + lap_probe(body: "fn f() -> Int {\n  true\n}\n")
+      + " | END",
+    exit: ExitSuccess
+  }
+}

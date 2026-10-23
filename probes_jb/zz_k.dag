@@ -1,0 +1,18 @@
+module gunbc.zz_k
+
+import std.types { String, Bool, List, Int }
+import std.algebra { trim, list_at_optional }
+import std.optional { Optional, Present, Absent }
+
+type Color = Red | Green
+
+fn probe(line: String) -> Bool {
+  let fields = split(s: trim(s: line), delimiter: "|")
+  let n: Bool = fields
+  n
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}

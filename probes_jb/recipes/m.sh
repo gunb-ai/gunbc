@@ -1,0 +1,2 @@
+cd /tmp/jb/di
+for f in dag/test/claim/long/decl_ref_resolution_witness dag/test/claim/decl_ref_keyed_read_agreement_witness dag/test/claim/decl_index_type_declaration_kind_witness; do n=$(grep -oE "^test fn [A-Za-z0-9_]+" $f.dag | awk '{print $3}' | paste -sd,); /tmp/jb/target/release/claim_batch --source-root dag --source-root src/v2 --entry $PWD/$f.dag --functions "$n" > /tmp/jb/m_$(basename $f).out 2>&1; echo rc=$? >> /tmp/jb/m_$(basename $f).out; done; echo f > /tmp/jb/m.done

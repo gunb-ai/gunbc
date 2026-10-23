@@ -1,0 +1,2 @@
+cd /home/briansrls/.worktrees/gunbc/jolly-bee-729
+for f in compiler/ctor_instance_witness compiler/infer_optional_at_required_witness compiler/infer_application_argument_inhabitance_witness; do n=$(grep -oE "^test fn [a-z0-9_]+" src/v2/test/claim/$f.dag | awk '{print $3}' | paste -sd,); /tmp/jb/target/release/claim_batch --source-root dag --source-root src/v2 --entry $PWD/src/v2/test/claim/$f.dag --functions "$n" > /tmp/jb/fin_$(basename $f).out 2>&1; echo rc=$? >> /tmp/jb/fin_$(basename $f).out; done; echo finished > /tmp/jb/fin.done

@@ -1,0 +1,29 @@
+module gunbc.zz_ei
+
+import std.types { String, Bool, List, Int }
+import std.algebra { trim, list_at_optional }
+import std.optional { Optional, Present, Absent }
+
+fn e_elem_as_int(xs: List<String>) -> Int {
+  match list_at_optional(xs: xs, index: 1) {
+    Absent => 0
+    Present { value: user } =>
+      let z: Int = user
+      z
+  }
+}
+
+fn i_split_then_elem_as_int(line: String) -> Int {
+  let fields = split(s: trim(s: line), delimiter: "|")
+  match list_at_optional(xs: fields, index: 1) {
+    Absent => 0
+    Present { value: user } =>
+      let z: Int = user
+      z
+  }
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}

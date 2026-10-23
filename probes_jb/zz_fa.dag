@@ -1,0 +1,19 @@
+module gunbc.zz_fa
+
+import std.types { String, Bool, List, Int, Unit }
+import std.optional { Optional, Present, Absent }
+
+fn probe(xs: List<String>) -> Bool {
+  let r = fold(xs, init: none, f: (acc, c) => Present { value: c })
+  match r {
+    Absent => false
+    Present { value: c } =>
+      let z: Bool = c
+      z
+  }
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}

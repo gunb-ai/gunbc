@@ -1,0 +1,2 @@
+cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
+f=src/v2/test/claim/manual/scoped_type_reflection_conformance.dag; ./target/release/claim_batch --source-root dag --source-root src/v2 --entry $PWD/$f --functions cited_name_reached_through_overlapping_roots_refuses_rather_than_taking_the_head,cited_pair_across_the_two_trees_reads_one_declaration_each 2>&1 | grep -E "^(PASS|FAIL)"; echo "rc=${PIPESTATUS[0]}"; echo ==END

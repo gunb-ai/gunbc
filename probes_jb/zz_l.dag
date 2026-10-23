@@ -1,0 +1,17 @@
+module gunbc.zz_l
+
+import std.types { String, Bool, List, Int }
+import std.algebra { trim, list_at_optional }
+import std.optional { Optional, Present, Absent }
+
+type Color = Red | Green
+
+fn probe(xs: List<String>) -> Bool {
+  let n: Bool = xs
+  n
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}

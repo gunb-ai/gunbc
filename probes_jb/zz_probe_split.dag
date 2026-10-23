@@ -1,0 +1,75 @@
+module gunbc.zz_probe_split
+
+import std.types { String, Bool, List, Int }
+import std.algebra { trim, list_at_optional }
+import std.optional { Optional, Present, Absent }
+
+type Color = Red | Green
+
+fn a_list_as_bool(xs: List<String>) -> Bool {
+  let n: Bool = xs
+  n
+}
+
+fn b_list_as_color(xs: List<String>) -> Color {
+  let n: Color = xs
+  n
+}
+
+fn c_int_as_bool(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}
+
+fn d_elem_as_bool(xs: List<String>) -> Bool {
+  match list_at_optional(xs: xs, index: 1) {
+    Absent => false
+    Present { value: user } =>
+      let z: Bool = user
+      z
+  }
+}
+
+fn e_elem_as_int(xs: List<String>) -> Int {
+  match list_at_optional(xs: xs, index: 1) {
+    Absent => 0
+    Present { value: user } =>
+      let z: Int = user
+      z
+  }
+}
+
+fn f_join_int(sep: String) -> String {
+  let xs: List<Int> = [1, 2]
+  join(xs, sep)
+}
+
+fn g_join_ret_as_int(parts: List<String>, sep: String) -> Int {
+  let z: Int = join(parts, sep)
+  z
+}
+
+fn h_split_then_elem_as_bool(line: String) -> Bool {
+  let fields = split(s: trim(s: line), delimiter: "|")
+  match list_at_optional(xs: fields, index: 1) {
+    Absent => false
+    Present { value: user } =>
+      let z: Bool = user
+      z
+  }
+}
+
+fn i_split_then_elem_as_int(line: String) -> Int {
+  let fields = split(s: trim(s: line), delimiter: "|")
+  match list_at_optional(xs: fields, index: 1) {
+    Absent => 0
+    Present { value: user } =>
+      let z: Int = user
+      z
+  }
+}
+
+fn j_split_as_bool(line: String) -> Bool {
+  let n: Bool = split(s: line, delimiter: "|")
+  n
+}

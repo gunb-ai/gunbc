@@ -1,0 +1,50 @@
+module gunbc.zz_3w
+
+import std.types { String, Bool, List, Int }
+import std.algebra { trim, list_at_optional }
+import std.optional { Optional, Present, Absent }
+
+fn w1_free_split_elem_int(line: String) -> Int {
+  let fields = split(s: line, delimiter: "|")
+  match list_at_optional(xs: fields, index: 1) {
+    Absent => 0
+    Present { value: user } =>
+      let z: Int = user
+      z
+  }
+}
+
+fn w2_method_split_elem_int(line: String) -> Int {
+  let fields = line.split(delimiter: "|")
+  match list_at_optional(xs: fields, index: 1) {
+    Absent => 0
+    Present { value: user } =>
+      let z: Int = user
+      z
+  }
+}
+
+fn w3_free_join_listint(sep: String) -> String {
+  let xs: List<Int> = [1, 2]
+  join(xs, sep)
+}
+
+fn w4_method_join_listint(sep: String) -> String {
+  let xs: List<Int> = [1, 2]
+  xs.join(sep)
+}
+
+fn w5_free_split_as_bool(line: String) -> Bool {
+  let n: Bool = split(s: line, delimiter: "|")
+  n
+}
+
+fn w6_method_split_as_bool(line: String) -> Bool {
+  let n: Bool = line.split(delimiter: "|")
+  n
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}
