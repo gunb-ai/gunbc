@@ -88,7 +88,7 @@ fn parsed_verb_is_adjudicate(argv: List<String>) -> Bool {
         NativeDriverCensusVerb { verb: _, source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => true
-        NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => true
+        NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => false
       }
   }
 }
@@ -176,6 +176,13 @@ test fn adjudicate_takes_its_facts_path_before_the_roots_holds() -> Bool {
   && (planned_facts_path(argv: ["adjudicate", "host-facts.tsv", "--pattern", "//v2/test/...", "dag", "src/v2"]) == "host-facts.tsv")
   && (planned_root_count(argv: ["adjudicate", "host-facts.tsv", "--pattern", "//v2/test/...", "dag", "src/v2"]) == 2)
   && (planned_root_count(argv: ["adjudicate", "host-facts.tsv", "dag", "src/v2"]) == 2)
+}
+
+// The self-host frontier is its own verb, never a mode of adjudicate: its three file operands are not a
+// facts path, so the verb predicate discriminates the two words.
+test fn the_self_host_frontier_verb_is_not_adjudicate_holds() -> Bool {
+  parsed_verb_is_adjudicate(argv: ["adjudicate", "f.tsv", "dag"])
+    && !parsed_verb_is_adjudicate(argv: ["self-host-frontier", "m.rs", "v.txt", "o.txt"])
 }
 
 test fn only_adjudicate_names_a_facts_path_holds() -> Bool {
