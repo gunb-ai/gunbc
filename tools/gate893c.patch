@@ -1,0 +1,166 @@
+diff --git a/dag/gunbc/claim_batch_exit_composition_seed_growth.dag b/dag/gunbc/claim_batch_exit_composition_seed_growth.dag
+index b9288e9fbd..7b91f782e0 100644
+--- a/dag/gunbc/claim_batch_exit_composition_seed_growth.dag
++++ b/dag/gunbc/claim_batch_exit_composition_seed_growth.dag
+@@ -20,6 +20,6 @@ data claim_batch_exit_composition_seed_growth_justification: SeedGrowthJustifica
+   ],
+   reason: "WHY RUST IS STILL NEEDED: claim_batch is a seed-host CLI whose process exit code is produced before any .dag evaluation frame exists. batch_exit_code composes the three exit classes of the gunbc test contract, 1 (a finding) over 2 (no observation) over 0, from the two flags the resolve and report sites set. The VOCABULARY is modeled: v2.workflow.floor_terminal_ledger ClaimAttemptTerminal.SubjectUnresolved and .RouteGap project to the dispositions that mean no observation; this function is the seed's mirror of that projection at the process boundary. THE RESOLVE REFUSAL IS SPLIT BY WHAT IT SAYS ABOUT THE CLAIM (EntryResolveRefusal): an entry that is not a file never reached its subject (EntryMissing, UNOBSERVED, exit 2); a name or type error inside the entry's closure is a finding at the compiler floor (ClosureDiagnostics, FAIL, exit 1); a resolve refusal that is not a corpus diagnostic (host budget unreadable, assembly attribution, unreadable source) is ResolveInfrastructure, UNOBSERVED, exit 2. SubjectUnresolved IS A DECLARED FRONTIER, NOT CONSUMED: claim_batch prints the UNOBSERVED line, but no reader decodes that line into the SubjectUnresolved terminal today (the only ledger renderer is .dag, v2.workflow.floor_terminal_ledger_wire, and no Rust writes any row). Trigger: the ledger join that reads claim_batch output into ClaimAttemptTerminal rows; until it lands this PR does not claim to emit the row. A nonexistent --entry path is refused at the CLI boundary with exit 2 before any group runs.",
+   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+-  trigger: "Delete batch_exit_code when claim_batch's verdict fold is the .dag fold over ClaimDisposition and the process exit is derived from its typed standing rather than from two booleans.",
+-  current_boundary: "Pure over two booleans: any failed claim yields 1 even when another group was unobserved (false AND unknown is false), unobserved with nothing failed yields 2, otherwise 0. Every group's lines still print before the exit, so no measurement is dropped to reach 2."
++  trigger: "Delete batch_exit_code when claim_batch's verdict fold is the .dag fold over ClaimDisposition and the process exit is derived from its typed standing rather than from two booleans and the cost-partition verdict.",
++  current_boundary: "Pure over two booleans and the cost-partition verdict (Refused NoSpans counts as unobserved, any other Refused as failed): any failed claim yields 1 even when another group was unobserved (false AND unknown is false), unobserved with nothing failed yields 2, otherwise 0. Every group's lines still print before the exit, so no measurement is dropped to reach 2."
+ }
+diff --git a/src/v1/stage0/src/bin/claim_batch.rs b/src/v1/stage0/src/bin/claim_batch.rs
+index a58a1e2a13..dd56819b01 100644
+--- a/src/v1/stage0/src/bin/claim_batch.rs
++++ b/src/v1/stage0/src/bin/claim_batch.rs
+@@ -39,10 +39,27 @@ struct ResolveTimings {
+ /// that definitely failed makes the answer "did not hold" even when another group was never
+ /// evaluated. Only nothing-failed with something unobserved is "no observation". Every group's
+ /// lines print either way.
+-fn batch_exit_code(any_unobserved: bool, any_failed: bool) -> u8 {
+-    if any_failed {
++///
++/// The cost partition's verdict is a third conjunct. An accounting that contradicts itself
++/// (rows past the parent, a nested span, in-span time past the thread total) is a measurement
++/// that did not hold: it fails the line, so a Refused verdict is never printed and then
++/// ignored. `NoSpans` made no observation at all, which is exit 2's meaning.
++fn batch_exit_code(
++    any_unobserved: bool,
++    any_failed: bool,
++    partition: &v1_compiler::cli_run::CostAccountingVerdict,
++) -> u8 {
++    use v1_compiler::cli_run::{CostAccountingRefusal, CostAccountingVerdict};
++    let (partition_unobserved, partition_failed) = match partition {
++        CostAccountingVerdict::Reconciled { .. } => (false, false),
++        CostAccountingVerdict::Refused {
++            cause: CostAccountingRefusal::NoSpans,
++        } => (true, false),
++        CostAccountingVerdict::Refused { .. } => (false, true),
++    };
++    if any_failed || partition_failed {
+         1
+-    } else if any_unobserved {
++    } else if any_unobserved || partition_unobserved {
+         2
+     } else {
+         0
+@@ -358,6 +375,23 @@ fn report_outcome(
+         // per-smoke verdict line out to printf because this path could only print bare FAIL
+         // (the 2026-07-13 srv3 forensics receipt). The reason is the single carrier now — the
+         // narration op is deleted, and this arm prints what the claim itself returned.
++        // CODE 2 IS THE EXIT CONTRACT'S "NO OBSERVATION" (DESIGN: 0 held, 1 did not hold, 2 no
++        // observation). A claim that returns `ExitFailure` with code 2 says it observed nothing,
++        // so printing FAIL and exiting 1 reads a subject that was never reached as a subject that
++        // answered no. It is the typed `ObservationUnrepresentable` of the terminal ledger.
++        ClaimOutcome::ExitFailure { code: 2, reason } => {
++            match reason {
++                Some(r) => println!(
++                    "UNOBSERVED {} (returned ProcessExit::ExitFailure, code 2: {})",
++                    function, r
++                ),
++                None => println!(
++                    "UNOBSERVED {} (returned ProcessExit::ExitFailure, code 2, no reason given)",
++                    function
++                ),
++            }
++            *any_unobserved = true;
++        }
+         ClaimOutcome::ExitFailure { code, reason } => {
+             match reason {
+                 Some(r) => println!(
+@@ -1043,6 +1077,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
+             );
+         }
+     }
++    let partition_verdict: v1_compiler::cli_run::CostAccountingVerdict;
+     {
+         let st = v1_compiler::cli_run::resolve_stage_totals();
+         let ms = |n: u128| n as f64 / 1.0e6;
+@@ -1081,6 +1116,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
+         // witness-entry resolves. The partition below reports against the span total that
+         // actually contains them, and refuses rather than quoting a share off the mismatch.
+         let partition = v1_compiler::cli_run::exclusive_cost_partition();
++        partition_verdict = partition.verdict.clone();
+         eprintln!(
+             "[cost-partition] {}",
+             v1_compiler::cli_run::render_exclusive_cost_partition_json(
+@@ -1148,6 +1184,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
+     Ok(ExitCode::from(batch_exit_code(
+         timings.any_unobserved,
+         timings.any_failed,
++        &partition_verdict,
+     )))
+ }
+ 
+@@ -1206,10 +1243,65 @@ mod cli_path_resolution_wiring_tests {
+ 
+     #[test]
+     fn exit_composition_is_failed_over_unobserved_over_clean() {
+-        assert_eq!(batch_exit_code(false, false), 0);
+-        assert_eq!(batch_exit_code(false, true), 1);
+-        assert_eq!(batch_exit_code(true, false), 2);
+-        assert_eq!(batch_exit_code(true, true), 1);
++        use v1_compiler::cli_run::CostAccountingVerdict;
++        let ok = CostAccountingVerdict::Reconciled {
++            residual_nanos: 0,
++            tolerance_nanos: 0,
++        };
++        assert_eq!(batch_exit_code(false, false, &ok), 0);
++        assert_eq!(batch_exit_code(false, true, &ok), 1);
++        assert_eq!(batch_exit_code(true, false, &ok), 2);
++        assert_eq!(batch_exit_code(true, true, &ok), 1);
++    }
++
++    /// A Refused cost partition joins the exit at the same precedence as any other verdict.
++    /// RED: an over-attributed partition (rows past the parent) fails the line even when every
++    /// claim held. POSITIVE CONTROL: a reconciled partition adds nothing, so a clean batch is 0.
++    #[test]
++    fn a_refused_partition_joins_the_batch_exit() {
++        use v1_compiler::cli_run::{CostAccountingRefusal, CostAccountingVerdict};
++        let flags = |v: CostAccountingVerdict| batch_exit_code(false, false, &v);
++        let refused = |cause| CostAccountingVerdict::Refused { cause };
++        assert_eq!(
++            flags(CostAccountingVerdict::Reconciled {
++                residual_nanos: 0,
++                tolerance_nanos: 0
++            }),
++            0,
++            "control: a reconciled partition leaves a clean batch at 0"
++        );
++        assert_eq!(
++            flags(refused(CostAccountingRefusal::OverAttributed {
++                sum_exclusive_nanos: 2,
++                parent_span_nanos: 1
++            })),
++            1,
++            "an over-attributed partition fails the line"
++        );
++        assert_eq!(
++            flags(refused(CostAccountingRefusal::InSpanExceedsThread {
++                stage: "pool_parse",
++                in_span_nanos: 2,
++                thread_nanos: 1
++            })),
++            1
++        );
++        assert_eq!(
++            flags(refused(CostAccountingRefusal::NestedSpanAttribution {
++                nested_spans: 1
++            })),
++            1
++        );
++        assert_eq!(
++            flags(refused(CostAccountingRefusal::NoSpans)),
++            2,
++            "no span ran: no observation, exit 2, never a failure"
++        );
++        // precedence against a claim-level verdict: failed over unobserved over clean.
++        assert_eq!(
++            batch_exit_code(false, true, &refused(CostAccountingRefusal::NoSpans)),
++            1
++        );
+     }
+ 
+     /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).
