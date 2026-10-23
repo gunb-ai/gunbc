@@ -1,3 +1,4 @@
+import GoogleSignIn
 import SwiftUI
 import UserNotifications
 
@@ -10,6 +11,7 @@ struct ApproveApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .onOpenURL { _ = GIDSignIn.sharedInstance.handle($0) }
                 .environmentObject(state)
                 .task {
                     delegate.attach(state)
