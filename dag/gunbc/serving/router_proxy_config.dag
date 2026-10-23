@@ -1,11 +1,13 @@
 module gunbc.serving.router_proxy_config
 
-import std.types { String, Int, Bool, List }
+import std.types { String, Int, Bool, List, NonEmptyStr }
 import extdeps.proxy.openresty {
-  OpenRestyVersion, openresty_1_27_1_1, NginxDirective, Simple, Block, LuaPhaseHook, AccessPhase, LogPhase,
-  AuthzCapture, StreamEndCallout, ProxyNextUpstreamOff, ProxyBufferingOff, ProxyRequestBufferingOff,
-  proxy_next_upstream_directive, proxy_buffering_directive, proxy_request_buffering_directive,
-  render_nginx_directives,
+  OpenRestyVersion, openresty_1_27_1_1, NginxDirective, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock,
+  ListenLoopback, LocationBlock, PrefixV1, ExactAuthz, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
+  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetSeatPermitHeader, ProxyPassDirective,
+  ProxyTargetFromUpstreamVariable, ProxyPassLoopbackAuthz, InternalLocationOnly, ProxyMethodPost, ProxyPassRequestBodyOff,
+  ProxySetContentLengthZero, LuaPhaseHook, AccessPhase, LogPhase, AuthzCapture, AuthzInternalLocation, StreamEndCallout,
+  ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, render_nginx_directives,
 }
 
 // The router's byte-carrying proxy configuration (plan gunbc.plans.fabric_serving_router, S1), as
@@ -23,30 +25,30 @@ fn router_proxy_pinned_version() -> OpenRestyVersion { openresty_1_27_1_1 }
 
 fn router_proxy_directives(listen_port: Int, authz_port: Int, stream_end_port: Int) -> List<NginxDirective> {
   [
-    Simple { name: "worker_processes", args: ["1"] },
-    Block { name: "events", args: [], body: [] },
-    Block { name: "http", args: [], body: [
-      Simple { name: "access_log", args: ["off"] },
-      Block { name: "server", args: [], body: [
-        Simple { name: "listen", args: ["127.0.0.1:" + (listen_port as String)] },
-        Block { name: "location", args: ["/v1/"], body: [
-          Simple { name: "set", args: ["$up", "''"] },
-          Simple { name: "set", args: ["$permit", "''"] },
-          LuaPhaseHook { phase: AccessPhase, hook: AuthzCapture { location: "/_authz", upstream_header: "x-upstream", permit_header: "x-seat-permit", refuse_status: 503 } },
-          Simple { name: "proxy_http_version", args: ["1.1"] },
-          proxy_buffering_directive(v: ProxyBufferingOff),
-          proxy_request_buffering_directive(v: ProxyRequestBufferingOff),
-          proxy_next_upstream_directive(v: ProxyNextUpstreamOff),
-          Simple { name: "proxy_set_header", args: ["x-seat-permit", "$permit"] },
-          Simple { name: "proxy_pass", args: ["http://$up"] },
-          LuaPhaseHook { phase: LogPhase, hook: StreamEndCallout { host: "127.0.0.1", port: stream_end_port, path: "/stream-end", permit_variable: "permit" } },
+    WorkerProcesses { count: 1 },
+    EventsBlock,
+    HttpBlock { body: [
+      AccessLogOff,
+      ServerBlock { body: [
+        ListenLoopback { port: listen_port },
+        LocationBlock { matching: PrefixV1, body: [
+          SetEmptyVariable { name: "up" as NonEmptyStr },
+          SetEmptyVariable { name: "permit" as NonEmptyStr },
+          LuaPhaseHook { phase: AccessPhase, hook: AuthzCapture { location: AuthzInternalLocation, refuse_status: 503 } },
+          ProxyHttpVersion11,
+          ProxyBufferingDirective { value: ProxyBufferingOff },
+          ProxyRequestBufferingDirective { value: ProxyRequestBufferingOff },
+          ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff },
+          ProxySetSeatPermitHeader,
+          ProxyPassDirective { target: ProxyTargetFromUpstreamVariable },
+          LuaPhaseHook { phase: LogPhase, hook: StreamEndCallout { loopback_port: stream_end_port, timeout_ms: 2000 } },
         ] },
-        Block { name: "location", args: ["=", "/_authz"], body: [
-          Simple { name: "internal", args: [] },
-          Simple { name: "proxy_pass", args: ["http://127.0.0.1:" + (authz_port as String) + "/authz"] },
-          Simple { name: "proxy_method", args: ["POST"] },
-          Simple { name: "proxy_pass_request_body", args: ["off"] },
-          Simple { name: "proxy_set_header", args: ["Content-Length", "0"] },
+        LocationBlock { matching: ExactAuthz, body: [
+          InternalLocationOnly,
+          ProxyPassLoopbackAuthz { port: authz_port },
+          ProxyMethodPost,
+          ProxyPassRequestBodyOff,
+          ProxySetContentLengthZero,
         ] },
       ] },
     ] },

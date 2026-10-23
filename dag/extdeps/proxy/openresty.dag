@@ -49,48 +49,73 @@ type ProxyBuffering
 type ProxyRequestBuffering
   = | ProxyRequestBufferingOff
 
-// A Lua hook the pinned build runs in a request phase. Each arm is one realization of a callout shape;
-// the Lua text is rendered here, from the row's fields, and nowhere else.
+// Where proxy_pass sends a request. The only arm takes the target from a variable, so a fixed host or an
+// upstream block (balancing, health state) has no constructor in this model.
+type ProxyTarget
+  = | ProxyTargetFromUpstreamVariable
+
+// The loopback callout targets the model can express: the authz capture goes to an internal location,
+// and the stream-end callout is a POST to a loopback port. No free-text host, path or header reaches the
+// emitted Lua; every interpolated value below is an Int or a closed arm.
+type CalloutLocation
+  = | AuthzInternalLocation
+
 type LuaHook
-  = AuthzCapture { location: String, upstream_header: String, permit_header: String, refuse_status: Int }
-  | StreamEndCallout { host: String, port: Int, path: String, permit_variable: String }
+  = AuthzCapture { location: CalloutLocation, refuse_status: Int }
+  | StreamEndCallout { loopback_port: Int, timeout_ms: Int }
 
 type LuaPhase
   = | AccessPhase
   | LogPhase
 
+type LocationMatch
+  = | PrefixV1
+  | ExactAuthz
+
 type NginxDirective
-  = Simple { name: String, args: List<String> }
-  | Block { name: String, args: List<String>, body: List<NginxDirective> }
+  = WorkerProcesses { count: Int }
+  | EventsBlock
+  | HttpBlock { body: List<NginxDirective> }
+  | AccessLogOff
+  | ServerBlock { body: List<NginxDirective> }
+  | ListenLoopback { port: Int }
+  | LocationBlock { matching: LocationMatch, body: List<NginxDirective> }
+  | SetEmptyVariable { name: NonEmptyStr }
+  | ProxyHttpVersion11
+  | ProxyBufferingDirective { value: ProxyBuffering }
+  | ProxyRequestBufferingDirective { value: ProxyRequestBuffering }
+  | ProxyNextUpstreamDirective { value: ProxyNextUpstream }
+  | ProxySetSeatPermitHeader
+  | ProxyPassDirective { target: ProxyTarget }
+  | ProxyPassLoopbackAuthz { port: Int }
+  | InternalLocationOnly
+  | ProxyMethodPost
+  | ProxyPassRequestBodyOff
+  | ProxySetContentLengthZero
   | LuaPhaseHook { phase: LuaPhase, hook: LuaHook }
 
-fn proxy_next_upstream_directive(v: ProxyNextUpstream) -> NginxDirective {
-  match v { ProxyNextUpstreamOff => Simple { name: "proxy_next_upstream", args: ["off"] } }
-}
+data seat_permit_header: String = "x-seat-permit"
+data upstream_answer_header: String = "x-upstream"
 
-fn proxy_buffering_directive(v: ProxyBuffering) -> NginxDirective {
-  match v { ProxyBufferingOff => Simple { name: "proxy_buffering", args: ["off"] } }
-}
-
-fn proxy_request_buffering_directive(v: ProxyRequestBuffering) -> NginxDirective {
-  match v { ProxyRequestBufferingOff => Simple { name: "proxy_request_buffering", args: ["off"] } }
+fn authz_location_path(l: CalloutLocation) -> String {
+  match l { AuthzInternalLocation => "/_authz" }
 }
 
 fn lua_hook_lines(h: LuaHook) -> List<String> {
   match h {
-    AuthzCapture { location: l, upstream_header: u, permit_header: pm, refuse_status: r } => [
-      "local res = ngx.location.capture('" + l + "', \{method = ngx.HTTP_POST\})",
+    AuthzCapture { location: l, refuse_status: r } => [
+      "local res = ngx.location.capture('" + authz_location_path(l: l) + "', \{method = ngx.HTTP_POST\})",
       "if res.status ~= 200 then return ngx.exit(" + (r as String) + ") end",
-      "ngx.var.up = res.header['" + u + "']",
-      "ngx.var.permit = res.header['" + pm + "']",
+      "ngx.var.up = res.header['" + upstream_answer_header + "']",
+      "ngx.var.permit = res.header['" + seat_permit_header + "']",
     ]
-    StreamEndCallout { host: h2, port: pt, path: path, permit_variable: pv } => [
-      "if ngx.var." + pv + " == '' then return end",
+    StreamEndCallout { loopback_port: pt, timeout_ms: t } => [
+      "if ngx.var.permit == '' then return end",
       "ngx.timer.at(0, function(p)",
       "local s = ngx.socket.tcp()",
-      "s:settimeout(2000)",
-      "if not s:connect('" + h2 + "', " + (pt as String) + ") then return end",
-      "s:send('POST " + path + " HTTP/1.1\\r\\nHost: x\\r\\nx-seat-permit: ' .. ngx.var." + pv + " .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
+      "s:settimeout(" + (t as String) + ")",
+      "if not s:connect('127.0.0.1', " + (pt as String) + ") then return end",
+      "s:send('POST /stream-end HTTP/1.1\\r\\nHost: x\\r\\n" + seat_permit_header + ": ' .. ngx.var.permit .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
       "s:receive('*a')",
       "s:close()",
       "end)",
@@ -102,15 +127,41 @@ fn lua_phase_name(ph: LuaPhase) -> String {
   match ph { AccessPhase => "access_by_lua_block" LogPhase => "log_by_lua_block" }
 }
 
+fn location_match_text(m: LocationMatch) -> String {
+  match m { PrefixV1 => "/v1/" ExactAuthz => "= /_authz" }
+}
+
 fn join_with(items: List<String>, sep: String) -> String {
   fold(items, init: "", f: (acc, e) => if acc == "" { e } else { acc + sep + e })
 }
 
+fn nginx_block(head: String, body: List<NginxDirective>, indent: String) -> String {
+  indent + head + " \{\n" + join_with(map(body, x => render_nginx_directive(d: x, indent: indent + "  ")), "") + indent + "}\n"
+}
+
+fn nginx_line(text: String, indent: String) -> String { indent + text + ";\n" }
+
 fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
   match d {
-    Simple { name: n, args: a } => indent + join_with(concat([n], a), " ") + ";\n"
-    Block { name: n, args: a, body: b } =>
-      indent + join_with(concat([n], a), " ") + " \{\n" + join_with(map(b, x => render_nginx_directive(d: x, indent: indent + "  ")), "") + indent + "}\n"
+    WorkerProcesses { count: n } => nginx_line(text: "worker_processes " + (n as String), indent: indent)
+    EventsBlock => indent + "events \{\}\n"
+    HttpBlock { body: b } => nginx_block(head: "http", body: b, indent: indent)
+    AccessLogOff => nginx_line(text: "access_log off", indent: indent)
+    ServerBlock { body: b } => nginx_block(head: "server", body: b, indent: indent)
+    ListenLoopback { port: p } => nginx_line(text: "listen 127.0.0.1:" + (p as String), indent: indent)
+    LocationBlock { matching: m, body: b } => nginx_block(head: "location " + location_match_text(m: m), body: b, indent: indent)
+    SetEmptyVariable { name: n } => nginx_line(text: "set $" + (n as String) + " ''", indent: indent)
+    ProxyHttpVersion11 => nginx_line(text: "proxy_http_version 1.1", indent: indent)
+    ProxyBufferingDirective { value: v } => match v { ProxyBufferingOff => nginx_line(text: "proxy_buffering off", indent: indent) }
+    ProxyRequestBufferingDirective { value: v } => match v { ProxyRequestBufferingOff => nginx_line(text: "proxy_request_buffering off", indent: indent) }
+    ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
+    ProxySetSeatPermitHeader => nginx_line(text: "proxy_set_header " + seat_permit_header + " $permit", indent: indent)
+    ProxyPassDirective { target: t } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$up", indent: indent) }
+    ProxyPassLoopbackAuthz { port: p } => nginx_line(text: "proxy_pass http://127.0.0.1:" + (p as String) + "/authz", indent: indent)
+    InternalLocationOnly => nginx_line(text: "internal", indent: indent)
+    ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
+    ProxyPassRequestBodyOff => nginx_line(text: "proxy_pass_request_body off", indent: indent)
+    ProxySetContentLengthZero => nginx_line(text: "proxy_set_header Content-Length 0", indent: indent)
     LuaPhaseHook { phase: ph, hook: h } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(lua_hook_lines(h: h), "\n" + indent + "  ") + "\n" + indent + "}\n"
   }
@@ -118,14 +169,6 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
 
 fn render_nginx_directives(rows: List<NginxDirective>) -> String {
   join_with(map(rows, x => render_nginx_directive(d: x, indent: "")), "")
-}
-
-fn nginx_directive_name_is(d: NginxDirective, name: String) -> Bool {
-  match d {
-    Simple { name: n, args: _ } => n == name
-    Block { name: n, args: _, body: _ } => n == name
-    LuaPhaseHook { phase: _, hook: _ } => false
-  }
 }
 
 data openresty_streaming_directives_note: NonEmptyStr = "These are the directives of the pinned build that decide whether a response is relayed as it arrives and whether the proxy may pick a second upstream: proxy_pass with a variable target (no upstream block, so no balancing or health state), proxy_next_upstream off (no retry onto another peer), proxy_buffering off and proxy_request_buffering off (chunks pass through), and the lua phase hooks access_by_lua (before forwarding) and log_by_lua (after the request finishes, on every end). Whether the log phase fires on client abort and on upstream reset was observed on this build; its outcome variables were not reliable on abort, so they are not modeled here." as NonEmptyStr
