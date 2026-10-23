@@ -354,8 +354,9 @@ fn boot_image_export_text(export: BootImageExport) -> String {
 // because #12594 bumped builder_revision, so the previous image (30ca88d4..., build_key
 // 8d357a525f078cb4) no longer describes the current derivation and the boot refuses it (run
 // 36660907341). This row is publication-time evidence only:
-// gunbc.machine_intake.mtcollins1_census_medium_readback re-measures the served path on srv2 before
-// the boot subject is admitted, every run. Switching it to stock_installer_boot_medium makes every
+// the mtcollins1 boot run no longer selects this medium (it boots the runner medium, re-measured by
+// gunbc.host.boot_medium_served_readback); a census-member boot that selects it again must re-measure
+// the served path before the boot subject is admitted. Switching it to stock_installer_boot_medium makes every
 // census verdict refuse at the gate, before any controller write.
 data mtcollins1_census_boot_medium: BootMedium = census_boot_medium(
   image_stem: mtcollins1_census_image_stem,
