@@ -1702,8 +1702,8 @@ type NetworkBootAttemptConstruction
     }
 
 // WHAT A SWEEP WITH NO EXECUTABLE ROW MEANS, as a function of the one field left to read. The two
-// consumers (the verdict and the attempt mint) ask the same question of the same selection, so the
-// reading lives once. `Absent` is only reachable by a selection whose two fields were both empty for a
+// consumers (the verdict and the attempt mint) wrap the same refusal in different result types, so each
+// has its own reader. `Absent` is only reachable by a selection whose two fields were both empty for a
 // non-empty list, which `select_admissible` cannot produce; it is a separate, typed cause rather than a
 // guess at a catalog gap or an unread unit, and it takes a supplied value so a witness can reach it.
 fn refusal_cause_from(
