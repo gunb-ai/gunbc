@@ -85,6 +85,9 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_unit_doc,
   convergence_placement_entry_path,
 }
+import extdeps.git {
+  git_in_trusted_repository_argv,
+}
 import extdeps.git.inspect {
   git_config_get_exit_unset,
 }
@@ -198,7 +201,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   // WORKER-ROOT-EQUIVALENT-3: the apply side of the two new members reuses the SAME builders the
   // observer and the claims use -- one authority for what a re-group and what the posture are.
-  dashboard_git_worker_directory_children, dashboard_git_worker_subtree_path,
+  dashboard_git_worker_directory_children, dashboard_git_worker_directory_member,
+  dashboard_git_worker_subtree_path,
   dashboard_git_worker_subtree_confined_children,
   dashboard_git_worker_subtree_chgrp_command, dashboard_git_worker_subtree_chmod_command,
   dashboard_git_worker_subtree_needs_sticky, dashboard_git_worker_subtree_writes_files_in_place,
@@ -346,7 +350,6 @@ import gunbc.live_deploy.operations {
   pwd_file_install_privileged_command,
   install_directory_command,
   rm_force_command,
-  rm_empty_directory_command,
   rm_force_recursive_command,
   install_directory_owned_command,
   install_file_owned_command,
@@ -366,6 +369,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
   bash_build_if_from_stmts,
   bash_build_if_else,
+  bash_build_or_else,
   bash_build_stmt_list_from_nodes,
   bash_build_test_bracket,
   bash_build_word_cmdsubst,
@@ -394,8 +398,6 @@ import gunbc.live_deploy.effect_leaf {
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
 data live_deploy_apply_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy APPLY intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-apply.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
-
-data live_deploy_retract_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy RETRACT intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-retract.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
 data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ systemd runtime-retirement intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid deploy shell, so the committed retract artifact drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
@@ -519,17 +521,6 @@ fn bash_intent_command_or_poison(intent: Node) -> String {
       }
     Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
   }
-}
-
-fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -> List<PipelineStep> {
-  [
-    deploy_raw(command: bash_intent_command_or_poison(
-      intent: systemctl_load_state_assignment_intent(unit: unit)
-    )),
-    deploy_raw(command: bash_intent_command_or_poison(
-      intent: systemctl_disable_now_when_loaded_intent(unit: unit, privileged: privileged)
-    )),
-  ]
 }
 
 fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
@@ -1214,40 +1205,6 @@ fn apply_publication_path_unit_write_step(spec: DeploymentSpec) -> PipelineStep 
     stage_name: deployment_publication_path_unit_name(names: spec.names) as String,
     content: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
-}
-
-// Leftover timer retirement (FleetConvergeTimerUnit teardown shape): disable if loaded, remove the
-// unit file, daemon-reload, read back LoadState=not-found. Absence is converged — the disable is
-// gated on not-found, and rm -f is a no-op on a missing file.
-data leftover_systemd_timer_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete leftover_systemd_timer_retire_steps and the retired belt/publication timer name functions once every deployed instance's apply readback has reported LoadState=not-found for both leftover units" as NonEmptyStr)
-
-fn leftover_systemd_timer_retire_steps(unit: NonEmptyStr, path: NonEmptyStr) -> List<PipelineStep> {
-  concat(
-    systemctl_disable_now_if_present_steps(unit: unit, privileged: true),
-    [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [path as String])),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_raw(command: bash_intent_command_or_poison(intent: systemctl_load_state_assignment_intent(unit: unit))),
-      deploy_raw(command: bash_intent_command_or_poison(intent: leftover_timer_not_found_readback_intent())),
-    ]
-  )
-}
-
-fn leftover_timer_not_found_readback_intent() -> Node {
-  bash_build_if_from_stmts(
-    cond: bash_build_test_bracket(words: [
-      bash_build_word_var(name: "_gunbc_load_state"),
-      bash_build_word_lit(text: "!="),
-      bash_build_word_lit(text: systemd_unit_load_state_not_found_wire as String),
-    ]),
-    then_stmts: [
-      bash_build_command_from_lits(lits: [
-        "echo",
-        "leftover timer still loaded after retire — LoadState is not not-found (fail-closed)",
-      ]),
-      bash_build_command_from_lits(lits: ["exit", "1"]),
-    ]
-  )
 }
 
 // THE TWO SPOOL DIRECTORIES CARRY OPPOSITE PERMISSIONS, AND THAT IS THE WHOLE ENFORCEMENT.
@@ -2181,12 +2138,6 @@ fn tailscale_serve_mapping_apply_steps(spec: DeploymentSpec) -> List<PipelineSte
   }
 }
 
-fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
-  ))
-}
-
 // THE BINARY PATH BECAME A PARAMETER AND ITS PARENT DIRECTORY DID NOT (review 45197). This PR
 // derives serve_binary from the instance root, so a twin installs to its own tree — but the step
 // that CREATES the destination directory still read `sudo -n install -d -m 0755 /opt/gunbc/bin`,
@@ -2414,6 +2365,10 @@ fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
   })
 }
 
+data deploy_apply_preamble_steps_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: deploy_apply_preamble_steps is the bash body of the deploy preamble, shadowed by the typed gunbc.host.host_effect_realize live_deploy_apply_preamble_on_host (live on the retract route). DISSOLVES WHEN the apply route takes live_deploy_apply_preamble_on_host: the ONE apply PR switches the apply root and deletes this function. NOT satisfied by the typed preamble existing, nor by a claim comparing the two bodies." as NonEmptyStr,
+)
+
 fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_sudoers_install_shell(access: access)),
@@ -2518,6 +2473,243 @@ fn host_script_mutate_projection(fragments: List<HostScriptFragment>) -> HostScr
 // ONE CASE ANALYSIS per target: refusal is Decide with standing HostScriptRefused; Mutate carries only an admitted install.
 data owned_directory_unplannable_poison: String = "__GUNBC_DEPLOY_REFUSED__ owned directory NOT ENSURED: gunbc.owned_directory owned_directory_install_plan_of has no plan: "
 
+// THE GIT SUBTREE GROUP, IN TWO POSITIONS. The re-group sweep and the shared-posture step share ONE
+// premise with the three worker .git/ installs -- the repository is established -- and the two
+// positions differ only in how that premise is guaranteed:
+//
+// THE TREE POSITION (git_repository_subtree_tree_position_fragments). Emitted at the artifact step
+// that establishes the tree (the GunbcSourceTree TreePublication arm), immediately after that step's
+// convergence readback, PRECEDED BY THE REPOSITORY PREMISE GATE. The installs travel here too (the
+// standing position suppresses exactly them, and only for this shape). They left the standing
+// pre-position of apply_intent_fragments, where the host script ran them BEFORE any step could
+// create the repository: on a fresh instance that installed -d --parents a root-owned source/.git
+// skeleton into exactly the directory the tree step must create (lab apply abd9fdc4, 2026-10-17),
+// and the old root kept serving.
+//
+// THE STANDING POSITION (git_repository_subtree_group_fragments). A spec that carries NO tree step
+// has no position to move to, so its sweep and posture stay where they always were -- today's
+// behaviour, unchanged, for exactly the shapes that always had it.
+fn git_repository_subtree_group_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  concat(
+    git_worker_subtree_fragments(spec: spec, plan: plan),
+    repository_shared_posture_fragments(spec: spec, plan: plan))
+}
+
+// THE TREE-POSITION GROUP: the partitioned installs (typed member equality against the roster's mint
+// authority), the sweep and the posture, behind the premise gate as its own member. compose_host_script
+// runs the mutate phase as one set -euo pipefail script with FailFast, so a gate failure aborts the
+// whole apply at the tree step's position -- no later member can mutate any .git path against a
+// non-repository. This is the handoff's "every git step carries a typed precondition": checked once,
+// authoritatively, before the group's first write, and the refusal names the read.
+fn git_repository_subtree_tree_position_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  let install_fragments = flat_map(
+    filter(deployment_directory_demands(spec: spec), t =>
+      is_dashboard_git_worker_directory_demand(t: t) && owned_directory_will_install(spec: spec, plan: plan, t: t)),
+    t => owned_directory_target_fragments(t: t))
+  let group = concat(install_fragments, git_repository_subtree_group_fragments(spec: spec, plan: plan))
+  if is_empty(xs: group) {
+    []
+  } else {
+    match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+      // NO FABRICATED ROOT, EVER. An unknown instance id has no repository root to name, and the gate
+      // would run git -C "" against the script's cwd -- a refusal that tests nothing. Refuse at
+      // EMISSION with the deployment poison (the fabric_storage_door_unknown_instance_poison
+      // precedent): the marker is not valid shell, so the apply fails rather than testing an
+      // invented path. A spec whose id is unknown cannot establish the premise for anyone.
+      DashboardInstanceIdUnknown { instance_id: instance_id } =>
+        host_script_member_refused(
+          member: "git-worker-subtree-premise" as NonEmptyStr,
+          cause: "the deployment names an unknown dashboard instance, so the git subtree group has no repository root to premise on",
+          command: join([git_subtree_group_rootless_poison, instance_id as String, "\n"], ""),
+        )
+      DashboardInstanceForId { instance: instance } =>
+        concat(
+          host_script_member_proceed(
+            member: "git-worker-subtree-premise" as NonEmptyStr,
+            mutate_steps: [dashboard_git_worker_repository_premise_gate_step(repo: instance.repo_root as String)],
+          ),
+          group)
+    }
+  }
+}
+
+// The emission-time poison for a tree-position group whose instance id is unknown (never "git -C ").
+data git_subtree_group_rootless_poison: String = "__GUNBC_DEPLOY_REFUSED__ git subtree group reached with an unknown dashboard instance (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_for_id): no repository root to premise the worker .git/ grants on. instance="
+
+// A standing owned-directory demand is one of the worker's git directories when it is a DECLARED
+// demand the roster minted with one of the three git-worker members. Membership is keyed on the ONE
+// typed origin (dashboard_git_worker_directory_member) that mints those members -- by member EQUALITY,
+// never by a substring of the path. The earlier form tested whether the path contained "/logs",
+// "/refs" or "/objects", which misclassified any unrelated owned directory whose path merely happens
+// to carry one of those segments (review round: path-substring classifier -- partition at the source,
+// where the richer origin exists). OwnedDirectoryManaged targets are never minted with a git-worker
+// member, and the arm only reads the declared member, so they cannot be swept in.
+fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
+  match t {
+    OwnedDirectoryManaged { directory: _ } => false
+    OwnedDirectoryDeclared { member: member, path: _, owner: _, mode: _, group_adoption: _ } =>
+      any(dashboard_git_worker_directory_children, child =>
+        member == dashboard_git_worker_directory_member(child: child))
+  }
+}
+
+// THE GIT SUBTREE'S REPOSITORY PREMISE, AS ONE GATE STEP. A commit in a linked worktree writes loose
+// objects into EXISTING and new fan-out directories under .git/objects, refs and reflogs under
+// .git/refs and .git/logs, and the worktree's own .git/worktrees/<key> entry -- all paths whose
+// standing, group-adopted ownership this group establishes. None of that may run against a directory
+// that is not a repository. The premise is established through the MODELED GIT TOOL, not a test -d:
+// a fabricated .git/objects+refs+logs skeleton with no HEAD passes a directory test and is not a
+// repository (the exact skeleton the old pre-position fabricated), while git's own discovery accepts a
+// directory as a .git only when it holds a valid HEAD. So the gate runs git rev-parse
+// --absolute-git-dir inside trusted-repository scope and requires the answer to be exactly
+// <repo>/.git. A real repository and a freshly bootstrapped git init (HEAD unborn) both pass; an
+// absent directory, a plain directory, and a HEAD-less skeleton all fail -- observed on the
+// qualification host (srv1, git 2.43.0): the skeleton makes rev-parse --absolute-git-dir exit 128
+// ("not a git repository"), the capture is empty, and the comparison refuses. The gate FAILS CLOSED:
+// on failure it prints a refusal naming the read and the path, then false -- and set -euo pipefail
+// aborts the apply before any member mutates anything.
+// THE REFUSAL AS A TYPED THEN-BRANCH: the sentence goes to STDOUT and the branch ends in `false`, so
+// the whole if exits nonzero. The sentence stays on stdout (operator convention: the thing a refusal
+// says belongs on the thing it says it). A claim that must read it reads the RAW observation
+// (run_shell_command_observe), which keeps stdout even on a failed exit -- run_shell_command_capture
+// discards stdout on nonzero, which is right for reading a value but would make this refusal silent to
+// an assertion. The refusal names the read that failed and the path, so a decomposed run points
+// straight at the state.
+fn dashboard_git_worker_repository_premise_refusal_branch(sentence: String) -> List<Node> {
+  [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "printf"),
+      bash_build_word_lit(text: "%s\n"),
+      bash_build_word_lit(text: sentence),
+    ]),
+    bash_build_command_from_lits(lits: ["false"]),
+  ]
+}
+
+// The trusted `<git> -c safe.directory=<repo> -C <repo> <verbs...>` words for the premise read,
+// mapped to bash word literals. The WHOLE argv comes from ONE builder -- extdeps.git
+// git_in_trusted_repository_argv -- so the program word cannot be placed before or after the trusted
+// `-c`/`-C` words by hand at this site. An earlier version concatenated the trusted args BEFORE the
+// program word, which ran `-c` as the program (it prints nothing), so the comparison never saw git.
+fn dashboard_git_worker_premise_trusted_git_words(repo: String, verbs: List<String>) -> List<Node> {
+  map(git_in_trusted_repository_argv(repo: repo as NonEmptyStr, verbs: verbs), w => bash_build_word_lit(text: w))
+}
+
+// The LOW-LEVEL capture primitive: `name=$( <read> || true )`, one assign statement. Wraps <read> in a
+// command substitution that ORs with `true`, so a failing <read> contributes "" instead of tripping the
+// script's errexit inside the substitution. The caller then tests the VARIABLE word, which the
+// serializer renders DOUBLE-QUOTED ("$name"), so an empty capture is the word "" and the test never
+// collapses. The WHY of the variable form -- and why a bare `$( )` is never an operand -- is on
+// dashboard_git_worker_premise_capture_git, the only caller; see also instrument_dispatch_workflow and
+// the compiler-gate stamp witness, which build the same `VAR=$( ... || ... )` capture.
+fn dashboard_git_worker_premise_capture(name: String, read: Node) -> Node {
+  bash_build_assign(
+    name: name,
+    value: bash_build_word_cmdsubst(body: bash_build_or_else(
+      left: read,
+      right: bash_build_command_from_lits(lits: ["true"]))))
+}
+
+// The premise git read, captured INTO A NAMED VARIABLE: `name=$( <trusted git words> <verbs> 2>/dev/null
+// || true )`. This is the project's blessed capture idiom, spelled exactly as the instrument-dispatch
+// memory guard spells its `machine=$(free -b | ... || ...)` reads (instrument_dispatch_workflow.dag) and
+// as the compiler-gate stamp guard spells `STAMP_TREE=$(awk ... || true)`: a command substitution inside
+// `bash_build_or_else(_, right: true)` so a FAILING git (a non-repository exits 128) contributes ""
+// instead of tripping the script's errexit inside the substitution -- the EMPTY RESULT, not the exit
+// status, is what the premise tests. stderr is redirected to null so git's own "not a git repository"
+// text never reaches stdout: an ADMITTED gate writes nothing, and the refusal owns the only stdout line.
+// WHY a variable and not the substitution directly in the test: the serializer renders a VARIABLE word
+// DOUBLE-QUOTED ("$name", asserted by the stamp witness: "'[' '-z' \"$STAMP_TREE\" ']'"), so an empty
+// capture is the explicit word "" and every bracket test stays well-formed. The earlier form put the bare
+// `$( ... )` straight into the [ ] operand, so an EMPTY capture COLLAPSED the operand: `[ $(cmd) != x ]`
+// became `[ != x ]`, bash's "unary operator expected" (exit 2), which `if` reads as FALSE. The gate's
+// verdict then depended on the bash parse error, not the repository -- every non-repository read as
+// ADMIT (the refuses wrongly passed). Hoisting the read into a variable removes that hazard class: no
+// bare command substitution is ever an operand. Not a directory test; the read is --absolute-git-dir.
+fn dashboard_git_worker_premise_capture_git(repo: String, name: String, verbs: List<String>) -> Node {
+  dashboard_git_worker_premise_capture(
+    name: name,
+    read: bash_build_with_redir(
+      inner: bash_build_command_with_words(words: dashboard_git_worker_premise_trusted_git_words(repo: repo, verbs: verbs)),
+      redir: ^bash_production_fold_redir_stderr_null))
+}
+
+// THE PREMISE as a test over the captured variable word: `[ "$abs_git_dir" != "<repo>/.git" ]`.
+// This single comparison decides every state, because git's OWN discovery rules what counts as a
+// repository (observed on the qualification host, git 2.43.0):
+//   EMPTY capture -- git said "not a git repository" (exit 128): an absent path, a plain directory, and
+//     the HEAD-less fabricated skeleton (objects/refs/logs, no HEAD) all land here, since git accepts a
+//     directory as a .git only when it holds a valid HEAD. Empty differs from <repo>/.git, so the gate
+//     refuses. The fabrication cannot walk past this gate as a repository.
+//   A FOREIGN git dir -- a nested checkout resolving to an enclosing repository: differs, refuses.
+//   <repo>/.git exactly -- a real repository, and a freshly bootstrapped git init with HEAD unborn
+//     (git init writes .git/HEAD): the test is FALSE and the gate admits, writing nothing to stdout.
+fn dashboard_git_worker_premise_path_mismatch_test(repo: String, abs_var: String) -> Node {
+  bash_build_test_bracket(words: [
+    bash_build_word_var(name: abs_var),
+    bash_build_word_lit(text: "!="),
+    bash_build_word_lit(text: concat(repo, "/.git")),
+  ])
+}
+
+// The capture's variable, named once here so the gate's test and its capture cannot drift apart.
+fn dashboard_git_worker_premise_abs_git_dir_var() -> String { "gunbc_premise_abs_git_dir" }
+
+// The capture and the decision, as a FLAT STATEMENT LIST -- the same shape the blessed instrument guard
+// emits (instrument_dispatch_memory_guard_statements: `VAR=$(...)` assigns followed by the guard,
+// serialized over a flat List<Node>). Each element is one top-level statement: the command-substitution
+// assign, then the decision if/else. NOT wrapped in an outer bash_build_stmt_list_from_nodes compound:
+// the fold grammar serializes a flat program of statements, and a stmt-list COMPOUND sitting at program
+// top-level is what the serializer refuses -- the earlier wrapping turned the whole gate into the
+// refusal marker. The inner then/else bodies DO keep their wrappers, which is where they belong.
+fn dashboard_git_worker_repository_premise_gate_stmt_list(repo: String) -> List<Node> {
+  [
+    dashboard_git_worker_premise_capture_git(
+      repo: repo, name: dashboard_git_worker_premise_abs_git_dir_var(), verbs: ["rev-parse", "--absolute-git-dir"]),
+    bash_build_if_else(
+      cond: dashboard_git_worker_premise_path_mismatch_test(
+        repo: repo, abs_var: dashboard_git_worker_premise_abs_git_dir_var()),
+      then_body: bash_build_stmt_list_from_nodes(
+        stmts: dashboard_git_worker_repository_premise_refusal_branch(
+          sentence: dashboard_git_worker_repository_premise_refusal_sentence(repo: repo))),
+      // Same git dir: an established repository (on a branch, unborn, or detached). The empty branch
+      // writes nothing; the admit-state claims assert exactly that silence.
+      else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
+    ),
+  ]
+}
+
+// The gate as one raw Mutate step. It carries NO __GUNBC_*_REFUSED__ marker: it is a runtime refusal
+// of a host premise (like the object-source serve refusal), not a plan-derivation refusal, so the
+// census over composed applies stays green while the refusal stays loud.
+// THE GATE RENDERED AS ONE SHELL STRING, FROM ONE AUTHORITY. gate_step wraps THIS text, and the wet
+// claim feeds THIS SAME text to `bash -c`, so what is executed in qualification is the exact command
+// the apply runs -- not a hand-retyped copy that could drift from the model (DESIGN section 5: green
+// by execution of the real artifact).
+fn dashboard_git_worker_repository_premise_gate_command_text(repo: String) -> String {
+  shell_command_text_of_stmts(stmts: dashboard_git_worker_repository_premise_gate_stmt_list(repo: repo))
+}
+
+fn dashboard_git_worker_repository_premise_gate_step(repo: String) -> PipelineStep {
+  deploy_raw(command: dashboard_git_worker_repository_premise_gate_command_text(repo: repo))
+}
+
+// The refusal names the read that failed and the path it failed at, so the reader can act on it.
+// It is the ONLY refusal the gate has: the one read decides every state, so there is exactly one
+// named cause to print -- no second sentence to keep in sync.
+fn dashboard_git_worker_repository_premise_refusal_sentence(repo: String) -> String {
+  concat(
+    "gunbc-deploy-refused: repository premise: git rev-parse --absolute-git-dir at ",
+    concat(repo, " is not ", concat(repo, "/.git -- the deployment tree step must establish the repository first"))
+  )
+}
+
+// Does this spec carry the step that establishes the repository tree? The group moves only for that
+// shape; any other spec keeps its standing fragments unchanged.
+fn spec_publishes_source_tree(spec: DeploymentSpec) -> Bool {
+  spec_has_artifact_kind(spec: spec, kind: UpsertOwned { kind: GunbcSourceTree })
+}
+
 fn owned_directory_target_fragments(t: OwnedDirectoryTarget) -> List<HostScriptFragment> {
   let member = "owned-directory" as NonEmptyStr
   match owned_directory_install_plan_of(t: t) {
@@ -2572,8 +2764,19 @@ fn owned_directory_target_fragments(t: OwnedDirectoryTarget) -> List<HostScriptF
 }
 
 fn owned_directory_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  let tree_step_present = spec_publishes_source_tree(spec: spec)
   flat_map(deployment_directory_demands(spec: spec), t =>
     if !(owned_directory_will_install(spec: spec, plan: plan, t: t)) {
+      []
+    } else if tree_step_present && is_dashboard_git_worker_directory_demand(t: t) {
+      // THE GIT SUBTREE WAITS FOR THE REPOSITORY, AND ONLY FOR THE SHAPE THAT HAS A CREATING STEP.
+      // When the spec carries the GunbcSourceTree step, the three worker .git/ installs travel with
+      // the re-group sweep and the shared-posture step in git_repository_subtree_group_fragments,
+      // emitted AT that step -- never at this standing position. An apply that ran them here would
+      // install -d --parents a root-owned skeleton into exactly the directory the tree step must
+      // create (the fresh-instance fabrication defect, lab apply abd9fdc4 2026-10-17). When the spec
+      // carries NO such step, nothing else can emit them, so they stay here: today's behaviour,
+      // unchanged (this is the other direction of the both-way gate the review demanded).
       []
     } else {
       owned_directory_target_fragments(t: t)
@@ -2789,10 +2992,6 @@ fn composed_artifact_upsert(
     member: "artifact" as NonEmptyStr,
     mutate_steps: emit_artifact_upsert(kind: kind, path: path, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal),
   ))
-}
-
-fn composed_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Pipeline {
-  compose_host_script(fragments: artifact_retract_fragments(art: art, spec: spec))
 }
 
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
@@ -4114,160 +4313,6 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
 // itself, identical to the former rmdir). GunbcSourceTree teardown runs its rm -rf only AFTER that rm -d
 // succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
-fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
-  match art.kind {
-    UpsertOwned { kind: TailscaleServeMapping } => [
-      tailscale_serve_teardown_step(spec: spec),
-    ]
-    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent => [
-        deploy_raw(command: join([
-          fabric_storage_door_unknown_instance_poison,
-          spec.instance_id as String,
-          "\n",
-        ], "")),
-      ]
-      Present { value: door_socket } => [
-        deploy_raw(command: shell_privileged_command_text_of_argv(
-          argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
-        )),
-      ]
-    }
-    UpsertOwned { kind: ApprovalBrokerFrontDoor } => map(
-      deployment_approval_broker_front_door_endpoints(),
-      e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
-    )
-    ComposeOwned { kind: TailnetDoorServeUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_tailnet_door_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    ComposeOwned { kind: AgentDoorServeUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_agent_door_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    ComposeOwned { kind: FabricStorageServeUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    ComposeOwned { kind: SystemdUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: BeltEventPathUnit } => concat(
-      concat(
-        concat(
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), privileged: true),
-        ),
-        leftover_systemd_timer_retire_steps(
-          unit: deployment_retired_belt_timer_unit_name(names: spec.names),
-          path: deployment_retired_belt_timer_unit_path(names: spec.names),
-        ),
-      ),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          art.path as String,
-          deployment_belt_answer_path_unit_path(names: spec.names) as String,
-          deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
-          deployment_belt_discovery_service_unit_path(names: spec.names) as String,
-          deployment_belt_credential_recovery_unit_path(names: spec.names) as String,
-          deployment_belt_credential_recovery_timer_unit_path(names: spec.names) as String,
-          deployment_belt_service_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    ComposeOwned { kind: FleetConvergeTimerUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          art.path as String,
-          deployment_fleet_converge_service_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: PublicationHelperPathUnit } => concat(
-      concat(
-        systemctl_disable_now_if_present_steps(unit: deployment_publication_path_unit_name(names: spec.names), privileged: true),
-        leftover_systemd_timer_retire_steps(
-          unit: deployment_publication_timer_unit_name(names: spec.names),
-          path: deployment_publication_timer_unit_path(names: spec.names),
-        ),
-      ),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          art.path as String,
-          deployment_publication_service_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: AttemptUnitDrainPathUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          art.path as String,
-          deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ],
-    )
-    UpsertOwned { kind: DeployedTreeRemoteUnit } => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-      ]
-    )
-    UpsertOwned { kind: ServeBinary } => [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-    ]
-    ComposeOwned { kind: OidcConfigArtifact } => [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
-    ]
-    UpsertOwned { kind: GunbcSourceTree } => concat(
-      map(dispatch_root_refusal_paths(spec: spec), p => deploy_raw(command: rm_empty_directory_command(path: p))),
-      [
-        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-          tree_sync_unit_path(names: spec.names) as String,
-          spec.names.tree_sync_env_path as String,
-          deployment_slice_unit_path(names: spec.names) as String,
-        ])),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-        deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
-      ],
-    )
-  }
-}
-
-// THE SOURCE TREE'S TEARDOWN KEEPS THE DISPATCH ROOTS' EMPTY-DIRECTORY REFUSAL. The two roots were
-// owned steps whose teardown ran before the tree's and refused on a live worktree or published attempt
-// evidence; they are owned-directory demands now and a retract does not tear directories down, but
-// deleting the tree a live worktree is registered in is the hazard that refusal stood for, so the
-// tree's own teardown begins with it. The paths are the spec's demands, read by member name.
-fn dispatch_root_refusal_paths(spec: DeploymentSpec) -> List<String> {
-  map(
-    filter(xs: spec.directories, predicate: t =>
-      (owned_directory_member(t: t) as String) == (dashboard_dispatch_worktree_member as String)
-        || (owned_directory_member(t: t) as String) == (dashboard_attempt_state_member as String)),
-    t => owned_directory_path(t: t) as String,
-  )
-}
-
 // The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY
 // (this). One handler for both fold directions — EffectAdd dispatches on member kind to the
 // artifact/dependency install fragments; EffectRemove to the removal fragments. Orchestration is
@@ -4281,7 +4326,7 @@ fn dispatch_root_refusal_paths(spec: DeploymentSpec) -> List<String> {
 // nothing, retract desires nothing), so neither can produce a Modified hunk at all — a replace here
 // would mean a pole stopped being degenerate, which is a real observed-provider arriving and needs
 // its staged-replacement intermediates declared (gunbc.change_realization) before it may emit
-// anything. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located
+// anything. That arm REFUSES loudly (a typed/located
 // poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a
 // silent pass).
 data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
@@ -4291,10 +4336,6 @@ fn emit_deploy_replace_unreachable_refusal(step: DeploymentStep) -> List<Pipelin
 }
 
 data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectRemove of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberRemovalRefused (never an EffectRemove); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
-
-fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> List<PipelineStep> {
-  [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String))]
-}
 
 fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   compose_host_script(fragments: retract_or_apply_effect_fragments(
@@ -4797,7 +4838,15 @@ fn apply_step_fragments(
 ) -> List<HostScriptFragment> {
   match step {
     ArtifactStep { step: art } =>
-      artifact_apply_fragments(art: art, spec: spec, effects: effects, plan: plan, oidc_now: oidc_now, principal: principal)
+      concat(
+        artifact_apply_fragments(art: art, spec: spec, effects: effects, plan: plan, oidc_now: oidc_now, principal: principal),
+        // THE GIT SUBTREE GROUP RUNS HERE, AT THE STEP THAT ESTABLISHES THE REPOSITORY -- after this
+        // step's convergence readback (TreePublication is the step that publishes the source tree and
+        // bootstraps the repository), and never at the standing pre-position of apply_intent_fragments,
+        // where it ran before any step could create the repository. The group carries its repository
+        // premise gate first; a failed gate aborts the apply before any git path is created.
+        if (art.kind == UpsertOwned { kind: GunbcSourceTree }) { git_repository_subtree_tree_position_fragments(spec: spec, plan: plan) } else { [] },
+      )
     Dependency { step: dep } =>
       host_script_member_proceed(
         member: "dependency" as NonEmptyStr,
@@ -4960,13 +5009,15 @@ fn apply_intent_fragments(
       ),
       concat(
         owned_directory_fragments(spec: spec, plan: plan),
-        // WORKER-ROOT-EQUIVALENT-3: AFTER the owned-directory assert (which installs each .git top
-        // at its declared mode), the per-subtree re-group sweep runs on the members the plan chose to
-        // mutate, then the shared-repository posture + maintenance unit. The ORDER here is the
-        // composition the claim dashboard_git_worker_subtree_composition_... asserts: assert, sweep,
-        // read-back (the read-back is the next reconcile's observation of exactly these members).
-        git_worker_subtree_fragments(spec: spec, plan: plan),
-        repository_shared_posture_fragments(spec: spec, plan: plan),
+        // WORKER-ROOT-EQUIVALENT-3: the git subtree group (the three .git/ installs, the re-group
+        // sweep, the shared-repository posture) runs AT THE STEP THAT ESTABLISHES THE REPOSITORY, in
+        // apply_step_fragments, gated on that premise. This standing position carries it only for a
+        // spec that establishes no source tree at all -- a shape with no creating step, where the
+        // group would otherwise never run. For the lab and production specs (both carry the
+        // GunbcSourceTree step) nothing is emitted here: the host script used to run the group BEFORE
+        // any step could create the repository, and installed -d --parents a root-owned source/.git
+        // skeleton into the directory the tree step must create (lab apply abd9fdc4, 2026-10-17).
+        if spec_publishes_source_tree(spec: spec) { [] } else { git_repository_subtree_group_fragments(spec: spec, plan: plan) },
         concat(
           deploy_memory_cap_fragments(spec: spec, authorization: cap_authorization),
           apply_slice_control_converge_fragments(spec: spec),
@@ -5004,40 +5055,6 @@ fn apply_intent_from_effects(
   ))
 }
 
-// THE PARTITION THAT PROTECTED SIBLING TEARDOWNS IS DELETED BECAUSE ITS SUBJECT IS GONE. review
-// 45016 found that a refusal arm ending in `false` aborted the whole fail-fast retract at the FIRST
-// teardown, so the unit, worktree root, serve binary, tree-sync files and repo tree were never
-// removed — every retract, production and twin, tore down nothing. The repair sorted refusing
-// teardowns after acting ones, which was correct for the model as it then stood.\n\nThat model was
-// wrong one layer up. The only refusing owned artifact was TailscaleServeMapping, and it refused on
-// an uncited claim that the CLI has no scoped removal. With the endpoint modeled, its teardown
-// ACTS, and no owned artifact refuses — so the partition sorts a list by a predicate that is now
-// constant, which is a node whose validation cannot fail.\n\nThe class it guarded is closed
-// differently and more strongly: a retract for a host whose client cannot do scoped removal is not
-// EMITTED at all (retract_capability_refusal), so a stop-the-line arm cannot appear among the
-// teardowns in the first place, and there is no ordering left to get right. Keeping the partition
-// would preserve the shape of a fix for a defect that no longer has a way to occur, which is
-// exactly the dead-scaffold class.
-fn retract_unsupported_client_poison(observed: String) -> String {
-  concat(
-    "__GUNBC_DEPLOY_REFUSED__ live-deploy retract NOT EMITTED: this target's tailscale client is ",
-    concat(
-      observed,
-      ", below the 1.52 release that introduced scoped `serve <flags> off`. Removing the serve mapping would require the node-global reset, which destroys every other deployment's routing on this host — so no retract artifact is produced (DESIGN 5: refuse, never widen)",
-    ),
-  )
-}
-
-fn retract_unobserved_client_poison(reason: String) -> String {
-  concat(
-    "__GUNBC_DEPLOY_REFUSED__ live-deploy retract NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
-    concat(
-      reason,
-      "), so whether scoped `serve <flags> off` exists on it is unknown. An unobserved version is not a capable one; observe the client and record it on the target (DESIGN 5: refuse, never widen)",
-    ),
-  )
-}
-
 fn apply_unobserved_client_poison(reason: String) -> String {
   concat(
     "__GUNBC_DEPLOY_REFUSED__ live-deploy apply NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
@@ -5046,49 +5063,6 @@ fn apply_unobserved_client_poison(reason: String) -> String {
       "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)",
     ),
   )
-}
-
-// THE RETRACT FRAME'S COMMENT BLOCK, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE
-// WHOLE PROGRAM.
-//
-// These six lines are the only place the retract fold explains itself to whoever reads the emitted
-// script -- that ensured dependencies are deliberately not purged, that retract may itself be the
-// run that installs the sudoers drop-in, and that the worktree teardown is the empty-dir refusal
-// wall rather than a recursive delete. `witness_retract_preamble_acknowledges_shared_sudoers_install`
-// asserts on the fourth of them, and asserting on it used to mean rendering the entire retract
-// program: 86,034 eval steps against a per-claim ceiling of 72,300 (required floor run 34927164902).
-// Naming the block makes the same fact readable at its producer.
-fn deploy_retract_frame_comments(spec: DeploymentSpec) -> List<PipelineStep> {
-  [
-  Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
-  Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
-  Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
-  Comment { text: "/etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)." },
-  Comment { text: "Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm," },
-  Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
-  ]
-}
-fn artifact_retract_fragments(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<HostScriptFragment> {
-  match art.kind {
-    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent =>
-        host_script_member_refused(
-          member: "fabric-storage" as NonEmptyStr,
-          cause: "fabric storage door unknown",
-          command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""),
-        )
-      Present { value: _ } =>
-        host_script_member_proceed(
-          member: "fabric-storage" as NonEmptyStr,
-          mutate_steps: emit_artifact_teardown(art: art, spec: spec),
-        )
-    }
-    _ =>
-      host_script_member_proceed(
-        member: "retract-step" as NonEmptyStr,
-        mutate_steps: emit_artifact_teardown(art: art, spec: spec),
-      )
-  }
 }
 
 fn retract_or_apply_effect_fragments(
@@ -5143,7 +5117,12 @@ fn retract_or_apply_effect_fragments(
         command: concat(live_deploy_replace_unreachable_poison, deployment_step_key(step: step) as String),
       )
     EffectRemove { from: step } => match step {
-      ArtifactStep { step: art } => artifact_retract_fragments(art: art, spec: spec)
+      ArtifactStep { step: art } =>
+        host_script_member_refused(
+          member: "retract-step" as NonEmptyStr,
+          cause: "retract is realized by gunbc.live_deploy.retract_legs, not by script fragments",
+          command: concat(live_deploy_replace_unreachable_poison, art.path as String),
+        )
       Dependency { step: dep } =>
         host_script_member_refused(
           member: "dependency" as NonEmptyStr,
@@ -5151,64 +5130,6 @@ fn retract_or_apply_effect_fragments(
           command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String),
         )
     }
-  }
-}
-
-fn retract_intent_fragments(
-  spec: DeploymentSpec,
-  effects: List<MemberEffect<DeploymentStep>>,
-  access: DeployAccess,
-) -> List<HostScriptFragment> {
-  concat(
-    [
-      Decide {
-        member: "frame" as NonEmptyStr,
-        standing: HostScriptProceed,
-        steps: concat(
-          [deploy_raw(command: deploy_shell_strict_options_command)],
-          deploy_retract_frame_comments(spec: spec),
-        ),
-      },
-      Mutate {
-        member: "frame" as NonEmptyStr,
-        steps: [
-          deploy_stage_directory_let_step(),
-          deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var])),
-        ],
-      },
-      Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
-    ],
-    concat(
-      flat_map(effects, e => retract_or_apply_effect_fragments(
-        effect: e,
-        spec: spec,
-        revision: RevisionNotInstalled,
-        oidc_now: Absent,
-        principal: access.principal,
-      )),
-      [Mutate { member: "receipt" as NonEmptyStr, steps: [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "retract"))] }],
-    ),
-  )
-}
-
-fn retract_intent_from_effects(
-  spec: DeploymentSpec,
-  effects: List<MemberEffect<DeploymentStep>>,
-  access: DeployAccess
-) -> Pipeline {
-  compose_host_script(fragments: retract_intent_fragments(spec: spec, effects: effects, access: access))
-}
-
-fn retract_intent_fragments_for(spec: DeploymentSpec, access: DeployAccess) -> List<HostScriptFragment> {
-  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-    EffectsReady { effects: es } =>
-      retract_intent_fragments(spec: spec, effects: es, access: access)
-    ApplyRefused { refusals: _ } =>
-      host_script_member_refused(
-        member: "retract" as NonEmptyStr,
-        cause: "wholesale retract refuse",
-        command: live_deploy_wholesale_refused_poison_prefix,
-      )
   }
 }
 
@@ -5316,33 +5237,6 @@ fn live_deploy_apply_script_when_client_observed(
   }
 }
 
-fn live_deploy_retract_script_for(spec: DeploymentSpec, access: DeployAccess) -> String {
-  match spec.target.lab_plan {
-    LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "retract")
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
-      match spec.target.tailscale_client {
-        ScopedRemovalUnsupported { observed: v } =>
-          retract_unsupported_client_poison(observed: semver_version_label(v: v))
-        ScopedRemovalUnobserved { reason: r } =>
-          retract_unobserved_client_poison(reason: r)
-        ScopedRemovalSupported { observed: _ } =>
-          live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
-      }
-  }
-}
-
-fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec, access: DeployAccess) -> String {
-  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-    EffectsReady { effects: es } =>
-      emit_pipeline_or_poison(
-        p: retract_intent_from_effects(spec: spec, effects: es, access: access),
-        refused: live_deploy_retract_emit_refused_poison
-      )
-    ApplyRefused { refusals: rs } =>
-      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
-  }
-}
-
 fn live_deploy_apply_script_for_wet(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
@@ -5420,15 +5314,6 @@ data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data live_deploy_retract_emit_shell_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_retract_script_for",
-    field: WholeDeclaration
-  }
-}
-
 data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -5438,11 +5323,11 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
   }
 }
 
-// The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two
+// The apply script is ONE orchestration-intent Pipeline (the retract fold is typed legs, gunbc.live_deploy.retract_legs), built from the two
 // degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile
 // desired=all-members/observed=none => all Upsert; retract = reconcile
-// desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects /
-// retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind
+// desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects
+// folds the resulting MemberEffects into the Pipeline via the per-kind
 // emit_deploy_member_effect handler (share the diff, dispatch the apply), framing
 // (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses
 // the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the
@@ -5482,3 +5367,49 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     field: WholeDeclaration,
   }
 }
+
+// Leftover timer retirement (FleetConvergeTimerUnit teardown shape): disable if loaded, remove the
+// unit file, daemon-reload, read back LoadState=not-found. Absence is converged — the disable is
+// gated on not-found, and rm -f is a no-op on a missing file.
+data leftover_systemd_timer_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete leftover_systemd_timer_retire_steps, retract_legs retract_leftover_timer_legs and the retired belt/publication timer name functions once every deployed instance's apply readback has reported LoadState=not-found for both leftover units" as NonEmptyStr)
+
+fn systemctl_disable_now_if_present_steps(unit: NonEmptyStr, privileged: Bool) -> List<PipelineStep> {
+  [
+    deploy_raw(command: bash_intent_command_or_poison(
+      intent: systemctl_load_state_assignment_intent(unit: unit)
+    )),
+    deploy_raw(command: bash_intent_command_or_poison(
+      intent: systemctl_disable_now_when_loaded_intent(unit: unit, privileged: privileged)
+    )),
+  ]
+}
+
+fn leftover_timer_not_found_readback_intent() -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: "_gunbc_load_state"),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: systemd_unit_load_state_not_found_wire as String),
+    ]),
+    then_stmts: [
+      bash_build_command_from_lits(lits: [
+        "echo",
+        "leftover timer still loaded after retire — LoadState is not not-found (fail-closed)",
+      ]),
+      bash_build_command_from_lits(lits: ["exit", "1"]),
+    ]
+  )
+}
+
+fn leftover_systemd_timer_retire_steps(unit: NonEmptyStr, path: NonEmptyStr) -> List<PipelineStep> {
+  concat(
+    systemctl_disable_now_if_present_steps(unit: unit, privileged: true),
+    [
+      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [path as String])),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_raw(command: bash_intent_command_or_poison(intent: systemctl_load_state_assignment_intent(unit: unit))),
+      deploy_raw(command: bash_intent_command_or_poison(intent: leftover_timer_not_found_readback_intent())),
+    ]
+  )
+}
+
