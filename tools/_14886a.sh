@@ -59,7 +59,7 @@ import re
 orig=open('/tmp/w886_roster_orig').read()
 m=re.search(r'^data frozen_path_deferrals: List<FrozenPathDeferral> = \[\n', orig, re.M)
 assert m, "decl not found"
-end=orig.index('\n];', m.end())
+end=orig.index('\n]', m.end())
 ins='''  FrozenPathDeferral {
     entry: "dag/test/claim/artifact_store_fs_witness.dag",
     functions: [
@@ -85,7 +85,7 @@ assert m
 s=orig.index('  FrozenPathDeferral {', m.end())
 e=orig.index('  },', s)+len('  },\n')
 block=orig[s:e]
-end=orig.index('\n];', m.end())
+end=orig.index('\n]', m.end())
 out=orig[:end+1] + block + orig[end+1:]
 open('/tmp/w886_d_roster','w').write(out)
 print("DUP_ROWS %d->%d block=%r" % (orig.count('FrozenPathDeferral {'), out.count('FrozenPathDeferral {'), block[:50]))
