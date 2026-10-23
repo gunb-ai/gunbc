@@ -51,13 +51,11 @@ data long_home_enrolment_margin_observed_only: RungDrop = RungDrop {
 
   declared: "2026-09-14",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "shared-producer netting of the front end that survives consumption, after which a newly enrolled long-home identity's measured CPU is its own work and the enrolment margin re-arms for LongHome ground" },
     population: Enumerated { members: FreeSemigroup { head: "v2.workflow.floor_enrolment_margin EnrolmentExpensivenessDeclared (the LongHome ground: a newly enrolled identity whose enrolment_expensiveness_declaration is long home does not block this gate on an observed-over-margin reading)", tail: ["v2.workflow.floor_enrolment_margin enrolment_margin_standing (the classification that selects that arm after the execution join, never from claim_cost)", "src/v1/stage0/src/cli_run/required_floor_runner.rs enrolment_margin_standing_for (the seed realization of the same arm, keyed on enrolment_expensiveness_declaration long_home_holds)"] } },
     restoration_trigger: "the per-frame front end is paid once per run rather than once per claim, so a newly enrolled long-home identity's measured CPU is its own work: a shared producer whose value SURVIVES CONSUMPTION in the claim frame that reads it. Both halves are required, and they are the same capability `long_module_changed_witness_cpu_observed_only` waits on, named here because a trigger that named only that sibling ROW would fire while this gate stayed stood down. WHAT THIS TRIGGER IS SUFFICIENT FOR: after it, a newly enrolled long-home identity observed over floor_enrolment_margin_budget_ms with a reached verdict is EnrolmentOverMargin again and blocks this gate. A run in which such an identity merely passes under EnrolmentExpensivenessDeclared does not discharge it, because that is the state this row declares",
-  }
+  } }
 }

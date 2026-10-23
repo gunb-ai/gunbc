@@ -38,7 +38,7 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import gunbc.auth.privileged_effect_census {
-  manual_api_effect_beside_unlanded_approval_adapter, open_policy_srv1_root_step_effects,
+  manual_api_effect_beside_unlanded_approval_adapter, srv1_root_step_by_hand_beside_the_broker_route,
   github_environment_gate_is_not_the_approval_route,
 }
 import gunbc.cloudflare.r2_origin { cloudflare_account_allocation_intervention }
@@ -644,15 +644,37 @@ test fn the_srv1_production_protection_row_selects_the_approval_route_for_the_gi
   row_diverges_for_exactly(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", expected: github_environment_gate_is_not_the_approval_route, selects_approved: true)
 }
 
-// FleetOnce plus host-root reach: the approved capability and the administrator edge are incomparable.
-// One open question, shared with no row; this goes RED when a policy resolves it.
-test fn manual_srv1_root_steps_are_the_open_fleet_once_host_root_policy_question() -> Bool {
-  let effects = open_policy_srv1_root_step_effects()
-  (effects |> count) == 3
-    && all(effects, e => match select_authorization_pattern(e: e) {
-      PatternSelectionNeedsPolicy { survivors: _ } => true
-      _ => false
-    })
+// OPERATOR RULING 2026-10-22 (one_approval_route_for_every_privileged_action): host-root reach that a
+// human can attend selects the broker route, never the administrator edge. These rows realize it by hand
+// or by a GitHub click, and each pins the exact reason authority.
+test fn the_ntfy_srv1_root_steps_select_the_approval_route_for_the_by_hand_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_server_install_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_subscriber_grant_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
+}
+
+test fn the_per_dispatch_srv1_environment_gate_selects_the_approval_route_for_the_github_gate_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", expected: github_environment_gate_is_not_the_approval_route, selects_approved: true)
+}
+
+fn host_root_effect_at(f: HumanInterventionFrequency) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a root write on a fleet host" as NonEmptyStr, frequency: f, reversibility: ReversibleByReapply,
+    surface: ApiSurface, workload_identity: WorkloadIdentityUnbindable { cause: "fixture" as NonEmptyStr },
+    minted_reach: MintsHostRootReach, billing: NoBillingConsequence, witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn selected_approved_capability(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+// THE RULING ITSELF, over every frequency a human can attend; EveryProvision keeps the edge (control above).
+test fn an_attendable_host_root_effect_selects_the_approval_capability_never_the_edge() -> Bool {
+  all([FleetOnce, DeviceOnce, EveryOperatorRequest, BreakGlassOnly], f => selected_approved_capability(s: select_authorization_pattern(e: host_root_effect_at(f: f))))
 }
 
 fn frequency_name(f: HumanInterventionFrequency) -> String {

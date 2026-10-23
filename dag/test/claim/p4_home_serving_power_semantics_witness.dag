@@ -3,7 +3,7 @@ module test.claim.p4_home_serving_power_semantics_witness
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { Cons, Empty, string_contains, list_snoc_item }
-import v2.std.decl_index { DeclFact, decl_facts_at, logical_qualified_name_from_module }
+import v2.std.decl_index { DeclFact, decl_facts_at, qualified_name_from_module }
 import extdeps.filesystem.filesystem_io
 import std.measure { watt_count }
 import std.optional { Absent, Present }
@@ -321,12 +321,12 @@ fn p4_citation_count_is_conserved(t: String) -> Bool {
 
 // THE ONE CENSUS KEY PATH. Every census lookup in this module goes through
 // `p4_census_rows`, which parses the citation the way the document writes it and then asks
-// `v2.std.decl_index::logical_qualified_name_from_module` — the function that OWNS that key — to
+// `v2.std.decl_index::qualified_name_from_module` — the function that OWNS that key — to
 // build it. Three of these lookups used to hand-build the key at the call site and each got it
 // wrong in its own way: two passed `Module::Decl` straight in (the census key contains no `::`, so
 // such a lookup matches nothing and the claim reddens on a fact that is actually true), and one
-// concatenated `module + "." + name` without stripping a leading `v2.` (the key is built from the
-// AUTHORED module name with `v2.` removed, so a `v2.`-prefixed citation also matched nothing). A
+// concatenated `module + "." + name` by hand (the key is the module's own qualified name, `v2.`
+// prefix kept, built only by `qualified_name_from_module`). A
 // key rule restated at each call site rots exactly like this one did; the root list is likewise
 // named once, so no site can quietly widen or narrow the population it is querying.
 fn p4_census_pool_roots() -> List<String> {
@@ -336,7 +336,7 @@ fn p4_census_pool_roots() -> List<String> {
 fn p4_census_rows_parsed(c: P4Citation) -> List<DeclFact> {
   decl_facts_at(
     pool_roots: p4_census_pool_roots(),
-    qualified_name: logical_qualified_name_from_module(module_name: c.module_path, name: c.decl_name)
+    qualified_name: qualified_name_from_module(module_name: c.module_path, name: c.decl_name)
   )
 }
 

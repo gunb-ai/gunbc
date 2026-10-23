@@ -3,13 +3,13 @@ module gunbc.recurring_failure_mode.runner_host_cap_release_lost_to_cancellation
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data runner_host_cap_release_lost_to_cancellation: RecurringFailureMode = RecurringFailureMode {
   identity: "runner_host_cap_release_lost_to_cancellation" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "a release that neither resolves at release time nor depends on a runner step" }, trigger_capability: "a release that neither resolves at release time nor depends on a runner step: a native-emitted release entry that runs without resolving, or a durable store inhabiting the leasing models so the next converge can re-admit a host a dead run drained." } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a release that neither resolves at release time nor depends on a runner step: a native-emitted release entry that runs without resolving, or a durable store inhabiting the leasing models so the next converge can re-admit a host a dead run drained." } },
 
   receipts: [
     "INVALID STATE: a runner host whose slots the cap bracket masked (gunbc.runner.runner_host_cap_bracket) and whose always() release never ran or was force-cancelled before it re-admitted them. The units stay masked, so the host takes no jobs, and nothing re-admits them: the next converge reads the obligation of another run as untrusted (release_decision_of ObligationStale) and refuses, which is correct but does not unmask anything.",
