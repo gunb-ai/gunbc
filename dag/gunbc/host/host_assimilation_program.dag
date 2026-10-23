@@ -45,7 +45,7 @@ import gunbc.host.host_standup {
 }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { unbound_dissolution, bound_dissolution }
 import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
@@ -201,8 +201,8 @@ data host_assimilation_program_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "runner_image_baked_deployment_plan"),
-    reason: "the image-baked arm (RamImageBoot hosts: fleet_image_baked_offers, ConvergePolicyDerived.image_baked) is derived but no image build input reads it yet: the runner_host_medium publish that bakes a host's slots and knobs into its seeded image is a later change, so the arm's only readers today are its witnesses",
-    dissolution: unbound_dissolution(description: "the image build input (runner_host_medium publish / seeded media) folds runner_image_baked_deployment_plan for its host's slots and knobs. SUFFICIENT FOR deleting this row: that fold, executed by a claim that a RamImageBoot host's image carries the derived runner count"),
+    reason: "the image-baked arm (RamImageBoot hosts: fleet_image_baked_offers, ConvergePolicyDerived.image_baked) is derived but no image build input reads it yet: the runner_host_medium publish that bakes a host's slots and knobs into its seeded image is a later change, so the arm's only readers today are its witnesses. The trigger is the declaration gunbc.runner.runner_host_medium runner_host_image_slot_roster that folds runner_image_baked_deployment_plan into that image-build input; it must be executed by a claim that a RamImageBoot host's image carries the derived runner count before this row is deleted",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_image_slot_roster")),
   ),
 ]
 
