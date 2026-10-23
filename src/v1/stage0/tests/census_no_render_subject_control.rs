@@ -119,24 +119,29 @@ fn the_duplicate_record_field_fixture_reports_its_parse_diagnostics() {
 fn the_parse_error_rows_name_the_field_and_both_positions() {
     // The duplicate-field witness pair (a_record_literal... and the_refusal_names_the_field...)
     // is carried by ONE source; the second refusal witness checks the located positions, so this
-    // RED asserts the ParseError rows for the duplicate `a` name their field and its two positions.
+    // RED asserts the ParseError row carries the SAME located subject the fleet witness matches
+    // exactly: `duplicate record field_refusal_witness.dag`'s the_refusal_names_the_field_and_both_positions
+    // requires the subject "duplicate field 'a' in record literal: first at 7:21, again at 7:27"
+    // -- the field name as a whole token inside quotes, and both line:col positions of the two
+    // `a:` assignments in RED_DUPLICATE_RECORD_FIELD. Matching the whole subject string (review
+    // 85075 finding 2) makes this discriminating: a refusal that lost the field name, either
+    // position, or the whole-record context reads different here. A `contains("a")` read as
+    // almost anything and is what this replaces.
     let obs = observe_census(RED_DUPLICATE_RECORD_FIELD);
     assert_eq!(
         obs.render_calls_during, 0,
         "a census call reached a RenderEveryModule render"
     );
     let rows = parse_error_rows(&obs);
-    let names_the_field = rows.iter().any(|(subject, _, _)| subject.contains("a"));
-    let counts_two_positions = rows.iter().any(|(_, _, count)| *count >= 2)
-        || rows
-            .iter()
-            .filter(|(subject, _, _)| subject.contains("a"))
-            .count()
-            >= 2;
+    const LOCATED_SUBJECT: &str =
+        "duplicate field 'a' in record literal: first at 7:21, again at 7:27";
+    let names_field_and_both_positions = rows
+        .iter()
+        .any(|(subject, blocking, _)| *blocking && subject == LOCATED_SUBJECT);
     assert!(
-        !rows.is_empty() && names_the_field && counts_two_positions,
-        "the duplicate-field refusal did not name the field and both positions; ParseError rows \
-         were {rows:?}; all rows {:?}",
+        names_field_and_both_positions,
+        "the duplicate-field refusal did not carry the located subject {LOCATED_SUBJECT:?}; \
+         ParseError rows were {rows:?}; all rows {:?}",
         obs.rows
     );
 }
@@ -196,7 +201,7 @@ fn the_parse_clean_controls_report_no_parse_error() {
 /// that never increments.
 #[test]
 fn a_whole_graph_render_really_moves_the_counter() {
-    let sources = Rc::new(vec![Rc::new(SourceFile {
+    let sources = Rc::new(im::vector![Rc::new(SourceFile {
         path: "census_counter_positive_control.dag".to_string(),
         content: "module census_counter_positive_control\ndata answer: Int = 7\n".to_string(),
     })]);
@@ -219,6 +224,6 @@ fn a_whole_graph_render_really_moves_the_counter() {
          would not distinguish a render from a refusal"
     );
     let _ = RustModuleRenderSelection::RenderSelectedMirrors {
-        basenames: Rc::new(Vec::new()),
+        basenames: Rc::new(im::Vector::new()),
     };
 }

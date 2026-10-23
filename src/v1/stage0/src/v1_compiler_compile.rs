@@ -3615,22 +3615,27 @@ pub fn compile_to_resolved_with_options(
     }
 }
 
-/// COUNTS EVERY RENDER THAT ASKED FOR EVERY MODULE. `RenderEveryModule` is the whole-graph render
-/// the census must never request: the census runs on the compiled graph's diagnostics and asks for
-/// no render subject at all, so a census that reached a whole-graph render is a regression, not a
-/// slower pass. The census control (`every_module_render_never_requested`) reads this counter
-/// around real census calls; every whole-graph render reaches [`emit_resolved_for_target_selected`]
-/// with `RenderEveryModule` in hand (the unselected entry delegates here), so a census-side
-/// widening cannot dodge the count by choosing an entry point.
-static EVERY_MODULE_RENDER_CALLS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-
-pub fn every_module_render_calls() -> u64 {
-    EVERY_MODULE_RENDER_CALLS.load(std::sync::atomic::Ordering::SeqCst)
+/// COUNTS, ON THE CALLING THREAD, EVERY RENDER THAT ASKED FOR EVERY MODULE.
+/// `RenderEveryModule` is the whole-graph render the census must never request: the census runs
+/// on the compiled graph's diagnostics and asks for no render subject at all, so a census that
+/// reached a whole-graph render is a regression, not a slower pass. The census control
+/// (`src/v1/stage0/tests/census_no_render_subject_control.rs`) snapshots this counter around real
+/// census calls; every whole-graph render reaches [`emit_resolved_for_target_selected`] with
+/// `RenderEveryModule` in hand (the unselected entry delegates here), so a census-side widening
+/// cannot dodge the count by choosing an entry point.
+///
+/// PER-THREAD, NOT PROCESS-GLOBAL (review 85075): `cargo test` runs one integration file's tests
+/// in parallel threads of a single process, and a process-wide counter let one test's whole-graph
+/// render move another test's census delta -- flaky in both directions, which made the zero-delta
+/// check non-discriminating. The census, its snapshots, and the render all run on the calling
+/// thread (the compile route is `Rc`-based and spawns nothing), so a thread-local delta counts
+/// exactly this thread's renders.
+thread_local! {
+    static EVERY_MODULE_RENDER_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
-pub fn reset_every_module_render_calls() {
-    EVERY_MODULE_RENDER_CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
+pub fn every_module_render_calls() -> u64 {
+    EVERY_MODULE_RENDER_CALLS.with(|calls| calls.get())
 }
 
 pub fn emit_resolved_for_target(
@@ -3653,7 +3658,7 @@ pub fn emit_resolved_for_target_selected(
     // through this function with `RenderEveryModule` in hand. Counting here means a census-side
     // widening cannot dodge the counter by calling the selected route directly.
     if matches!(&*selection, RustModuleRenderSelection::RenderEveryModule) {
-        EVERY_MODULE_RENDER_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        EVERY_MODULE_RENDER_CALLS.with(|calls| calls.set(calls.get() + 1));
     }
     match emittable_graph(resolved.clone()) {
         std::option::Option::None => Rc::new(PipelineResult {
