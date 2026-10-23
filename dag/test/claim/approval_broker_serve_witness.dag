@@ -6,13 +6,16 @@ import extdeps.http.server {
   ServedRouteTable,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route,
+  serve_select_route, serve_response_headers_wire,
 }
+import extdeps.languages.json.parse { json_text_parseable }
+import gunbc.auth.approval_device_routes { device_enrol_response_at }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoRealization, NativeDeviceCryptoUnavailable }
 import extdeps.uri_path { path_param_value }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_response,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
-  ConfirmHandlerObserved, BrokerNoRouteMatched,
+  ConfirmHandlerObserved, BrokerNoRouteMatched, DeviceEnrolHandlerObserved,
   approval_broker_served_token, approval_serving_process_token,
 }
 import gunbc.auth.approval_broker_serve {
@@ -20,7 +23,7 @@ import gunbc.auth.approval_broker_serve {
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
   approval_broker_route_specs,
   approval_broker_route_table_build,
-  approval_broker_respond,
+  approval_broker_respond, device_route_response,
   approval_broker_respond_as,
 }
 import gunbc.auth.approval_writer_authority {
@@ -42,6 +45,7 @@ import gunbc.auth.approval_broker_endpoint {
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT }
 
+data fx_unbound: DeviceCryptoRealization = NativeDeviceCryptoUnavailable { cause: "fixture: no native handler bound" }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A Refused build yields the EMPTY table here, so every selection claim below goes RED — the
@@ -208,7 +212,7 @@ test fn the_confirm_page_carries_its_own_fold_marker_through_the_real_entry() ->
 
 // THE ADAPTER'S OWN 404 IS MARKED TOO, and this is the half the cutover's prefix-strip reading rests
 // on. A request that reaches the broker and matches no route must be distinguishable from one that
-// never arrived, and the only channel is the body -- so the not-found path carries
+// never arrived, and the channel is the response header (text/plain has no comment) -- so the not-found path carries
 // approval-broker/no-route-matched and the front-door probe can tell the two apart.
 test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bool {
   let r = approval_broker_respond(
@@ -218,7 +222,11 @@ test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bo
     tailscale_identity: "",
   )
   r.status == 404
-    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: BrokerNoRouteMatched) as String)
+    && match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: r.headers), body: r.body) {
+      MarkerObserved { process: p, marker: m } =>
+        approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: BrokerNoRouteMatched)
+      NoMarkerInBody => false
+    }
 }
 
 // AND THE READER AGREES WITH THE WRITER ON ONE SPELLING. The two claims above establish that the
@@ -232,12 +240,66 @@ test fn the_marker_reader_recovers_the_fold_the_real_entry_used() -> Bool {
     body: "",
     tailscale_identity: "",
   )
-  match approval_broker_marker_in_body(body: r.body) {
+  match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: r.headers), body: r.body) {
     MarkerObserved { process: p, marker: m } =>
       approval_broker_served_token(p: p, m: m)
         == approval_broker_served_token(p: BrokerProcess, m: ConfirmHandlerObserved)
     NoMarkerInBody => false
   }
+}
+
+// ── A JSON ANSWER STAYS JSON, AND THE MARKER IS IN THE HEADER ────────────────────────────────
+// The defect: the marker was joined after every subtype but html and javascript, so a device route's
+// application/json answer was `{...}x-approval-broker: ...` and the iOS app's strict decode read none
+// of them. This runs the real adapter on a device route and asserts the three facts together: the
+// body parses as JSON, no marker text is in it, and the reader recovers the broker's device-enrol
+// marker from where the writer put it.
+test fn a_device_route_json_answer_parses_and_carries_its_marker_in_the_header() -> Bool {
+  let r = device_route_response(
+    marker: DeviceEnrolHandlerObserved,
+    process: BrokerProcess,
+    r: device_enrol_response_at(realization: fx_unbound, body: "{", process: BrokerProcess, observed_at: "2026-09-21T12:00:00Z"),
+  )
+  let seen = match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: r.headers), body: r.body) {
+    MarkerObserved { process: p, marker: m } =>
+      approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved)
+    NoMarkerInBody => false
+  }
+  json_text_parseable(s: r.body)
+    && !string_contains(s: r.body, pattern: "x-approval-broker")
+    && !string_contains(s: r.body, pattern: "approval-broker/")
+    && seen
+}
+
+// RED CONTROL: the OLD arm's bytes. Joining the trailing line onto that same body yields text that
+// does not parse, so the predicate above is false on the old shape -- the claim above discriminates.
+test fn the_old_trailing_line_arm_would_have_broken_the_json_body() -> Bool {
+  let r = device_route_response(
+    marker: DeviceEnrolHandlerObserved,
+    process: BrokerProcess,
+    r: device_enrol_response_at(realization: fx_unbound, body: "{", process: BrokerProcess, observed_at: "2026-09-21T12:00:00Z"),
+  )
+  let old_body = join([r.body, "x-approval-broker: ", approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved) as String, "\n"], "")
+  json_text_parseable(s: r.body) && !json_text_parseable(s: old_body)
+}
+
+// READER SIDE: a probe of a JSON route reads MarkerObserved, never NoMarkerInBody, and a body-only
+// reading of the same response is the NoMarkerInBody the header move must not leave callers with.
+test fn a_json_route_probe_still_observes_its_marker() -> Bool {
+  let r = device_route_response(
+    marker: DeviceEnrolHandlerObserved,
+    process: BrokerProcess,
+    r: device_enrol_response_at(realization: fx_unbound, body: "{", process: BrokerProcess, observed_at: "2026-09-21T12:00:00Z"),
+  )
+  let via_header = match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: r.headers), body: r.body) {
+    MarkerObserved { process: _, marker: _ } => true
+    NoMarkerInBody => false
+  }
+  let body_only = match approval_broker_marker_in_response(headers: [], body: r.body) {
+    MarkerObserved { process: _, marker: _ } => false
+    NoMarkerInBody => true
+  }
+  via_header && body_only
 }
 
 // ── THE SAME FOLD, SERVED BY THE ROADMAP, IS A DIFFERENT MARKER ─────────────────────────────
@@ -273,11 +335,11 @@ test fn the_two_processes_do_not_produce_the_same_marker_on_one_route() -> Bool 
     tailscale_identity: "",
     process: RoadmapProcess,
   )
-  let seen_broker = match approval_broker_marker_in_body(body: by_broker.body) {
+  let seen_broker = match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: by_broker.headers), body: by_broker.body) {
     MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }
-  let seen_roadmap = match approval_broker_marker_in_body(body: by_roadmap.body) {
+  let seen_roadmap = match approval_broker_marker_in_response(headers: serve_response_headers_wire(headers: by_roadmap.headers), body: by_roadmap.body) {
     MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }

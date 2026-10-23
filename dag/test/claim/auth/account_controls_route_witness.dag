@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_serve { AuthLoginHandler, AuthLogoutHandler }
 import test.claim.roadmap.roadmap_serve_witness { selects }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse, RequestSecurityContext,
-  ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore,
+  ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore, ServeResponseHeaderApprovalBroker,
 }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath, OidcLoginPrompt, OidcLoginPromptSelectAccount }
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig }
@@ -91,6 +91,7 @@ test fn logout_redirects_home_and_clears_the_session_cookie() -> Bool {
       ServeResponseHeaderSetCookie { cookie: c } => if c.name == session_cookie_name && c.value == "" { "session-cookie-emptied" } else { "other-cookie" }
       ServeResponseHeaderNoStore => "no-store"
       ServeResponseHeaderCacheImmutable { max_age_seconds: _ } => "immutable"
+      ServeResponseHeaderApprovalBroker { token: _ } => "approval-broker"
     }), "|") == "location=/|session-cookie-emptied"
 }
 

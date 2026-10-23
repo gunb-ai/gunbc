@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import std.markup { MarkupComment, serialize_fragment_with }
 import extdeps.languages.html { html_markup_medium }
 import std.markup { Serialized, Rejected }
-import extdeps.http.server { MediaType }
+import extdeps.http.server { MediaType, ServeResponseHeader, ServeResponseHeaderApprovalBroker, ServeWireHeader, WireHeaderApprovalBroker }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
 // ── WHICH FOLD ANSWERED, WRITTEN INTO THE ONLY CHANNEL THE PROBE CAN READ ────────────────────
@@ -41,11 +41,9 @@ import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapPro
 // at all says neither served it. The discriminator is the PROCESS SEGMENT plus the presence of a
 // marker, never the status.
 //
-// A BODY AND NOT A HEADER, because extdeps.http.server ServeHttpResponse carries status, content
-// type and body and no header map. That is not a limitation worked around here: the wire projection
-// the seed's accept loop reads back (ServeWireResponse) has the same three fields, so a header
-// would have to be added at both ends before anything could carry it, and the body is the channel
-// that already crosses that seam.
+// THE CHANNEL FOLLOWS THE MEDIA TYPE (approval_broker_marked_body): a comment where the grammar has
+// one, the X-Approval-Broker response header (extdeps.http.server ServeResponseHeaderApprovalBroker)
+// where it has none. The reading side checks both.
 
 // THE LAST THREE ARMS ARE NOT HANDLERS, and they are here because the invariant is about the
 // PROCESS and not about the four routes. BrokerAdapterRefused covers what the adapter answers
@@ -190,34 +188,40 @@ fn approval_broker_marker_comment(body: String) -> BrokerMarkerComment {
 //
 // IT DISPATCHES ON THE SUBTYPE AND NOT ON THE MediaType VALUE, because MediaType is a RECORD --
 // a top level, a subtype and parameters -- and not a closed variant, so there is nothing to match
-// exhaustively and `text_html_utf8` is one inhabitant rather than an arm. The subtype is the field
-// that decides whether comment syntax exists, which is the actual question.
-//
-// EVERY OTHER SUBTYPE TAKES THE TEXT FORM, and that arm is a marking rather than a refusal on
-// purpose. An unmarked body is precisely what the reading side calls "the request never reached the
-// broker", so a media type this fold has no comment syntax for must still say the broker answered:
-// returning nothing would answer the one question the marker exists to settle, and answer it wrong.
-// The cost is a trailing line in a format that may not want one, paid by that format's own consumer
-// and not by the probe.
+// exhaustively. The subtype decides whether comment syntax exists, which is the actual question.
+// EVERY OTHER SUBTYPE IS A MARKING, never a refusal: an unmarked answer is what the reading side calls
+// "the request never reached the broker", so a type with no comment syntax carries the header instead.
 // The CLOSED RESULT of marking. Marked { body } is what a response carries; BrokerMarkerRefused is a
 // construction failure that the serve fold turns into a typed 500 through the same route a page-render
 // refusal already takes (broker_text_response, which is where every response from these folds is built).
 // A caller cannot join a BrokerMarkerRefused into a body: there is no String to join.
+//
+// A FORMAT WITH NO COMMENT SYNTAX IS NEVER MARKED IN ITS BODY. The first cut joined
+// `x-approval-broker: <token>\n` after every subtype that was not html or javascript, and for
+// application/json that is not an additive line: it is a body that no longer parses. Captured on
+// srv1 for POST /approve/device/enrol, the answer was `{"refused": ...}x-approval-broker: ...`, and
+// the iOS app's strict WireDecode could read no device route answer at all. The marker is a fact about
+// the RESPONSE, not about the document, so a medium that has nowhere in its grammar to put it carries
+// it in the ServeResponseHeaderApprovalBroker header and its body stays exactly what the handler made.
+// text/plain takes the header too: its trailing line was read by the same kind of client (a status or
+// receipt body whose lines mean something), and "additive" was only true while nobody parsed it.
+// html and javascript keep their comment: the grammar has the syntax, a phone never renders it, and a
+// body-only fetch still reads it.
 type BrokerMarkedBody
-  = BrokerBodyMarked { body: String }
+  = BrokerBodyMarked { body: String, headers: List<ServeResponseHeader> }
   | BrokerMarkerRefused { reason: String }
 
 fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker, process: ApprovalServingProcess) -> BrokerMarkedBody {
   let token = approval_broker_served_token(p: process, m: m) as String
   if content_type.subtype == "html" {
     match approval_broker_marker_comment(body: token) {
-      MarkerCommentRendered { text: c } => BrokerBodyMarked { body: join([body, "\n", c, "\n"], "") }
+      MarkerCommentRendered { text: c } => BrokerBodyMarked { body: join([body, "\n", c, "\n"], ""), headers: [] }
       MarkerCommentRefused { reason: r } => BrokerMarkerRefused { reason: r }
     }
   } else if content_type.subtype == "javascript" {
-    BrokerBodyMarked { body: join([body, "\n// x-approval-broker: ", token, "\n"], "") }
+    BrokerBodyMarked { body: join([body, "\n// x-approval-broker: ", token, "\n"], ""), headers: [] }
   } else {
-    BrokerBodyMarked { body: join([body, "x-approval-broker: ", token, "\n"], "") }
+    BrokerBodyMarked { body: body, headers: [ServeResponseHeaderApprovalBroker { token: approval_broker_served_token(p: process, m: m) }] }
   }
 }
 
@@ -239,7 +243,7 @@ data approval_serving_processes: List<ApprovalServingProcess> = [RoadmapProcess,
 
 // THE SCAN IS OVER THE PAIR, so a roadmap-served body can only ever produce a MarkerObserved whose
 // process is RoadmapProcess. Scanning the fold names alone is what admitted the roadmap's answer.
-fn approval_broker_marker_in_body(body: String) -> ObservedMarker {
+fn approval_broker_marker_in_text(body: String) -> ObservedMarker {
   fold(approval_serving_processes, init: NoMarkerInBody, f: (outer, p) =>
     match outer {
       MarkerObserved { process: _, marker: _ } => outer
@@ -257,6 +261,17 @@ fn approval_broker_marker_in_body(body: String) -> ObservedMarker {
         )
     }
   )
+}
+
+// THE READER LOOKS WHERE THE WRITER PUT IT: the X-Approval-Broker header first, the body's comment
+// otherwise. A JSON or plain-text answer carries the token only in the header, so a reader of the body
+// alone would call every such route NoMarkerInBody, "the request never reached the broker", on a
+// broker that answered correctly. The header value goes through the same pair-scan as a body.
+fn approval_broker_marker_in_response(headers: List<ServeWireHeader>, body: String) -> ObservedMarker {
+  match approval_broker_marker_in_text(body: join(map(filter(headers, h => h.name == WireHeaderApprovalBroker), h => h.value), "\n")) {
+    MarkerObserved { process: p, marker: m } => MarkerObserved { process: p, marker: m }
+    NoMarkerInBody => approval_broker_marker_in_text(body: body)
+  }
 }
 
 // ── AGREEMENT AS A VALUE, BECAUSE A BARE `if` CANNOT PRODUCE AN Optional HERE ────────────────
