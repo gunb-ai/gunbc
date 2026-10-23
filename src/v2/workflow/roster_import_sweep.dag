@@ -11,7 +11,10 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 // home declaration declares is decided by v2.workflow.roster_home_kind (v2.std.decl_index's only consumer on the roster
 // route); the head's binding fact is v2.compiler.reference_site_collector's own. This module matches on neither, so it
 // imports no variant name of theirs (review 82610: import what you match, and only that).
-import v2.compiler.reference_site_collector { ScopedReferenceSite, collect_scoped_module_reference_sites }
+import v2.compiler.reference_site_collector { ScopedReferenceSite, collect_scoped_module_reference_sites, HeadLexicallyUnbound, HeadBoundAtRootValue, HeadBoundInFrame, HeadBindingUndecided }
+import v2.cli.repository_layout { repository_path_of_module_file }
+import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
+import v2.std.type_binder { type_decl_view, GenericTypeDecl, TypeAlias, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl }
 import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_declaration_is_type, roster_home_declaration_is_value, roster_home_pool_roots_text, RosterHomeSide, roster_home_side_read, roster_home_side_of }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
@@ -30,6 +33,11 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.occurrence_identity {
+  LabelPosition,
+  PatternTagPosition,
+  ReturnPosition,
+  TypeAnnotationPosition,
+  ValuePosition,
   OccurrenceId,
   OccurrenceMinted,
   OccurrencePending,
@@ -45,7 +53,7 @@ import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
 import v2.std.node_query { find_named_child }
 import v2.compiler.lexical_scope { arrow_domain_binder_names, bind_binder, match_arm_candidate_names }
-import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, Positional, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol }
+import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, Positional, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol, StructuralLabel, positional_child_target_nodes }
 import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
@@ -166,6 +174,10 @@ type RosterRefusalReason
   // reference with no call. The file is left untouched and the cause names the call spelling.
   | RefusalRenameCallArity { call: String }
   | RefusalRenameCallNamedArgument { call: String }
+  // A RenameHead row whose companion import cannot be derived (the home, the callee, its declared return type, the
+  // module that declares that type, or the type's variants did not read): a file whose renamed call it would govern
+  // refuses rather than leaving the result matched by ambient tags that bind it untyped.
+  | RefusalCompanionUnderivable { call: String, detail: String }
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -203,6 +215,7 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalApplyNeedsOneHome => "apply-needs-one-home"
     RefusalRenameCallArity { call: c } => "rename-call-arity call=" + c
     RefusalRenameCallNamedArgument { call: c } => "rename-call-named-argument call=" + c
+    RefusalCompanionUnderivable { call: c, detail: d } => "companion-underivable call=" + c + " " + d
   }
 }
 
@@ -353,18 +366,19 @@ fn roster_rename_census_exit(paths_csv: String, home: String, call: String) -> P
       let closures = roster_home_closures(root: "", scope: scope)
       let lex = dag_prepared_lex()
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
+      let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
       exit_failure(reason: fold_list(
         xs: split(s: paths_csv, delimiter: ","),
         empty: "",
-        cons: fn(acc, path) { acc + roster_census_path(sides: sides, path: path, prepared: prepared, lex: lex, scope: scope, closures: closures, call: call) }
+        cons: fn(acc, path) { acc + roster_census_path(sides: sides, companions: companions, path: path, prepared: prepared, lex: lex, scope: scope, closures: closures, call: call) }
       ))
   }
 }
 
-fn roster_census_path(sides: List<RosterHomeSide>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>, call: String) -> String {
+fn roster_census_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>, call: String) -> String {
   let read = Filesystem.Read(path: path)
   if read.success {
-    let census = roster_census_text_rows(sides: sides, path: path, text: read.content, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures, census_call: call)
+    let census = roster_census_text_rows(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures, census_call: call)
     "CENSUS " + path + " call=" + call + " heads=" + int_to_decimal_string(value: census.heads) + "\n" + roster_render_outcome(path: path, outcome: census.outcome)
   } else {
     roster_refuse_row(path: path, reason: RefusalUnreadable)
@@ -399,17 +413,18 @@ fn roster_import_sweep_for_paths(paths_csv: String) -> String {
 fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
   let closures = roster_home_closures(root: "", scope: scope)
   let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
+  let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
   fold_list(
     xs: split(s: paths_csv, delimiter: ","),
     empty: "",
-    cons: fn(acc, path) { acc + roster_sweep_path(sides: sides, path: path, prepared: prepared, lex: lex, scope: scope, closures: closures) }
+    cons: fn(acc, path) { acc + roster_sweep_path(sides: sides, companions: companions, path: path, prepared: prepared, lex: lex, scope: scope, closures: closures) }
   )
 }
 
-fn roster_sweep_path(sides: List<RosterHomeSide>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
+fn roster_sweep_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
   let read = Filesystem.Read(path: path)
   if read.success {
-    roster_render_outcome(path: path, outcome: roster_sweep_text_scoped(sides: sides, path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures))
+    roster_render_outcome(path: path, outcome: roster_sweep_text_scoped(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures))
   } else {
     roster_refuse_row(path: path, reason: RefusalUnreadable)
   }
@@ -623,22 +638,23 @@ fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHom
     Accepted { value: prepared, diagnostics: _ } => {
       let closures = roster_home_closures(root: held.root, scope: scope)
       let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
+      let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
       fold_list(
         xs: split(s: paths_csv, delimiter: ","),
         empty: "",
-        cons: fn(acc, path) { acc + roster_apply_path(sides: sides, held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope, closures: closures) }
+        cons: fn(acc, path) { acc + roster_apply_path(sides: sides, companions: companions, held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope, closures: closures) }
       )
     }
   }
 }
 
-fn roster_apply_path(sides: List<RosterHomeSide>, held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
+fn roster_apply_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
   if !roster_path_admitted(path: path) {
     roster_refuse_row(path: path, reason: RefusalPathOutsideRoot)
   } else {
     let read = Filesystem.Read(path: held.root + "/" + path)
     if read.success {
-      match roster_sweep_text_scoped(sides: sides, path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures) {
+      match roster_sweep_text_scoped(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures) {
         RosterClean => ""
         RosterRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
         RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
@@ -904,18 +920,18 @@ fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
 }
 
 fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
-  roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_head_rows()), path: path, text: text, prepared: prepared, lex: lex, scope: AllHomes, closures: roster_control_closures())
+  roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_head_rows()), companions: [], path: path, text: text, prepared: prepared, lex: lex, scope: AllHomes, closures: roster_control_closures())
 }
 
-fn roster_sweep_text_scoped(sides: List<RosterHomeSide>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> RosterOutcome {
-  roster_sweep_text_rows(sides: sides, path: path, text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures)
+fn roster_sweep_text_scoped(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> RosterOutcome {
+  roster_sweep_text_rows(sides: sides, companions: companions, path: path, text: text, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures)
 }
 
 // THE SAME SWEEP OVER AN AUTHORED CANDIDATE LIST. The controls name the exact row they are about (an aliased type home
 // the production table does not carry -- Wave 2's shape) so a refusal or a plan is measured against THAT row, never
 // against whatever the generator's table happens to hold. The production path reaches it through the scope filter above.
-fn roster_sweep_text_rows(sides: List<RosterHomeSide>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> RosterOutcome {
-  roster_census_text_rows(sides: sides, path: path, text: text, prepared: prepared, lex: lex, candidates: candidates, closures: closures, census_call: "").outcome
+fn roster_sweep_text_rows(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> RosterOutcome {
+  roster_census_text_rows(sides: sides, companions: companions, path: path, text: text, prepared: prepared, lex: lex, candidates: candidates, closures: closures, census_call: "").outcome
 }
 
 // THE SWEEP'S ONE READ OF A FILE, with the census count beside its outcome: `heads` is the number of parse-tree primary
@@ -934,7 +950,7 @@ fn roster_census_heads(parse_root: Node, call: String) -> Int {
   if call == "" { 0 } else { fold_list(xs: roster_primary_heads(parse_root: parse_root, call: call), empty: 0, cons: fn(n, _h) { n + 1 }) }
 }
 
-fn roster_census_text_rows(sides: List<RosterHomeSide>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: String) -> RosterCensusRead {
+fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: String) -> RosterCensusRead {
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
         Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalTokenizeRefused)
         Accepted { value: stream, diagnostics: _ } =>
@@ -955,7 +971,11 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, path: String, text: Stri
                     RosterClean => roster_label_outcome(sides: sides, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates)
                     other => other
                   }
-                  RosterCensusRead { outcome: outcome, heads: roster_census_heads(parse_root: artifact.tree, call: census_call) }
+                  let converged = match outcome {
+                    RosterClean => roster_companion_outcome(companions: companions, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, homes: candidates)
+                    other => other
+                  }
+                  RosterCensusRead { outcome: converged, heads: roster_census_heads(parse_root: artifact.tree, call: census_call) }
               }
           }
       }
@@ -1507,9 +1527,14 @@ fn roster_module_cycle_refusal(parse_root: Node, closures: List<RosterHomeClosur
 }
 
 fn roster_import_row_home(parse_root: Node, spans: SpanIndex, home: QualifiedName, needed: List<RosterHeadRow>) -> RosterOutcome {
+  roster_import_names_edit(parse_root: parse_root, spans: spans, home: home, wanted: list_map(xs: needed, f: fn(r) { r.import_name }))
+}
+
+// THE ONE IMPORT RENDERER: `wanted` names imported from `home`, extending the module's existing import of it or inserting
+// one after the last import (or the header). The rows' import edit and a rename's companion import both come through here.
+fn roster_import_names_edit(parse_root: Node, spans: SpanIndex, home: QualifiedName, wanted: List<String>) -> RosterOutcome {
   let decls = roster_import_decl_facts(parse_root: parse_root, spans: spans)
   let algebra = roster_filter_module(decls: decls, module_name: roster_qn_text(qn: home))
-  let wanted = list_map(xs: needed, f: fn(r) { r.import_name })
   match length(xs: algebra) {
     0 =>
       match roster_last_decl_end(decls: decls) {
@@ -1769,50 +1794,99 @@ fn roster_rename_production_row() -> List<RosterHeadRow> {
   fold_list(xs: roster_head_rows(), empty: [], cons: fn(acc, r) { if roster_row_renames_head(row: r) { list_snoc_item(xs: acc, item: r) } else { acc } })
 }
 
-fn roster_rename_outcome(text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
-  roster_sweep_text_rows(sides: roster_home_sides(rows: roster_rename_production_row()), path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rename_production_row(), closures: roster_control_closures())
+fn roster_rename_outcome(companions: List<RosterCompanion>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  roster_sweep_text_rows(sides: roster_home_sides(rows: roster_rename_production_row()), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: roster_rename_production_row(), closures: roster_control_closures())
 }
 
-fn roster_rename_expect_refusal(name: String, text: String, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_rename_outcome(text: text, prepared: prepared, lex: lex) {
+fn roster_rename_expect_refusal(companions: List<RosterCompanion>, name: String, text: String, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_rename_outcome(companions: companions, text: text, prepared: prepared, lex: lex) {
     RosterRefused { reason: r } => if roster_refusal_text(reason: r) == want { "" } else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
     other => "CONTROL-FAIL " + name + ": not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
   }
 }
 
-fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => match map_get(m, v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
-  let after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => match map_lookup(m: m, key: v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
-  let positive = match roster_applied(before: before, outcome: roster_rename_outcome(text: before, prepared: prepared, lex: lex)) {
-    RosterApplyRefused { reason: r } => "CONTROL-FAIL rename-positive: refused " + roster_refusal_text(reason: r) + "\n"
-    RosterApplyWritten { content: c } =>
-      if c != after {
-        "CONTROL-FAIL rename-positive: wrote unexpected text: " + c + "\n"
+// The generator's own fixed point on a text: sweep, splice, repeat (as the apply step converges), at most four passes.
+type RosterConverged
+  = ConvergedText { text: String }
+  | ConvergedRefused { cause: String }
+
+fn roster_rename_converge(companions: List<RosterCompanion>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterConverged {
+  fold_list(xs: [0, 1, 2, 3], empty: ConvergedText { text: text }, cons: fn(acc, _i) {
+    match acc {
+      ConvergedRefused { cause: c } => ConvergedRefused { cause: c }
+      ConvergedText { text: t } =>
+        match roster_rename_outcome(companions: companions, text: t, prepared: prepared, lex: lex) {
+          RosterClean => acc
+          RosterRefused { reason: r } => ConvergedRefused { cause: roster_refusal_text(reason: r) }
+          outcome =>
+            match roster_applied(before: t, outcome: outcome) {
+              RosterApplyRefused { reason: r } => ConvergedRefused { cause: "splice " + roster_refusal_text(reason: r) }
+              RosterApplyWritten { content: c } => ConvergedText { text: c }
+            }
+        }
+    }
+  })
+}
+
+fn roster_rename_expect_text(companions: List<RosterCompanion>, name: String, before: String, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_rename_converge(companions: companions, text: before, prepared: prepared, lex: lex) {
+    ConvergedRefused { cause: c } => "CONTROL-FAIL " + name + ": refused " + c + "\n"
+    ConvergedText { text: t } =>
+      if t != after {
+        "CONTROL-FAIL " + name + ": converged to unexpected text: " + t + "\n"
       } else {
-        match roster_rename_outcome(text: c, prepared: prepared, lex: lex) {
+        match roster_rename_outcome(companions: companions, text: t, prepared: prepared, lex: lex) {
           RosterClean => ""
-          other => "CONTROL-FAIL rename-positive: pass 2 not Clean: " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+          other => "CONTROL-FAIL " + name + ": not a fixed point: " + roster_render_outcome(path: "control/rename.dag", outcome: other)
         }
       }
   }
+}
+
+// THE COMPANION IS DERIVED, NOT SUPPLIED: these controls read it from the real std.algebra and std.optional sources
+// (roster_rename_companions over the production map_get row) and require it to be exactly std.optional's two variants.
+fn roster_companion_derived_check(companions: List<RosterCompanion>) -> String {
+  match companions {
+    Cons { head: CompanionDerived { call: _, to: _, module: m, tags: ts, closure: _ }, tail: Empty } =>
+      if (m == "std.optional") && (roster_join(xs: ts, sep: ",") == "Absent,Present") { "" } else { "CONTROL-FAIL companion-derivation: got " + m + " {" + roster_join(xs: ts, sep: ",") + "}\n" }
+    Cons { head: CompanionUnderivable { call: _, to: _, detail: d }, tail: _ } => "CONTROL-FAIL companion-derivation: underivable " + d + "\n"
+    _ => "CONTROL-FAIL companion-derivation: not exactly one derived companion\n"
+  }
+}
+
+fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let companions = roster_rename_companions(rows: roster_rename_production_row(), prepared: prepared, lex: lex)
+  let before = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => match map_get(m, v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
+  let after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => match map_lookup(m: m, key: v) {\n      Present { value: w } => w\n      Absent => k\n    }\n    Absent => k\n  }\n}\n"
   let nested = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, Map<String, String>>, k: String) -> Optional<String> {\n  g(x: map_get(m, k), k: k)\n}\n"
   let nested_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, Map<String, String>>, k: String) -> Optional<String> {\n  g(x: map_lookup(m: m, key: k), k: k)\n}\n"
-  let nested_check = match roster_applied(before: nested, outcome: roster_rename_outcome(text: nested, prepared: prepared, lex: lex)) {
-    RosterApplyRefused { reason: r } => "CONTROL-FAIL rename-in-argument: refused " + roster_refusal_text(reason: r) + "\n"
-    RosterApplyWritten { content: c } => if c == nested_after { "" } else { "CONTROL-FAIL rename-in-argument: wrote unexpected text: " + c + "\n" }
+  let only_present = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match map_get(m, k) {\n    Present { value: _ } => true\n    _ => false\n  }\n}\n"
+  let only_present_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Present }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match map_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    _ => false\n  }\n}\n"
+  let tags_imported = "module c.rename\n\nimport std.algebra { Cons }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_get(m, k) {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
+  let tags_imported_after = "module c.rename\n\nimport std.algebra { Cons, map_lookup }\nimport std.optional { Absent, Present }\n\nfn f(m: Map<String, String>, k: String) -> String {\n  match map_lookup(m: m, key: k) {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
+  let unrenamed = "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(o: Optional<String>, k: String) -> String {\n  match o {\n    Present { value: v } => v\n    Absent => k\n  }\n}\n"
+  roster_companion_derived_check(companions: companions)
+    + roster_rename_expect_text(companions: companions, name: "rename-positive (with the companion import)", before: before, after: after, prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-in-argument (no tag used: no companion)", before: nested, after: nested_after, prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "companion imports only the tags used", before: only_present, after: only_present_after, prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "companion tags already imported", before: tags_imported, after: tags_imported_after, prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "no renamed call: ambient tags left for their own wave", before: unrenamed, after: unrenamed, prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-method-spelling", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", prepared: prepared, lex: lex)
+    + roster_companion_underivable_control(prepared: prepared, lex: lex)
+}
+
+// AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
+fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let ghost = [RosterHeadRow { call: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup" }, positional: ["m", "key"] }]
+  let companions = roster_rename_companions(rows: ghost, prepared: prepared, lex: lex)
+  let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
+  match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
+    RosterRefused { reason: r } => if starts_with(s: roster_refusal_text(reason: r), prefix: "companion-underivable call=map_get") { "" } else { "CONTROL-FAIL companion-underivable: refused " + roster_refusal_text(reason: r) + "\n" }
+    other => "CONTROL-FAIL companion-underivable: not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
   }
-  positive
-    + nested_check
-    + roster_rename_expect_refusal(name: "rename-named-argument", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(name: "rename-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
-    + match roster_rename_outcome(text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", prepared: prepared, lex: lex) {
-        RosterClean => ""
-        other => "CONTROL-FAIL rename-parameter-bound: " + roster_render_outcome(path: "control/rename.dag", outcome: other)
-      }
-    + match roster_rename_outcome(text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m.map_get(k)\n}\n", prepared: prepared, lex: lex) {
-        RosterClean => ""
-        other => "CONTROL-FAIL rename-method-spelling: " + roster_render_outcome(path: "control/rename.dag", outcome: other)
-      }
 }
 
 // A HOME OTHER THAN std.algebra, in ONE write: pass 1 inserts `import std.host_text { chars }` after the last import AND
@@ -2137,16 +2211,16 @@ fn roster_control_import_closes_cycle(prepared: PreparedGrammar, lex: PreparedLe
   let text = "module c.cyc\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
   let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }
   let cyclic = [RosterClosureRead { home: "std.host_text", modules: ["std.host_text", "c.cyc"] }]
-  let inside = match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: cyclic) {
+  let inside = match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), companions: [], path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: cyclic) {
     RosterRefused { reason: r } =>
       if roster_refusal_text(reason: r) == "import-closes-cycle home=std.host_text module=c.cyc" { "" } else { "CONTROL-FAIL import-closes-cycle: refused for another reason " + roster_refusal_text(reason: r) + "\n" }
     _ => "CONTROL-FAIL import-closes-cycle: a cycle-closing import was not refused\n"
   }
-  let outside = match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: roster_control_closures()) {
+  let outside = match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), companions: [], path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: roster_control_closures()) {
     RosterEditWithLabels { start: _, end: _, text: _, own_line: _, labels: _ } => ""
     _ => "CONTROL-FAIL import-closes-cycle: the acyclic twin did not get its import\n"
   }
-  let unread = match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: []) {
+  let unread = match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), companions: [], path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: []) {
     RosterRefused { reason: r } =>
       if roster_refusal_text(reason: r) == "home-closure-unread home=std.host_text" { "" } else { "CONTROL-FAIL import-closes-cycle: an unread closure refused for another reason\n" }
     _ => "CONTROL-FAIL import-closes-cycle: a home with no closure was assumed acyclic\n"
@@ -2198,12 +2272,12 @@ fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
 fn roster_control_no_import_anchor(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.bare\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
   let after = "module c.bare\n\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n"
-  let outcome = roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })), path: "control/bare.dag", text: before, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures())
+  let outcome = roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })), companions: [], path: "control/bare.dag", text: before, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures())
   let applied = match roster_applied(before: before, outcome: outcome) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL no-import-anchor: pass 1 refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c1 } =>
       if c1 != after { "CONTROL-FAIL no-import-anchor: pass 1 did not write exactly one import after the module header\n" } else {
-        match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })), path: "control/bare.dag", text: c1, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures()) {
+        match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })), companions: [], path: "control/bare.dag", text: c1, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures()) {
           RosterClean => ""
           _ => "CONTROL-FAIL no-import-anchor: pass 2 is not Clean\n"
         }
@@ -2341,7 +2415,7 @@ fn roster_kind_classified_flipped_row() -> RosterHeadRow {
 }
 
 fn roster_kind_unclassified_control(name: String, text: String, row: RosterHeadRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_control_closures()) {
+  match roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), companions: [], path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_control_closures()) {
     RosterRefused { reason: r } =>
       if roster_refusal_text(reason: r) == "home-kind-unclassified home=" + roster_qn_text(qn: row.home) + " name=" + row.import_name {
         ""
@@ -2356,7 +2430,7 @@ fn roster_kind_unclassified_control(name: String, text: String, row: RosterHeadR
 }
 
 fn roster_kind_clean_control(name: String, text: String, row: RosterHeadRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_control_closures()) {
+  match roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), companions: [], path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex, candidates: [row], closures: roster_control_closures()) {
     RosterEdit { start: _, end: _, text: t, own_line: _ } =>
       if string_contains(s: t, pattern: row.import_name) { "" } else { "CONTROL-FAIL " + name + ": import plans " + t + " for " + row.import_name + "\n" }
     RosterRefused { reason: r } => "CONTROL-FAIL " + name + ": refused for " + roster_refusal_text(reason: r) + " over a census-classified type home\n"
@@ -2652,5 +2726,250 @@ fn roster_control_spellings(root_dir: String) -> String {
     ""
   } else {
     "CONTROL-FAIL spellings: scratch answered " + scratch + ", subdirectory answered " + sub + "\n"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// THE COMPANION IMPORT OF A RENAME (tidy-ant-251's ruling on the map_get wave). A RenameHead row moves a call from an
+// ambient spelling to a declared callee. When that callee returns a DECLARED type (std.algebra map_lookup returns
+// std.optional Optional<V>, where the ambient map_get returned the kernel Optional), a module that matches the result with
+// AMBIENT tags of that type (Present / Absent with no std.optional import) binds the payload with no type: measured on the
+// seed, a Set<String> payload returned as an Int is ACCEPTED (gunbc.recurring_failure_mode
+// an_ambient_tag_over_a_declared_coproduct_binds_its_payload_untyped). So the rename also imports, from the module that
+// declares the callee's return type, exactly the variant tags the module uses at ambient pattern-tag positions.
+//
+// DERIVED, NEVER AUTHORED: the companion is read once per run from the callee's own declaration -- the home module's
+// normalized tree, the declaration's declared return type (its arrow's codomain), that type's binding in the home's
+// imports (or the home itself), and the declaring module's coproduct variants (v2.std.type_binder type_decl_view). A row
+// whose chain does not read carries CompanionUnderivable, and any file it would govern refuses, located by the link.
+type RosterCompanion
+  = CompanionDerived { call: String, to: String, module: String, tags: List<String>, closure: RosterHomeClosure }
+  | CompanionUnderivable { call: String, to: String, detail: String }
+  | CompanionNone
+
+type RosterModuleRead
+  = ModuleReadOk { root: Node, imports: List<AliasBindingRow> }
+  | ModuleReadFailed { detail: String }
+
+fn roster_module_read(name: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterModuleRead {
+  match module_file(layout: repository_storage_layout(), name: name) {
+    ModuleNameUnderivable { name: _, cause: c } => ModuleReadFailed { detail: "module " + name + " has no storage path: " + c }
+    ModuleFileDerived { file: f } =>
+      let path = repository_path_of_module_file(file: f)
+      let read = Filesystem.Read(path: path)
+      if !read.success {
+        ModuleReadFailed { detail: "module " + name + " unreadable at " + path }
+      } else {
+        match tokenize_prepared(text: read.content, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
+          Rejected { diagnostics: _ } => ModuleReadFailed { detail: "module " + name + " does not tokenize" }
+          Accepted { value: stream, diagnostics: _ } =>
+            match parse_module_prepared(tokens: stream, prepared: prepared) {
+              Rejected { diagnostics: _ } => ModuleReadFailed { detail: "module " + name + " does not parse" }
+              Accepted { value: artifact, diagnostics: _ } =>
+                match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                  Rejected { diagnostics: _ } => ModuleReadFailed { detail: "module " + name + " does not normalize" }
+                  Accepted { value: scoped, diagnostics: _ } => ModuleReadOk { root: scoped.tree.root, imports: scoped.tree.import_bindings }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn roster_edge_authored(e: Edge) -> String {
+  match e.label {
+    Authored { name: n } => symbol_lexeme(sym: n)
+    Positional => ""
+    StructuralLabel { label: _ } => ""
+  }
+}
+
+fn roster_edge_target(e: Edge) -> Node {
+  e.target
+}
+
+// The declaration a module's normalized tree carries under `name`: the target of the first edge so labelled.
+fn roster_declaration_node(root: Node, name: String) -> Optional<Node> {
+  fold_list(xs: node_subtree_nodes(root: root), empty: Absent, cons: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => roster_child_labelled(n: n, name: name)
+    }
+  })
+}
+
+fn roster_child_labelled(n: Node, name: String) -> Optional<Node> {
+  fold_list(xs: n.children, empty: Absent, cons: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if roster_edge_authored(e: e) == name { Present { value: roster_edge_target(e: e) } } else { Absent }
+    }
+  })
+}
+
+// The head spelling of a function declaration's declared return type: its arrow's codomain (positional 1), first atom.
+fn roster_return_head(arrow: Node) -> Optional<String> {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) {
+    Absent => Absent
+    Present { value: ret } =>
+      fold_list(xs: node_subtree_nodes(root: ret), empty: Absent, cons: fn(acc, n) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match node_atom_identity_optional(node: n) {
+              Present { value: sym } => Present { value: symbol_lexeme(sym: sym) }
+              Absent => Absent
+            }
+        }
+      })
+  }
+}
+
+// Where `spelling` is declared, as seen from the home: its import binding's target, or the home itself.
+fn roster_type_owner(home: String, imports: List<AliasBindingRow>, root: Node, spelling: String) -> Optional<String> {
+  match fold_list(xs: imports, empty: Absent, cons: fn(acc, b) { match acc { Present { value: _ } => acc  Absent => roster_binding_target_if(b: b, spelling: spelling) } }) {
+    Present { value: q } => Present { value: q }
+    Absent =>
+      match roster_declaration_node(root: root, name: spelling) {
+        Present { value: _ } => Present { value: home + "." + spelling }
+        Absent => Absent
+      }
+  }
+}
+
+fn roster_binding_target_if(b: AliasBindingRow, spelling: String) -> Optional<String> {
+  if symbol_lexeme(sym: b.binding) == spelling { Present { value: roster_qn_text(qn: b.target) } } else { Absent }
+}
+
+fn roster_dotted_init(q: String) -> String {
+  roster_join(xs: take_prefix(xs: split(s: q, delimiter: "."), n: length(xs: split(s: q, delimiter: ".")) - 1), sep: ".")
+}
+
+fn roster_dotted_last(q: String) -> String {
+  match list_at_optional(xs: split(s: q, delimiter: "."), index: length(xs: split(s: q, delimiter: ".")) - 1) {
+    Present { value: l } => l
+    Absent => q
+  }
+}
+
+// A coproduct's variant names: the direct labels of its member (v2.std.type_binder type_decl_view). Not a coproduct: [].
+fn roster_variant_tags(decl: Node) -> List<String> {
+  let member = match type_decl_view(target: decl) {
+    GenericTypeDecl { binders: _, member: m } => Present { value: m }
+    PlainTypeDecl { member: m } => Present { value: m }
+    TypeAlias { binders: _, aliased: _ } => Absent
+    OpaqueTypeDecl { binders: _ } => Absent
+    NotATypeDecl => Absent
+  }
+  match member {
+    Absent => []
+    Present { value: m } => fold_list(xs: m.children, empty: [], cons: fn(acc, e) { if roster_edge_authored(e: e) == "" { acc } else { list_snoc_item(xs: acc, item: roster_edge_authored(e: e)) } })
+  }
+}
+
+fn roster_companion_of(row: RosterHeadRow, to: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanion {
+  let home = roster_qn_text(qn: row.home)
+  match roster_module_read(name: home, prepared: prepared, lex: lex) {
+    ModuleReadFailed { detail: d } => CompanionUnderivable { call: row.call, to: to, detail: d }
+    ModuleReadOk { root: hroot, imports: himports } =>
+      match roster_declaration_node(root: hroot, name: to) {
+        Absent => CompanionUnderivable { call: row.call, to: to, detail: "home " + home + " declares no " + to }
+        Present { value: callee } =>
+          match roster_return_head(arrow: callee) {
+            Absent => CompanionUnderivable { call: row.call, to: to, detail: home + "." + to + " has no readable declared return type" }
+            Present { value: ret } =>
+              match roster_type_owner(home: home, imports: himports, root: hroot, spelling: ret) {
+                Absent => CompanionUnderivable { call: row.call, to: to, detail: "return type " + ret + " is neither imported nor declared by " + home }
+                Present { value: owner } => roster_companion_from_owner(row: row, to: to, owner: owner, prepared: prepared, lex: lex)
+              }
+          }
+      }
+  }
+}
+
+fn roster_companion_from_owner(row: RosterHeadRow, to: String, owner: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterCompanion {
+  let module = roster_dotted_init(q: owner)
+  match roster_module_read(name: module, prepared: prepared, lex: lex) {
+    ModuleReadFailed { detail: d } => CompanionUnderivable { call: row.call, to: to, detail: d }
+    ModuleReadOk { root: mroot, imports: _ } =>
+      match roster_declaration_node(root: mroot, name: roster_dotted_last(q: owner)) {
+        Absent => CompanionUnderivable { call: row.call, to: to, detail: module + " declares no " + roster_dotted_last(q: owner) }
+        // A return type that is not a coproduct has no tags an ambient pattern could stand in for: nothing to import.
+        Present { value: decl } =>
+          CompanionDerived { call: row.call, to: to, module: module, tags: roster_variant_tags(decl: decl), closure: roster_home_closure_read(home: module, bindings: roster_repository_bindings(root: "")) }
+      }
+  }
+}
+
+// ONCE PER RUN, one per RenameHead row; a KeepHead row has no companion and costs nothing.
+fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterCompanion> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+    match r.head {
+      KeepHead => acc
+      RenameHead { to: t } => list_snoc_item(xs: acc, item: roster_companion_of(row: r, to: t, prepared: prepared, lex: lex))
+    }
+  })
+}
+
+// THE COMPANION PASS, run on a file whose rows and labels have converged (Clean). For each companion whose renamed callee
+// the file now imports from its home: the companion's tags the file uses at an AMBIENT pattern-tag position (lexically
+// unbound) and does not import already. None: Clean. Some: one import edit from the companion's module, cycle-checked
+// against that module's closure. Tags the file does not use are never added; other ambient names are another wave's.
+fn roster_companion_outcome(companions: List<RosterCompanion>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, homes: List<RosterHeadRow>) -> RosterOutcome {
+  let sites = collect_scoped_module_reference_sites(root: normalized_root, imported: list_map(xs: imported, f: fn(b) { b.binding })).sites
+  fold_list(xs: companions, empty: RosterClean, cons: fn(acc, c) {
+    match acc {
+      RosterClean => roster_one_companion(c: c, parse_root: parse_root, spans: spans, imported: imported, sites: sites, homes: homes)
+      other => other
+    }
+  })
+}
+
+fn roster_callee_imported(imported: List<AliasBindingRow>, homes: List<RosterHeadRow>, call: String, to: String) -> Bool {
+  fold_list(xs: homes, empty: false, cons: fn(f, r) { f || ((r.call == call) && fold_list(xs: imported, empty: false, cons: fn(g, b) { g || roster_binding_is(b: b, qn: roster_qn_text(qn: r.home) + "." + to, name: to) })) })
+}
+
+fn roster_binding_is(b: AliasBindingRow, qn: String, name: String) -> Bool {
+  (symbol_lexeme(sym: b.binding) == name) && (roster_qn_text(qn: b.target) == qn)
+}
+
+fn roster_site_is_ambient_tag(st: ScopedReferenceSite, tag: String) -> Bool {
+  let at_tag = match st.position {
+    PatternTagPosition => true
+    LabelPosition => false
+    ValuePosition => false
+    TypeAnnotationPosition => false
+    ReturnPosition => false
+  }
+  let unbound = match st.head {
+    HeadLexicallyUnbound => true
+    HeadBoundAtRootValue => false
+    HeadBoundInFrame => false
+    HeadBindingUndecided => false
+  }
+  at_tag && unbound && roster_spelling_is(qn: st.site.spelling, call: tag)
+}
+
+fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, imported: List<AliasBindingRow>, sites: FreeMonoid<ScopedReferenceSite>, homes: List<RosterHeadRow>) -> RosterOutcome {
+  match c {
+    CompanionNone => RosterClean
+    CompanionUnderivable { call: call, to: to, detail: d } =>
+      if roster_callee_imported(imported: imported, homes: homes, call: call, to: to) { RosterRefused { reason: RefusalCompanionUnderivable { call: call, detail: d } } } else { RosterClean }
+    CompanionDerived { call: call, to: to, module: module, tags: tags, closure: closure } =>
+      if !roster_callee_imported(imported: imported, homes: homes, call: call, to: to) {
+        RosterClean
+      } else {
+        let needed = fold_list(xs: tags, empty: [], cons: fn(acc, t) {
+          if fold_list(xs: sites, empty: false, cons: fn(f, st) { f || roster_site_is_ambient_tag(st: st, tag: t) }) { list_snoc_item(xs: acc, item: t) } else { acc }
+        })
+        if is_empty(xs: needed) {
+          RosterClean
+        } else {
+          match roster_module_cycle_refusal(parse_root: parse_root, closures: [closure], home: module) {
+            Present { value: reason } => RosterRefused { reason: reason }
+            Absent => roster_import_names_edit(parse_root: parse_root, spans: spans, home: qualified_name_from_dotted_string(dotted: module), wanted: needed)
+          }
+        }
+      }
   }
 }
