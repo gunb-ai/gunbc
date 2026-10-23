@@ -942,9 +942,9 @@ fn required_gate_authored_modules() -> List<String> {
     // v2.test.claim.compiler. family -- a family row would silently enrol neighbours whose status
     // nobody measured, the class of row gunbc.recurring_failure_mode
     // witness_module_absent_from_the_executed_set running backwards). Admission was withheld until
-    // the module was green BY EXECUTION: claim_batch on this module at the head this enrolment lands
-    // behind (cite the run, never transcribe its output -- the numbers are re-derivable from the
-    // producer; the run is the one Manager 3 executed on srv1). Before this row the module sat on
+    // the module was green BY EXECUTION: claim_batch on this module, the green run pinned on the
+    // claims PR this enrolment lands behind, at that PR's head (cite the run, never transcribe its
+    // output -- the numbers are re-derivable from the producer). Before this row the module sat on
     // disk, correct, and named in no schedule the required lane reads: every signal a reader
     // consults says covered, none of them deciding. If a neighbour of this path needs the gate, it
     // earns its own row, for the same reason.
