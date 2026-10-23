@@ -182,6 +182,13 @@ data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRul
   provenance: "Operator ruling, previously recorded only in the v2.compiler.infer comment above infer_where_predicate_set_edge: where-refinements are being deleted from the language, replaced by checked constructors returning Optional, so no infer judgment for a where-refinement's predicate calls is coming. Retirement trigger: where-refinement clauses are removed in favour of checked constructors returning Optional, sufficient for no where-predicate call to reach infer; the infer arm and its reason are then deleted with the clause.",
 }
 
+data literal_only_refinement_judgment_is_interim: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "literal_only_refinement_judgment_is_interim"),
+  decided: "2026-10-23",
+  section: "5",
+  provenance: "Operator ruling, an interim exception to where_refinements_retire_for_checked_constructors: infer judges a where-refinement for a LITERAL only. A literal whose type is exactly the refinement's carrier records one refinement obligation over the predicate applied to that literal, discharged by v2.compiler.refinement_discharge as the one predicate authority; every non-literal value at a where-refinement still refuses. It is a declared scaffold whose dissolution trigger is the NonEmptyStr structural cut of the refinement-deletion program.",
+}
+
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
@@ -343,6 +350,7 @@ fn design_rulings() -> List<DesignRuling> {
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
     where_refinements_retire_for_checked_constructors,
+    literal_only_refinement_judgment_is_interim,
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
