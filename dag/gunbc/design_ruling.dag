@@ -69,6 +69,7 @@ data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling
   decided: "2026-10-22",
   section: "3b",
   provenance: "Operator ruling on the policy question gunbc#14694 left open: \"i prefer everything to go thru one route\". Every disruptive or privileged action, including FleetOnce actions with host-root reach on srv1, is approved through the approval broker route AccessRequest -> ApprovalCapability -> redeem_capability (gunbc.auth.access_request, approval_capability, approval_broker), fronted by the iOS approval app; the administrator edge is not a second approval route. Applied in gunbc.auth.authorization_pattern_selection candidate_patterns (the edge is a candidate only for an effect that must run unattended), so FleetOnce plus host-root reach selects OperatorApprovedCapability.",
+  standing: LedgerOnly { reason: "operator policy routing every privileged action through the approval broker route, owned by gunbc.auth.access_request, approval_capability and approval_broker; DESIGN.md states the authorization-pattern selection but does not cite this ruling" },
 }
 
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
