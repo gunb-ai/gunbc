@@ -139,7 +139,7 @@ test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> B
       match o {
         ArtifactMaterializationObserved { executable: exe, digest: d } =>
           match sha512sum_observe_file(path: exe) {
-            Sha512FileObserved { digest: again } => (d as String) == (again as String)
+            Sha512FileObserved { digest: again } => d.hex == again.hex
             Sha512FileObservationRefused { cause: _ } => false
           }
         ArtifactMaterializationBuildFailed { target_name: _ } => false

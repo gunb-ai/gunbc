@@ -8,7 +8,7 @@ import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_s
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.optional { Present, Absent }
 import extdeps.languages.json.parse {
-  parse_json_document, json_field, json_field_string,
+  parse_json_document, json_document_gap_text, json_field, json_field_string,
   JsonDocumentParsed, JsonDocumentUnreadable, FieldRead, FieldAbsent, FieldMalformed,
 }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
@@ -229,7 +229,7 @@ fn redfish_password_change_verdict(body: String) -> RedfishPasswordChangeVerdict
   match parse_json_document(s: body) {
     // THE CAPTURE IS BROKEN, AND THAT IS SAID RATHER THAN RECORDED AS A VERDICT ABOUT THE SERVICE.
     JsonDocumentUnreadable { gap: gap } =>
-      RedfishResponseBodyUnreadable { cause: join(["the response body did not parse as a JSON document: ", gap as String], "") as NonEmptyStr }
+      RedfishResponseBodyUnreadable { cause: join(["the response body did not parse as a JSON document: ", json_document_gap_text(gap: gap)], "") as NonEmptyStr }
     JsonDocumentParsed { value: doc } =>
       match redfish_extended_info_message_id(holder: doc) {
         RedfishExtendedInfoNamesTheMessage { message_id: message_id } =>
