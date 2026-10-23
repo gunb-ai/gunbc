@@ -8,6 +8,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, hr, tx, cite, 
 import std.decl_ref { DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.design_ruling {
+  where_refinements_retire_for_checked_constructors,
   job_roster_closed_to_growth,
   regeneration_jobs_added_to_roster,
   conformance_needs_attention,
@@ -289,6 +290,11 @@ fn section_4_blocks() -> List<MarkdownBlock> {
       tx(text: "**Coercion is the implicit-safe subset of declared conversions** (ruling "),
       cite(symbol: DeclarationSymbol { reference: coercion_is_the_implicit_safe_subset.reference }),
       tx(text: "). An implicit route must be total, exact, semantics-preserving, unique, pure and consent-free; a phase that changes interpretation, needs proof, may lose information, needs a policy or has competing routes refuses implicit coercion, and the author names a conversion plan. Every phase stays represented in the typed program. Target realization may refuse to realize a plan but never decides whether a conversion is legal, so a target's cast table is not the source language's semantics. *e.g.* `Bool` does not implicitly inhabit `Int`; `true as Int` refuses unless it names a declared route such as `bool_indicator`."),
+    ]),
+    pi(inlines: [
+      tx(text: "Where-refinements are retired in favour of checked constructors returning `Optional` (ruling "),
+      cite(symbol: DeclarationSymbol { reference: where_refinements_retire_for_checked_constructors.reference }),
+      tx(text: ")."),
     ]),
     pi(inlines: [
       tx(text: "**Text has two representations of one type, and every crossing goes through the declared unfold or refuses** (ruling "),
