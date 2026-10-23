@@ -63,7 +63,6 @@ import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotA
 import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
-import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness, canonical_grounding_from_derived_type }
 import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, application_argument_does_not_inhabit_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
 import v2.std.diagnostic { Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending }
@@ -1941,7 +1940,7 @@ fn infer_binding_value_type_witness(binding: Symbol, at: Node) -> Witness<Node> 
 // denote reaches the established-type question. ONE reader, so introduction and elimination cannot
 // disagree about the same signature.
 fn infer_established_value_type_optional(ret: Node) -> Optional<Node> {
-  if infer_type_equal_ignoring_provenance(a: ret, b: bool_node()) {
+  if node_equal_ignoring_provenance(a: ret, b: bool_node()) {
     optional_present(value: bool_node())
   } else {
     optional_absent()
@@ -2328,7 +2327,7 @@ fn infer_branch_type_atoms_equal(a: Node, b: Node) -> Bool {
         Present { value: id_b } => id_a == id_b
         Absent => false
       }
-    Absent => infer_type_equal_ignoring_provenance(a: a, b: b)
+    Absent => node_equal_ignoring_provenance(a: a, b: b)
   }
 }
 
@@ -3446,7 +3445,7 @@ fn infer_match_no_arm_declares(any_open: Bool, declaring: Optional<Node>) -> Boo
 // THE ONE "CLOSED ARM AGREES" JUDGMENT: two arm types already closed at the declaring type are the same type once aliases are
 // normalized, ignoring provenance. The two-arm join and the N-arm coproduct fold both consume it.
 fn infer_closed_arm_types_agree(a: Node, b: Node, resolved: ResolvedTree) -> Bool {
-  infer_type_equal_ignoring_provenance(
+  node_equal_ignoring_provenance(
     a: infer_type_alias_normalized_at(t: a, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
     b: infer_type_alias_normalized_at(t: b, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
   )
@@ -4552,7 +4551,7 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
                 InferFormalShapeMismatch
               } else if inhabitance_node_mentions_type_variable(n: f.head, type_variables: type_params) {
                 InferFormalMatched { instances: instances }
-              } else if !infer_type_equal_ignoring_provenance(a: f.head, b: p.head) {
+              } else if !node_equal_ignoring_provenance(a: f.head, b: p.head) {
                 InferFormalShapeMismatch
               } else {
                 fold(zip_map(a: f.args, b: p.args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
@@ -4754,9 +4753,9 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
 // `let y: Int = 1` (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration;
 // review 77259). An atom joins only through dag_binding_denotation (binding -> value type).
 fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
-  if infer_type_equal_ignoring_provenance(a: t, b: integer_int_type_node()) {
+  if node_equal_ignoring_provenance(a: t, b: integer_int_type_node()) {
     optional_present(value: integer_int_type_node())
-  } else if infer_type_equal_ignoring_provenance(a: t, b: bool_node()) {
+  } else if node_equal_ignoring_provenance(a: t, b: bool_node()) {
     optional_present(value: bool_node())
   } else {
     match declaration_denotation_of_type(t: t) {
@@ -5053,7 +5052,7 @@ fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
 // its UInt = Nat unfolds by the alias rule before this reads it (measured, v2.test.claim.compiler.width_literal_admission,
 // whose peer states those two declarations as std.integer writes them).
 fn infer_machine_width_signedness(carrier: Node) -> Optional<Signedness> {
-  if infer_type_equal_ignoring_provenance(a: carrier, b: integer_int_type_node()) {
+  if node_equal_ignoring_provenance(a: carrier, b: integer_int_type_node()) {
     optional_present(value: Signed)
   } else {
     match infer_type_declaration_ref(t: carrier) {
@@ -5498,7 +5497,7 @@ fn infer_bound_generator_agreement(node: Node, structure: Node, derived: Optiona
           match infer_bound_generator_fixed_optional(declared: declared, instances: instances) {
             Absent => optional_absent()
             Present { value: fixed } =>
-              if infer_type_equal_ignoring_provenance(
+              if node_equal_ignoring_provenance(
                 a: infer_type_alias_normalized_at(t: fixed, bodies: declarations, bindings: bindings),
                 b: infer_type_alias_normalized_at(t: generator, bodies: declarations, bindings: bindings)
               ) {
@@ -5573,7 +5572,7 @@ fn infer_row_inhabitant_matched_optional(row_inhabitant: Node, wanted: Node, dec
   match infer_match_generic_formal(formal: row_inhabitant, produced: wanted, type_params: dag_algebra_inhabitance_row_type_params(), instances: Empty, declarations: declarations) {
     InferFormalShapeMismatch => optional_absent()
     InferFormalMatched { instances: matched } =>
-      if infer_type_equal_ignoring_provenance(
+      if node_equal_ignoring_provenance(
         a: infer_type_alias_normalized_at(t: infer_type_instantiated(t: row_inhabitant, instances: matched), bodies: declarations, bindings: bindings),
         b: wanted
       ) {
@@ -6266,12 +6265,8 @@ fn infer_gather_transform_frontier_on_entries(
 // GroundingNotDerived frontier like every Transform this fold does not derive -- never a guessed T.
 // Two element types are one type when they are STRUCTURALLY equal with provenance removed at every
 // level -- the same authority the inhabitance judgment decides declared-versus-produced types with
-// (v2.std.exact_structural_equality_zip_fold_predicate exact_structural_equality_zip_fold), so a
+// (v2.std.node node_equal_ignoring_provenance), so a
 // list of lists compares its FreeMonoid<T> element types whole rather than as atoms.
-fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
-  exact_structural_equality_zip_fold(source_facts: a, candidate: b)
-}
-
 fn infer_list_element_type(element: Node, entries: Map<Node, List<InferredFacts>>, resolved: ResolvedTree) -> Outcome<Node> {
   match lookup_inferred_facts_in_entries(entries: entries, key: element) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
@@ -6298,7 +6293,7 @@ fn infer_list_elements_unified_type(
           fold(rest, init: outcome_accepted(value: t), f: fn(acc, element) {
             bind_outcome(o: acc, f: fn(unified) {
               bind_outcome(o: infer_list_element_type(element: element, entries: entries, resolved: resolved), f: fn(et) {
-                if infer_type_equal_ignoring_provenance(a: unified, b: et) {
+                if node_equal_ignoring_provenance(a: unified, b: et) {
                   outcome_accepted(value: unified)
                 } else {
                   outcome_rejected(infer_list_element_type_mismatch_diagnostic(element: element))
