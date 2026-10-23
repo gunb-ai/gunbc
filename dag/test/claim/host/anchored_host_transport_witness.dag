@@ -64,6 +64,7 @@ fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers:
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
 ] {
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
     Absent => none
@@ -129,6 +130,7 @@ fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_local_shell_refuses_before_any_key_is_read"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
 ] {
   match row.anchor {
     Present { value: anchor } => anchor
