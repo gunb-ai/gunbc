@@ -1715,176 +1715,6 @@ mod compiler_tests {
         );
     }
 
-    /// Statement-position match lowering, subject `v1.compiler.emit_rust` `emit_rust_block_stmts`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn statement_position_match_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_statement_position_match_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("statement-position-match {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the statement-position-match control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// A record field typed by its declaring type's parameter, subject `v1.compiler.emit_rust` `record_field_declaring_generic_names`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn record_declaring_param_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_record_declaring_param_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("record-declaring-param {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the record-declaring-param control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// A record field typed Nat, realized by an opaque kernel alias row, subject `v1.compiler.emit_rust` `shared_layer_of_resolution`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn nat_kernel_alias_field_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_nat_kernel_alias_field_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("nat-kernel-alias-field {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the nat-kernel-alias-field control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// `SharedLayerRefuse` FIRES: two declarations of one leaf (`Word64`, owners `a` and `b`) that
-    /// DISAGREE on the layer are never answered from the collapsed spelling. The positive control is
-    /// the same leaf with both declarations at one layer, which answers without refusing; the pair
-    /// differs only in whether the second identity is in the shared set.
-    #[test]
-    fn an_ambiguous_leaf_whose_declarations_disagree_on_layer_refuses() {
-        let ident = |owner: &str| {
-            crate::v1_compiler_infer_emit_info::type_decl_identity(
-                owner.to_string(),
-                "Word64".to_string(),
-            )
-        };
-        let mut index = crate::v1_compiler_infer_emit_info::empty_type_decl_index();
-        for owner in ["a", "b"] {
-            index = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-                index,
-                owner.to_string(),
-                "Word64".to_string(),
-                shaped_type_node("Word64", Vec::new()),
-            );
-        }
-        let mut one = im::OrdSet::new();
-        one.insert(ident("a"));
-        let red = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(one.clone()),
-            "Word64".to_string(),
-            index.clone(),
-        );
-        match &*red {
-            crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
-                assert_eq!(leaf.as_str(), "Word64");
-                assert_eq!(cause.as_str(), "TypeDeclLeafAmbiguous");
-            }
-            _ => panic!("disagreeing declarations of one leaf must refuse, never be guessed"),
-        }
-        let mut both = one;
-        both.insert(ident("b"));
-        let agree = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(both),
-            "Word64".to_string(),
-            index.clone(),
-        );
-        assert!(
-            matches!(
-                &*agree,
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtShared
-            ),
-            "declarations that agree answer their shared layer"
-        );
-        let none = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(im::OrdSet::new()),
-            "Word64".to_string(),
-            index,
-        );
-        assert!(
-            matches!(
-                &*none,
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtValue
-            ),
-            "declarations that all sit at the value layer answer the value layer"
-        );
-    }
-
-    /// A USER TYPE SPELLED `FreeMonoid` is not the std native alias: it must not answer `SharedLayerAtShared`
-    /// through the container-template key. The positive control is the `std.algebra` declaration, which does.
-    #[test]
-    fn a_user_type_spelled_freemonoid_does_not_answer_shared() {
-        let mut set = im::OrdSet::new();
-        set.insert("FreeMonoid".to_string());
-        let shared = std::rc::Rc::new(set);
-        let answer = |owner: &str| {
-            let mut index = crate::v1_compiler_infer_emit_info::empty_type_decl_index();
-            index = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-                index,
-                owner.to_string(),
-                "FreeMonoid".to_string(),
-                shaped_type_node("FreeMonoid", Vec::new()),
-            );
-            crate::v1_compiler_emit_rust::shared_layer_of_leaf(
-                shared.clone(),
-                "FreeMonoid".to_string(),
-                index,
-                std::rc::Rc::new(Vec::new()),
-            )
-        };
-        assert!(
-            matches!(
-                &*answer("user.mod"),
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtValue
-            ),
-            "a user FreeMonoid is at the value layer"
-        );
-        assert!(
-            matches!(
-                &*answer("std.algebra"),
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtShared
-            ),
-            "the std.algebra declaration answers the shared layer"
-        );
-    }
-
     /// THE SHELL PROJECTION'S RETURN CONVENTION, JUDGED BY RUSTC. Subject:
     /// `v1.compiler.emit_rust` `emit_shell_return`.
     ///
@@ -2216,6 +2046,129 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("call_shape_duplicate_wall_witness panicked");
+    }
+
+    #[test]
+    fn call_shape_formal_identity_wall_witness() {
+        // DISCRIMINATING RED for formal_identity_duplicate_diags in v1/04_infer.dag —
+        // the INJECTIVITY side of the call bijection: two caller labels selecting the
+        // SAME declared formal. Its sibling wall duplicate_label_diags owns the
+        // runtime-binding-key side and the two stay separate by operator ruling (see
+        // the wall's own comment in the seed). Fixture: a formal DECLARED `_p00` called
+        // with both admissible caller spellings, `p00:` and `_p00:` —
+        // call_param_caller_labels admits both for a formal declared `_p00`, so the two
+        // arguments select one formal. This is the one shape where the walls do NOT
+        // coincide: the runtime keys bindings by caller label, so `p00` and `_p00` stay
+        // distinct and the interpreter computes SILENTLY (measured in the runtime-
+        // authority arm below) while the formal receives two arguments — the silent
+        // drop the wall exists to refuse. Measured base-vs-head on the seed refactor:
+        // byte-identical messages, spans, and order (the wall was rewired from a
+        // re-run rule to the claimants_by_formal table without changing behaviour).
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let fid = compile_one(
+                    "fid_dup.dag",
+                    "module fid_dup\nfn decl_p00(_p00: Int, p01: Int) -> Int { _p00 }\nfn wide2(p00: Int, p01: Int) -> Int { p00 }\nfn formal_identity_duplicate() -> Int { decl_p00(p00: 1, _p00: 2, p01: 3) }\nfn literal_duplicate_control() -> Int { wide2(p00: 1, p00: 2, p01: 3) }\n",
+                );
+                assert_eq!(
+                    fid.diagnostics.len(),
+                    2,
+                    "each duplicate cause must refuse exactly once — the guarded wall must not double-report the key wall's case, got: {:?}",
+                    fid.diagnostics
+                );
+                let dup: Vec<_> = fid.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallArgumentDuplicate { .. }))
+                    .collect();
+                assert_eq!(dup.len(), 2, "both refusals must be CallArgumentDuplicate, got: {:?}", fid.diagnostics);
+                assert!(
+                    dup.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                        && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
+                    "CallArgumentDuplicate must BLOCK — an advisory would still emit the dropped argument"
+                );
+                // The two causes are told apart by NAME: the formal-identity wall
+                // reports the declared formal (authored_name_at of the selected
+                // formal), the key wall reports the repeated caller label.
+                let fid_message = crate::v1_std_core::diagnostic_to_message(dup[0].diagnostic.clone());
+                assert_eq!(
+                    fid_message,
+                    "call shape mismatch calling 'decl_p00': argument '_p00' supplied more than once",
+                    "the formal-identity wall must refuse by the declared formal name, got: {}",
+                    fid_message
+                );
+                let fid_span = crate::v1_std_core::diagnostic_to_span(dup[0].diagnostic.clone());
+                assert_eq!(
+                    fid_span.start, 165,
+                    "the formal-identity refusal must be located at the later argument's `_p00: 2`"
+                );
+                let key_message = crate::v1_std_core::diagnostic_to_message(dup[1].diagnostic.clone());
+                assert_eq!(
+                    key_message,
+                    "call shape mismatch calling 'wide2': argument 'p00' supplied more than once",
+                    "the repeated-same-label control must still refuse through duplicate_label_diags, got: {}",
+                    key_message
+                );
+                let key_span = crate::v1_std_core::diagnostic_to_span(dup[1].diagnostic.clone());
+                assert_eq!(
+                    key_span.start, 238,
+                    "the literal-key refusal must be located at the repeated `p00: 2` argument"
+                );
+                // RUNTIME AUTHORITY, measured: the caller labels are runtime binding
+                // keys, so `p00` and `_p00` are distinct inserts and the interpreter
+                // does NOT refuse this shape — it computes with the `_p00`-spelled
+                // value and drops `p00: 1` without a word. That silence is precisely
+                // what the compile seam exists to refuse (DESIGN §5). If the runtime
+                // ever starts refusing it, re-audit the wall partition with it — this
+                // arm goes red to say so.
+                let resolved_rt = crate::v1_compiler_compile::compile_to_resolved(
+                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        crate::v1_compiler_compile::SourceFile {
+                            path: "fid_dup_rt.dag".to_string(),
+                            content: "module fid_dup_rt\nfn decl_p00(_p00: Int, p01: Int) -> Int { _p00 }\nfn call_it() -> Int { decl_p00(p00: 1, _p00: 2, p01: 3) }\n".to_string(),
+                        }
+                    )]),
+                );
+                let graph_rt = resolved_rt.graph.clone().expect("the formal-identity runtime probe must resolve — its refusal lives at the inference seam, not in resolution");
+                let run_rt = crate::v1_interpreter::run(&graph_rt, resolved_rt.source_indices.clone(), "call_it");
+                match &run_rt {
+                    Ok(crate::v1_interpreter::Value::Int(value)) => assert!(
+                        *value == 2,
+                        "the runtime must keep computing this shape silently (the body reads only the `_p00` key; `p00: 1` is unreachable) — the compile wall is the only refusal, got: {:?}",
+                        run_rt
+                    ),
+                    other => panic!(
+                        "the runtime no longer computes the formal-identity shape silently — if it now refuses, re-audit duplicate_label_diags and formal_identity_duplicate_diags together before touching this arm, got: {:?}",
+                        other
+                    ),
+                }
+                // GREEN CONTROLS at ZERO diagnostics: each admissible SINGLE spelling
+                // of the declared `_p00` formal — its own `_p00` and its alias `p00` —
+                // is a well-formed call; the wall fires only when both spellings
+                // appear in one call.
+                let green = compile_one(
+                    "fid_green.dag",
+                    "module fid_green\nfn decl_p00(_p00: Int, p01: Int) -> Int { _p00 }\nfn green_underscore_spelling() -> Int { decl_p00(_p00: 1, p01: 2) }\nfn green_alias_spelling() -> Int { decl_p00(p00: 1, p01: 2) }\n",
+                );
+                assert!(
+                    green.diagnostics.is_empty(),
+                    "a single caller spelling per formal (declared or alias) must compile with no diagnostic of any severity, got: {:?}",
+                    green.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_shape_formal_identity_wall_witness panicked");
     }
 
     #[test]
@@ -4718,28 +4671,15 @@ mod compiler_tests {
         let empty_shared = std::rc::Rc::new(im::OrdSet::new());
         assert_eq!(
             crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
-                empty_shared.clone(),
-                crate::v1_compiler_infer_emit_info::empty_type_decl_index()
+                empty_shared.clone()
             ),
             "Option<NonEmptyDiagnostics>"
         );
         let mut shared_ned_inner = im::OrdSet::new();
-        shared_ned_inner.insert(crate::v1_compiler_infer_emit_info::type_decl_identity(
-            "m".to_string(),
-            "NonEmptyDiagnostics".to_string(),
-        ));
-        let declared_ned = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
-            "m".to_string(),
-            "NonEmptyDiagnostics".to_string(),
-            shaped_type_node("NonEmptyDiagnostics", Vec::new()),
-        );
+        shared_ned_inner.insert("NonEmptyDiagnostics".to_string());
         let shared_ned = std::rc::Rc::new(shared_ned_inner);
         assert_eq!(
-            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
-                shared_ned,
-                declared_ned
-            ),
+            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(shared_ned),
             "Option<Rc<NonEmptyDiagnostics>>"
         );
         assert!(crate::v1_compiler_emit_rust::is_some_like_variant_name(
@@ -4880,7 +4820,6 @@ mod compiler_tests {
             source_indices,
             variant_to_enum,
             env,
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert!(
             !rendered.contains('.'),
@@ -4912,7 +4851,6 @@ mod compiler_tests {
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(populated_env_value),
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert_eq!(
             populated, "Box<Time>",
@@ -4925,7 +4863,6 @@ mod compiler_tests {
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(HashMap::new()),
             crate::v1_compiler_infer_env::empty_type_env(),
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert!(
             unavailable.contains("unit-variant marker identity evidence unavailable for Time"),
@@ -5955,7 +5892,6 @@ mod compiler_tests {
                 source_indices.clone(),
                 std::rc::Rc::new(HashMap::new()),
                 observed_env.clone(),
-                crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
             )
         };
         let red = render(shaped_type_node("Optional", Vec::new()));

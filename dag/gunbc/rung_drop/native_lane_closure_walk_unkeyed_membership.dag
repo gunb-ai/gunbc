@@ -1,7 +1,8 @@
 module gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Retired, Enumerated, ReplacementStaged, RetiredTypedDeclaration }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-12 (review 64571). The route grows its import closure by folding the fact list
@@ -32,25 +33,20 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // exists nowhere -- a section 3 citation defect, and worse in THIS field than elsewhere: 4b(3)
 // requires a BOUNDED population, so an unreadable member means whoever discharges the row cannot
 // enumerate what to delete. Review 64576 caught it.
-data native_lane_closure_walk_unkeyed_membership_population: List<String> = [
-  "v2.compiler.source_root_eval native_lane_module_reachable — the walk; membership was a per-round fold and is now a keyed lookup",
-  "v2.compiler.source_root_eval native_lane_closure_modules — its one caller, which built the index before the recursion; DELETED by the source layout cutover, which moved the adjudicating lane to the module acquirer, so the walk's consumers are now the census closure fan-out",
-  "v2.compiler.source_root_eval native_lane_facts_index — the index the repair added, module to imports, built once; DELETED by the same cutover, the census now supplies the index it read",
-  "v2.compiler.source_root_eval native_lane_module_named — the list scan the walk stopped reaching, DELETED outright by review 64753's repair once the closure-member join moved to native_lane_module_set / native_lane_module_in_set and no caller was left",
-]
+data native_lane_closure_walk_unkeyed_membership_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.compiler.source_root_eval native_lane_module_reachable — the walk; membership was a per-round fold and is now a keyed lookup", tail: ["v2.compiler.source_root_eval native_lane_closure_modules — its one caller, which built the index before the recursion; DELETED by the source layout cutover, which moved the adjudicating lane to the module acquirer, so the walk's consumers are now the census closure fan-out", "v2.compiler.source_root_eval native_lane_facts_index — the index the repair added, module to imports, built once; DELETED by the same cutover, the census now supplies the index it read", "v2.compiler.source_root_eval native_lane_module_named — the list scan the walk stopped reaching, DELETED outright by review 64753's repair once the closure-member join moved to native_lane_module_set / native_lane_module_in_set and no caller was left"] }
 
 data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {
   identity: "native_lane_closure_walk_unkeyed_membership" as NonEmptyStr,
   subject: "constructed membership for the route's import-closure walk",
   declared: "2026-09-12",
   standing: Retired {
-    trigger_fired: "gunbc#11121 landed as dfac90c3b0 (v2.std.collection primitive-backed map_insert/map_lookup delegates), and THE REPAIR IS IN THE SAME COMMIT AS THIS RETIREMENT: native_lane_module_reachable now looks up imports through an index built once by native_lane_facts_index and answers membership against a carried seen_set, so the walk no longer folds the fact list per round. RETIRING ON THE CAPABILITY ALONE WOULD HAVE BEEN THE 4b(3) INFLATION -- a row marked discharged with the quadratic walk still standing -- which is why the discharge is the repair and not the landing." as NonEmptyStr
-  },
-  declaration: TypedDeclaration {
+    trigger_fired: "gunbc#11121 landed as dfac90c3b0 (v2.std.collection primitive-backed map_insert/map_lookup delegates), and THE REPAIR IS IN THE SAME COMMIT AS THIS RETIREMENT: native_lane_module_reachable now looks up imports through an index built once by native_lane_facts_index and answers membership against a carried seen_set, so the walk no longer folds the fact list per round. RETIRING ON THE CAPABILITY ALONE WOULD HAVE BEEN THE 4b(3) INFLATION -- a row marked discharged with the quadratic walk still standing -- which is why the discharge is the repair and not the landing." as NonEmptyStr,
+    declaration: RetiredTypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "a keyed membership set backed by a primitive map_insert / map_lookup realization" },
-    population: native_lane_closure_walk_unkeyed_membership_population,
+    population_at_retirement: Enumerated { members: native_lane_closure_walk_unkeyed_membership_population },
     restoration_trigger: "A realization DELEGATES to std.primitives map_insert_contract so a keyed membership set is writable in v2, and the frontier walk answers membership by key lookup rather than by folding the fact list. That capability is gunbc#11121; the change that lands it is this row's toucher and retires it. The existence of v2.std.collection map_insert_host_binding does NOT satisfy this trigger -- the binding is already present and nothing delegates to it, so a trigger keyed on the binding would fire while the walk stayed quadratic."
+  }
   }
 }

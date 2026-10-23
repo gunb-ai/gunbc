@@ -1,7 +1,8 @@
 module gunbc.rung_drop.postfix_suffix_step_declined_to_the_pre_existing_arms
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-23 (gunbc#12057, review 70293). The previous postfix reader,
@@ -21,22 +22,19 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // class. Lowering them needs a construct tag that can carry a qualified name, and v2.std.node_query
 // construct_node's tag is a Symbol, so that is a change to the construct shape gunbc#12033 lands and
 // a wider package than this one.
-data postfix_suffix_step_declined_to_the_pre_existing_arms_population: List<String> = [
-  "every module over dag + src/v2 for which v2.compiler.body_lowering_fold emits body_lowering_reason_postfix_suffix_carried: a postfix chain step whose suffix is a brace record-literal (`a.b.C { f: v }`) or an `as` suffix. the population is re-derived, not transcribed: the workload adjudicate over dag + src/v2 (claim_executor --v2-native-route) counts the advisory per module",
-]
+data postfix_suffix_step_declined_to_the_pre_existing_arms_population: FreeSemigroup<String> = FreeSemigroup { head: "every module over dag + src/v2 for which v2.compiler.body_lowering_fold emits body_lowering_reason_postfix_suffix_carried: a postfix chain step whose suffix is a brace record-literal (`a.b.C { f: v }`) or an `as` suffix. the population is re-derived, not transcribed: the workload adjudicate over dag + src/v2 (claim_executor --v2-native-route) counts the advisory per module", tail: [] }
 
 data postfix_suffix_step_declined_to_the_pre_existing_arms: RungDrop = RungDrop {
   identity: "postfix_suffix_step_declined_to_the_pre_existing_arms" as NonEmptyStr,
   subject: "native-route body lowering either lowers a postfix chain step whose suffix is a brace record-literal or an `as` suffix, or refuses it located",
   declared: "2026-09-23",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "a construct tag that carries a qualified name, so the one-walk postfix chain door lowers `a.b.C { f: v }` as a construction and an `as` step as its conversion"
     },
-    population: postfix_suffix_step_declined_to_the_pre_existing_arms_population,
+    population: Enumerated { members: postfix_suffix_step_declined_to_the_pre_existing_arms_population },
     restoration_trigger: "native-route body lowering LOWERS every brace-suffix and `as`-suffix postfix step in dag + src/v2, so that body_lowering_reason_postfix_suffix_carried is emitted for zero modules in the workload adjudicate. Alternatively the door REFUSES those steps located, with no module that accepts on base refusing for any other reason. Changing the construct tag alone does not satisfy this: the trigger is that the population is lowered or refused, not that the carrier exists."
-  }
+  } }
 }
