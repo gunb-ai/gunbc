@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.optional { optional_present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
-import gunbc.namespace_cut.migration_kit { kit_binding_finding, kit_ambient_route_count, kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable, kit_import_differential }
+import gunbc.namespace_cut.migration_kit { kit_binding_finding, kit_ambient_route_count, kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -27,17 +27,6 @@ fn list_push_row() -> AmbientNameHome {
 data list_push_migrated: Bool = false
 
 fn is_migrated(f: KitFinding) -> Bool { match f { KitMigrated => true  _ => false } }
-
-fn is_red_reading(f: KitFinding) -> Bool {
-  match f { KitNoImportDoesNotRefuse => true  KitImportDoesNotClear => true  _ => false }
-}
-
-// Checks 1-2 (count stand-in): migrated entails KitMigrated; not migrated entails a located RED reading, never
-// KitNotRunnable, so an unrunnable census cannot pass as either side.
-test fn list_push_checks_1_2_match_the_row_disposition() -> Bool {
-  let f = kit_import_differential(row: list_push_row())
-  if list_push_migrated { is_migrated(f: f) } else { is_red_reading(f: f) }
-}
 
 // THE JUDGE AT ITS OWN INTERFACE, lines SUPPLIED in the census's printed format (the format is held by the
 // ambient-name-census fixture). Each RED is paired with its positive; the real-census inhabitance claim is the kit

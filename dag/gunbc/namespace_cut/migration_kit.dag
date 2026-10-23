@@ -13,13 +13,11 @@ import gunbc.instruments.ambient_name_census_reading { binding_lines, field_at }
 // supplies its row, never a hand-written claim. No new binding behavior: the producers are the existing
 // compile_dag_diagnostic_census (via gunbc.compile_census_probe) and the existing census-reading route.
 //
-// CHECKS HERE: (1) no-import RED and (2-positive) with-import GREEN as ONE DIFFERENTIAL -- the two sources
-// differ on the import axis alone, so the shared closure cancels (the exact form gunbc.compile_diagnostic_census
-// names for a census row set) and the kit never authors a census key from a reading. Check 2's exact-identity
-// half (target == row.home) needs the binding record, which only the census-reading route prints; it is the
-// kit's CliWire label, not a claim. (3) retired contract absent is read by migration_contract_still_present.
-// (4) realization by identity is the emit-check label. (5) is the required self-host job, only named.
-// (6) no second route is the same differential over a source that ALSO declares a local of the name.
+// CHECKS HERE: (1) no-import RED and (2) with-import GREEN, decided by the located binding record
+// (kit_binding_finding over ambient-name-census output for the fixture kit_call_source builds), exact declaration
+// identity, no count route. (3) retired contract absent is kit_contract_finding, with a control. (4) realization by
+// identity is kit_emit_identity_holds. (5) is the required self-host job, only named. (6) no second route is
+// kit_ambient_route_count over the same census output; the template-row leg is named residue.
 //
 // WHERE THE INHABITANCE CLAIM EXECUTES (DESIGN section 3's pairing obligation): the fixtures below are SUPPLIED values
 // at resolve's boundary; the REAL path is `gunbc test //gunbc/instruments:namespace-wave-binding-diff`
@@ -50,34 +48,6 @@ fn kit_blocking_count(source: String) -> Int? {
   match census_rows_for(source: source) {
     Present { value: p } => Present { value: census_total_count(rows: census_blocking_rows(rows: p.rows)) }
     Absent => Absent
-  }
-}
-
-// COUNT-BASED, PROVISIONAL (tidy-ant-251, Seat 13 review): a count of blocking rows is a count equality, not an
-// identity join (DESIGN section 5), and can pass for the wrong reason (the call never reached). Checks 1 and 2 are
-// to read the located binding record of THAT occurrence (BoundAmbient vs BoundToDeclaration{path}) once the
-// census-reading label exists; until then these verdicts are provisional.
-//
-// A BASELINE WITHOUT THE CALL anchors both arms: the unimported call must add blocking rows over it (check 1: the name
-// is unbound, not resolved ambiently), and the imported call must add none (check 2). Comparing the two call sources
-// to each other is confounded on a not-yet-migrated name, where the import itself refuses and both add rows.
-fn kit_baseline_source() -> String {
-  "module probe_migration_kit\nimport std.types { Int, List }\nfn probe(xs: List<Int>) -> List<Int> { xs }\n"
-}
-
-fn kit_import_differential(row: AmbientNameHome) -> KitFinding {
-  match kit_blocking_count(source: kit_baseline_source()) {
-    Present { value: base } =>
-      match kit_blocking_count(source: kit_call_source(row: row, imported: false)) {
-        Present { value: red } =>
-          match kit_blocking_count(source: kit_call_source(row: row, imported: true)) {
-            Present { value: green } =>
-              if red <= base { KitNoImportDoesNotRefuse } else { if green > base { KitImportDoesNotClear } else { KitMigrated } }
-            Absent => KitNotRunnable { cause: "census not runnable on the imported source" as NonEmptyStr }
-          }
-        Absent => KitNotRunnable { cause: "census not runnable on the unimported source" as NonEmptyStr }
-      }
-    Absent => KitNotRunnable { cause: "census not runnable on the baseline source" as NonEmptyStr }
   }
 }
 
@@ -118,8 +88,9 @@ fn reading_is_bound_to(r: BindingReading, identity: String) -> Bool {
 
 // THE IDENTITY VERDICT for checks 1 and 2: the same KitFinding, decided by the judge over the census's printed output
 // for the unimported and imported fixture modules (one stdout each, as ambient-name-census prints them). This is the
-// verdict a wave's real census output feeds; kit_import_differential is the in-claim count stand-in that answers the
-// same question without that output, and a wave claim that has the stdout uses this one.
+// verdict a wave's real census output feeds (ambient-name-census prints the fixture module kit_call_source builds). There
+// is no count route for checks 1-2: a blocking-row count is not an identity join (DESIGN section 5) and can pass with
+// the call never reached.
 fn kit_binding_finding(unimported_stdout: String, imported_stdout: String, row: AmbientNameHome) -> KitFinding {
   let spelling = row.name
   let red = binding_reading(stdout: unimported_stdout, module: "probe_migration_kit", spelling: spelling)
