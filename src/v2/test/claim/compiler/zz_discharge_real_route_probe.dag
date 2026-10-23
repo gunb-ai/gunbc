@@ -71,7 +71,8 @@ fn zz_call(tree: ResolvedTree) -> Optional<Node> {
             match positional_child_target_nodes(node: n) {
               Cons { head: callee, tail: _ } =>
                 match declaration_reference_path_optional(node: callee) {
-                  Present { value: _ } => optional_present(value: n)
+                  Present { value: q } =>
+                    if q == qualified_name_from_dotted_string(dotted: "v2.test.zzpd_t.zz_pd") || q == qualified_name_from_dotted_string(dotted: "v2.test.zzpd_f.zz_pd") || q == qualified_name_from_dotted_string(dotted: "zz_pd") { optional_present(value: n) } else { acc }
                   Absent => acc
                 }
               Empty => acc
