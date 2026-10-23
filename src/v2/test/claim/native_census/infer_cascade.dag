@@ -325,6 +325,7 @@ test fn census_infer_roots_are_marked_against_the_subject_closure_holds() -> Boo
   let index = NativeCensusClosureIndexRead {
     importers_of: map_insert(map_insert(empty_map(), "v2.sv_a", ["v2.sv_s"]), "v2.sv_b", ["v2.sv_a"]),
     imports_of: map_insert(map_insert(empty_map(), "v2.sv_s", ["v2.sv_a"]), "v2.sv_a", ["v2.sv_b"]),
+    module_paths: sv_paths,
     modules: 4,
     refused_modules: 0
   }

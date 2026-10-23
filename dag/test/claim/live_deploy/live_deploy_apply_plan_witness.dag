@@ -19,8 +19,8 @@ import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
-  ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
-  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
+  ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
@@ -113,7 +113,7 @@ test fn the_srv1_full_install_plan_is_ready_and_carries_every_family() -> Bool {
     && has_step(legs: legs, step: "executable-install")
     && has_step(legs: legs, step: "tree-sync-restart")
     && has_step(legs: legs, step: "convergence-readback")
-    && has_step(legs: legs, step: "attempt-launcher-grant")
+    && has_step(legs: legs, step: "attempt-unit-helper-snapshot")
     && has_step(legs: legs, step: "serve-unit")
     && has_step(legs: legs, step: "serve-restart")
 }
@@ -166,10 +166,10 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
     ApplyLegEnsureDirectory { target: _ } => true
-    ApplyLegHelperGrant { revision: _ } => true
+    ApplyLegBrokerStateDirectories { revision: _ } => true
     ApplyLegObjectSource => true
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => true
-    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => true
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => true
     ApplyLegBrokerTree { revision: _ } => true
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
@@ -243,33 +243,22 @@ test fn the_owning_apply_does_write_and_restart_the_host_broker() -> Bool {
     && step_index(legs: legs, step: "serve-restart") < step_index(legs: legs, step: "approval-broker-restart")
 }
 
-// THE TWIN'S LAUNCHER GRANT IS ITS OWN: the lab and production grants install different sudoers files.
-fn grant_sudoers_path(legs: List<DeployApplyLeg>) -> String {
+// THE TWIN'S LAUNCHER SNAPSHOT IS ITS OWN: the lab and production applies install into different loci, each
+// named for its instance.
+fn launcher_snapshot_base(legs: List<DeployApplyLeg>) -> String {
   match legs {
     Empty => ""
     Cons { head: h, tail: rest } =>
       match h {
-        ApplyLegRootHelperGrant { site: s, receipt: _, revision: _ } => s.sudoers_path
-        ApplyLegCommand { step: _, command: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegRepairDirectoryEntries { command: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegReport { step: _, line: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegEnsureDirectory { target: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegHelperGrant { revision: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegObjectSource => grant_sudoers_path(legs: rest)
-        ApplyLegDigestVerify { step: _, path: _, digest: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegBrokerTree { revision: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegRetract { step: _, leg: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegDependency { dep: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: HelperSnapshotInstall } => l.base
+        _ => launcher_snapshot_base(legs: rest)
       }
   }
 }
 
-test fn the_lab_and_production_applies_install_their_own_launcher_grants() -> Bool {
-  let prod = grant_sudoers_path(legs: full_legs(spec: deployment_spec_srv1()))
-  let lab = grant_sudoers_path(legs: full_legs(spec: lab_spec()))
+test fn the_lab_and_production_applies_install_their_own_launcher_snapshots() -> Bool {
+  let prod = launcher_snapshot_base(legs: full_legs(spec: deployment_spec_srv1()))
+  let lab = launcher_snapshot_base(legs: full_legs(spec: lab_spec()))
   prod != "" && lab != "" && prod != lab
     && string_contains(s: prod, pattern: deployment_spec_srv1().instance_id as String)
     && string_contains(s: lab, pattern: lab_spec().instance_id as String)
@@ -318,10 +307,10 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
         ApplyLegEnsureDirectory { target: _ } => env_binary(legs: rest)
-        ApplyLegHelperGrant { revision: _ } => env_binary(legs: rest)
+        ApplyLegBrokerStateDirectories { revision: _ } => env_binary(legs: rest)
         ApplyLegObjectSource => env_binary(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => env_binary(legs: rest)
-        ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => env_binary(legs: rest)
+        ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => env_binary(legs: rest)
         ApplyLegBrokerTree { revision: _ } => env_binary(legs: rest)
         ApplyLegRetract { step: _, leg: _ } => env_binary(legs: rest)
         ApplyLegDependency { dep: _ } => env_binary(legs: rest)
