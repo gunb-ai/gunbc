@@ -2206,20 +2206,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "test.claim.keyed_roster_witness",
-        "frontier_rows_keyed_build_admits_distinct_decl_fields",
-        "synthetic.mod",
-        "HostConfig",
-        "",
-    ),
-    (
-        "test.claim.keyed_roster_witness",
-        "frontier_rows_keyed_build_admits_distinct_decl_fields",
-        "synthetic.mod",
-        "HostConfig",
-        "memory_swap",
-    ),
-    (
         "test.claim.language_target_subject_registration",
         "red_unregistered_subject_ref_is_not_reported_as_present",
         "extdeps.languages.nonexistent.subject",
@@ -2248,13 +2234,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "no_such_field_KEYED_RED",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness",
-        "keyed_and_population_routes_agree_on_module_absent",
-        "synthetic.keyed_read_module_absent_RED",
-        "anything",
-        "",
-    ),
-    (
         "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_ambiguous_binding",
         "v2.std.node",
@@ -2266,13 +2245,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "decl_ref_refuses_declaration_absent",
         "v2.std.node",
         "NoSuchDecl_G1_RED",
-        "",
-    ),
-    (
-        "test.claim.long.decl_ref_resolution_witness",
-        "decl_ref_refuses_module_absent",
-        "synthetic.g1_module_absent_RED",
-        "any",
         "",
     ),
     (
@@ -2337,13 +2309,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "test.claim.repository_census_observation_witness",
         "census_witness_classifier",
         "rows",
-    ),
-    (
-        "test.claim.witness_purpose_taxonomy_witness",
-        "fixture_population_ref",
-        "dag.test.claim.witness_purpose_taxonomy_witness",
-        "witness_purpose_taxonomy_witness_note",
-        "",
     ),
     (
         "test.fixture.decl_facts_reflection.specimens",
@@ -2442,20 +2407,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "extdeps.docker.container_stats",
         "ContainerStats",
         "cpu_percent",
-    ),
-    (
-        "extdeps.github.actions_runner",
-        "actions_runner_base_dir_ensure_script_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
-        "",
-    ),
-    (
-        "extdeps.git.publication_transport",
-        "extdeps_model_scope",
-        "extdeps.git.publication_transport",
-        "PublicationTransport",
-        "",
     ),
     // RE-KEYED, NOT GROWN (DCH-1). These five rows are the same debt they were: the shape they
     // cite moved WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, so
