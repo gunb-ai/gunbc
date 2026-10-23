@@ -5695,20 +5695,6 @@ type InferApplicationArguments {
   demands: List<InferLiteralRefinementDemand>
 }
 
-fn infer_scalar_literal_node(node: Node) -> Bool {
-  match dag_canonical_literal_from_node(node: node) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: literal, diagnostics: _ } =>
-      match literal {
-        DagCanonicalIntLiteral { magnitude: _ } => true
-        DagCanonicalStringLiteral { value: _ } => true
-        DagCanonicalBoolLiteral { value: _ } => false
-        DagCanonicalSymbolLiteral { symbol: _ } => false
-        DagCanonicalFloatLiteral { lexeme: _ } => false
-      }
-  }
-}
-
 // The callee of the one zero-argument predicate call a where clause states. The clause is the production
 // Conj body_lower_kept_where_clause builds: its captured child is the predicate set, each predicate a
 // Transform whose positional children are the callee then its positional arguments. Absent for any other
@@ -5742,7 +5728,7 @@ fn infer_literal_refinement_demand(
   declarations: SymbolIndex,
   bindings: SymbolIndex,
 ) -> Optional<InferLiteralRefinementDemand> {
-  if !infer_scalar_literal_node(node: pair.arg) {
+  if !infer_node_is_literal(node: pair.arg) {
     Absent
   } else {
     let target = infer_declared_type_denotation(declared: pair.formal.declared)
