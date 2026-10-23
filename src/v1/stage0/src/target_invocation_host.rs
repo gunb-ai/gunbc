@@ -649,6 +649,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("roster-reach-inhabitance"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/roster_reach_inhabitance.dag",
+                function: "roster_reach_inhabitance_exit",
+            },
+        ),
+        (
             instrument_label("compute-run-unit-cold"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
