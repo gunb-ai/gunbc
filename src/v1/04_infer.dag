@@ -15010,10 +15010,12 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // An actual that is a Resolved wrapper (a kernel container's element position, make_container_type)
 // denotes the type it resolves to, not the wrapper node, which is named for the container's own
 // parameter and so reads back as the callee's generic when bound as its solution. An Arrow actual
-// denotes itself (child_type_node).
+// denotes itself (child_type_node), and so does the actual whose element is the unsolved placeholder of
+// an empty list literal: denoting it would bind the callee generic to the bare placeholder and lose the
+// later solve (self-host source_root_eval: 82 Unit diagnostics at every [] fold seed).
 fn unify_denoted_actual(actual: Node) -> Node {
   match actual.inferred {
-    Present { value: Resolved { node: rt } } => if actual.connective == Arrow { actual } else { rt }
+    Present { value: Resolved { node: rt } } => if actual.connective == Arrow || is_unsolved_empty_list_element(n: rt) { actual } else { rt }
     _ => actual
   }
 }
