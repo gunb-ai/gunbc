@@ -12,7 +12,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 // route); the head's binding fact is v2.compiler.reference_site_collector's own. This module matches on neither, so it
 // imports no variant name of theirs (review 82610: import what you match, and only that).
 import v2.compiler.reference_site_collector { ScopedReferenceSite, collect_scoped_module_reference_sites }
-import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_declaration_is_type, roster_home_declaration_is_value, roster_home_pool_roots_text, RosterHomeSide, roster_home_side_read, roster_home_side_of }
+import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_declaration_is_type, roster_home_declaration_is_value, roster_home_pool_roots_text, RosterHomeSide, roster_home_side_read, roster_home_side_of, roster_home_exact_file_control }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.extdeps.languages.dag {
@@ -1515,6 +1515,7 @@ fn roster_controls_report() -> String {
         + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_closure_inhabited()
+        + roster_home_exact_file_control()
         + roster_control_apply_needs_one_home()
         + roster_control_label_local_call(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_label_method_spelling(prepared: prepared, lex: dag_prepared_lex())
