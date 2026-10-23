@@ -1,6 +1,6 @@
 module v2.test.claim.native_census.infer_cascade
 
-import v2.compiler.native_test_vocabulary { FileRefusalAtUnresolvedNode }
+import v2.compiler.native_test_vocabulary { FileRefusalAtUnresolvedNode, FileRefusalLink, NativeTestFileRefusal }
 import v2.compiler.source_root_eval {
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
@@ -34,6 +34,7 @@ import v2.compiler.source_root_eval {
   native_census_roots_ranked,
   native_census_subject_closure,
   native_lane_file_refusal_index,
+  native_test_refused_module_index,
   native_test_context_from_ingest,
   census_occurrence_from_locus,
   native_census_infer_member,
@@ -43,7 +44,7 @@ import v2.compiler.source_root_eval {
 import v2.compiler.resolve { ClosureProviderRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty, fold_list, length, list_map, empty_map, map_insert }
+import std.algebra { FreeSemigroup, map_lookup, Cons, Empty, fold_list, length, list_map, empty_map, map_insert }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
@@ -457,6 +458,48 @@ test fn census_occurrence_keying_rule_is_the_authored_one_holds() -> Bool {
       Present { value: _ } => false
     }
     && match census_occurrence_from_locus(at: Textual { file: ^sv_empty, extent: WholeFile }) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+
+// ── the refused-module index (native_import_target_attribution's one corpus-wide read) ──
+//
+// The attribution used to fold every file refusal against every import row of every refused module. It
+// now reads ONE index built once per ingest, so the index must answer exactly what that scan did: the
+// FIRST refusal, in file_refusals order, declaring each module. Supplied values at the index's
+// interface; the real route claim above is the inhabitance claim that attribution reads this index.
+fn ri_refusal(path: Symbol, module: Optional<QualifiedName>) -> NativeTestFileRefusal {
+  NativeTestFileRefusal {
+    path: path,
+    module: module,
+    chain: FreeSemigroup { head: FileRefusalLink { reason: ^ri_reason, at: FileRefusalAtUnresolvedNode }, tail: [] }
+  }
+}
+
+fn ri_named(dotted: String) -> Optional<QualifiedName> { optional_present(value: qualified_name_from_dotted_string(dotted: dotted)) }
+
+data ri_refusals: List<NativeTestFileRefusal> = [
+  ri_refusal(path: ^ri_p0, module: ri_named(dotted: "v2.ri_a")),
+  ri_refusal(path: ^ri_p1, module: optional_absent()),
+  ri_refusal(path: ^ri_p2, module: ri_named(dotted: "v2.ri_b")),
+  ri_refusal(path: ^ri_p3, module: ri_named(dotted: "v2.ri_a"))
+]
+
+fn ri_entry_is(module: String, ordinal: Int, path: Symbol) -> Bool {
+  match map_lookup(m: native_test_refused_module_index(refusals: ri_refusals), key: qualified_name_from_dotted_string(dotted: module)) {
+    Absent => false
+    Present { value: e } => e.ordinal == ordinal && e.refusal.path == path
+  }
+}
+
+// RED if the later duplicate of v2.ri_a wins (ordinal 3, path ri_p3), if a refusal with no declared module
+// shifts or fills an entry, or if the ordinal stops counting the refusals ahead of the entry.
+test fn refused_module_index_names_the_first_refusal_in_order_holds() -> Bool {
+  ri_entry_is(module: "v2.ri_a", ordinal: 0, path: ^ri_p0)
+    && ri_entry_is(module: "v2.ri_b", ordinal: 2, path: ^ri_p2)
+    && match map_lookup(m: native_test_refused_module_index(refusals: ri_refusals), key: qualified_name_from_dotted_string(dotted: "v2.ri_c")) {
       Absent => true
       Present { value: _ } => false
     }
