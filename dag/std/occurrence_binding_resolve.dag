@@ -2,7 +2,7 @@ module std.occurrence_binding_resolve
 
 import std.optional { Present, Absent }
 import std.algebra { map_lookup, FreeMonoid, Empty, collection_concat_shape }
-import std.types { String, List, Int, Map }  // PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): Map added; direction warm-crane-888
+import std.types { String, List, Int }
 import std.occurrence_binding {
   ContainmentPath,
   BindingOccurrence,

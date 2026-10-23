@@ -289,15 +289,6 @@ pub fn never_eliminator_declaration() -> Rc<DeclarationRef> {
     CACHED.with(|c: &Rc<DeclarationRef>| c.clone())
 }
 
-pub fn never_projection_declarations() -> Rc<Vec<Rc<DeclarationRef>>> {
-    thread_local! {
-        static CACHED: Rc<Vec<Rc<DeclarationRef>>> = {
-            Rc::new(vec![crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "pure_dag_seam_unreachable_int".to_string()), crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "pure_dag_seam_unreachable_float".to_string()), crate::std_decl_ref::decl_ref("std.error_primitives".to_string(), "pure_dag_seam_unreachable_string".to_string())])
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<DeclarationRef>>>| c.clone())
-}
-
 pub fn never_type_qualified_path() -> String {
     v1_rt::concat(
         v1_rt::concat(

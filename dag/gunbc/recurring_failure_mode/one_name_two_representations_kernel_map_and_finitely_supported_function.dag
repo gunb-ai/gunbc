@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.one_name_two_representations_kernel_map_and_finitely_supported_function
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data one_name_two_representations_kernel_map_and_finitely_supported_function: RecurringFailureMode = RecurringFailureMode {
+  identity: "one_name_two_representations_kernel_map_and_finitely_supported_function" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: the leaf name Map stands for two representations of one concept. std.types Map is std.algebra FinitelySupportedFunction; a Map<K,V> annotation in a module that imports nothing defining Map (std.algebra) resolves to the KERNEL Map, host-realized. Several seed sites decide by the last name segment Map, so the two are told apart, or conflated, by spelling rather than by the declaration a position resolves to (DESIGN section 4, kernel_map_is_the_host_realization_of_the_finitely_supported_function; the Map instance of text_crossings_go_through_the_unfold).",
+    "HARM: retyping the std.algebra map surface to FinitelySupportedFunction fails seed typecheck at the if-join with 'if branches resolve to incompatible types: FinitelySupportedFunction<String,X> vs Map' (scratch/algebra-map-fsf 27bda760a8, BuildBuddy 35e3f094-c706-497f-a642-7a07d75f4f20), and Map is unbound at the std.algebra resolve wall (std.keyed_row/keyed_roster infer gate). No diagnostic names the crossing: the refusal is a type-shape mismatch, not a located refusal of an undeclared crossing.",
+    "DISTINGUISHING FACTS: native v2 keys Map by declaration path (v2.std.map_introduction), so the class is seed-side. The three *_primitive_delegate seams in std.algebra are where the host operation is bound; their primitive_projection rows key on declaration name, not type. Not an instance of the text class: the carrier is a value crossing between two collection declarations, with no literal.",
+    "RUNG FOUND AT: unread. CEILING: structurally guaranteed (decidable once the classifier reads the resolved declaration at every position). NEXT-RUNG TRIGGER: the one representation classifier over declared crossings, of which text and Map are two rows, plus the Map ConversionPlan pair beside unicode_scalar_unfold/fold; an executed RED (undeclared kernel Map <-> FinitelySupportedFunction refuses, typed and located) with a positive control through the declared plan.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.design_ruling", decl_name: "kernel_map_is_the_host_realization_of_the_finitely_supported_function", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.design_ruling", decl_name: "text_crossings_go_through_the_unfold", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "FinitelySupportedFunction", field: WholeDeclaration },
+  ],
+}
