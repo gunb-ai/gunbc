@@ -32,7 +32,8 @@ GUNBC=$CARGO_TARGET_DIR/release/gunbc; CB=$CARGO_TARGET_DIR/release/claim_batch
 echo "GUNBC_SHA=$(sha $GUNBC) CB_SHA=$(sha $CB)"
 TARGET='//gunbc/instruments:rfm-rung-census'
 census() { # tag tree
-  local tag=$1 tree=$2 out=/tmp/w893d_$tag.out
+  local tag=$1 tree=$2
+  local out=/tmp/w893d_$tag.out
   cd $tree || exit 9
   timeout 1500 $GUNBC test "$TARGET" --source-root dag --source-root src/v2 > $out 2>&1; local rc=$?
   local bytes=$(wc -c < $out)
