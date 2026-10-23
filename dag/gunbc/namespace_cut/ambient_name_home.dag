@@ -1,6 +1,7 @@
 module gunbc.namespace_cut.ambient_name_home
 
 import std.types { List, NonEmptyStr, String }
+import std.optional { Optional, Absent }
 
 // THE ONE ROSTER OF AMBIENT NAMES AND THEIR DECLARED HOMES (NAMESPACE-XL waves; operator ruling
 // 2026-10-15: every name the corpus uses, the seed's "built-ins" included, is an ordinary declaration
@@ -27,17 +28,23 @@ type AmbientNameHomeOrigin
   = ExistingDeclaration
   | MintedDeclaration { reason: NonEmptyStr }
 
+// authored_on_head: the spelling the name's occurrences carry AFTER the wave, when the home declares the operation under
+// another name (tidy-ant-251's map_get ruling A: map_get's callers move to std.algebra map_lookup, so each call head is
+// rewritten). Absent is the common case: the occurrence keeps its spelling and only its binding moves. When present, the
+// binding diff pairs a base occurrence of `name` with the head occurrence of `authored_on_head` that the generator's own
+// rename edit put at the same carried position, and admits it only from the primitive-authority table to `home`.
 type AmbientNameHome {
   name: NonEmptyStr
   home: NonEmptyStr
   table: AmbientNameTable
   origin: AmbientNameHomeOrigin
+  authored_on_head: Optional<NonEmptyStr>
 }
 
 // One row per wave. Wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars, answered by the std.primitives authority
 // row where it binds at all, has its one declared home in std.host_text.
 fn ambient_name_homes() -> List<AmbientNameHome> {
   [
-    AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration }
+    AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Absent }
   ]
 }

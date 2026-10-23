@@ -284,7 +284,7 @@ fn rebind_red_failure(base_stdout: String, head_stdout: String) -> Optional<Stri
 }
 
 fn home_control_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "examples.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration }]
+  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "examples.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration, authored_on_head: Absent }]
 }
 
 fn home_control_failure() -> Optional<String> {

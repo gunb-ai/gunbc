@@ -120,10 +120,15 @@ fn join_locus_from_ints(text: String, line: Optional<Int>, column: Optional<Int>
 // ---------------------------------------------------------------------------------------------------
 // THE EDIT PROOF.
 
+// `replaced` / `replacement`: the bytes a replacement step takes out and puts in (a label or call-head rename), "" for an
+// inserted import. Only a step that replaces EXACTLY an occurrence's own spelling, starting at it, can carry that occurrence
+// (a rename); every other step that contains an occurrence still refuses EditCoversOccurrence.
 type EditStep {
   start: Int
   end: Int
   new_len: Int
+  replaced: String
+  replacement: String
 }
 
 type EditProof
@@ -151,16 +156,16 @@ fn text_byte_length(text: String) -> Int {
 }
 
 fn label_step(edit: RosterLabelEdit) -> EditStep {
-  EditStep { start: edit.start, end: edit.end, new_len: text_byte_length(text: edit.to) }
+  EditStep { start: edit.start, end: edit.end, new_len: text_byte_length(text: edit.to), replaced: edit.from, replacement: edit.to }
 }
 
 fn outcome_steps(outcome: RosterOutcome) -> List<EditStep> {
   match outcome {
     RosterClean => []
     RosterRefused { reason: _ } => []
-    RosterEdit { start: s, end: e, text: t, own_line: o } => [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t) }]
+    RosterEdit { start: s, end: e, text: t, own_line: o } => [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t), replaced: "", replacement: "" }]
     RosterLabelEdits { edits: es } => fold_list(xs: es, empty: [], cons: fn(acc, e) { list_snoc_item(xs: acc, item: label_step(edit: e)) })
-    RosterEditWithLabels { start: s, end: e, text: t, own_line: o, labels: ls } => fold_list(xs: ls, empty: [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t) }], cons: fn(acc, l) { list_snoc_item(xs: acc, item: label_step(edit: l)) })
+    RosterEditWithLabels { start: s, end: e, text: t, own_line: o, labels: ls } => fold_list(xs: ls, empty: [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t), replaced: "", replacement: "" }], cons: fn(acc, l) { list_snoc_item(xs: acc, item: label_step(edit: l)) })
   }
 }
 
@@ -255,6 +260,7 @@ fn locus_at(starts: List<Int>, offset: Int) -> String {
 
 type MappedOffset
   = OffsetMapped { offset: Int }
+  | OffsetRenamed { offset: Int, from: String, to: String }
   | OffsetCovered
 
 fn step_covers(step: EditStep, offset: Int) -> Bool {
@@ -266,10 +272,17 @@ fn step_shift(acc: Int, step: EditStep) -> Int {
 }
 
 fn map_through_round(steps: List<EditStep>, offset: Int) -> MappedOffset {
-  if count(steps |> filter(s => step_covers(step: s, offset: offset))) != 0 {
-    OffsetCovered
+  let covering = steps |> filter(s => step_covers(step: s, offset: offset))
+  let shifted = offset + fold(steps |> filter(s => s.end <= offset), init: 0, f: fn(a, s) { step_shift(acc: a, step: s) })
+  if count(covering) == 0 {
+    OffsetMapped { offset: shifted }
+  } else if count(covering) == 1 {
+    match first(covering) {
+      Present { value: s } => if (s.start == offset) && (s.replaced != "") { OffsetRenamed { offset: shifted, from: s.replaced, to: s.replacement } } else { OffsetCovered }
+      Absent => OffsetCovered
+    }
   } else {
-    OffsetMapped { offset: offset + fold(steps |> filter(s => s.end <= offset), init: 0, f: fn(a, s) { step_shift(acc: a, step: s) }) }
+    OffsetCovered
   }
 }
 
@@ -278,6 +291,13 @@ fn map_through_rounds(rounds: List<List<EditStep>>, offset: Int) -> MappedOffset
     match acc {
       OffsetCovered => OffsetCovered
       OffsetMapped { offset: o } => map_through_round(steps: steps, offset: o)
+      // A renamed occurrence is carried through later rounds by position; a second rename of it is not one edit's fact.
+      OffsetRenamed { offset: o, from: f, to: t } =>
+        match map_through_round(steps: steps, offset: o) {
+          OffsetMapped { offset: m } => OffsetRenamed { offset: m, from: f, to: t }
+          OffsetRenamed { offset: _, from: _, to: _ } => OffsetCovered
+          OffsetCovered => OffsetCovered
+        }
     }
   })
 }
@@ -411,8 +431,23 @@ fn join_leaf(spelling: String) -> String {
   }
 }
 
+fn join_row_renames(r: AmbientNameHome) -> Bool {
+  match r.authored_on_head {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn join_row_head_spelling(r: AmbientNameHome) -> String {
+  match r.authored_on_head {
+    Present { value: h } => h as String
+    Absent => r.name as String
+  }
+}
+
+// The row that moves `spelling` WITHOUT renaming it. A renaming row never admits a same-spelling re-binding.
 fn join_home_for(rows: List<AmbientNameHome>, spelling: String) -> Optional<String> {
-  match first(rows |> filter(r => (r.name as String) == join_leaf(spelling: spelling))) {
+  match first(rows |> filter(r => ((r.name as String) == join_leaf(spelling: spelling)) && !join_row_renames(r: r))) {
     Present { value: r } => Present { value: r.home as String }
     Absent => Absent
   }
@@ -438,6 +473,42 @@ fn join_pair(rows: List<AmbientNameHome>, coordinate: String, before: JoinEntry,
   }
 }
 
+// THE RENAME ARM (tidy-ant-251's ruling on the map_get wave). A base occurrence the generator's own rename edit carried
+// (OffsetRenamed: one replacement step starting at it whose `replaced` is the occurrence's spelling) pairs with the head
+// occurrence of the replacement spelling at the carried position. It is admitted only when a row renames exactly this
+// spelling to exactly that replacement, the base occurrence was bound by the primitive-authority table, and the head one
+// binds the row's home as a declaration. Anything else refuses: RenameUnruled (no row renames from -> to),
+// RenameTargetChanged (the binding is not ambient primitive authority -> the home), Vanished (no head occurrence there).
+fn join_rename_row(rows: List<AmbientNameHome>, from: String, to: String) -> Optional<AmbientNameHome> {
+  first(rows |> filter(r => join_row_renames(r: r) && ((r.name as String) == from) && (join_row_head_spelling(r: r) == to)))
+}
+
+fn join_respelled(spelling: String, to: String) -> String {
+  let parts = split(s: spelling, delimiter: ".")
+  if count(parts) <= 1 { to } else { join(list_init(xs: parts), separator: ".") + "." + to }
+}
+
+fn join_rename_pair(rows: List<AmbientNameHome>, coordinate: String, before: JoinEntry, after: JoinEntry, from: String, to: String) -> JoinDelta {
+  match join_rename_row(rows: rows, from: from, to: to) {
+    Absent => JoinRefused { cause: "RenameUnruled", coordinate: coordinate, detail: from + " -> " + to }
+    Present { value: r } =>
+      if (before.source == "ambient:primitive_authority") && (after.source == "declared") && (after.target == (r.home as String)) {
+        JoinAdmitted { coordinate: coordinate, spelling: before.spelling, home: r.home as String }
+      } else {
+        JoinRefused { cause: "RenameTargetChanged", coordinate: coordinate, detail: join_unhomed(before: before, after: after) }
+      }
+  }
+}
+
+// AN OCCURRENCE A RENAMING ROW SHOULD HAVE MOVED BUT DID NOT: still the old spelling, bound by the primitive-authority
+// table on base, and carried by position (no rename edit at it). The wave left one of its own call sites behind, which a
+// per-occurrence diff must refuse rather than read as unchanged. Spellings the generator does not select -- a method
+// `x.map_get`, a parameter, another module's declaration -- are bound otherwise on base, so they are untouched here.
+fn join_rename_left_behind(rows: List<AmbientNameHome>, before: JoinEntry) -> Bool {
+  (before.source == "ambient:primitive_authority")
+    && (count(rows |> filter(r => join_row_renames(r: r) && ((r.name as String) == join_leaf(spelling: before.spelling)))) != 0)
+}
+
 type BaseStep {
   delta: Optional<JoinDelta>
   claimed: Optional<String>
@@ -455,7 +526,22 @@ fn base_step(rows: List<AmbientNameHome>, module: String, b: JoinEntry, head_ind
         let key = b.spelling + " @" + locus_at(starts: head_starts, offset: m)
         match map_get(head_index, key) {
           Absent => BaseStep { delta: Present { value: JoinRefused { cause: "Vanished", coordinate: coordinate, detail: b.source + " " + b.target } }, claimed: Absent }
-          Present { value: a } => BaseStep { delta: join_pair(rows: rows, coordinate: coordinate, before: b, after: a), claimed: Present { value: key } }
+          Present { value: a } =>
+            if join_rename_left_behind(rows: rows, before: b) {
+              BaseStep { delta: Present { value: JoinRefused { cause: "RenameIncomplete", coordinate: coordinate, detail: b.source + " " + b.target } }, claimed: Present { value: key } }
+            } else {
+              BaseStep { delta: join_pair(rows: rows, coordinate: coordinate, before: b, after: a), claimed: Present { value: key } }
+            }
+        }
+      OffsetRenamed { offset: m, from: f, to: t } =>
+        if f != join_leaf(spelling: b.spelling) {
+          BaseStep { delta: Present { value: JoinRefused { cause: "EditCoversOccurrence", coordinate: coordinate, detail: "a replacement starts at the occurrence but does not replace its spelling" } }, claimed: Absent }
+        } else {
+          let key = join_respelled(spelling: b.spelling, to: t) + " @" + locus_at(starts: head_starts, offset: m)
+          match map_get(head_index, key) {
+            Absent => BaseStep { delta: Present { value: JoinRefused { cause: "Vanished", coordinate: coordinate, detail: b.source + " " + b.target + " renamed to " + t } }, claimed: Absent }
+            Present { value: a } => BaseStep { delta: Present { value: join_rename_pair(rows: rows, coordinate: coordinate, before: b, after: a, from: f, to: t) }, claimed: Present { value: key } }
+          }
         }
     }
   }
@@ -603,7 +689,7 @@ fn rows_proof_scope(rows: List<AmbientNameHome>) -> String {
 }
 
 fn join_control_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration }]
+  [AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Absent }]
 }
 
 fn join_control_base_text() -> String {
@@ -714,6 +800,7 @@ fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexR
       + join_control_case(name: "same rows in another print order (no change)", base_rows: base_rows, head_rows: list_reverse(xs: base_rows), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 0, want_refused: [])
       + join_control_case(name: "malformed locus", base_rows: base_rows, head_rows: list_snoc_item(xs: admit_rows, item: "binding_partial\tm\tchars\t9\tdeclared\tstd.host_text.chars\t3:x"), evidence: evidence, prepared: prepared, lex: lex, want_admitted: 3, want_refused: ["MalformedLocus"])
       + generated_controls()
+      + rename_controls()
     if report == "" { Absent } else { Present { value: report } }
   }
 }
@@ -727,10 +814,114 @@ fn generated_row() -> String {
 fn generated_controls() -> String {
   let text = "module m\n\nfn lit() -> List<Int> {\n  [1]\n}\n"
   let evidence = ModuleEvidence { module: "m", base_text: text, head_text: "module m\n", readable: true }
-  let deleted = EditProven { rounds: [[EditStep { start: 10, end: text_byte_length(text: text), new_len: 0 }]] }
+  let deleted = EditProven { rounds: [[EditStep { start: 10, end: text_byte_length(text: text), new_len: 0, replaced: "", replacement: "" }]] }
   let same = EditProven { rounds: [] }
   join_control_verdict(name: "generated rows equal", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: [generated_row()], head_rows: [generated_row(), "binding_partial\tm\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t-"], evidence: evidence, proof: same), want_admitted: 0, want_refused: ["GeneratedChanged"])
     + join_control_verdict(name: "generated rows identical multiset", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: [generated_row(), generated_row()], head_rows: [generated_row(), generated_row()], evidence: evidence, proof: same), want_admitted: 0, want_refused: [])
     + join_control_verdict(name: "deleted extent holding a list literal", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: [generated_row()], head_rows: [], evidence: evidence, proof: deleted), want_admitted: 0, want_refused: ["GeneratedChanged"])
-    + join_control_verdict(name: "extent covers an occurrence", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: ["binding_unbound\tm\tchars\t4:3"], head_rows: [], evidence: evidence, proof: EditProven { rounds: [[EditStep { start: 0, end: text_byte_length(text: text), new_len: 1 }]] }), want_admitted: 0, want_refused: ["EditCoversOccurrence"])
+    + join_control_verdict(name: "extent covers an occurrence", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: ["binding_unbound\tm\tchars\t4:3"], head_rows: [], evidence: evidence, proof: EditProven { rounds: [[EditStep { start: 0, end: text_byte_length(text: text), new_len: 1, replaced: "", replacement: "" }]] }), want_admitted: 0, want_refused: ["EditCoversOccurrence"])
+}
+
+// ---------------------------------------------------------------------------------------------------
+// THE RENAME ARM'S CONTROLS (tidy-ant-251 and sunny-bee-153's conditions on the map_get wave), at the proof-free core
+// with a SUPPLIED proof: the rename step is the one the generator's RenameHead row plans (the head atom `map_get`
+// replaced by `map_lookup`, then a zero-width `m: ` / `key: ` before each positional argument), and the head text is that
+// proof applied to the base text, so every locus is read off a text, never typed. The real route -- the generator
+// planning exactly these steps -- is v2.workflow.roster_import_sweep roster_rename_controls.
+fn rename_rows() -> List<AmbientNameHome> {
+  [AmbientNameHome { name: "map_get", home: "std.algebra.map_lookup", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Present { value: "map_lookup" } }]
+}
+
+fn rename_unruled_rows() -> List<AmbientNameHome> {
+  [AmbientNameHome { name: "map_get", home: "std.algebra.map_lookup", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Absent }]
+}
+
+// One call `map_get(A, B)` at byte `o`: the head replacement and the two positional labels, in byte order.
+fn rename_call_steps(text: String, o: Int) -> List<EditStep> {
+  let open = o + string_length(s: "map_get(")
+  let comma = open + string_length(s: first_arg(text: text, from: open))
+  [
+    EditStep { start: o, end: o + 7, new_len: 10, replaced: "map_get", replacement: "map_lookup" },
+    EditStep { start: open, end: open, new_len: 3, replaced: "", replacement: "m: " },
+    EditStep { start: comma + 2, end: comma + 2, new_len: 5, replaced: "", replacement: "key: " }
+  ]
+}
+
+fn first_arg(text: String, from: Int) -> String {
+  match first(split(s: substring(s: text, start: from, end: string_length(s: text)), delimiter: ",")) {
+    Present { value: a } => a
+    Absent => ""
+  }
+}
+
+// The steps applied last-first (ASCII: byte offsets are character offsets).
+fn rename_apply(text: String, steps: List<EditStep>) -> String {
+  fold(list_reverse(xs: steps), init: text, f: fn(t, st) {
+    substring(s: t, start: 0, end: st.start) + st.replacement + substring(s: t, start: st.end, end: string_length(s: t))
+  })
+}
+
+fn rename_row(spelling: String, source: String, target: String, starts: List<Int>, offset: Int) -> String {
+  "binding_partial\tm\t" + spelling + "\t0\t" + source + "\t" + target + "\t" + locus_at(starts: starts, offset: offset)
+}
+
+fn rename_case(name: String, rows: List<AmbientNameHome>, base_text: String, base_rows: List<String>, head_text: String, head_rows: List<String>, steps: List<EditStep>, want_admitted: Int, want_refused: List<String>) -> String {
+  let evidence = ModuleEvidence { module: "m", base_text: base_text, head_text: head_text, readable: true }
+  join_control_verdict(name: name, deltas: occurrence_join_with_proof(rows: rows, module: "m", base_rows: base_rows, head_rows: head_rows, evidence: evidence, proof: EditProven { rounds: [steps] }), want_admitted: want_admitted, want_refused: want_refused)
+}
+
+fn rename_ambient(starts: List<Int>, o: Int) -> String {
+  rename_row(spelling: "map_get", source: "ambient:primitive_authority", target: "std.primitives.map_get_contract", starts: starts, offset: o)
+}
+
+fn rename_declared(starts: List<Int>, o: Int, target: String) -> String {
+  rename_row(spelling: "map_lookup", source: "declared", target: target, starts: starts, offset: o)
+}
+
+fn rename_controls() -> String {
+  // ONE CALL.
+  let one = "module m\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, k)\n}\n"
+  let o1 = string_length(s: "module m\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  ")
+  let s1 = rename_call_steps(text: one, o: o1)
+  let one_head = rename_apply(text: one, steps: s1)
+  let b1 = line_starts(text: one)
+  let h1 = line_starts(text: one_head)
+  let base1 = [rename_ambient(starts: b1, o: o1)]
+  let head1 = [rename_declared(starts: h1, o: o1, target: "std.algebra.map_lookup")]
+  // TWO CALLS ON ONE LINE: the second call's head offset moves by the first call's three steps.
+  let two = "module m\n\nfn f(m: Map<String, String>, k: String) -> String {\n  g(a: map_get(m, k), b: map_get(m, k))\n}\n"
+  let o2a = string_length(s: "module m\n\nfn f(m: Map<String, String>, k: String) -> String {\n  g(a: ")
+  let o2b = o2a + string_length(s: "map_get(m, k), b: ")
+  let s2 = rename_call_steps(text: two, o: o2a) + rename_call_steps(text: two, o: o2b)
+  let two_head = rename_apply(text: two, steps: s2)
+  let b2 = line_starts(text: two)
+  let h2 = line_starts(text: two_head)
+  let shift_a = 3 + 3 + 5
+  let base2 = [rename_ambient(starts: b2, o: o2a), rename_ambient(starts: b2, o: o2b)]
+  let head2 = [rename_declared(starts: h2, o: o2a, target: "std.algebra.map_lookup"), rename_declared(starts: h2, o: o2b + shift_a, target: "std.algebra.map_lookup")]
+  // ONLY THE FIRST OF THE TWO RENAMED: the second is left behind as map_get, still ambient on head.
+  let s2_first = rename_call_steps(text: two, o: o2a)
+  let partial_head = rename_apply(text: two, steps: s2_first)
+  let hp = line_starts(text: partial_head)
+  let head_partial = [rename_declared(starts: hp, o: o2a, target: "std.algebra.map_lookup"), rename_ambient(starts: hp, o: o2b + shift_a)]
+  // A PRE-EXISTING map_lookup ON BASE, unchanged on head, beside the renamed call.
+  let pre = "module m\n\nfn f(m: Map<String, String>, k: String) -> String {\n  g(a: map_lookup(m: m, key: k), b: map_get(m, k))\n}\n"
+  let op_lookup = string_length(s: "module m\n\nfn f(m: Map<String, String>, k: String) -> String {\n  g(a: ")
+  let op_get = op_lookup + string_length(s: "map_lookup(m: m, key: k), b: ")
+  let sp = rename_call_steps(text: pre, o: op_get)
+  let pre_head = rename_apply(text: pre, steps: sp)
+  let bp = line_starts(text: pre)
+  let hpre = line_starts(text: pre_head)
+  let base_pre = [rename_declared(starts: bp, o: op_lookup, target: "std.algebra.map_lookup"), rename_ambient(starts: bp, o: op_get)]
+  let head_pre = [rename_declared(starts: hpre, o: op_lookup, target: "std.algebra.map_lookup"), rename_declared(starts: hpre, o: op_get, target: "std.algebra.map_lookup")]
+  rename_case(name: "rename admits ambient primitive authority -> the row's home", rows: rename_rows(), base_text: one, base_rows: base1, head_text: one_head, head_rows: head1, steps: s1, want_admitted: 1, want_refused: [])
+    + rename_case(name: "rename to another home", rows: rename_rows(), base_text: one, base_rows: base1, head_text: one_head, head_rows: [rename_declared(starts: h1, o: o1, target: "examples.elsewhere.map_lookup")], steps: s1, want_admitted: 0, want_refused: ["RenameTargetChanged"])
+    + rename_case(name: "rename of an occurrence not bound by primitive authority", rows: rename_rows(), base_text: one, base_rows: [rename_row(spelling: "map_get", source: "declared", target: "examples.m.map_get", starts: b1, offset: o1)], head_text: one_head, head_rows: head1, steps: s1, want_admitted: 0, want_refused: ["RenameTargetChanged"])
+    + rename_case(name: "rename no row rules", rows: rename_unruled_rows(), base_text: one, base_rows: base1, head_text: one_head, head_rows: head1, steps: s1, want_admitted: 0, want_refused: ["RenameUnruled"])
+    + rename_case(name: "renamed occurrence missing on head", rows: rename_rows(), base_text: one, base_rows: base1, head_text: one_head, head_rows: [], steps: s1, want_admitted: 0, want_refused: ["Vanished"])
+    + rename_case(name: "renamed occurrence unlocated on head", rows: rename_rows(), base_text: one, base_rows: base1, head_text: one_head, head_rows: ["binding_partial\tm\tmap_lookup\t0\tdeclared\tstd.algebra.map_lookup\t-"], steps: s1, want_admitted: 0, want_refused: ["Vanished", "GeneratedChanged"])
+    + rename_case(name: "REVERT ARM: the same texts without the rename step", rows: rename_rows(), base_text: one, base_rows: base1, head_text: one_head, head_rows: head1, steps: [], want_admitted: 0, want_refused: ["Vanished", "Appeared"])
+    + rename_case(name: "two renames on one line", rows: rename_rows(), base_text: two, base_rows: base2, head_text: two_head, head_rows: head2, steps: s2, want_admitted: 2, want_refused: [])
+    + rename_case(name: "one of two calls left behind", rows: rename_rows(), base_text: two, base_rows: base2, head_text: partial_head, head_rows: head_partial, steps: s2_first, want_admitted: 1, want_refused: ["RenameIncomplete"])
+    + rename_case(name: "a pre-existing map_lookup beside the renamed call", rows: rename_rows(), base_text: pre, base_rows: base_pre, head_text: pre_head, head_rows: head_pre, steps: sp, want_admitted: 1, want_refused: [])
 }
