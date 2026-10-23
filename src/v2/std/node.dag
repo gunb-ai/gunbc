@@ -3124,9 +3124,17 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   }
 }
 
+// PROVISIONAL (measure/n7-lookahead-2, NEVER LANDS): the digest key is a NAMED function, not an
+// inline closure, because the inline form types its parameter as list_sort_by_key's generic T and
+// emit refuses 'no field digest on type T' (source_root_eval census diagnostic at 3129:44). The
+// named form follows the infer_pairing_position_key precedent (v2.compiler.infer:3999).
+fn n7la_hash_digest_key(h: Hash) -> String {
+  h.digest as String
+}
+
 fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
-    list_sort_by_key(xs: xs, key: fn(h) { h.digest as String }, order: n7la_lexeme_order()),
+    list_sort_by_key(xs: xs, key: n7la_hash_digest_key, order: n7la_lexeme_order()),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)
