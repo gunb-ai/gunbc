@@ -341,6 +341,47 @@ mod compiler_tests {
         result.expect("self-parse test panicked");
     }
 
+    fn is_shape(n: &std::rc::Rc<crate::v1_std_core::Node>) -> String {
+        let mut s = format!("{:?}|{:?}", n.expr_data, n.match_pattern);
+        if let Some(b) = n.body.as_ref() {
+            s.push_str(&format!("[body:{}]", is_shape(b)));
+        }
+        for c in n.children.iter() {
+            s.push_str(&format!("[{}]", is_shape(c)));
+        }
+        s
+    }
+
+    fn is_body_shape(src: &str) -> Option<String> {
+        let tokens = tokenize(
+            src.to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
+        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+        if result.error.is_some() {
+            return None;
+        }
+        let module = result.module.as_ref()?;
+        let items = crate::v1_std_core::module_items(module.clone());
+        let f = items.iter().find(|it| it.name == "f")?;
+        Some(is_shape(f.body.as_ref()?))
+    }
+
+    #[test]
+    fn is_arm_seed_lowering_agrees_with_explicit_match() {
+        let is_src = "module t\nfn f(c: Color) -> Bool {\n  c is Red\n}\n";
+        let explicit = "module t\nfn f(c: Color) -> Bool {\n  match c {\n    Red => true\n    _ => false\n  }\n}\n";
+        let swapped = "module t\nfn f(c: Color) -> Bool {\n  match c {\n    Red => false\n    _ => true\n  }\n}\n";
+        let a = is_body_shape(is_src).expect("is parses");
+        assert_eq!(a, is_body_shape(explicit).expect("explicit parses"));
+        assert_ne!(a, is_body_shape(swapped).expect("swapped parses"));
+        assert!(
+            is_body_shape("module t\nfn f(c: Color) -> Bool {\n  c is red\n}\n").is_none(),
+            "lowercase V must refuse"
+        );
+    }
+
     fn parse_item_kinds(
         src: &'static str,
     ) -> Result<
