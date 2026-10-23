@@ -3,6 +3,7 @@ module gunbc.instruments.append_chain_ladder
 import std.types { Int, List }
 import std.algebra { FreeSemigroup, non_empty_append, non_empty_to_list, list_append, list_snoc_item, fold_list }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
 // THE INSTRUMENT THAT LOCATED THE SUPERLINEAR APPEND (gunbc.recurring_failure_mode
 // non_empty_append_on_a_persistent_vector_is_superlinear). Each arm builds one accumulator by n
@@ -11,7 +12,10 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/append_chain_ladder.dag --function <arm> --arg n=<N>
 //
-// That is the interpreter path. The emitted path is the same arms after
+// That is the interpreter path, per arm. The label `gunbc test //gunbc/instruments:append-chain-ladder`
+// runs append_chain_ladder_wire below, which executes every arm at three sizes and reports each
+// arm's own length check; the per-doubling timing rows and their threshold fold extend that same label.
+// The interpreter path is what this wire covers. The emitted path is the same arms after
 // `gunbc compile --target rust --entry dag/gunbc/instruments/append_chain_ladder.dag`, called from a
 // timing loop over the emitted functions. EVERY ARM CHECKS ITS OWN VALUE: it exits 0 only when the
 // accumulator holds 8 * n elements, and otherwise exits with the length it saw. Only CURVES are
@@ -58,4 +62,30 @@ fn non_empty_steps(i: Int, n: Int, acc: FreeSemigroup<Int>, piece: FreeSemigroup
 // The seed is one 8-element piece, so n steps leave 8 * (n + 1) elements; the verdict reads n + 1.
 fn non_empty_append_chain(n: Int) -> ProcessExit {
   ladder_verdict(n: n + 1, length: non_empty_to_list(xs: non_empty_steps(i: 0, n: n, acc: non_empty_piece(), piece: non_empty_piece())) |> count)
+}
+
+// THE LABEL'S ENTRY (gunbc.instrument_targets append_chain_ladder_binding). It executes every arm at
+// each size in ladder_wire_sizes and prints one row per (arm, n): the element count it built and
+// whether that count is the one the arm owes. It exits 0 only when every row holds, so a semantic
+// regression in any arm stops the reading. It reports no time: the curve is read per doubling by the
+// caller, and the timing rows with their threshold fold are the extension of this same label.
+fn ladder_wire_sizes() -> List<Int> { [1000, 2000, 4000] }
+
+fn ladder_wire_row(arm: String, n: Int, expected: Int, length: Int) -> String {
+  concat("append_chain_ladder arm=", arm, " n=", to_string(value: n), " elements=", to_string(value: length), " ok=", if length == expected { "true" } else { "false" })
+}
+
+fn ladder_wire_rows(n: Int) -> List<String> {
+  [
+    ladder_wire_row(arm: "push_chain", n: n, expected: 8 * n, length: push_steps(i: 0, n: n, acc: []) |> count),
+    ladder_wire_row(arm: "concat_chain", n: n, expected: 8 * n, length: concat_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count),
+    ladder_wire_row(arm: "elementwise_chain", n: n, expected: 8 * n, length: elementwise_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count),
+    ladder_wire_row(arm: "non_empty_append_chain", n: n, expected: 8 * (n + 1), length: non_empty_to_list(xs: non_empty_steps(i: 0, n: n, acc: non_empty_piece(), piece: non_empty_piece())) |> count),
+  ]
+}
+
+fn append_chain_ladder_wire() -> CliWireResponse {
+  let rows = flat_map(ladder_wire_sizes(), n => ladder_wire_rows(n: n))
+  let held = rows |> all(r => string_contains(s: r, pattern: " ok=true"))
+  CliWirePrintable { bytes: concat(join(rows, "\n"), "\n"), exit: if held { ExitSuccess } else { ExitFailure { code: 1, reason: "append_chain_ladder: an arm built the wrong number of elements" } } }
 }
