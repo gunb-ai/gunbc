@@ -109,11 +109,11 @@ fn rdt_admitted(o: Optional<Outcome<InferredTree>>) -> Bool {
 // where-refinement (v2.test.claim.compiler.literal_refinement_judgment_witness), so these two take the
 // application from infer's output over real source.
 test fn rdt_a_holding_predicate_admits_holds() -> Bool {
-  lrj_end_to_end_admits(subject: "v2.test.lrj_holds")
+  lrj_end_to_end_admits(subject: "v2.test.lrj_int_holds")
 }
 
 test fn rdt_a_violated_predicate_refuses_at_the_site_holds() -> Bool {
-  lrj_end_to_end_reason_is(subject: "v2.test.lrj_violated", reason: ^refinement_predicate_violated)
+  lrj_end_to_end_reason_is(subject: "v2.test.lrj_int_violated", reason: ^refinement_predicate_violated)
 }
 
 // (1b) AN APPLICATION THE ONE EVALUATOR CANNOT RUN IS UNDISCHARGEABLE -- never admitted, never

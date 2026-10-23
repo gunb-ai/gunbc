@@ -1,10 +1,8 @@
 module v2.test.claim.compiler.literal_refinement_judgment_witness
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { infer, infer_where_sole_predicate, infer_entries_for_tree, infer_gather_for_tree }
-import v2.compiler.inferred_tree { ObligatedInferredTree, InferredTree }
-import v2.compiler.eval { eval, inputs_root_only }
-import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations, infer_and_discharge }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
 import v2.std.cross_tree.resolution { source_root_index_empty }
@@ -16,13 +14,10 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol, positional_child_target_nodes }
-import std.algebra { Cons, Empty, length }
+import std.algebra { Empty, length }
 import std.types { Int }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
-import v2.std.symbol_index { symbol_index_lookup }
-import v2.std.type_binder { refinement_declaration_of_node }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -45,7 +40,11 @@ data lrj_nonliteral_source: String = "module v2.test.lrj_nonliteral\n\nfn lrj_p(
 
 data lrj_wrong_type_source: String = "module v2.test.lrj_wrong_type\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(1)\n"
 
-data lrj_int_holds_source: String = "module v2.test.lrj_int_holds\n\nfn lrj_p(n: Int) -> Bool { true }\n\ntype LrjNi = Int where lrj_p\n\nfn lrj_take(v: LrjNi) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(1)\n"
+data lrj_int_holds_source: String = "module v2.test.lrj_int_holds\n\nfn lrj_p(n: Int) -> Bool { true }\n\ntype LrjNi = Int where lrj_p\n\ntype LrjBoxI { r: LrjNi }\n\nfn lrj_take(v: LrjNi) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(1)\n\ndata lrj_field: LrjBoxI = LrjBoxI { r: 1 }\n"
+
+data lrj_int_violated_source: String = "module v2.test.lrj_int_violated\n\nfn lrj_p(n: Int) -> Bool { false }\n\ntype LrjNi = Int where lrj_p\n\nfn lrj_take(v: LrjNi) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(1)\n"
+
+data lrj_int_violated_field_source: String = "module v2.test.lrj_int_violated_field\n\nfn lrj_p(n: Int) -> Bool { false }\n\ntype LrjNi = Int where lrj_p\n\ntype LrjBoxI { r: LrjNi }\n\ndata lrj_field: LrjBoxI = LrjBoxI { r: 1 }\n"
 
 data lrj_plain_source: String = "module v2.test.lrj_plain\n\nfn lrj_take(v: String) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(\"x\")\n"
 
@@ -65,13 +64,9 @@ data lrj_ingest: SourceRootIngest = [
   lrj_read(source: lrj_nonliteral_source, id: ^lrj_nonliteral_read, unit: ^lrj_nonliteral_cu, path: "src/v2/test/fixture/lrj/nonliteral.dag"),
   lrj_read(source: lrj_wrong_type_source, id: ^lrj_wrong_type_read, unit: ^lrj_wrong_type_cu, path: "src/v2/test/fixture/lrj/wrong_type.dag"),
   lrj_read(source: lrj_one_arg_source, id: ^lrj_one_arg_read, unit: ^lrj_one_arg_cu, path: "src/v2/test/fixture/lrj/one_arg.dag"),
-  lrj_read(source: lrj_decl_only_source, id: ^lrj_decl_only_read, unit: ^lrj_decl_only_cu, path: "src/v2/test/fixture/lrj/decl_only.dag"),
-  lrj_read(source: lrj_formal_only_source, id: ^lrj_formal_only_read, unit: ^lrj_formal_only_cu, path: "src/v2/test/fixture/lrj/formal_only.dag"),
-  lrj_read(source: lrj_typed_arg_source, id: ^lrj_typed_arg_read, unit: ^lrj_typed_arg_cu, path: "src/v2/test/fixture/lrj/typed_arg.dag"),
-  lrj_read(source: lrj_predicate_call_source, id: ^lrj_predicate_call_read, unit: ^lrj_predicate_call_cu, path: "src/v2/test/fixture/lrj/predicate_call.dag"),
-  lrj_read(source: lrj_plain_refined_decl_source, id: ^lrj_plain_refined_decl_read, unit: ^lrj_plain_refined_decl_cu, path: "src/v2/test/fixture/lrj/plain_refined_decl.dag"),
-  lrj_read(source: lrj_fn_body_source, id: ^lrj_fn_body_read, unit: ^lrj_fn_body_cu, path: "src/v2/test/fixture/lrj/fn_body.dag"),
   lrj_read(source: lrj_int_holds_source, id: ^lrj_int_holds_read, unit: ^lrj_int_holds_cu, path: "src/v2/test/fixture/lrj/int_holds.dag"),
+  lrj_read(source: lrj_int_violated_source, id: ^lrj_int_violated_read, unit: ^lrj_int_violated_cu, path: "src/v2/test/fixture/lrj/int_violated.dag"),
+  lrj_read(source: lrj_int_violated_field_source, id: ^lrj_int_violated_field_read, unit: ^lrj_int_violated_field_cu, path: "src/v2/test/fixture/lrj/int_violated_field.dag"),
   lrj_read(source: lrj_plain_source, id: ^lrj_plain_read, unit: ^lrj_plain_cu, path: "src/v2/test/fixture/lrj/plain.dag")
 ]
 
@@ -152,26 +147,26 @@ fn lrj_obligations_dropped_admits(subject: String) -> Bool {
 
 // POSITIVE: a literal at a refinement call argument and at a record field admits when the predicate holds.
 test fn lrj_holding_predicate_admits_literal_at_argument_and_field_holds() -> Bool {
-  lrj_end_to_end_admits(subject: "v2.test.lrj_holds")
+  lrj_end_to_end_admits(subject: "v2.test.lrj_int_holds")
 }
 
 // ROUTE: the demand produced exactly the two obligations (one per literal) -- discharge had work to run.
 test fn lrj_each_refined_literal_records_one_obligation_holds() -> Bool {
-  lrj_obligation_count(subject: "v2.test.lrj_holds") == 2
+  lrj_obligation_count(subject: "v2.test.lrj_int_holds") == 2
 }
 
 // RED: a violated predicate refuses at the literal, with the typed reason, for both positions.
 test fn lrj_violated_predicate_refuses_at_call_argument_holds() -> Bool {
-  lrj_end_to_end_reason_is(subject: "v2.test.lrj_violated", reason: ^refinement_predicate_violated)
+  lrj_end_to_end_reason_is(subject: "v2.test.lrj_int_violated", reason: ^refinement_predicate_violated)
 }
 
 test fn lrj_violated_predicate_refuses_at_record_field_holds() -> Bool {
-  lrj_end_to_end_reason_is(subject: "v2.test.lrj_violated_field", reason: ^refinement_predicate_violated)
+  lrj_end_to_end_reason_is(subject: "v2.test.lrj_int_violated_field", reason: ^refinement_predicate_violated)
 }
 
 // MUTATION: dropping the obligations flips the RED to an admission, so the refusal is the obligation's.
 test fn lrj_dropping_the_obligations_flips_the_violation_to_admitted_holds() -> Bool {
-  lrj_obligations_dropped_admits(subject: "v2.test.lrj_violated") && !lrj_end_to_end_admits(subject: "v2.test.lrj_violated")
+  lrj_obligations_dropped_admits(subject: "v2.test.lrj_int_violated") && !lrj_end_to_end_admits(subject: "v2.test.lrj_int_violated")
 }
 
 // NON-LITERAL RED: a value of the carrier type is not a refinement value; it still refuses and records no obligation.
@@ -189,167 +184,15 @@ test fn lrj_literal_at_an_unrefined_carrier_records_no_obligation_holds() -> Boo
   lrj_obligation_count(subject: "v2.test.lrj_plain") == 0 && lrj_end_to_end_admits(subject: "v2.test.lrj_plain")
 }
 
-// PROBES the run reads to tell WHERE a failure sits: the simplest refined call argument must record exactly
-// one obligation, and a bare unrefined one none.
+// ROUTE: the simplest refined call argument records exactly one obligation.
 data lrj_one_arg_source: String = "module v2.test.lrj_one_arg\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(\"x\")\n"
 
 test fn lrj_probe_simplest_refined_argument_records_one_obligation_holds() -> Bool {
   lrj_obligation_count(subject: "v2.test.lrj_one_arg") == 1
 }
 
-test fn lrj_probe_simplest_refined_argument_infers_at_all_holds() -> Bool {
-  lrj_obligation_count(subject: "v2.test.lrj_one_arg") >= 0
-}
-
-// FATAL NAMER over lrj_one_arg: exactly one of these is true, so the run names where the fixture stops.
-fn lrj_one_arg_outcome_is(reason: Symbol) -> Bool {
-  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } =>
-      match infer(tree: r) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => d.head.reason == reason
-      }
-  }
-}
-
-test fn lrj_fatal_is_resolve_refused_holds() -> Bool {
-  match lrj_resolve(subject: "v2.test.lrj_one_arg") { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
-}
-
-test fn lrj_fatal_is_infer_accepted_holds() -> Bool {
-  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } => match infer(tree: r) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
-  }
-}
-
-test fn lrj_fatal_is_application_argument_does_not_inhabit_holds() -> Bool {
-  lrj_one_arg_outcome_is(reason: ^application_argument_does_not_inhabit)
-}
-
-test fn lrj_fatal_is_grounding_not_derived_holds() -> Bool {
-  lrj_one_arg_outcome_is(reason: ^infer_grounding_not_derived)
-}
-
-test fn lrj_fatal_is_grounding_demanded_not_derived_holds() -> Bool {
-  lrj_one_arg_outcome_is(reason: ^infer_grounding_demanded_not_derived)
-}
-
-test fn lrj_fatal_is_argument_type_not_derived_holds() -> Bool {
-  lrj_one_arg_outcome_is(reason: ^inhabitance_undecidable_argument_type_not_derived)
-}
-
-test fn lrj_fatal_is_formal_unresolved_holds() -> Bool {
-  lrj_one_arg_outcome_is(reason: ^inhabitance_undecidable_formal_unresolved)
-}
-
-test fn lrj_fatal_is_where_predicate_subject_holds() -> Bool {
-  lrj_one_arg_outcome_is(reason: ^inhabitance_undecidable_where_predicate_subject_unmodelled)
-}
-
-test fn lrj_fatal_is_demand_site_unplaceable_holds() -> Bool {
-  lrj_one_arg_outcome_is(reason: ^infer_reason_refinement_demand_site_unplaceable)
-}
-
-// LOCATOR: which node of the refined fixture is the ungrounded one. decl_only has the refinement declaration
-// and its predicate; formal_only adds a function whose formal is the refinement, with no call.
-data lrj_decl_only_source: String = "module v2.test.lrj_decl_only\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n"
-
-data lrj_formal_only_source: String = "module v2.test.lrj_formal_only\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n"
-
-fn lrj_infers(subject: String) -> Bool {
-  match lrj_resolve(subject: subject) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } => match infer(tree: r) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
-  }
-}
-
-test fn lrj_locator_declaration_alone_infers_holds() -> Bool {
-  lrj_infers(subject: "v2.test.lrj_decl_only")
-}
-
-test fn lrj_locator_refined_formal_without_a_call_infers_holds() -> Bool {
-  lrj_infers(subject: "v2.test.lrj_formal_only")
-}
-
-// LOCATOR 2: a call passing a value ALREADY of the refined type (no literal, so this arm is not involved), and the
-// predicate called directly on the literal in source (the shape the post-pass synthesizes).
-data lrj_typed_arg_source: String = "module v2.test.lrj_typed_arg\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\nfn lrj_relay(w: LrjNe) -> Bool { lrj_take(w) }\n"
-
-data lrj_predicate_call_source: String = "module v2.test.lrj_predicate_call\n\nfn lrj_p(s: String) -> Bool { true }\n\ndata lrj_direct: Bool = lrj_p(\"x\")\n"
-
-test fn lrj_locator_call_with_refined_typed_argument_infers_holds() -> Bool {
-  lrj_infers(subject: "v2.test.lrj_typed_arg")
-}
-
-test fn lrj_locator_predicate_called_directly_on_a_literal_infers_holds() -> Bool {
-  lrj_infers(subject: "v2.test.lrj_predicate_call")
-}
-
-// LOCATOR 3: the MAIN gather fold alone (no post-pass) over lrj_one_arg, and the demands it collected.
-test fn lrj_locator_main_gather_alone_accepts_holds() -> Bool {
-  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } => match infer_entries_for_tree(tree: r) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
-  }
-}
-
-test fn lrj_locator_main_gather_collects_one_demand_holds() -> Bool {
-  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } => length(xs: infer_gather_for_tree(tree: r).demands) == 1
-  }
-}
-
-// LOCATOR 4. (a) a String formal with a literal while a refined type is declared in the module (the declaration's
-// presence must not matter); (b) the refined formal with the literal inside a fn BODY rather than a data initializer.
-data lrj_plain_refined_decl_source: String = "module v2.test.lrj_plain_refined_decl\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take_plain(v: String) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take_plain(\"x\")\n"
-
-data lrj_fn_body_source: String = "module v2.test.lrj_fn_body\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\nfn lrj_caller() -> Bool { lrj_take(\"x\") }\n"
-
-test fn lrj_locator_plain_formal_literal_beside_a_refined_declaration_infers_holds() -> Bool {
-  lrj_infers(subject: "v2.test.lrj_plain_refined_decl")
-}
-
-test fn lrj_locator_refined_formal_literal_in_a_fn_body_infers_holds() -> Bool {
-  lrj_infers(subject: "v2.test.lrj_fn_body")
-}
-
-// LOCATOR 5: the demand's lookups run on the REAL tree, one step each. If the declaration is found but the clause
-// has no sole predicate, infer_where_sole_predicate misreads the lowered shape; if it is not found, the path is wrong.
-fn lrj_refined_decl_found(subject: String) -> Bool {
-  match lrj_resolve(subject: subject) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } =>
-      match symbol_index_lookup(index: r.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.lrj_one_arg.LrjNe")) {
-        Absent => false
-        Present { value: decl } => match refinement_declaration_of_node(decl: decl) { Absent => false  Present { value: _ } => true }
-      }
-  }
-}
-
-test fn lrj_locator_refined_declaration_is_found_and_read_as_refinement_holds() -> Bool {
-  lrj_refined_decl_found(subject: "v2.test.lrj_one_arg")
-}
-
-test fn lrj_locator_refinement_clause_has_a_sole_predicate_holds() -> Bool {
-  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } =>
-      match symbol_index_lookup(index: r.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.lrj_one_arg.LrjNe")) {
-        Absent => false
-        Present { value: decl } =>
-          match refinement_declaration_of_node(decl: decl) {
-            Absent => false
-            Present { value: rd } => match infer_where_sole_predicate(where_clause: rd.where_clause) { Absent => false  Present { value: _ } => true }
-          }
-      }
-  }
-}
-
-// LOCATOR 7: the pipeline's verdict as ONE exhaustive code per fixture. 0 resolve refused, 1 infer refused,
-// 2 discharged (admitted), 3 undischargeable, 4 violated, 5 refused for another reason.
+// The pipeline's verdict as ONE exhaustive code: 0 resolve refused, 1 infer refused, 2 admitted,
+// 3 undischargeable, 4 violated, 5 refused for another reason.
 fn lrj_verdict_code(subject: String) -> Int {
   match lrj_resolve(subject: subject) {
     Rejected { diagnostics: _ } => 0
@@ -368,133 +211,15 @@ fn lrj_verdict_code(subject: String) -> Int {
   }
 }
 
-test fn lrj_probe_holds_code_is_0_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_holds") == 0 }
-test fn lrj_probe_holds_code_is_1_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_holds") == 1 }
-test fn lrj_probe_holds_code_is_2_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_holds") == 2 }
-test fn lrj_probe_holds_code_is_3_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_holds") == 3 }
-test fn lrj_probe_holds_code_is_4_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_holds") == 4 }
-test fn lrj_probe_violated_code_is_2_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_violated") == 2 }
-test fn lrj_probe_violated_code_is_3_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_violated") == 3 }
-test fn lrj_probe_violated_code_is_4_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_violated") == 4 }
-
-// LOCATOR 8: WHICH evaluator refusal sits behind undischargeable (the diagnostic after the discharge head).
-fn lrj_behind_code(subject: String) -> Int {
-  match lrj_resolve(subject: subject) {
-    Rejected { diagnostics: _ } => 0
-    Accepted { value: r, diagnostics: _ } =>
-      match infer(tree: r) {
-        Rejected { diagnostics: _ } => 1
-        Accepted { value: t, diagnostics: _ } =>
-          match discharge_refinement_obligations(t: t) {
-            Accepted { value: _, diagnostics: _ } => 2
-            Rejected { diagnostics: d } =>
-              match d.tail {
-                Empty => 3
-                Cons { head: b, tail: _ } =>
-                  if b.reason == ^infer_facts_lookup_miss { 10 }
-                  else if b.reason == ^eval_rejected_grounding_not_derived { 11 }
-                  else if b.reason == ^eval_rejected_grounding_node_mismatch { 12 }
-                  else if b.reason == ^eval_rejected_canonical_mismatch { 13 }
-                  else if b.reason == ^eval_rejected_callee_absent { 14 }
-                  else if b.reason == ^eval_rejected_unsupported_callee { 15 }
-                  else if b.reason == ^eval_rejected_type_node { 16 }
-                  else if b.reason == ^eval_rejected_runtime_binding_lookup_miss { 17 }
-                  else if b.reason == ^eval_rejected_pending_children { 18 }
-                  else if b.reason == ^eval_rejected_invalid_node { 19 }
-                  else if b.reason == ^eval_rejected_parameter_reference_unbound { 20 }
-                  else { 99 }
-              }
-          }
-      }
-  }
+// STRING LITERALS TODAY: v2 eval cannot evaluate a host-text String literal (the text crossing,
+// gunbc.rung_drop text_boundary_identity_wall), so a String obligation is refused TYPED as
+// refinement_obligation_undischargeable -- never admitted, never read as a violation. DECLARED FRONTIER, TRIGGER
+// NAMING THE CAPABILITY: evaluating a String literal through the declared Unicode scalar unfold; these two claims
+// then change to admitted / violated, like their Int twins above.
+test fn lrj_string_holding_predicate_is_refused_undischargeable_never_admitted_holds() -> Bool {
+  lrj_verdict_code(subject: "v2.test.lrj_holds") == 3 && !lrj_end_to_end_admits(subject: "v2.test.lrj_holds")
 }
 
-test fn lrj_behind_holds_is_3_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 3 }
-test fn lrj_behind_holds_is_10_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 10 }
-test fn lrj_behind_holds_is_11_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 11 }
-test fn lrj_behind_holds_is_12_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 12 }
-test fn lrj_behind_holds_is_13_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 13 }
-test fn lrj_behind_holds_is_14_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 14 }
-test fn lrj_behind_holds_is_15_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 15 }
-test fn lrj_behind_holds_is_16_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 16 }
-test fn lrj_behind_holds_is_17_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 17 }
-test fn lrj_behind_holds_is_18_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 18 }
-test fn lrj_behind_holds_is_19_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 19 }
-test fn lrj_behind_holds_is_20_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 20 }
-test fn lrj_behind_holds_is_99_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 99 }
-
-// LOCATOR 9: the callee of the first recorded obligation's application, in the facts discharge will read.
-// 0 resolve/infer refused, 1 no obligation, 2 callee not first child, 3 callee has no facts entry,
-// 4 entry carries no denotation, 5 entry carries a denotation.
-fn lrj_callee_facts_code(subject: String) -> Int {
-  match lrj_resolve(subject: subject) {
-    Rejected { diagnostics: _ } => 0
-    Accepted { value: r, diagnostics: _ } =>
-      match infer(tree: r) {
-        Rejected { diagnostics: _ } => 0
-        Accepted { value: t, diagnostics: _ } =>
-          match t.obligations {
-            Empty => 1
-            Cons { head: o, tail: _ } =>
-              match positional_child_target_nodes(node: o.application) {
-                Empty => 2
-                Cons { head: callee, tail: _ } =>
-                  match t.facts.lookup(callee) {
-                    Absent => 3
-                    Present { value: f } => match f.denotation { Absent => 4  Present { value: _ } => 5 }
-                  }
-              }
-          }
-      }
-  }
+test fn lrj_string_violated_predicate_is_refused_undischargeable_never_admitted_holds() -> Bool {
+  lrj_verdict_code(subject: "v2.test.lrj_violated") == 3 && !lrj_end_to_end_admits(subject: "v2.test.lrj_violated")
 }
-
-test fn lrj_callee_facts_is_1_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 1 }
-test fn lrj_callee_facts_is_2_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 2 }
-test fn lrj_callee_facts_is_3_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 3 }
-test fn lrj_callee_facts_is_4_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 4 }
-test fn lrj_callee_facts_is_5_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 5 }
-
-// LOCATOR 10: which CHILD of the obligation's application the evaluator refuses when evaluated alone.
-// 0 resolve/infer refused, 1 no obligation, 2 shape, then 10 + (literal evaluates ? 1 : 0) + (callee evaluates ? 2 : 0).
-fn lrj_child_evaluates(tree: InferredTree, root: Node) -> Bool {
-  match eval(tree: tree, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: root)) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn lrj_children_code(subject: String) -> Int {
-  match lrj_resolve(subject: subject) {
-    Rejected { diagnostics: _ } => 0
-    Accepted { value: r, diagnostics: _ } =>
-      match infer(tree: r) {
-        Rejected { diagnostics: _ } => 0
-        Accepted { value: t, diagnostics: _ } =>
-          match t.obligations {
-            Empty => 1
-            Cons { head: o, tail: _ } =>
-              match positional_child_target_nodes(node: o.application) {
-                Cons { head: callee, tail: Cons { head: literal, tail: _ } } =>
-                  let tree = InferredTree { root: t.root, facts: t.facts }
-                  let lit = if lrj_child_evaluates(tree: tree, root: literal) { 1 } else { 0 }
-                  let cal = if lrj_child_evaluates(tree: tree, root: callee) { 2 } else { 0 }
-                  10 + lit + cal
-                _ => 2
-              }
-          }
-      }
-  }
-}
-
-test fn lrj_children_is_10_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_holds") == 10 }
-test fn lrj_children_is_11_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_holds") == 11 }
-test fn lrj_children_is_12_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_holds") == 12 }
-test fn lrj_children_is_13_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_holds") == 13 }
-
-test fn lrj_int_children_is_10_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 10 }
-test fn lrj_int_children_is_11_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 11 }
-test fn lrj_int_children_is_1_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 1 }
-test fn lrj_int_children_is_0_holds() -> Bool { lrj_children_code(subject: "v2.test.lrj_int_holds") == 0 }
-test fn lrj_int_verdict_is_2_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_holds") == 2 }
-test fn lrj_int_verdict_is_3_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_holds") == 3 }
