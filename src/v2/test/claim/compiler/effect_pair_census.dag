@@ -84,13 +84,13 @@ fn epc_diamonds(n: Int, acc: List<OrderEdge>) -> List<OrderEdge> {
   }
 }
 
-// DISCRIMINATING CONTROL for the visited set: the two ends of sixteen chained diamonds are ordered, so no
+// DISCRIMINATING CONTROL for the visited set: the two ends of twenty-two chained diamonds are ordered, so no
 // pair is listed, and the answer is reached in a number of steps linear in the diamonds. Without a
-// visited set the forward walk meets 2^16 duplicate frontier entries and exhausts the claim's cost budget.
-test fn sixteen_chained_diamonds_order_their_ends_in_linear_steps_holds() -> Bool {
+// visited set the forward walk meets 2^22 duplicate frontier entries and exhausts the claim's cost budget.
+test fn twenty_two_chained_diamonds_order_their_ends_in_linear_steps_holds() -> Bool {
   length(xs: body_effect_pairs(facts: epc_facts_with(
-    sites: list_snoc_item(xs: list_snoc_item(xs: Empty, item: epc_site(occurrence: 0)), item: epc_site(occurrence: 48)),
-    orders: epc_diamonds(n: 16, acc: Empty),
+    sites: list_snoc_item(xs: list_snoc_item(xs: Empty, item: epc_site(occurrence: 0)), item: epc_site(occurrence: 66)),
+    orders: epc_diamonds(n: 22, acc: Empty),
     exclusive: Empty
   )).pairs) == 0
 }
