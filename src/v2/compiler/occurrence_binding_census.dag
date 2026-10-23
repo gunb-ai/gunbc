@@ -219,16 +219,19 @@ fn occurrence_binding_domain_members(domain: Edge) -> List<Edge> {
 fn occurrence_binding_declaration_params(arrow: Node) -> String {
   match list_at_optional(xs: arrow.children, index: 0) {
     Absent => ""
-    Present { value: domain_edge } =>
-      fold_list(xs: occurrence_binding_domain_members(domain: domain_edge), empty: "", cons: fn(acc, e) {
-        match e.label {
-          Authored { name: p } =>
-            (if acc == "" { "" } else { acc + ", " }) + symbol_lexeme(sym: p) + ": " + ref_text(t: type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)))
-          StructuralLabel { label: _ } => acc
-          Positional => acc
-        }
-      })
+    Present { value: domain_edge } => occurrence_binding_params_text(members: occurrence_binding_domain_members(domain: domain_edge))
   }
+}
+
+fn occurrence_binding_params_text(members: List<Edge>) -> String {
+  fold_list(xs: members, empty: "", cons: fn(acc, e) {
+    match e.label {
+      Authored { name: p } =>
+        (if acc == "" { "" } else { acc + ", " }) + symbol_lexeme(sym: p) + ": " + ref_text(t: type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)))
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
 }
 
 // THE OTHER HALF OF EXACTLY ONE SOURCE PER OCCURRENCE: a declaration reference in the resolved tree
