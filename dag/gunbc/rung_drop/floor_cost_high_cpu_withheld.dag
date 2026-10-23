@@ -17,9 +17,7 @@ data floor_cost_high_cpu_withheld: RungDrop = RungDrop {
 
   declared: "2026-09-04",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
@@ -32,5 +30,5 @@ data floor_cost_high_cpu_withheld: RungDrop = RungDrop {
       f: fn(c) { c }
     )),
     restoration_trigger: "At capability grain and NOT retired by these rows getting faster: an environment-independent per-claim cost qualification -- a charge readable as a stable property of the claim rather than of the attempt -- so that a cost verdict discriminates a regression from an execution position. That is the same capability `floor_cost_claim_qualification_unavailable` names, and this row is downstream of it: while a claim's charge is not a property of the claim, no threshold anywhere makes this gate discriminate, and moving the line only moves which rows flap. Individual rows returning under 219ms is a POPULATION shrink and retires their own membership, not this row."
-  }
+  } }
 }

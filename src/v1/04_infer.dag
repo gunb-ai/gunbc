@@ -5912,10 +5912,120 @@ fn select_formal_for_call_argument(argument: Node, argument_index: Int, argument
   }
 }
 
-fn call_argument_selects_formal_index(argument: Node, argument_index: Int, formal_index: Int, arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match select_formal_for_call_argument(argument: argument, argument_index: argument_index, arguments: arguments, value_params: value_params, source_indices: source_indices) {
-    CallArgumentFormalSelected { formal_index: selected, formal: _ } => selected == formal_index
-    CallArgumentFormalUnavailable => false
+// THE ARGUMENT/FORMAL CORRESPONDENCE IS BUILT ONCE PER CALL, ONCE, AND READ BY EVERY CONSUMER.
+// THE SELECTION RULE ABOVE IS PURE: an argument's selection is a function of (the argument, its
+// index, the argument list, the value-parameter list, the source indices) and nothing else -- no
+// substitution, no environment, no scope is consulted. That made every recomputation of the rule
+// over the same four inputs a re-answer, not a new question. Before this, one direct call computed
+// the rule: once per argument in the first inference round, once per argument AGAIN in the second
+// round (same arguments, same value_params -- the rounds differ only in the initial substitution,
+// which the selection never reads), once per (formal, argument) PAIR in build_call_application_plan's
+// inverse search, and once per argument plus once per (argument, earlier argument) PAIR in
+// direct_call_shape_diags' formal-identity duplicate check. The two pair-shaped uses are quadratic
+// in argument count; the §5a lane-D row for this family (v1-interface-cull-audit §3a, the srv1
+// `perf record -F 299 --call-graph fp` capture attached to the seed compile of the required entry,
+// re-derivable from the §3a scripts; the quadratic loops -- the shape diags, its fold, and the
+// plan's inverse search -- made up the whole row) is the measurement; this comment names the
+// capture rather than its numbers. This type
+// holds the correspondence for ONE call over ONE (arguments, value_params) domain: `selections` is
+// index-aligned with `arguments` and answers WHICH formal an argument selects; `claimants_by_formal`
+// answers the inverse the plan and the duplicate wall need, recording the claimants for each formal
+// ASCENDING by construction -- reading its head is the FIRST argument that selected that formal,
+// which is exactly what every prior consumer asked for (filter-then-first over ascending argument
+// indices) -- and each claimant carries its OWN caller label as the Optional its reader already
+// was, so no consumer looks a label up by index at all. WHAT DISAPPEARS: the second round's recompute (it now reads the
+// table the first round built over the same domain), the plan's per-formal re-run of the rule over
+// all arguments, and the duplicate check's re-run over every earlier argument. WHAT STAYS
+// UNCHANGED: the selection rule itself, in one place, still the only authority that maps an
+// argument to a formal -- both pair-shaped consumers now index the table instead of asking the rule
+// again; the full-signature and value-slot identities are untouched (this type stores indices and
+// the rule's own selected Node, inventing no new identity); the two duplicate checks stay separate
+// checks with separate causes (duplicate_label_diags still runs its own runtime-binding-key walk
+// over call_arg_bound_param_at and is not given this table -- per the operator ruling recorded
+// above, the key wall also catches collisions this selector cannot see, and merging the causes is
+// forbidden); and the refusals are byte-identical because a table lookup returns what the rule
+// already returned for the same input. NOT A CACHE: there is no key, no store outliving the call,
+// and no reuse across calls -- the correspondence is built at the call site that needs it, threads
+// through the consumers that share its domain, and dies with the call. A second correspondence is
+// built for the shape diags rather than shared with the fold/plan because the shape walls run over
+// sig_params (the FULL roster, generics included) while the fold and the plan run over value_params
+// (generics removed); those are different domains and merging them would change which formal an
+// argument selects -- the two builds are the honest statement of that difference.
+// `selections` is index-aligned with `arguments`: which formal each argument selects, exactly what
+// select_formal_for_call_argument returned for that argument. `claimants_by_formal` is the inverse
+// the application plan and the formal-identity duplicate wall ask: for each formal, the arguments
+// that selected it, ASCENDING by construction (the fold walks arguments in index order and
+// appends), so the head is the first claimant the way the old filter-then-first produced it. Each
+// claimant carries ITS OWN caller label, as the Optional its reader already was: the wall compares
+// labels of arguments it names, so the label travels with the claim instead of being re-looked-up
+// by index -- there is no index whose out-of-range answer could be mistaken for a real label, and
+// no sentinel: absence is the declared Absent of Optional, per `gunbc.design_ruling
+// dag_absence_is_one_meaning` (the `String?` field is the canonical std.optional carrier, §3b, the
+// same carrier `matched_argument_index: Int?` on ResolvedCallFormal already uses).
+type CallArgumentClaimant {
+  argument_index: Int
+  caller_label: String?
+}
+
+type CallArgumentFormalCorrespondence {
+  selections: List<CallArgumentFormalSelection>
+  claimants_by_formal: Map<Int, List<CallArgumentClaimant>>
+}
+
+fn build_call_argument_formal_correspondence(arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalCorrespondence {
+  let selections = arguments |> enumerate |> map(pair =>
+    select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: arguments, value_params: value_params, source_indices: source_indices))
+  // The claimant groups build in ONE pass over the selections. This fold is not a copied
+  // accumulator (DESIGN.md §6): the v1.compiler.runtime lists and maps are im's persistent
+  // Vector and HashMap (v1_rt's `use im::{HashMap, Vector as Vec}` import), list append is
+  // VecCompat::append and map insert is rc_map_insert (Rc::make_mut on a uniquely-owned
+  // accumulator), so each step is O(log n) structural sharing, not a whole-map or whole-list
+  // copy -- and the fold walks each argument once, replacing the per-(argument, earlier
+  // argument) rule re-runs it stands in for.
+  let claimant_seed: Map<Int, List<CallArgumentClaimant>> = empty_map()
+  let claimants = fold(
+    arguments |> enumerate,
+    init: claimant_seed,
+    f: (acc, pair) =>
+      match selections |> skip(pair.first) |> first {
+        Present { value: selection } => match selection {
+          CallArgumentFormalSelected { formal_index: selected, formal: _ } => map_insert(acc, selected, concat(match map_get(acc, selected) {
+            Present { value: existing } => existing
+            Absent => []
+          }, [CallArgumentClaimant { argument_index: pair.first, caller_label: arg_name_at(n: pair.second, source_indices: source_indices) }]))
+          CallArgumentFormalUnavailable => acc
+        }
+        Absent => acc
+      }
+  )
+  CallArgumentFormalCorrespondence { selections: selections, claimants_by_formal: claimants }
+}
+
+// READ THE CORRESPONDENCE, NEVER THE RULE, FROM A CONSUMER. Out-of-range is unavailable because
+// `selections` is index-aligned with the `arguments` the correspondence was built from: an index
+// outside it names no argument, and an argument that names no formal is exactly what
+// CallArgumentFormalUnavailable already means.
+fn call_argument_selection_at(correspondence: CallArgumentFormalCorrespondence, argument_index: Int) -> CallArgumentFormalSelection {
+  match correspondence.selections |> skip(argument_index) |> first {
+    Present { value: selection } => selection
+    Absent => CallArgumentFormalUnavailable
+  }
+}
+
+fn call_argument_first_index_for_formal(correspondence: CallArgumentFormalCorrespondence, formal_index: Int) -> Int? {
+  match map_get(correspondence.claimants_by_formal, formal_index) {
+    Present { value: claimants } => match claimants |> first {
+      Present { value: claimant } => Present { value: claimant.argument_index }
+      Absent => none
+    }
+    Absent => none
+  }
+}
+
+fn call_argument_claimants_for_formal(correspondence: CallArgumentFormalCorrespondence, formal_index: Int) -> List<CallArgumentClaimant> {
+  match map_get(correspondence.claimants_by_formal, formal_index) {
+    Present { value: claimants } => claimants
+    Absent => []
   }
 }
 
@@ -5939,7 +6049,7 @@ fn call_argument_selects_formal_index(argument: Node, argument_index: Int, forma
 fn build_call_application_plan(
   value_params: List<Node>,
   formals: List<ResolvedFormal>,
-  typed_args: List<Node>,
+  arg_formal_correspondence: CallArgumentFormalCorrespondence,
   call_subst: Map<String, Node>,
   type_env: TypeEnv,
   module_name: String
@@ -5957,10 +6067,7 @@ fn build_call_application_plan(
           declaration_bound_conformance: substitute_generics(n: carried.declaration_bound_conformance, subst: call_subst, source_indices: source_indices),
           substitution_basis: carried.substitution_basis
         },
-        matched_argument_index: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
-          Present { value: bound } => Present { value: bound.first }
-          Absent => none
-        }
+        matched_argument_index: call_argument_first_index_for_formal(correspondence: arg_formal_correspondence, formal_index: pair.first)
       }]
       Absent => []
       }
@@ -6759,17 +6866,19 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
         } else { [] }
       Absent => []
     })
+  // THE SHAPE WALLS ASK THE SELECTION RULE OVER THE FULL ROSTER (sig_params, generics included),
+  // where the fold and the application plan ask it over value_params (generics removed). Different
+  // domains, so a different correspondence -- built once for this call, at this seam, and read by
+  // the duplicate check below instead of the check re-running the rule once per argument and once
+  // per (argument, earlier argument) pair.
+  let shape_arg_formal_correspondence = build_call_argument_formal_correspondence(arguments: typed_args, value_params: sig_params, source_indices: source_indices)
   let formal_identity_duplicate_diags = typed_args |> enumerate |> flat_map(pair =>
-    match select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: typed_args, value_params: sig_params, source_indices: source_indices) {
+    match call_argument_selection_at(correspondence: shape_arg_formal_correspondence, argument_index: pair.first) {
       CallArgumentFormalSelected { formal_index: mine, formal: chosen } =>
         let my_label = arg_name_at(n: pair.second, source_indices: source_indices)
-        let earlier_same_formal = typed_args |> enumerate |> any(other =>
-               other.first < pair.first
-                 && !(arg_name_at(n: other.second, source_indices: source_indices) == my_label)
-                 && match select_formal_for_call_argument(argument: other.second, argument_index: other.first, arguments: typed_args, value_params: sig_params, source_indices: source_indices) {
-                      CallArgumentFormalSelected { formal_index: theirs, formal: _ } => theirs == mine
-                      CallArgumentFormalUnavailable => false
-                    })
+        let earlier_same_formal = call_argument_claimants_for_formal(correspondence: shape_arg_formal_correspondence, formal_index: mine) |> any(claimant =>
+               claimant.argument_index < pair.first
+                 && !(claimant.caller_label == my_label))
         if earlier_same_formal {
           [make_error_node(
             diagnostic: CallArgumentDuplicate { callee: func_name, argument: authored_name_at(source_indices: source_indices, node: chosen), span: pair.second.span },
@@ -8288,30 +8397,53 @@ fn host_text_crossing_admitted(route: DeclarationRef, value: Node, destination_t
 // { String } is the kernel String (kernel precedence; test.claim.self_host_structural_text_witness
 // w_bare_string_with_text_import_stays_host_deterministically), while the by-name peel in that module
 // finds the imported structural alias. Absent means neither view is a code-point sequence.
+// ONE CLASSIFICATION PER FORMAL VIEW, AT EVERY STAGE. This view asks "what is this formal's code-
+// point presentation?" and answers by classifying the formal's three candidate nodes. The declared
+// type was classified TWICE per view: once here to enforce host-text precedence, and again inside
+// the peel as the last arm, because the peel could not see the answer the precedence check had
+// already computed (§5a lane-D row D.7 -- the srv1 `perf record -F 299 --call-graph fp` capture
+// behind that row is the measurement; this comment names the instrument, not its number, per
+// DESIGN.md §6 "name the instrument, never transcribe its output").
+// The classification is now done once and its verdict REUSED -- the same value, the same call, read
+// where it is needed. WHAT STAYS UNCHANGED: the order of judgment (host text wins first; then
+// declaration-bound conformance, then substitution basis, then the declared type, each as a code-
+// point sequence), the precedence itself (a host-text declared_type still yields none before any
+// other node is consulted), and the four-way classification the arms distinguish: NotText and
+// TextRepresentationUnidentified are NOT conflated -- they are different verdicts that both fail to
+// be CodePointSequence here, exactly as the two `_` arms did, and each keeps its distinct meaning
+// everywhere the verdict is read as itself (is_text_arm vs is_unidentified in v1.compiler.env);
+// this function only ever consumes the positive CodePointSequence judgment, so reusing the verdict
+// cannot collapse the distinction. NOT A CACHE: no verdict is stored against a key; the value is
+// computed once at the top of this call and read twice within it.
 fn formal_code_point_view(formal: ResolvedFormal, env: TypeEnv) -> Node? {
-  match text_representation_by_identity(n: formal.declared_type, env: env) {
+  let declared_type_text = text_representation_by_identity(n: formal.declared_type, env: env)
+  match declared_type_text {
     HostText => none
-    _ => formal_code_point_view_peeled(formal: formal, env: env)
-  }
-}
-
-fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? {
-  match text_representation_by_identity(n: formal.declaration_bound_conformance, env: env) {
-    CodePointSequence => Present { value: formal.declaration_bound_conformance }
-    _ => match text_representation_by_identity(n: formal.substitution_basis, env: env) {
-      CodePointSequence => Present { value: formal.substitution_basis }
-      _ => match text_representation_by_identity(n: formal.declared_type, env: env) {
-        CodePointSequence => Present { value: formal.declared_type }
-        _ => none
+    _ => match text_representation_by_identity(n: formal.declaration_bound_conformance, env: env) {
+      CodePointSequence => Present { value: formal.declaration_bound_conformance }
+      _ => match text_representation_by_identity(n: formal.substitution_basis, env: env) {
+        CodePointSequence => Present { value: formal.substitution_basis }
+        _ => match declared_type_text {
+          CodePointSequence => Present { value: formal.declared_type }
+          _ => none
+        }
       }
     }
   }
 }
 
-fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
-  fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst, unify_diagnostics: [] }, f: (st, pair) =>
+// THE CORRESPONDENCE IS AN INPUT, NOT A RECOMPUTATION. Both rounds of this fold run over the SAME
+// (call_args, value_params) domain -- the rounds differ only in init_subst, which the selection rule
+// never reads -- so the second round used to re-answer the selection for every argument the first
+// round had already answered. The seam that owns the call builds the correspondence once and passes
+// it to BOTH rounds (and to build_call_application_plan, which shares its domain). Reading
+// `selections` returns exactly what select_formal_for_call_argument returned for that index before;
+// the rule stays the single authority, now asked once per argument per call instead of once per
+// consumer per argument per round.
+fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspondence: CallArgumentFormalCorrespondence, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
+  fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst, arg_formal_correspondence: Present { value: arg_formal_correspondence }, unify_diagnostics: [] }, f: (st, pair) =>
     let a = pair.second
-    let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
+    let formal_selection = call_argument_selection_at(correspondence: arg_formal_correspondence, argument_index: pair.first)
     let formal_raw = match formal_selection {
       CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
         Present { value: carried } => carried.substitution_basis
@@ -8378,6 +8510,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     ArgGenericFoldState {
       results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: ar.emissions }]),
       subst: unify_step.subst,
+      arg_formal_correspondence: st.arg_formal_correspondence,
       unify_diagnostics: concat(st.unify_diagnostics, unify_step.diagnostics)
     }
   )
@@ -9314,10 +9447,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         LocallyBoundBindingMissing { name: _ } => false
       }
       let arg_call = if declared_formal_authority_failed {
-        fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [], unify_diagnostics: [] }, f: (st, a) =>
+        fold(call_args, init: ArgGenericFoldState { subst: empty_map(), results: [], arg_formal_correspondence: none, unify_diagnostics: [] }, f: (st, a) =>
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
           ArgGenericFoldState {
             subst: st.subst,
+            arg_formal_correspondence: st.arg_formal_correspondence,
             results: concat(st.results, [ArgInferResult {
               typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span),
               emissions: ar.emissions
@@ -9329,7 +9463,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => true
         Present { value: _ } => false
       } {
-        ArgGenericFoldState { subst: empty_map(), unify_diagnostics: [], results: match call_args |> first {
+        ArgGenericFoldState { subst: empty_map(), arg_formal_correspondence: none, unify_diagnostics: [], results: match call_args |> first {
           Present { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
@@ -9347,12 +9481,24 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
 
         let value_params = call_sig_split.value_params
         let generic_names = call_sig_split.generic_names
-        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
+        // ONE CORRESPONDENCE FOR BOTH FOLD ROUNDS. The two rounds run over the SAME
+        // (call_args, value_params) domain -- they differ only in init_subst, which the selection
+        // rule never reads -- so the second round used to re-answer the selection for every argument
+        // the first round had already answered. One build serves both rounds. The application plan
+        // and the shape walls ask over typed_args and are built at their own sites: those are the
+        // same list FOR SELECTION PURPOSES (every typed argument is rebuilt by make_arg_node with
+        // name: arg_name_at(n: <its own raw argument>) and the same positional place, so labels and
+        // indices carry unchanged into the typed list), but each build sits in the scope where its
+        // consumer runs, so no path computes a correspondence nobody reads -- the failure and lambda
+        // paths run no fold rounds and build none.
+        let call_arg_formal_correspondence = build_call_argument_formal_correspondence(arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
+        let first_pass = infer_call_arguments_generic_pass(call_args: call_args, arg_formal_correspondence: call_arg_formal_correspondence, formals: resolved_formals, generic_names: generic_names, init_subst: empty_map(), scope: scope)
         if call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: first_pass.subst) {
-          let second_pass = infer_call_arguments_generic_pass(call_args: call_args, value_params: value_params, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
+          let second_pass = infer_call_arguments_generic_pass(call_args: call_args, arg_formal_correspondence: call_arg_formal_correspondence, formals: resolved_formals, generic_names: generic_names, init_subst: first_pass.subst, scope: scope)
           ArgGenericFoldState {
             results: second_pass.results,
             subst: second_pass.subst,
+            arg_formal_correspondence: second_pass.arg_formal_correspondence,
             unify_diagnostics: concat(first_pass.unify_diagnostics, second_pass.unify_diagnostics)
           }
         } else {
@@ -9427,10 +9573,27 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           module_name: scope.module_name,
           call_span: span
         )
+        // THE PLAN READS THE FOLD ROUNDS' TABLE (DESIGN §2: share the first value). The fold arm
+        // computed the correspondence over (call_args, value_params); this arm's domain is
+        // (typed_args, value_params_for_check) and value_params_for_check IS value_params (both are
+        // call_sig_split.value_params), while every typed argument is rebuilt by make_arg_node with
+        // name: arg_name_at(n: <its own raw argument>) and the same positional place -- the waiver
+        // pass only filters emissions, never touching typed_arg -- so labels and indices carry
+        // 1:1 and the two tables answer every query identically. Carrying beats rebuilding: the
+        // second build re-answered the selection rule for every argument the first had answered.
+        // The build below survives only as the fallback for the paths that ran no fold rounds
+        // (authority-failed, lambda/fold), which computed no table to carry -- never a path where
+        // one already exists. The shape walls keep their own full-signature domain (sig_params
+        // includes generics; the fold domain removes them), so they are a different question, not
+        // a second copy of this one.
+        let plan_arg_formal_correspondence = match arg_call.arg_formal_correspondence {
+          Present { value: carried } => carried
+          Absent => build_call_argument_formal_correspondence(arguments: typed_args, value_params: value_params_for_check, source_indices: scope.type_env.source_indices)
+        }
         let call_application_plan = build_call_application_plan(
           value_params: value_params_for_check,
           formals: resolved_formals,
-          typed_args: typed_args,
+          arg_formal_correspondence: plan_arg_formal_correspondence,
           call_subst: call_subst,
           type_env: scope.type_env,
           module_name: scope.module_name
@@ -14796,7 +14959,7 @@ fn is_type_variable_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
 
-type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node>, unify_diagnostics: List<ErrorNode> }
+type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node>, arg_formal_correspondence: CallArgumentFormalCorrespondence?, unify_diagnostics: List<ErrorNode> }
 
 type UnifyGenericsAcc { subst: Map<String, Node>, diagnostics: List<ErrorNode> }
 
@@ -14894,13 +15057,34 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
   }
 }
 
+// ONE CLASSIFICATION PER PARAMETER. THE SPLIT USED TO BE BUILT BY FILTERING THE ROSTER TWICE WITH
+// THE SAME PREDICATE: param_is_generic_decl once negated to keep the value parameters and once
+// positively to select the generic ones. The predicate reads the authored parameter (its name, its
+// type annotation) and re-enters param_node_type_expr / param_node_name_at / type_node_label /
+// is_type_variable every time, so the two loops were two identical answers computed twice, not two
+// questions -- the §5a lane-D row D.3 is the measurement (the srv1 perf capture behind the §3a
+// rows; this comment names the instrument, never its output, per DESIGN.md §6). A single fold classifies each
+// parameter ONCE and routes it. The two outputs keep their exact prior contents and order:
+// value_params stays the non-generic parameters in declaration order, generic_names stays the
+// generic parameters' names in declaration order, so the consumers (the argument fold, the
+// formal-authority cardinality checks, the shape walls, the emitted call shape) see the same lists
+// they saw before, by identity of content. NO NEW FIELD IS ADDED: nothing here asks for a carried
+// classification the split does not already answer, and a field no consumer reads is demand without
+// a consumer. Nothing here is a cache either -- no verdict is stored against a key to be looked up
+// later; the classification is done once per call and dies with the split.
 fn split_sig_params(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> SigParamSplit {
-  SigParamSplit {
-    value_params: params |> filter(p => !param_is_generic_decl(p: p, source_indices: source_indices)),
-    generic_names: params
-      |> filter(p => param_is_generic_decl(p: p, source_indices: source_indices))
-      |> map(p => param_node_name_at(n: p, source_indices: source_indices))
-  }
+  fold(params, init: SigParamSplit { value_params: [], generic_names: [] }, f: (acc, p) =>
+    if param_is_generic_decl(p: p, source_indices: source_indices) {
+      SigParamSplit {
+        value_params: acc.value_params,
+        generic_names: concat(acc.generic_names, [param_node_name_at(n: p, source_indices: source_indices)])
+      }
+    } else {
+      SigParamSplit {
+        value_params: concat(acc.value_params, [p]),
+        generic_names: acc.generic_names
+      }
+    })
 }
 
 // THE FLOOR CHECK THIS ARM WAS MISSING, AND THE QUESTION IT ASKS IS THE WHOLE POINT. A generic type
