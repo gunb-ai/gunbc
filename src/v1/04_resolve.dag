@@ -506,13 +506,20 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
+// A container spelling whose use site resolves through the declaration it names when one is in scope
+// (std.types Map = FinitelySupportedFunction), instead of being minted as the kernel container by
+// leaf name. The kernel container survives only where no declaration resolves.
+fn declaration_resolved_container(name: String) -> Bool {
+  name == "Map"
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
-      if is_container_type(name: n.name) { false }
+      if is_container_type(name: n.name) && declaration_resolved_container(name: authored_name(env: env, node: n)) == false { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
