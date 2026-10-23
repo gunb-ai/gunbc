@@ -11,6 +11,7 @@ import v2.std.node {
   Conj,
   Atom,
   node_synthetic,
+  NotADeclaration
 }
 
 import gunbc.scm.object_store {
@@ -79,7 +80,7 @@ fn scope_of(edges: List<Edge>) -> Node {
 }
 
 fn integration_witness_bind(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 type Fixture {
