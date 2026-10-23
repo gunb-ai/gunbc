@@ -8968,7 +8968,7 @@ fn chain2_value_type(c: Node) -> Node? {
 fn chain2_arg_classes(func: String, c: Node, scope: InferScope) -> List<String> {
   match chain2_value_type(c: c) {
     Present { value: t } =>
-      if type_node_is_ordered_element_run(n: t, source_indices: scope.type_env.source_indices) {
+      if node_is_element_collection(n: t, source_indices: scope.type_env.source_indices) && !node_is_set_collection(n: t, source_indices: scope.type_env.source_indices) {
         if func == "join" {
           t.children |> map(ch => chain2_class(t: child_type_node(ch: ch), scope: scope)) |> filter(k => k != "")
         } else { [] }
