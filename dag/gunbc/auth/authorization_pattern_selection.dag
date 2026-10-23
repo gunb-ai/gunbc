@@ -229,9 +229,13 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
 // (e) AdministratorEdge -- the fleet's administrator principal over its SSH edge
 //     (gunbc.fleet.fleet_bootstrap_principal executor_bootstrap_principal), whose key is itself
 //     released only to a run pinned at reviewed main (gunbc.auth.oidc_claim_pins). It is a candidate
-//     ONLY for an effect of MintsHostRootReach: the merge to main is the consent that witnesses the
-//     effect's class, the run is unattended, and the receipt is the run. The job user of a run that
-//     executes pull-request code holds neither the key nor this pattern.
+//     ONLY for an effect of MintsHostRootReach that must run unattended (unattended_required): the
+//     merge to main is the consent that witnesses the effect's class, the run is unattended, and the
+//     receipt is the run. The job user of a run that executes pull-request code holds neither the
+//     key nor this pattern. OPERATOR RULING 2026-10-22 (gunbc.design_ruling one_approval_route_for_every_privileged_action):
+//     the edge is not a second approval route. An effect a human can attend is approved through the
+//     broker route (b) alone, so for FleetOnce, DeviceOnce, EveryOperatorRequest and BreakGlassOnly
+//     host-root reach the edge is not a candidate; it remains only where no human can be present.
 type AuthorizationPattern
   = FederatedScopedGrant
   | OperatorApprovedCapability
@@ -271,7 +275,7 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
 fn candidate_patterns(e: PrivilegedEffect) -> List<AuthorizationPattern> {
   let api_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession]
   let with_edge = match e.minted_reach {
-    MintsHostRootReach => concat(api_patterns, [AdministratorEdge])
+    MintsHostRootReach => if unattended_required(e: e) { concat(api_patterns, [AdministratorEdge]) } else { api_patterns }
     MintsNoCredential => api_patterns
     MintsResourceScopedCredential => api_patterns
     MintsProjectWideCredential => api_patterns
