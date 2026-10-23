@@ -790,32 +790,17 @@ fn type_decl_member_child_walk(shape: TypeDeclMemberShape) -> TypeDeclChildWalk 
 // symbol_index_entry_at could miss and then mint a kind (DESIGN section 5). Payload, resource
 // and namespace-body facts are stored beside the node because the node cannot answer them.
 fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBindingCandidate) -> OccurrenceCategory {
-  let marked_at = symbol_index_candidate_marked_path(index: index, candidate: candidate)
-  match symbol_index_declared_payload_at(index: index, qualified_path: marked_at) {
+  match symbol_index_declared_payload_at(index: index, qualified_path: candidate.path) {
     Present { value: VariantArmPayload } => ConstructorOccurrence
     Present { value: RecordTypePayload } => TypeOccurrence
     Absent =>
-      if symbol_index_binds_namespace_body_at(index: index, qualified_path: marked_at) {
+      if symbol_index_binds_namespace_body_at(index: index, qualified_path: candidate.path) {
         NamespaceSegmentOccurrence
-      } else if symbol_index_declares_resource_at(index: index, qualified_path: marked_at) {
+      } else if symbol_index_declares_resource_at(index: index, qualified_path: candidate.path) {
         TypeOccurrence
       } else {
-        type_decl_member_occurrence_category(shape: type_decl_member_shape(index: index, path: marked_at, node: candidate.node))
+        type_decl_member_occurrence_category(shape: type_decl_member_shape(index: index, path: candidate.path, node: candidate.node))
       }
-  }
-}
-
-// WHERE A CANDIDATE'S DECLARATION MARKS LIVE. Payload, resource and namespace-body marks are written at
-// the DECLARING path (v2.compiler.symbol_index_fill), while an import binding is a candidate at the
-// IMPORTING module's path, so a binding read its own path and found no mark: an imported resource fell
-// through to its Conj shape and was excluded from the type position a `requires` member reads. A binding
-// with one declaring path is classified there; an unbound or contested one keeps the candidate's own
-// path, which is the declaring path for a local declaration.
-fn symbol_index_candidate_marked_path(index: SymbolIndex, candidate: LexicalBindingCandidate) -> QualifiedName {
-  match symbol_index_declaring_path_of(index: index, target: candidate.path) {
-    MentionDeclaringUnique { declaring: declaring } => declaring
-    MentionDeclaringUnavailable => candidate.path
-    MentionDeclaringContested { claimants: _ } => candidate.path
   }
 }
 
