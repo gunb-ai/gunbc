@@ -5688,6 +5688,7 @@ type InferLiteralRefinementDemand {
   site: Node
   predicate: Node
   target: Node
+  carrier: Node
 }
 
 type InferApplicationArguments {
@@ -5757,7 +5758,7 @@ fn infer_literal_refinement_demand(
                       )
                     ) {
                       Inhabits { homomorphism: _ } =>
-                        Present { value: InferLiteralRefinementDemand { site: pair.arg, predicate: predicate, target: target } }
+                        Present { value: InferLiteralRefinementDemand { site: pair.arg, predicate: predicate, target: target, carrier: refinement.carrier } }
                       InhabitanceRefused { find_witness_reason: _ } => Absent
                       InhabitanceUndecidable { reason: _ } => Absent
                     }
@@ -5791,6 +5792,42 @@ fn infer_pairs_literal_demands(
   })
 }
 
+// ONE FORMAL/ACTUAL JUDGMENT. A literal at a where-refined formal is judged against the refinement's CARRIER
+// here (grounding and the instantiation record are the same judgment as any argument's), while its predicate
+// is owed as an obligation by infer_literal_refinement_demand: one judgment, two outputs.
+fn infer_judge_one_formal_arg(
+  judged: InhabitanceFormalArg,
+  pd: Diagnostics,
+  instances: List<TypeVariableInstance>,
+  position: DeclaredTypePosition,
+  site: InferJudgedSite,
+  entries: Map<Node, List<InferredFacts>>,
+  declarations: SymbolIndex,
+  bindings: SymbolIndex,
+  type_params: List<Symbol>,
+  rigid_binders: List<Symbol>,
+) -> Outcome<List<TypeVariableInstance>> {
+          match infer_judge_application_argument_instantiating(
+            position: position,
+            application: infer_judged_site_node(site: site, actual: judged.arg),
+            entries: entries,
+            declarations: declarations,
+            bindings: bindings,
+            formal: judged.formal,
+            arg: judged.arg,
+            type_params: type_params,
+            instances: instances,
+            rigid_binders: rigid_binders
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: next, diagnostics: jd } =>
+              Accepted {
+                value: next,
+                diagnostics: diagnostics_merge(outer: pd, inner: jd)
+              }
+          }
+}
+
 fn infer_judge_formal_args(
   position: DeclaredTypePosition,
   site: InferJudgedSite,
@@ -5817,27 +5854,10 @@ fn infer_judge_formal_args(
             declarations: declarations,
             bindings: bindings
           ) {
-            Present { value: _ } => Accepted { value: instances, diagnostics: pd }
+            Present { value: demand } =>
+              infer_judge_one_formal_arg(judged: InhabitanceFormalArg { formal: InhabitanceFormal { parameter_identity: pair.formal.parameter_identity, declared: demand.carrier }, arg: pair.arg }, pd: pd, instances: instances, position: position, site: site, entries: entries, declarations: declarations, bindings: bindings, type_params: type_params, rigid_binders: rigid_binders)
             Absent =>
-          match infer_judge_application_argument_instantiating(
-            position: position,
-            application: infer_judged_site_node(site: site, actual: pair.arg),
-            entries: entries,
-            declarations: declarations,
-            bindings: bindings,
-            formal: pair.formal,
-            arg: pair.arg,
-            type_params: type_params,
-            instances: instances,
-            rigid_binders: rigid_binders
-          ) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: next, diagnostics: jd } =>
-              Accepted {
-                value: next,
-                diagnostics: diagnostics_merge(outer: pd, inner: jd)
-              }
-          }
+              infer_judge_one_formal_arg(judged: pair, pd: pd, instances: instances, position: position, site: site, entries: entries, declarations: declarations, bindings: bindings, type_params: type_params, rigid_binders: rigid_binders)
           }
       }
     }
