@@ -100,12 +100,12 @@ fn probe_fixture_table(name: String, text: String) -> String {
 }
 
 fn binder_site_probe() -> ProcessExit {
-  exit_failure(reason:
-    probe_fixture_table(name: "pun", text: probe_fixture_pun())
+  let table = probe_fixture_table(name: "pun", text: probe_fixture_pun())
     + probe_fixture_table(name: "pun_in_scope_call", text: probe_fixture_pun_in_scope_call())
     + probe_fixture_table(name: "let", text: probe_fixture_let())
     + probe_fixture_table(name: "param", text: probe_fixture_param())
     + probe_fixture_table(name: "param_called", text: probe_fixture_param_called())
     + probe_fixture_table(name: "arrow", text: probe_fixture_arrow())
-    + probe_fixture_table(name: "control_free_only", text: probe_fixture_control_free_only()))
+    + probe_fixture_table(name: "control_free_only", text: probe_fixture_control_free_only())
+  exit_failure(reason: table)
 }
