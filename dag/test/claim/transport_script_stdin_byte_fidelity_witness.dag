@@ -52,7 +52,11 @@ test fn transport_script_stdin_delivers_exact_bytes() -> Bool {
   stdin_exact_bytes(payload: payload) == payload
 }
 
-test fn transport_script_stdin_fidelity_is_independent_of_terminal_newline() -> Bool {
+// DECLARED DROP OF A CASE: the former control ran one body with and without a terminal newline on the
+// SCRIPT. A materialized script has a fixed ending, so that axis is no longer reachable through an
+// admitted minter and is not exercised here. What remains is the return-side half it pinned: stdout
+// keeps, and does not add, a terminal newline.
+test fn transport_script_stdout_preserves_a_terminal_newline() -> Bool {
   stdin_exact_bytes(payload: "newline-probe") == "newline-probe"
     && stdin_exact_bytes(payload: "newline-probe\n") == "newline-probe\n"
 }
