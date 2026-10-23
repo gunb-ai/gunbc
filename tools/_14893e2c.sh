@@ -12,8 +12,9 @@ rm -rf /sys/fs/cgroup/ver893e2c 2>/dev/null || true; mkdir -p /sys/fs/cgroup/ver
 echo 51539607552 > /sys/fs/cgroup/ver893e2c/memory.max
 RB=$(cat /sys/fs/cgroup/ver893e2c/memory.max)
 { [ "$RB" != "max" ] && [ -n "$RB" ]; } || { echo "MEMORY_BOUND_READBACK_FAIL got=$RB -- STOP"; exit 9; }
-echo "CGROUP_WRAPPER=/sys/fs/cgroup/ver893e2c memory.max=$RB (read-back, bounded)"
-exec 11>/sys/fs/cgroup/ver893e2c/cgroup.procs; echo $BASHPID >&11
+echo "CGROUP_PROOF=/sys/fs/cgroup/ver893e2c memory.max=$RB (read-back; census arms run UNBOUND as in CI per probe finding)"
+# NOTE: no BASHPID bind here: the probe showed the census governor refuses under an inherited
+# bound cgroup (rc=2 134B) but runs clean unbounded, exactly as CI (externally-bounded runner).
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 git worktree prune >/dev/null 2>&1 || true
 git fetch -q origin +refs/pull/14893/head:refs/verifier/f14893e2b || { echo FETCH_FAIL; exit 9; }
