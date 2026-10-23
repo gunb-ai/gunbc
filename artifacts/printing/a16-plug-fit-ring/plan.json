@@ -4,18 +4,18 @@
     "version": "1",
     "plates": [
       {
-        "attempt": "a16-inlet-duct-fit-v1",
+        "attempt": "a16-plug-fit-ring-v1",
         "placements": [
           {
-            "id": "DUCT",
+            "id": "FIT-RING",
             "rx": 0,
             "ry": 0,
             "rz": 0,
-            "x_um": 36000,
-            "y_um": 44000
+            "x_um": 40000,
+            "y_um": 70000
           }
         ],
-        "support_free": []
+        "support_free": ["FIT-RING"]
       }
     ]
   }
