@@ -19,9 +19,9 @@ fn blocking_count(source: String) -> Int {
   }
 }
 
-data unique_src: String = "module probe_um_a\n\ntype Solo {\n  n: Int\n}\n\ntype Nothing2 {\n  tag: Int\n}\n\ntype PickUnique = Solo | Nothing2\n\nfn pick_solo() -> PickUnique {\n  Solo { n: 1 }\n}\n"
+data unique_src: String = "module probe_um_a\n\nimport std.types { Int }\n\ntype Solo {\n  n: Int\n}\n\ntype Nothing2 {\n  tag: Int\n}\n\ntype PickUnique = Solo | Nothing2\n\nfn pick_solo() -> PickUnique {\n  Solo { n: 1 }\n}\n"
 
-data imported_src: String = "module probe_um_b\n\nimport std.nat { Nat }\n\ntype Nothing3 {\n  tag: Int\n}\n\ntype NatOrNone = Nat | Nothing3\n\nfn pick() -> NatOrNone {\n  Nothing3 { tag: 1 }\n}\n"
+data imported_src: String = "module probe_um_b\n\nimport std.types { Int }\nimport std.nat { Nat }\n\ntype Nothing3 {\n  tag: Int\n}\n\ntype NatOrNone = Nat | Nothing3\n\nfn pick() -> NatOrNone {\n  Nothing3 { tag: 1 }\n}\n"
 
 data fresh_src: String = "module probe_um_c\n\ntype Pick3 = Alpha | Beta\n\nfn pick() -> Pick3 {\n  Alpha\n}\n"
 
@@ -33,3 +33,4 @@ fn p_imported_accepted() -> Bool { blocking_count(imported_src) == 0 }
 fn p_imported_unit_struct_minted() -> Bool { compile_dag_rust_emit_check(imported_src, "src/probe_um_b.rs", ["pub struct Nat;"], []) }
 fn p_fresh_accepted() -> Bool { blocking_count(fresh_src) == 0 }
 fn p_fresh_unit_struct_minted() -> Bool { compile_dag_rust_emit_check(fresh_src, "src/probe_um_c.rs", ["pub struct Alpha;"], []) }
+fn p_unique_body_is_the_variant() -> Bool { compile_dag_rust_emit_check(unique_src, "src/probe_um_a.rs", ["PickUnique::Solo"], []) }
