@@ -3866,7 +3866,7 @@ test fn an_empty_sweep_selects_no_admissible_rows() -> Bool {
 
 test fn a_bound_slot_selects_the_executable_row() -> Bool {
   match select_admissible(readiness: admissible_readiness_for(
-    blocker: NoInterfaceCarriesPxe,
+    blocker: NetworkBootOptionNotSelected,
     redirect_to: redirect_target(join: fixture_join(), available: fixture_available()),
     existence: fixture_existence_enabled(),
     observed_bios_version: present(version: "1.08"),
@@ -3900,7 +3900,7 @@ test fn the_old_disagree_shape_is_refused_by_the_compiler() -> Bool {
     Absent => false
     Present { value: probe } => census_count_at_key(
       rows: probe.rows,
-      diagnostic_class: "CallArgumentNameUnknown",
+      diagnostic_class: "FieldNotFound",
       subject_name: "executable",
       blocking: true,
     ) >= 1
