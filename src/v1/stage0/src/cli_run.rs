@@ -12776,6 +12776,13 @@ pub enum CostAccountingRefusal {
     NestedSpanAttribution { nested_spans: u64 },
     /// No resolve span ran on this thread — there is nothing to partition.
     NoSpans,
+    /// A stage's span-captured total exceeds the thread's total for it, so the two slot
+    /// accounts disagree and the out-of-span remainder does not exist.
+    InSpanExceedsThread {
+        stage: &'static str,
+        in_span_nanos: u128,
+        thread_nanos: u128,
+    },
 }
 
 /// An exclusive, non-overlapping accounting of the measured parent work.
@@ -12874,27 +12881,57 @@ pub fn exclusive_cost_partition() -> ExclusiveCostPartition {
     // own typed rows beside the partition (totals minus the span-captured rows), never a
     // child of the parent span and never summed into `sum_exclusive`.
     let whole = args(&totals);
-    let out_of_span = whole
-        .exclusive
-        .iter()
-        .zip(partition.exclusive.iter())
-        .filter_map(|(all, inside)| {
-            let outside = all.nanos.saturating_sub(inside.nanos);
-            (outside > 0).then_some(CostPartitionRow {
-                name: all.name,
-                nanos: outside,
-            })
-        })
-        .collect();
+    // A reversed universe is a refusal naming the stage, never a clamp to "no out-of-span
+    // cost": it outranks a reconciled verdict and leaves an already-refused one in place.
+    let (out_of_span, verdict) = match out_of_span_rows(&whole.exclusive, &partition.exclusive) {
+        Ok(rows) => (rows, partition.verdict),
+        Err(cause) => (
+            Vec::new(),
+            match partition.verdict {
+                CostAccountingVerdict::Reconciled { .. } => {
+                    CostAccountingVerdict::Refused { cause }
+                }
+                refused => refused,
+            },
+        ),
+    };
     // Counts and volumes (builds, modules, scan bytes) are events of the whole thread, not
     // span-bound durations, so they and the inclusive observations keep the totals.
     ExclusiveCostPartition {
         exclusive: partition.exclusive,
         remainder_nanos: partition.remainder_nanos,
-        verdict: partition.verdict,
+        verdict,
         out_of_span,
         ..whole
     }
+}
+
+/// Stage time the thread recorded that no top-level span captured: thread totals minus the
+/// span-captured rows, per stage. The span-captured rows are a subset of the thread totals by
+/// construction, so a stage whose in-span total exceeds the thread total is two slot accounts
+/// disagreeing and refuses naming that stage.
+fn out_of_span_rows(
+    thread: &[CostPartitionRow],
+    in_span: &[CostPartitionRow],
+) -> Result<Vec<CostPartitionRow>, CostAccountingRefusal> {
+    let mut rows = Vec::new();
+    for (all, inside) in thread.iter().zip(in_span.iter()) {
+        match all.nanos.checked_sub(inside.nanos) {
+            Some(0) => {}
+            Some(outside) => rows.push(CostPartitionRow {
+                name: all.name,
+                nanos: outside,
+            }),
+            None => {
+                return Err(CostAccountingRefusal::InSpanExceedsThread {
+                    stage: all.name,
+                    in_span_nanos: inside.nanos,
+                    thread_nanos: all.nanos,
+                })
+            }
+        }
+    }
+    Ok(rows)
 }
 
 /// Same law over a caller-supplied parent/children pair drawn from ONE universe.
@@ -13334,6 +13371,21 @@ pub fn render_exclusive_cost_partition_json(
                 }
                 CostAccountingRefusal::NoSpans => {
                     out.push_str("{\"kind\":\"NoSpans\"}");
+                }
+                CostAccountingRefusal::InSpanExceedsThread {
+                    stage,
+                    in_span_nanos,
+                    thread_nanos,
+                } => {
+                    out.push_str("{\"kind\":\"InSpanExceedsThread\",\"stage\":");
+                    out.push('"');
+                    out.push_str(&esc(stage.to_string()));
+                    out.push('"');
+                    out.push_str(",\"in_span_nanos\":");
+                    out.push_str(&json_num(*in_span_nanos));
+                    out.push_str(",\"thread_nanos\":");
+                    out.push_str(&json_num(*thread_nanos));
+                    out.push('}');
                 }
             }
             out.push_str(",\"shares_quotable\":false}");
@@ -32235,6 +32287,29 @@ mod exclusive_cost_partition_law {
             "the out-of-span parse must be reported, typed, not dropped"
         );
         assert!(in_span(0).out_of_span.is_empty());
+    }
+
+    /// RED: a stage whose in-span total exceeds the thread total is two slot accounts
+    /// disagreeing; it refuses naming the stage instead of clamping to "no out-of-span cost".
+    /// POSITIVE CONTROL: the same rows with in-span <= thread yield the remainder.
+    #[test]
+    fn an_in_span_total_above_the_thread_total_refuses_naming_the_stage() {
+        let row = |name: &'static str, nanos: u128| CostPartitionRow { name, nanos };
+        let thread = [row("load", 100), row("pool_parse", 50)];
+        let rows = out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 20)])
+            .expect("in-span within thread totals");
+        assert_eq!(
+            rows.iter().map(|r| (r.name, r.nanos)).collect::<Vec<_>>(),
+            vec![("pool_parse", 30)]
+        );
+        match out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 51)]) {
+            Err(CostAccountingRefusal::InSpanExceedsThread {
+                stage,
+                in_span_nanos,
+                thread_nanos,
+            }) => assert_eq!((stage, in_span_nanos, thread_nanos), ("pool_parse", 51, 50)),
+            other => panic!("expected InSpanExceedsThread, got {other:?}"),
+        }
     }
 
     #[test]
