@@ -19,12 +19,13 @@ import v2.extdeps.languages.dag {
   dag_call_direct_arg_slots,
   dag_call_positional_arg_value_optional,
   dag_named_arg_name_node_optional,
+  dag_named_arg_value_optional,
   parse_production_captured_child_optional,
   import_decl_target_module,
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, list_sort_by_key, int_total_order }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -69,11 +70,10 @@ import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string 
 // and applied with roster_import_sweep_apply_exit --arg root_dir=<absolute worktree root> --arg paths_csv=<paths relative to the root>
 //
 // Pending rows leave the process through roster_import_sweep_exit's reason channel.
-// SCOPE: the ruling-B shapes only (concat/count/map/join). map_get -> map_lookup is NOT swept: map_lookup is not a drop-in for
-// map_get under the seed (dag/std/graph.dag stops resolving: match arms typed String vs List<String>), so the
-// rename is a Map-home question held for the operator's table, with the collection-op signatures. Homes for
-// chars, List, list_push or Map wait for the operator's home table; the table below is the single
-// place a row would be added.
+// SCOPE: the ruling-B shapes (concat/count/map/join), chars, and map_get -> map_lookup (tidy-ant-251's ruling A: a
+// RenameHead row; std.algebra map_lookup already declares the operation). The earlier hold on map_get -- dag/std/graph.dag
+// stopping resolving after the rename -- did not reproduce at main 5cadf42 on resolve, typecheck or the emitted self-host
+// build. Further homes wait for the operator's home table; the table below is the single place a row would be added.
 
 // ONE ROW PER AMBIENT NAME: the bare call spelling, the name the import binds, and the name's ONE declared home module.
 // The generator is home-agnostic; a wave is a row here (NAMESPACE-XL), never a branch.
@@ -82,7 +82,21 @@ type RosterHeadRow {
   import_name: String
   home: QualifiedName
   labels: List<RosterLabelRename>
+  head: RosterHeadRewrite
+  positional: List<String>
 }
+
+// A ROW WHOSE HOME DECLARES THE OPERATION UNDER ANOTHER NAME (tidy-ant-251's map_get ruling A: the ambient spelling's
+// operation is already declared, so the call moves to the declaration rather than minting a second name for it).
+// KeepHead is every row whose call spelling IS the home's name, so the rows that predate this field are unchanged by
+// construction. RenameHead rewrites each selected call head to `to`; `positional` is the row's other half of the same
+// fact: the home declaration's parameter labels, in order, given to a call's positional arguments, because the home's
+// callable is called by label where the ambient spelling was called by position. A call that does not have exactly that
+// many positional arguments, or that names any argument, refuses: the row cannot know which parameter a named or
+// surplus argument meant.
+type RosterHeadRewrite
+  = KeepHead
+  | RenameHead { to: String }
 
 // THE ARGUMENT LABELS A ROW'S HOME RENAMES at its call sites: a field of the row, so the call and the home a rename belongs
 // to are the row's own facts, stated once (review 82024).
@@ -147,6 +161,11 @@ type RosterRefusalReason
   | RefusalHomeClosureUnread { home: String }
   | RefusalModuleNameUnread
   | RefusalApplyNeedsOneHome
+  // A RenameHead row's call whose arguments the row's positional labels cannot place: a different number of positional
+  // arguments than the row declares, a named argument (the row cannot tell which parameter it meant), or a bare
+  // reference with no call. The file is left untouched and the cause names the call spelling.
+  | RefusalRenameCallArity { call: String }
+  | RefusalRenameCallNamedArgument { call: String }
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -182,6 +201,8 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
     RefusalModuleNameUnread => "module-name-unread"
     RefusalApplyNeedsOneHome => "apply-needs-one-home"
+    RefusalRenameCallArity { call: c } => "rename-call-arity call=" + c
+    RefusalRenameCallNamedArgument { call: c } => "rename-call-named-argument call=" + c
   }
 }
 
@@ -272,17 +293,29 @@ type RosterLabelEdit {
 
 fn roster_head_rows() -> List<RosterHeadRow> {
   [
-    RosterHeadRow { call: "concat", import_name: "collection_concat_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] },
-    RosterHeadRow { call: "count", import_name: "collection_count_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] },
-    RosterHeadRow { call: "map", import_name: "collection_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] },
-    RosterHeadRow { call: "join", import_name: "collection_join_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] },
+    RosterHeadRow { call: "concat", import_name: "collection_concat_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, positional: [] },
+    RosterHeadRow { call: "count", import_name: "collection_count_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, positional: [] },
+    RosterHeadRow { call: "map", import_name: "collection_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, positional: [] },
+    RosterHeadRow { call: "join", import_name: "collection_join_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, positional: [] },
     // NAMESPACE-XL wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars has one declared home.
     RosterHeadRow {
       call: "chars",
       import_name: "chars",
       home: qualified_name_from_dotted_string(dotted: "std.host_text"),
       // std.host_text declares fn chars(text: HostText); the ambient spelling's callers wrote s:.
-      labels: [RosterLabelRename { from: "s", to: "text" }]
+      labels: [RosterLabelRename { from: "s", to: "text" }],
+      head: KeepHead,
+      positional: []
+    },
+    // map_get's operation is ALREADY declared (tidy-ant-251's ruling A): std.algebra map_lookup(m, key), the same keyed
+    // read with the same Optional<V> answer, so the call moves to that declaration instead of minting a second name for it.
+    RosterHeadRow {
+      call: "map_get",
+      import_name: "map_lookup",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [],
+      head: RenameHead { to: "map_lookup" },
+      positional: ["m", "key"]
     }
   ]
 }
@@ -304,6 +337,37 @@ fn roster_import_sweep_home_exit(paths_csv: String, home: String) -> ProcessExit
     Accepted { value: prepared, diagnostics: _ } => roster_sweep_all(paths_csv: paths_csv, prepared: prepared, lex: dag_prepared_lex(), scope: scope)
   }
   if (rows == "") { ExitSuccess } else { exit_failure(reason: rows) }
+}
+
+// THE RENAME CENSUS (tidy-ant-251's condition 2 on the map_get ruling): report-only, one home, one asked call spelling.
+// Every file gets a `CENSUS <path> call=<call> heads=<n>` line -- the lexical primary heads spelled `call`, the population
+// to account for -- followed by exactly the rows the sweep would emit for it (EDIT, LABEL, REFUSE), from ONE read and ONE
+// parse of the file. A head that is counted but planned no edit is bound elsewhere (a parameter, a local, a module-level
+// declaration, an import of another `call`) and the sweep's own classifier says so; a disagreement refuses located. A
+// method spelling (`x.call`) is not a primary head and is not counted. Nothing is written.
+fn roster_rename_census_exit(paths_csv: String, home: String, call: String) -> ProcessExit {
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home) }
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => exit_failure(reason: roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared))
+    Accepted { value: prepared, diagnostics: _ } =>
+      let closures = roster_home_closures(root: "", scope: scope)
+      let lex = dag_prepared_lex()
+      exit_failure(reason: fold_list(
+        xs: split(s: paths_csv, delimiter: ","),
+        empty: "",
+        cons: fn(acc, path) { acc + roster_census_path(path: path, prepared: prepared, lex: lex, scope: scope, closures: closures, call: call) }
+      ))
+  }
+}
+
+fn roster_census_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>, call: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    let census = roster_census_text_rows(path: path, text: read.content, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures, census_call: call)
+    "CENSUS " + path + " call=" + call + " heads=" + int_to_decimal_string(value: census.heads) + "\n" + roster_render_outcome(path: path, outcome: census.outcome)
+  } else {
+    roster_refuse_row(path: path, reason: RefusalUnreadable)
+  }
 }
 
 fn roster_import_sweep_apply_home_exit(root_dir: String, paths_csv: String, home: String) -> ProcessExit {
@@ -842,16 +906,36 @@ fn roster_sweep_text_scoped(path: String, text: String, prepared: PreparedGramma
 // the production table does not carry -- Wave 2's shape) so a refusal or a plan is measured against THAT row, never
 // against whatever the generator's table happens to hold. The production path reaches it through the scope filter above.
 fn roster_sweep_text_rows(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> RosterOutcome {
+  roster_census_text_rows(path: path, text: text, prepared: prepared, lex: lex, candidates: candidates, closures: closures, census_call: "").outcome
+}
+
+// THE SWEEP'S ONE READ OF A FILE, with the census count beside its outcome: `heads` is the number of parse-tree primary
+// heads spelled `census_call` (the lexical population the rename census accounts for; 0 when no call is asked), counted
+// off the same parse the outcome came from, so the census never re-reads or re-parses a file.
+type RosterCensusRead {
+  outcome: RosterOutcome
+  heads: Int
+}
+
+fn roster_census_refused(reason: RosterRefusalReason) -> RosterCensusRead {
+  RosterCensusRead { outcome: RosterRefused { reason: reason }, heads: 0 }
+}
+
+fn roster_census_heads(parse_root: Node, call: String) -> Int {
+  if call == "" { 0 } else { fold_list(xs: roster_primary_heads(parse_root: parse_root, call: call), empty: 0, cons: fn(n, _h) { n + 1 }) }
+}
+
+fn roster_census_text_rows(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: String) -> RosterCensusRead {
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-        Rejected { diagnostics: _ } => RosterRefused { reason: RefusalTokenizeRefused }
+        Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalTokenizeRefused)
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
-            Rejected { diagnostics: _ } => RosterRefused { reason: RefusalParseRefused }
+            Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalParseRefused)
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-                Rejected { diagnostics: _ } => RosterRefused { reason: RefusalNormalizeRefused }
+                Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
                 Accepted { value: scoped, diagnostics: _ } =>
-                  match roster_sweep_rows(
+                  let outcome = match roster_sweep_rows(
                     parse_root: artifact.tree,
                     spans: artifact.span_index,
                     normalized_root: scoped.tree.root,
@@ -862,6 +946,7 @@ fn roster_sweep_text_rows(path: String, text: String, prepared: PreparedGrammar,
                     RosterClean => roster_label_outcome(parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates)
                     other => other
                   }
+                  RosterCensusRead { outcome: outcome, heads: roster_census_heads(parse_root: artifact.tree, call: census_call) }
               }
           }
       }
@@ -878,6 +963,7 @@ type RosterLabelPlan
   = LabelsSelected { edits: List<RosterLabelEdit> }
   | LabelsAmbiguous
   | LabelsLocallyBound
+  | LabelsRenameRefused { reason: RosterRefusalReason }
 
 fn roster_label_plan(
   parse_root: Node,
@@ -900,11 +986,13 @@ fn roster_label_plan(
       match acc {
         LabelsAmbiguous => LabelsAmbiguous
         LabelsLocallyBound => LabelsLocallyBound
+        LabelsRenameRefused { reason: rr } => LabelsRenameRefused { reason: rr }
         LabelsSelected { edits: es } =>
           fold_list(xs: dag_call_direct_arg_slots(node: head), empty: LabelsSelected { edits: es }, cons: fn(inner, slot) {
             match inner {
               LabelsAmbiguous => LabelsAmbiguous
               LabelsLocallyBound => LabelsLocallyBound
+              LabelsRenameRefused { reason: rr } => LabelsRenameRefused { reason: rr }
               LabelsSelected { edits: es2 } =>
                 // An argument whose capture does not read could be the label this row renames; it is never skipped.
                 match slot {
@@ -1006,31 +1094,161 @@ fn roster_rows_label_plan(
   imported: List<AliasBindingRow>,
   rows: List<RosterHeadRow>
 ) -> RosterLabelPlan {
-  fold_list(xs: rows, empty: LabelsSelected { edits: [] }, cons: fn(acc, row) {
+  let planned = fold_list(xs: rows, empty: LabelsSelected { edits: [] }, cons: fn(acc, row) {
     match acc {
       LabelsAmbiguous => LabelsAmbiguous
       LabelsLocallyBound => LabelsLocallyBound
+      LabelsRenameRefused { reason: rr } => LabelsRenameRefused { reason: rr }
       LabelsSelected { edits: es } =>
-        if is_empty(xs: row.labels) {
+        if is_empty(xs: row.labels) && !roster_row_renames_head(row: row) {
           acc
         } else if roster_name_locally_bound(normalized_root: normalized_root, call: row.call) {
           LabelsLocallyBound
         } else {
-          fold_list(xs: row.labels, empty: LabelsSelected { edits: es }, cons: fn(inner, rename) {
+          let labelled = fold_list(xs: row.labels, empty: LabelsSelected { edits: es }, cons: fn(inner, rename) {
             match inner {
               LabelsAmbiguous => LabelsAmbiguous
               LabelsLocallyBound => LabelsLocallyBound
+              LabelsRenameRefused { reason: rr } => LabelsRenameRefused { reason: rr }
               LabelsSelected { edits: es2 } =>
                 match roster_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, rename: rename) {
                   LabelsAmbiguous => LabelsAmbiguous
                   LabelsLocallyBound => LabelsLocallyBound
+                  LabelsRenameRefused { reason: rr } => LabelsRenameRefused { reason: rr }
                   LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es2, right: more) }
                 }
             }
           })
+          match labelled {
+            LabelsSelected { edits: es3 } =>
+              match row.head {
+                KeepHead => labelled
+                RenameHead { to: to } =>
+                  match roster_rename_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to) {
+                    LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es3, right: more) }
+                    other => other
+                  }
+              }
+            other => other
+          }
         }
     }
   })
+  // THE SPLICE NEEDS ITS EDITS IN SOURCE ORDER (roster_label_splices applies them last-first). A rename's head edit and
+  // its argument insertions, and a call nested in another's argument, are planned call by call, so the plan is put in
+  // byte order once here. At one byte, a zero-width insertion sorts before the replacement starting there: applied
+  // last-first, the replacement lands first and the label is then inserted in front of it.
+  match planned {
+    LabelsSelected { edits: es } => LabelsSelected { edits: list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order()) }
+    other => other
+  }
+}
+
+fn roster_label_edit_order_key(e: RosterLabelEdit) -> Int {
+  if e.start == e.end { e.start * 2 } else { e.start * 2 + 1 }
+}
+
+fn roster_row_renames_head(row: RosterHeadRow) -> Bool {
+  match row.head {
+    KeepHead => false
+    RenameHead { to: _ } => true
+  }
+}
+
+// THE RENAME PLAN OF ONE RenameHead ROW. The calls it rewrites are exactly the ones the label plan would relabel: the
+// parse tree's primary heads spelled `call`, which must agree in number with the reference-site collector's FREE sites of
+// that spelling (roster_site_is_free -- the one classifier, so a head bound by a parameter, a local, a module-level
+// declaration or an import of another `call` is never a candidate, and a disagreement refuses label-sites-ambiguous).
+// Each selected call gets one replacement of its head atom (`call` to `to`, checked byte-for-byte again at apply) and one
+// zero-width insertion of `<label>: ` before each positional argument, in the row's declared order.
+fn roster_rename_plan(
+  parse_root: Node,
+  spans: SpanIndex,
+  normalized_root: Node,
+  imported: List<AliasBindingRow>,
+  row: RosterHeadRow,
+  to: String
+) -> RosterLabelPlan {
+  let sites = collect_scoped_module_reference_sites(
+    root: normalized_root,
+    imported: list_map(xs: imported, f: fn(b) { b.binding })
+  ).sites
+  let imported_from_home = roster_symbol_imported(imported: imported, row: row)
+  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_site_is_free(site: st, row: row, imported_from_home: imported_from_home) && roster_spelling_is(qn: st.site.spelling, call: row.call) { n + 1 } else { n } })
+  let heads = roster_primary_heads(parse_root: parse_root, call: row.call)
+  if length(xs: heads) != free {
+    LabelsAmbiguous
+  } else {
+    fold_list(xs: heads, empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
+      match acc {
+        LabelsSelected { edits: es } =>
+          match roster_rename_call_edits(head: head, spans: spans, row: row, to: to) {
+            LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
+            other => other
+          }
+        other => other
+      }
+    })
+  }
+}
+
+fn roster_rename_call_edits(head: Node, spans: SpanIndex, row: RosterHeadRow, to: String) -> RosterLabelPlan {
+  match find_named_child(root: head, name: ^grammar_sequence_left_node_projection) {
+    Rejected { diagnostics: _ } => LabelsAmbiguous
+    Accepted { value: atom, diagnostics: _ } =>
+      match roster_node_byte_range(node: atom, spans: spans) {
+        Absent => LabelsAmbiguous
+        Present { value: r } =>
+          let slots = dag_call_direct_arg_slots(node: head)
+          if length(xs: slots) != length(xs: row.positional) {
+            LabelsRenameRefused { reason: RefusalRenameCallArity { call: row.call } }
+          } else {
+            fold_list(
+              xs: roster_zip_slots(slots: slots, labels: row.positional),
+              empty: LabelsSelected { edits: [RosterLabelEdit { start: r.start, end: r.end, from: row.call, to: to }] },
+              cons: fn(acc, pair) {
+                match acc {
+                  LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
+                  other => other
+                }
+              }
+            )
+          }
+      }
+  }
+}
+
+type RosterSlotLabel {
+  slot: Optional<Node>
+  label: String
+}
+
+fn roster_zip_slots(slots: List<Optional<Node>>, labels: List<String>) -> List<RosterSlotLabel> {
+  match slots {
+    Empty => []
+    Cons { head: s, tail: rest } =>
+      match labels {
+        Empty => []
+        Cons { head: l, tail: more } => Cons { head: RosterSlotLabel { slot: s, label: l }, tail: roster_zip_slots(slots: rest, labels: more) }
+      }
+  }
+}
+
+// An argument whose capture does not read, or that is NAMED, is never given a label: the first is a placement the row
+// cannot verify, the second a parameter choice the author already made and the row cannot map.
+fn roster_positional_label_edit(edits: List<RosterLabelEdit>, pair: RosterSlotLabel, spans: SpanIndex, call: String) -> RosterLabelPlan {
+  match pair.slot {
+    Absent => LabelsAmbiguous
+    Present { value: arg } =>
+      match dag_named_arg_value_optional(arg_capture: arg) {
+        Present { value: _ } => LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } }
+        Absent =>
+          match roster_node_byte_range(node: arg, spans: spans) {
+            Absent => LabelsAmbiguous
+            Present { value: r } => LabelsSelected { edits: list_snoc_item(xs: edits, item: RosterLabelEdit { start: r.start, end: r.start, from: "", to: pair.label + ": " }) }
+          }
+      }
+  }
 }
 
 // THE LABEL PASS for a file whose imports are already converged: the in-scope rows whose call is import-visible from their home.
@@ -1047,6 +1265,7 @@ fn roster_label_outcome(
   match roster_rows_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
     LabelsAmbiguous => RosterRefused { reason: RefusalLabelSitesAmbiguous }
     LabelsLocallyBound => RosterRefused { reason: RefusalHomeNameLocallyBound }
+    LabelsRenameRefused { reason: rr } => RosterRefused { reason: rr }
     LabelsSelected { edits: es } => if is_empty(xs: es) { RosterClean } else { RosterLabelEdits { edits: es } }
   }
 }
@@ -1064,6 +1283,7 @@ fn roster_with_pending_labels(
   match roster_rows_label_plan(parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: rows) {
     LabelsAmbiguous => RosterRefused { reason: RefusalLabelSitesAmbiguous }
     LabelsLocallyBound => RosterRefused { reason: RefusalHomeNameLocallyBound }
+    LabelsRenameRefused { reason: rr } => RosterRefused { reason: rr }
     LabelsSelected { edits: labels } =>
       match edit {
         RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
@@ -2043,17 +2263,17 @@ fn roster_kind_specimen_aliased_type() -> String {
 }
 
 fn roster_kind_unclassified_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.no_such_home"), labels: [] }
+  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.no_such_home"), labels: [], head: KeepHead, positional: [] }
 }
 
 // The real Wave 2 row: List at std.types, an aliased type the census now reads as TypeItem.
 fn roster_kind_wave_two_list_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
+  RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [], head: KeepHead, positional: [] }
 }
 
 // The identical row over a census-classified type home: only `home` differs, which is the whole point.
 fn roster_kind_classified_flipped_row() -> RosterHeadRow {
-  RosterHeadRow { call: "List", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] }
+  RosterHeadRow { call: "List", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, positional: [] }
 }
 
 fn roster_kind_unclassified_control(name: String, text: String, row: RosterHeadRow, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -2102,7 +2322,7 @@ fn roster_kind_specimen_data_in_type() -> String {
 // census keys NO row at all for that qualified name (measured kinds=[]): a census coverage gap, reported to the manager
 // as a defect, not absorbed. A control may not assert through an unkeyed census; it would measure the census's silence.
 fn roster_kind_data_row() -> RosterHeadRow {
-  RosterHeadRow { call: "kernel_algebra_profile", import_name: "kernel_algebra_profile", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] }
+  RosterHeadRow { call: "kernel_algebra_profile", import_name: "kernel_algebra_profile", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, positional: [] }
 }
 
 // THE #14338 SPECIMEN ITSELF, as a position control: `fn u(chars: fn(String) -> Int, x: String) -> Int { chars(s: x) }`.
@@ -2116,11 +2336,11 @@ fn roster_kind_specimen_called_parameter() -> String {
 // THE TWO ROWS THE CONTROLS USE, defined once so the premise control and the specimens cannot drift onto different
 // declarations. Built at the same boundary the real rows are: the dotted home is read into a QualifiedName.
 fn roster_kind_type_row() -> RosterHeadRow {
-  RosterHeadRow { call: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [] }
+  RosterHeadRow { call: "FreeMonoid", import_name: "FreeMonoid", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead, positional: [] }
 }
 
 fn roster_kind_value_row() -> RosterHeadRow {
-  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.host_text"), labels: [] }
+  RosterHeadRow { call: "chars", import_name: "chars", home: qualified_name_from_dotted_string(dotted: "std.host_text"), labels: [], head: KeepHead, positional: [] }
 }
 
 // THE SPECIMEN'S RECORDED SITES, through the same three front-end steps roster_sweep_text_scoped runs (tokenize, parse,
