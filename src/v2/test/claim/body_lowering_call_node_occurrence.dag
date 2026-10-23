@@ -3,13 +3,13 @@ module v2.test.claim.body_lowering_call_node_occurrence
 // A LOWERED PRIMARY CALL NODE KEEPS ITS SOURCE'S OCCURRENCE, AND THAT IS WHAT MAKES A FATAL ON IT
 // LOCATABLE. `leaf()` in a function body is authored text; v2.compiler.body_lowering_fold lowers it
 // to its semantic form, so the result stands for that text and takes its occurrence
-// (v2.std.node node_lowered_from, node.dag:423) closed at the root with close_lowered_image (:446) --
-// the same contract the where-predicate call already honours (:1238) and the index-read twin honours
+// (v2.std.node node_lowered_from) closed at the root with close_lowered_image --
+// the same contract the where-predicate call already honours and the index-read twin honours
 // through body_lower_index_read_node. Until this claim, the site built it through the bare
 // node_synthetic in body_lower_transform_call, so the node entered resolve and infer as
 // OccurrenceSynthetic while its argument nodes stayed OccurrenceMinted -- an authored tree under a
 // parent with no authored origin. The cost is observability, exactly where it hurts:
-// v2.compiler.source_root_eval native_census_owner_key (:844) answers Absent for OccurrenceSynthetic,
+// v2.compiler.source_root_eval native_census_owner_key answers Absent for OccurrenceSynthetic,
 // so a fatal anchored on the call node could never enter the census loci map and its row fell to
 // FileRefusalAtUnresolvedNode with occurrence null -- the uniform occurrence:null every seat
 // measured for the application_argument_does_not_inhabit class. (Refusal CAUSATION is unchanged
@@ -45,7 +45,7 @@ data lowered_call_subject_source: String = "module wall.same\n\nfn leaf() -> Boo
 // and even a lambda parameter under a generic combinator -- closes as a free T, so any .field read
 // on it fails 'no field kind on type T'. EVERY field read in this module therefore lives behind a
 // helper with an ANNOTATED parameter: the annotation types the bound value at the application.
-// Accepted claims (v2.test.claim.mtcollins1_boot_acceptance_matrix:252 et al.) rely on this pattern.
+// Accepted claims (v2.test.claim.mtcollins1_boot_acceptance_matrix et al.) rely on this pattern.
 
 // THE CALL NODE IS A TRANSFORM. Field read on the kind, typed by the annotation.
 fn lcn_is_transform(n: Node) -> Bool {
@@ -56,8 +56,8 @@ fn lcn_is_transform(n: Node) -> Bool {
 }
 
 // THE CALLEE SPINE IS THE AUTHORED `leaf` ATOM. The callee occupies the FIRST positional slot of a
-// lowered call (body_lower_transform_call builds it Positional-first, body_lowering_fold:5358), and
-// positional_child_target_nodes (node.dag:952) yields typed targets; the bound Present payload is
+// lowered call (body_lower_transform_call builds it Positional-first), and
+// positional_child_target_nodes yields typed targets; the bound Present payload is
 // passed onward so lcn_is_leaf_atom's annotation types it.
 fn lcn_is_leaf_atom(n: Node) -> Bool {
   match n.kind {

@@ -5364,8 +5364,8 @@ fn body_lower_transform_call(operator: Node, args: List<Edge>) -> Node {
 
 // A `name(args)` CALL NODE IS NOT A SYNTHETIC ONE. It is the semantic form of the authored call
 // text, so it stands for that text and takes its occurrence -- v2.std.node node_lowered_from, closed
-// at the root with close_lowered_image exactly as the where-predicate call does (:1238) and as the
-// index-read twin derives its operator (:7199). The bare node_synthetic this replaces made every
+// at the root with close_lowered_image exactly as the where-predicate call does and as the
+// index-read twin derives its operator. The bare node_synthetic this replaces made every
 // census fatal anchored on a primary call UNLOCATABLE: v2.compiler.source_root_eval
 // native_census_owner_key answers Absent for OccurrenceSynthetic, so the anchor could never enter
 // the loci map, and the row fell to FileRefusalAtUnresolvedNode with occurrence null. The callee
@@ -7013,6 +7013,15 @@ fn body_lower_postfix_chain_fold_step(
                 PostfixAccumSpine { segments: segments } =>
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
+                      // QUALIFIED CALL `m.f(args)` -- NOT YET ROUTED THROUGH body_lower_primary_call_node
+                      // (the one-defect generalization, stated here per DESIGN 6b rather than left implicit).
+                      // The operator here is body_lower_qualified_name_spine_node, which ALREADY stamps
+                      // source.occurrence_id on the spine root; giving the call root the same source would
+                      // place two nodes on one occurrence -- the collision body_lower_index_read_node records
+                      // for the index-read twin, which is why THAT site derives a distinct
+                      // OccurrencePending { caused_by } for its operator instead of reusing source. The same
+                      // caused_by geometry for this call root is the named follow-up PR (its trigger is this
+                      // one landing); it needs its own review because the spine shares the occurrence.
                       node: body_lower_transform_call(
                         operator: body_lower_qualified_name_spine_node(
                           segments: list_snoc_item(xs: segments, item: step_segment),
@@ -7026,6 +7035,12 @@ fn body_lower_postfix_chain_fold_step(
                 PostfixAccumValue { node: receiver } =>
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
+                      // RECEIVER CALL `recv.f(args)` -- same deferral as the qualified site above, same
+                      // reason shape: the method-name segment and the receiver each stand for text inside
+                      // the same postfix source, so stamping the call root with source without first
+                      // deriving a distinct caused_by occurrence would stack nodes on one identity. The
+                      // caused_by generalization is that same named follow-up PR; until then a census fatal
+                      // anchored on these two call shapes stays FileRefusalAtUnresolvedNode.
                       node: body_lower_transform_call(
                         operator: step_segment,
                         args: list_append(left: [Edge { label: Positional, target: receiver, declaration: NotADeclaration }], right: args)
@@ -7244,6 +7259,14 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
 // atom at its own occurrence: infer's Match path reads x's roster and a misspelt or foreign V refuses
 // (infer_match_pattern_variant_not_declared) located at V, inside the `is` expression. The synthesized
 // `true`, `false` and `_` are synthetic nodes, each its own occurrence: sharing V's occurrence id would put four nodes on one identity.
+// NOT YET ROUTED THROUGH node_lowered_from + close_lowered_image like the primary call and the cast
+// (the one-defect generalization, stated here per DESIGN 6b): at those two sites the authored suffix
+// is a node DISTINCT from the members it lowers, but here the suffix's source can BE V's own authored
+// token -- stamping the Match root with it would put root and pattern on one occurrence, the collision
+// this comment already refuses for the synthesized arms. The right shape is the caused_by geometry
+// body_lower_index_read_node derives for its operator (root OccurrencePending { caused_by } keeping V
+// the only Minted), and the walker's behavior over the still-authored V pattern is the named follow-up
+// PR's review item, together with the two postfix call sites in body_lower_postfix_chain_fold_step.
 fn body_lower_is_node(operand: Node, arm: Node) -> Node {
   lower_match(
     scrutinee: operand,
