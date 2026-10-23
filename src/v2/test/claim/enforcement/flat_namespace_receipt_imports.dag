@@ -1,4 +1,4 @@
-module test.claim.enforcement.flat_namespace_receipt_imports
+module v2.test.claim.enforcement.flat_namespace_receipt_imports
 
 import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
