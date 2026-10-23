@@ -29,7 +29,7 @@ import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal,
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.arm_resolution { ArmDecided, ArmTestDecision, ArmUndecided, ResolvedArm, node_is_arm_test, infer_match_variant_payload, resolve_is_arm }
-import v2.compiler.inferred_tree { ArmResolutions, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, ComparisonNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding, constructed_root_arm_resolutions }
+import v2.compiler.inferred_tree { ArmResolutions, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, ComparisonNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, RefinementObligation, NodeGrounding, constructed_root_arm_resolutions }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration, ordering_predicate_signature_node }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
@@ -195,6 +195,7 @@ type InferGatherFoldAcc {
   children_remaining: Int
   declared_position_expected: Optional<Node>
   rigid_binders: List<Symbol>
+  obligations: List<RefinementObligation>
 }
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
@@ -5710,7 +5711,8 @@ fn infer_gather_fold_acc_failed(
     await_transform_row: await_transform_row,
     children_remaining: children_remaining,
     declared_position_expected: Absent,
-    rigid_binders: Empty
+    rigid_binders: Empty,
+    obligations: Empty
   }
 }
 
@@ -5735,7 +5737,8 @@ fn infer_gather_fold_acc_ok(
     await_transform_row: await_transform_row,
     children_remaining: children_remaining,
     declared_position_expected: Absent,
-    rigid_binders: Empty
+    rigid_binders: Empty,
+    obligations: Empty
   }
 }
 
@@ -5751,7 +5754,8 @@ fn infer_gather_stamp_declared_position_expected(acc: InferGatherFoldAcc, expect
     await_transform_row: acc.await_transform_row,
     children_remaining: acc.children_remaining,
     declared_position_expected: expected,
-    rigid_binders: rigid_binders
+    rigid_binders: rigid_binders,
+    obligations: acc.obligations
   }
 }
 
@@ -7228,6 +7232,7 @@ fn infer_gather_fold_step(
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
+      merged_obligations: acc.obligations,
       merged_pending: acc.pending,
       partials: partials,
       kinds: kinds,
@@ -7237,6 +7242,7 @@ fn infer_gather_fold_step(
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
+      merged_obligations: acc.obligations,
       merged_pending: diagnostics_merge(outer: acc.pending, inner: infer_where_predicate_calls_unjudged(set: edge.target)),
       partials: partials,
       kinds: kinds,
@@ -7272,6 +7278,7 @@ fn infer_gather_fold_step(
         infer_gather_fold_step_merged(
           acc: acc,
           merged_entries: inferred_facts_index_enter(index: acc.entries, entry: domain_entry),
+          merged_obligations: acc.obligations,
           merged_pending: acc.pending,
           partials: partials,
           kinds: kinds,
@@ -7285,6 +7292,7 @@ fn infer_gather_fold_step(
         infer_gather_fold_step_merged(
           acc: acc,
           merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
+          merged_obligations: concat(acc.obligations, child.obligations),
           merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
           partials: partials,
           kinds: kinds,
@@ -7320,6 +7328,7 @@ fn infer_gather_literal_payload_step(
       infer_gather_fold_step_merged(
         acc: acc,
         merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
+        merged_obligations: acc.obligations,
         merged_pending: acc.pending,
         partials: partials,
         kinds: kinds,
@@ -7328,7 +7337,49 @@ fn infer_gather_literal_payload_step(
   }
 }
 
+// THE ONE FUNNEL A NODE'S SETTLED ROW IS REACHED THROUGH, so it is the one place the obligations its
+// children recorded join the row's own: every row below builds its acc from entries alone, and
+// infer_gather_acc_with_obligations puts the merged obligations back on whatever acc the row returned.
 fn infer_gather_fold_step_merged(
+  acc: InferGatherFoldAcc,
+  merged_entries: Map<Node, List<InferredFacts>>,
+  merged_obligations: List<RefinementObligation>,
+  merged_pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+) -> InferGatherFoldAcc {
+  infer_gather_acc_with_obligations(
+    acc: infer_gather_fold_step_row(
+      acc: acc,
+      merged_entries: merged_entries,
+      merged_pending: merged_pending,
+      partials: partials,
+      kinds: kinds,
+      resolved: resolved
+    ),
+    obligations: merged_obligations
+  )
+}
+
+fn infer_gather_acc_with_obligations(acc: InferGatherFoldAcc, obligations: List<RefinementObligation>) -> InferGatherFoldAcc {
+  InferGatherFoldAcc {
+    node: acc.node,
+    entries: acc.entries,
+    failed: acc.failed,
+    pending: acc.pending,
+    await_branch_row: acc.await_branch_row,
+    await_match_row: acc.await_match_row,
+    await_loop_row: acc.await_loop_row,
+    await_transform_row: acc.await_transform_row,
+    children_remaining: acc.children_remaining,
+    declared_position_expected: acc.declared_position_expected,
+    rigid_binders: acc.rigid_binders,
+    obligations: concat(acc.obligations, obligations)
+  }
+}
+
+fn infer_gather_fold_step_row(
   acc: InferGatherFoldAcc,
   merged_entries: Map<Node, List<InferredFacts>>,
   merged_pending: Diagnostics,
@@ -9657,7 +9708,8 @@ fn infer_gather_framed_init(acc: InferGatherFoldAcc, frame: InferFrame) -> Infer
         await_transform_row: stamped.await_transform_row,
         children_remaining: stamped.children_remaining,
         declared_position_expected: stamped.declared_position_expected,
-        rigid_binders: stamped.rigid_binders
+        rigid_binders: stamped.rigid_binders,
+        obligations: stamped.obligations
       }
     InferFrameEnteredRefused { refused: r } =>
       infer_gather_fold_acc_failed(
@@ -9694,12 +9746,14 @@ fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   canonical_grounding_admits_infer_facts(grounding: grounding)
 }
 
-fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+fn infer_gather_for_tree(tree: ResolvedTree) -> InferGatherFoldAcc {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
   let kinds = infer_language_inhabitants_kind_index()
-  infer_gather_acc_to_outcome(
-    acc: fold_node_dependent(n: tree.root, ctx: infer_root_frame(), algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, resolved: tree))
-  )
+  fold_node_dependent(n: tree.root, ctx: infer_root_frame(), algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, resolved: tree))
+}
+
+fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+  infer_gather_acc_to_outcome(acc: infer_gather_for_tree(tree: tree))
 }
 // INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
 // discharge_refinement_obligations is the one route onward. No obligation is recorded yet -- the
@@ -9734,7 +9788,8 @@ fn infer_malformed_tree_diagnostic(n: Node) -> Diagnostic {
 // evidence is dropped by the short-circuit.
 fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
   let sealed = infer_sole_constructor_diags(tree: tree)
-  match infer_entries_for_tree(tree: tree) {
+  let gathered = infer_gather_for_tree(tree: tree)
+  match infer_gather_acc_to_outcome(acc: gathered) {
     Rejected { diagnostics: r } =>
       match sealed {
         None => Rejected { diagnostics: r }
@@ -9768,7 +9823,7 @@ fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
                     tests: map_support_keys(m: arms),
                     decided: PartialFunction { lookup: fn(key) { infer_arm_decided_flatten(found: map_lookup(m: arms, key: key)) } }
                   },
-                  obligations: Empty
+                  obligations: gathered.obligations
                 },
                 diagnostics: d
               }
