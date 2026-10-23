@@ -1,0 +1,17 @@
+module examples.pun_with_import
+
+import std.types { Int }
+import examples.pun_home { shadowed_name }
+
+type PunThing = PunDup { shadowed_name: Int } | PunOther
+
+fn in_arm(v: PunThing) -> Int {
+  match v {
+    PunDup { shadowed_name } => shadowed_name
+    PunOther => 0
+  }
+}
+
+fn free_call() -> Int {
+  shadowed_name(2)
+}

@@ -1,0 +1,7 @@
+module examples.pun_home
+
+import std.types { Int }
+
+fn shadowed_name(x: Int) -> Int {
+  x
+}
