@@ -1,0 +1,21 @@
+module gunbc.s10_red_generic_none_fold_body_off_carrier
+
+import std.types { String, Bool, List, Int }
+import std.optional { Optional, Present, Absent }
+
+type KRow<K, V> {
+  row_key: K
+  value: V
+}
+
+// body yields Present{Int}, declared carrier is KRow<K,V>?: must REFUSE under the expected-type fix
+fn probe<K, V>(rows: List<KRow<K, V>>, wanted_key: K, key_eq: fn(K, K) -> Bool) -> KRow<K, V>? {
+  fold(rows, init: none, f: fn(acc, row) {
+    if key_eq(row.row_key, wanted_key) { Present { value: 1 } } else { acc }
+  })
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}
