@@ -14,10 +14,7 @@ import v2.compiler.value_use_dependency {
   NotDerivedReason, NotDerivedStanding, RecordAbsent, ValuedBinderNotLocated, ValuedBinderSiteUnkeyed,
   ValuedUseNotLocated, ValueUseDependencies, ValueUseNotDerived, ValueUseRelation
 }
-import v2.compiler.effect_demand {
-  ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, Pure, PrimitiveExecutionSemantics, ReadsBoundInput,
-  effect_demand_operation_classifications
-}
+import v2.compiler.primitive_execution_semantics { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, effect_demand_operation_classifications }
 import std.primitive_projection { primitive_projection_roster }
 import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites, FactGroup, FactSpan }
 import v2.compiler.dependency_demand {
