@@ -64,9 +64,13 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // fold (proven by design_witness_path_shadow_refuses_fail_closed against a synthetic
 // DaemonPathShadowed observation), not decided by the provisioning shell. Its LIVE observation is
 // STAGED, not emitted: per the shell→dag census this module's script side is an A5 `decompose` row
-// that must not grow its emitted shell surface, so the `command -v sccache` resolve waits for the
-// typed-argv dissolve-on (gunbc.host.host_effect_realize build_cache_provision_shell_script_dissolution_trigger) rather than landing as hand-shell now (review 42343). The model
-// carries the state and its refusal today; only the live producer is deferred.
+// that must not grow its emitted shell surface, so no `command -v` resolve is emitted as hand-shell here
+// (review 42343). The site DOES now read binary presence as one typed argv -- `test -x` on the installed
+// path, extdeps.posix.test_utility.test_executable_command through
+// gunbc.host.build_cache_daemon_ensure.build_cache_daemon_presence_command -- but that answers a
+// different question from a PATH resolve: it asks whether the canonical binary is executable, not which
+// binary a shell would have found. A PATH-shadow observation therefore remains unemitted, and the model
+// carries the state and its refusal today.
 
 // A stats read-back CANNOT see whether the daemon it just talked to is supervised — and this is not
 // a gap in the probe, it is the probe's semantics: `--show-stats` answers with a fully-formed table
@@ -90,8 +94,13 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // names rather than one Ok. The LIVE observation is STAGED exactly as the PATH-shadow one is — the
 // supervisor read (`systemctl --user is-active`) is not emitted as hand-shell here, because this
 // module's script side is an A5 `decompose` census row that may shrink but must not grow (review
-// 42343); it lands with the typed-argv dissolve-on (build_cache_provision_shell_script_dissolution_trigger). The model carries the state and its
-// refusal today; only the live producer is deferred. Construction covers the case this observation
+// 42343). No supervisor read is emitted here and none is pending behind a retired obligation: reading
+// whether the unit is supervised has to come from the manager that owns it -- `systemctl is-active` /
+// ShowProperty, which cannot report a unit it does not have as running -- and the stats table stays
+// supplemental by its own semantics rather than by omission. That ownership rule is filed as
+// gunbc.recurring_failure_mode.a_success_probe_on_an_absent_subject_exits_zero, which is also the row the
+// one-arm fix closes. The model carries the state and its refusal today; only the live producer is
+// deferred. Construction covers the case this observation
 // would catch on a host provisioned BY THIS LANE — build_cache_unit_daemon_runs_until_stopped makes
 // the self-exiting unit unwritable — so the observation's standing job is the residue construction
 // cannot reach: a host whose unit was stopped, masked, or replaced out of band.
