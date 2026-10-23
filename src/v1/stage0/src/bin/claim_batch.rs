@@ -577,7 +577,7 @@ fn write_outcomes_ledger(
     execution_mode: ExecutionMode,
     out: &str,
 ) -> Result<(), String> {
-    use v1_compiler::v1_interpreter::{run_in_context_with_args, str_value, Value};
+    use v1_compiler::v1_interpreter::{run_in_context_with_args, sorted_fields, str_value, Value};
     let wire_entry = source_roots
         .iter()
         .map(|root| std::path::Path::new(root).join("workflow/floor_terminal_ledger_wire.dag"))
@@ -598,15 +598,28 @@ fn write_outcomes_ledger(
     let ctx =
         make_eval_context_with_runtime_options(&graph, source_indices, execution_mode, None, None);
     let list = |items: Vec<Value>| Value::List(Rc::new(items.into_iter().collect()));
+    // The wire declares `OutcomeRow`; the record is built whole, so a row of the wrong shape cannot
+    // be sent. `tail` is exactly [kind, detail, exit_code, ground] (see `outcome_row_tail`).
     let row_values: Vec<Value> = rows
         .iter()
         .map(|(function, tail)| {
-            let mut fields = vec![
-                format!("{module_path}.{function}"),
-                "expect-hold".to_string(),
-            ];
-            fields.extend(tail.iter().cloned());
-            list(fields.iter().map(str_value).collect())
+            let [kind, detail, exit_code, ground] = tail.as_slice() else {
+                unreachable!("outcome_row_tail returns exactly four fields")
+            };
+            Value::Record {
+                type_name: ctx.sym("OutcomeRow"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("qualified"),
+                        str_value(format!("{module_path}.{function}")),
+                    ),
+                    (ctx.sym("expectation_wire"), str_value("expect-hold")),
+                    (ctx.sym("kind"), str_value(kind)),
+                    (ctx.sym("detail"), str_value(detail)),
+                    (ctx.sym("exit_code"), str_value(exit_code)),
+                    (ctx.sym("ground"), str_value(ground)),
+                ])),
+            }
         })
         .collect();
     let args = vec![

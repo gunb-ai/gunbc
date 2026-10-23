@@ -1019,9 +1019,9 @@ fn render_ledger_from_seed(
 // compared with, so the `seed-disposition-disagrees` refusal cannot fire on this path: its check
 // guarded a second mapping and this surface has none.
 //
-// A ROW IS SIX FIELDS, IN THIS ORDER: qualified name, expectation wire, outcome kind, detail,
-// exit code, ground. A field a kind does not carry is the empty string and a kind that needs one
-// refuses when it is empty. An unknown kind refuses with its own typed reason; there is no
+// A ROW IS THE DECLARED RECORD `OutcomeRow` (qualified name, expectation wire, outcome kind, detail,
+// exit code, ground), so a row of the wrong shape has no constructor. A field a kind does not carry
+// is the empty string. An unknown kind refuses with its own typed reason; there is no
 // default tag, because a default is the plausible output that reads as a verdict nobody reached.
 // THE OUTCOME KIND AND THE HERMETIC GROUND ARE CLOSED SUMS, DECLARED HERE. The seed's `ClaimOutcome`
 // has exactly these variants; every arm below matches the type, so a variant added here without an
@@ -1072,17 +1072,23 @@ type OutcomeRowDerivation
   = OutcomeRowDerived { row: SeedLedgerRow }
   | OutcomeRowRefused { reason: Symbol, offending: String }
 
+type OutcomeRow {
+  qualified: String
+  expectation_wire: String
+  kind: String
+  detail: String
+  exit_code: String
+  ground: String
+}
+
+type OutcomeRefusal {
+  reason: Symbol
+  offending: String
+}
+
 type OutcomeTerminalDerivation
   = OutcomeTerminalDerived { tag: String, detail: String }
   | OutcomeTerminalRefused { reason: Symbol }
-
-fn outcome_field(fields: List<String>, index: Int) -> String? {
-  match fields {
-    Empty => none
-    Cons { head: h, tail: t } =>
-      if index == 0 { Present { value: h } } else { outcome_field(fields: t, index: index - 1) }
-  }
-}
 
 fn outcome_ground_tag(ground: OutcomeGround) -> String {
   match ground {
@@ -1122,108 +1128,80 @@ fn derive_outcome_terminal(kind: OutcomeKind, detail: String, exit_code: String,
   }
 }
 
-fn derive_outcome_row(fields: List<String>) -> OutcomeRowDerivation {
-  match outcome_field(fields: fields, index: 0) {
-    Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: "" }
-    Present { value: qualified } =>
-      if fields.length() != 6 {
-        OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
-      } else {
-        let expectation_wire = outcome_field(fields: fields, index: 1)
-        let kind = outcome_field(fields: fields, index: 2)
-        let detail = outcome_field(fields: fields, index: 3)
-        let exit_code = outcome_field(fields: fields, index: 4)
-        let ground = outcome_field(fields: fields, index: 5)
-        match expectation_wire {
-          Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
-          Present { value: e } => match kind {
-            Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
-            Present { value: k } => match detail {
-              Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
-              Present { value: d } => match exit_code {
-                Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
-                Present { value: c } => match ground {
-                  Absent => OutcomeRowRefused { reason: "outcome-row-arity", offending: qualified }
-                  Present { value: g } =>
-                    match parse_outcome_kind(name: k) {
-                      Absent => OutcomeRowRefused { reason: "outcome-kind-unrecognized", offending: k }
-                      Present { value: parsed_kind } =>
-                    match derive_outcome_terminal(kind: parsed_kind, detail: d, exit_code: c, ground: g) {
-                      OutcomeTerminalRefused { reason: r } => OutcomeRowRefused { reason: r, offending: g }
-                      OutcomeTerminalDerived { tag: t, detail: td } =>
-                        match parse_expectation(wire: e) {
-                          Absent => OutcomeRowRefused { reason: "seed-expectation-unrecognized", offending: qualified }
-                          Present { value: expectation } =>
-                            match readback_disposition(row: LedgerReadbackRow {
-                              qualified: qualified,
-                              expectation: expectation,
-                              terminal_tag: t,
-                              terminal_detail: td
-                            }) {
-                              Absent => OutcomeRowRefused { reason: "seed-terminal-tag-unrecognized", offending: qualified }
-                              Present { value: disposition } =>
-                                OutcomeRowDerived { row: SeedLedgerRow {
-                                  qualified: qualified,
-                                  expectation_wire: e,
-                                  terminal_tag: t,
-                                  terminal_detail: td,
-                                  seed_disposition_wire: render_disposition(disposition: disposition)
-                                } }
-                            }
-                        }
-                    }
-                    }
-                }
+fn derive_outcome_row(row: OutcomeRow) -> OutcomeRowDerivation {
+  match parse_outcome_kind(name: row.kind) {
+    Absent => OutcomeRowRefused { reason: "outcome-kind-unrecognized", offending: row.kind }
+    Present { value: parsed_kind } =>
+      match derive_outcome_terminal(kind: parsed_kind, detail: row.detail, exit_code: row.exit_code, ground: row.ground) {
+        OutcomeTerminalRefused { reason: r } => OutcomeRowRefused { reason: r, offending: row.ground }
+        OutcomeTerminalDerived { tag: t, detail: td } =>
+          match parse_expectation(wire: row.expectation_wire) {
+            Absent => OutcomeRowRefused { reason: "seed-expectation-unrecognized", offending: row.qualified }
+            Present { value: expectation } =>
+              match readback_disposition(row: LedgerReadbackRow {
+                qualified: row.qualified,
+                expectation: expectation,
+                terminal_tag: t,
+                terminal_detail: td
+              }) {
+                Absent => OutcomeRowRefused { reason: "seed-terminal-tag-unrecognized", offending: row.qualified }
+                Present { value: disposition } =>
+                  OutcomeRowDerived { row: SeedLedgerRow {
+                    qualified: row.qualified,
+                    expectation_wire: row.expectation_wire,
+                    terminal_tag: t,
+                    terminal_detail: td,
+                    seed_disposition_wire: render_disposition(disposition: disposition)
+                  } }
               }
-            }
           }
-        }
       }
   }
 }
 
+// A LEDGER OVER NO ROWS IS NOT A LEDGER: nothing was observed, and an empty file would read as a
+// run that observed and held. It refuses, located at the subject it was asked to speak for.
 fn render_ledger_from_outcomes(
   repository_snapshot: String,
   prepared_subject: String,
-  rows: List<List<String>>,
+  rows: List<OutcomeRow>,
 ) -> LedgerRender {
-  let derivations = map(rows, r => derive_outcome_row(fields: r))
+  let derivations = map(rows, r => derive_outcome_row(row: r))
   let derived = flat_map(derivations, d => match d {
     OutcomeRowDerived { row: r } => [r]
     OutcomeRowRefused { reason: _, offending: _ } => []
   })
   let refusals = flat_map(derivations, d => match d {
-    OutcomeRowRefused { reason: reason, offending: offending } => [OutcomeRowRefused { reason: reason, offending: offending }]
+    OutcomeRowRefused { reason: reason, offending: offending } => [OutcomeRefusal { reason: reason, offending: offending }]
     OutcomeRowDerived { row: _ } => []
   })
   match refusals.first() {
     Present { value: first } =>
-      match first {
-        OutcomeRowDerived { row: _ } =>
-          LedgerUnrenderable {
-            reason: "unreachable-derived-in-refusals",
-            offending: "",
-            diagnosis: "unreachable-derived-in-refusals"
-          }
-        OutcomeRowRefused { reason: reason, offending: offending } =>
-          LedgerUnrenderable {
-            reason: reason,
-            offending: offending,
-            diagnosis: seed_diagnosis_of(
-              repository_snapshot: repository_snapshot,
-              prepared_subject: prepared_subject,
-              roster_identity: seed_roster_identity(rows: derived).digest,
-              rows: derived,
-              reason: reason,
-              offending: offending
-            )
-          }
+      LedgerUnrenderable {
+        reason: first.reason,
+        offending: first.offending,
+        diagnosis: seed_diagnosis_of(
+          repository_snapshot: repository_snapshot,
+          prepared_subject: prepared_subject,
+          roster_identity: seed_roster_identity(rows: derived).digest,
+          rows: derived,
+          reason: first.reason,
+          offending: first.offending
+        )
       }
     Absent =>
-      render_ledger_from_seed(
-        repository_snapshot: repository_snapshot,
-        prepared_subject: prepared_subject,
-        rows: derived
-      )
+      if rows.length() == 0 {
+        LedgerUnrenderable {
+          reason: "outcome-rows-empty",
+          offending: prepared_subject,
+          diagnosis: "outcome-rows-empty"
+        }
+      } else {
+        render_ledger_from_seed(
+          repository_snapshot: repository_snapshot,
+          prepared_subject: prepared_subject,
+          rows: derived
+        )
+      }
   }
 }

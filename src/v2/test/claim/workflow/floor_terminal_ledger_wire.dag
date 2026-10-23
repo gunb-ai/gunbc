@@ -50,6 +50,7 @@ import v2.workflow.floor_terminal_ledger_wire {
   render_ledger_from_seed,
   render_ledger_from_outcomes,
   derive_outcome_row,
+  OutcomeRow,
   OutcomeRowDerived,
   OutcomeRowRefused,
   parse_outcome_kind,
@@ -667,12 +668,19 @@ test fn an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses() -> 
 
 // ── THE OUTCOME-FACING SURFACE (render_ledger_from_outcomes) ──────────────────────────────────
 
-fn outcome_fields(kind: String, code: String, ground: String) -> List<String> {
-  ["a.b.c.f", "expect-hold", kind, "why", code, ground]
+fn outcome_fields(kind: String, code: String, ground: String) -> OutcomeRow {
+  OutcomeRow {
+    qualified: "a.b.c.f",
+    expectation_wire: "expect-hold",
+    kind: kind,
+    detail: "why",
+    exit_code: code,
+    ground: ground
+  }
 }
 
-fn outcome_tag_of(fields: List<String>) -> String {
-  match derive_outcome_row(fields: fields) {
+fn outcome_tag_of(fields: OutcomeRow) -> String {
+  match derive_outcome_row(row: fields) {
     OutcomeRowDerived { row: r } => r.terminal_tag
     OutcomeRowRefused { reason: r, offending: _ } => r as String
   }
@@ -684,7 +692,7 @@ fn outcome_tag_of(fields: List<String>) -> String {
 test fn every_outcome_kind_the_seed_names_derives_a_row() -> Bool {
   all(["Pass", "Fail", "NotBool", "RuntimeError", "BudgetInterrupted", "CompletedOverBudget",
        "HostToolUnresolved", "HostEffectRefused", "Panicked", "NotAttempted", "ExitFailure"], k =>
-    match derive_outcome_row(fields: outcome_fields(kind: k, code: "1", ground: "NoMockResponse")) {
+    match derive_outcome_row(row: outcome_fields(kind: k, code: "1", ground: "NoMockResponse")) {
       OutcomeRowDerived { row: _ } => true
       OutcomeRowRefused { reason: _, offending: _ } => false
     })
@@ -693,7 +701,7 @@ test fn every_outcome_kind_the_seed_names_derives_a_row() -> Bool {
 // THE DISCRIMINATING RED: an unrecognised kind refuses with its own typed reason, located at the
 // kind, and never reaches a default tag.
 test fn an_unrecognised_outcome_kind_refuses_located_at_the_kind() -> Bool {
-  match derive_outcome_row(fields: outcome_fields(kind: "Superposed", code: "", ground: "")) {
+  match derive_outcome_row(row: outcome_fields(kind: "Superposed", code: "", ground: "")) {
     OutcomeRowDerived { row: _ } => false
     OutcomeRowRefused { reason: r, offending: o } => r == "outcome-kind-unrecognized" && o == "Superposed"
   }
@@ -703,8 +711,15 @@ test fn an_unrecognised_ground_refuses() -> Bool {
   outcome_tag_of(fields: outcome_fields(kind: "HostEffectRefused", code: "", ground: "Nowhere")) == "outcome-ground-unrecognized"
 }
 
-test fn a_row_of_the_wrong_arity_refuses() -> Bool {
-  outcome_tag_of(fields: ["a.b.c.f", "expect-hold", "Pass"]) == "outcome-row-arity"
+test fn a_ledger_over_no_rows_refuses_instead_of_rendering_empty() -> Bool {
+  match render_ledger_from_outcomes(
+    repository_snapshot: "1234567890abcdef1234567890abcdef12345678",
+    prepared_subject: "0000000000000002",
+    rows: []
+  ) {
+    LedgerRendered { text: _ } => false
+    LedgerUnrenderable { reason: r, offending: o, diagnosis: _ } => r == "outcome-rows-empty" && o == "0000000000000002"
+  }
 }
 
 // CODE 2 IS THE EXIT CONTRACT'S "NO OBSERVATION"; any other code is a failing verdict.
