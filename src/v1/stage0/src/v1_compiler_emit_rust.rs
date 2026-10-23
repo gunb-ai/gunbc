@@ -121,7 +121,7 @@ use crate::v1_compiler_languages::VisibilitySpec::{KeywordVisibility};
 use crate::v1_std_core::CallSemantics::{PlainCallSemantics, ResolvedDirectCallSemantics, LookupCallSemantics, FunctionValueCallSemantics};
 use crate::v1_std_core::CallTargetIdentity::{RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall};
 use crate::v1_std_core::Cardinality::{Required, CardOptional};
-use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference};
+use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, LeafSharingDisagreement, EffectfulSelfRecursionUnrealized, AmbiguousReference};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v1_std_core::DeclarationMarker::{Unmarked};
 use crate::v1_std_core::ExprData::{NoExprData, ExprLiteral, ExprElaboratedLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
@@ -6511,26 +6511,64 @@ pub fn leaf_sharing_disagreement_declarers(
     }
 }
 
-pub fn leaf_sharing_disagreement_refusal(
-    name: String,
-    identity: String,
+pub fn leaf_sharing_disagreement_diagnostics(
+    tm: Rc<TypedModule>,
     emit_info: Rc<EmitGraphInfo>,
-) -> String {
+) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let declarers = leaf_sharing_disagreement_declarers(
-            emit_info.type_summaries.clone(),
-            name.clone(),
-            identity.clone(),
-            emit_info.recursive_type_set.clone(),
-            crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
-                .needs_sharing
-                .clone(),
-        );
-        if ((declarers.clone().len() as i64) == 0) {
-            "".to_string()
-        } else {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"leaf_sharing_disagreement: type '".to_string(), name.clone()), "' (".to_string()), identity.clone()), ") is heap-shared but its leaf is declared by ".to_string()), declarers.clone().join(&", ".to_string())), " and those declarations disagree on heap sharing; the shared set is keyed by leaf, so this declaration would be emitted unshared (Copy roster over Rc fields). Rename one declaration or key sharing by declaration identity.\");\n".to_string())
-        }
+        let si = tm.type_env.source_indices.clone();
+        let module_name = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in tm.items.clone().iter().cloned() {
+                    if (item.module_item_kind.clone()
+                        == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                    {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*{
+                        let name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
+                        let identity = crate::v1_compiler_infer_emit_info::type_decl_identity(
+                            module_name.clone(),
+                            name.clone(),
+                        );
+                        let declarers = leaf_sharing_disagreement_declarers(
+                            emit_info.type_summaries.clone(),
+                            name.clone(),
+                            identity.clone(),
+                            emit_info.recursive_type_set.clone(),
+                            crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
+                                .needs_sharing
+                                .clone(),
+                        );
+                        if ((declarers.clone().len() as i64) == 0) {
+                            Rc::new(vec![])
+                        } else {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::LeafSharingDisagreement {
+                                    name: name.clone(),
+                                    declarers: declarers.clone(),
+                                    span: item.span.clone(),
+                                }),
+                                module_name.clone(),
+                            )])
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
     }
 }
 
@@ -6849,6 +6887,7 @@ pub struct EmitRustContext {
     pub data_items: Rc<HashMap<String, Rc<Node>>>,
     pub anonymous_record_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub effectful_recursion_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub leaf_sharing_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub svc_module_map: Rc<HashMap<String, String>>,
     pub test_projections: Rc<Vec<Rc<TestProjection>>>,
     pub export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
@@ -6977,6 +7016,17 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             }
             __result
         });
+        let leaf_sharing_diags = Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*leaf_sharing_disagreement_diagnostics(tm.clone(), emit_info.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
@@ -7022,6 +7072,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             data_items: data_items.clone(),
             anonymous_record_diags: anonymous_record_diags.clone(),
             effectful_recursion_diags: effectful_recursion_diags.clone(),
+            leaf_sharing_diags: leaf_sharing_diags.clone(),
             svc_module_map: svc_module_map.clone(),
             test_projections: test_projections.clone(),
             export_sets: export_sets.clone(),
@@ -7095,6 +7146,15 @@ pub fn emit_rust_selected(
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: effectful_recursion_diags.clone(),
+                emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
+            });
+        }
+        let leaf_sharing_diags = ctx.leaf_sharing_diags.clone();
+        if ((leaf_sharing_diags.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: leaf_sharing_diags.clone(),
                 emitted_edges: Rc::new(vec![]),
                 rust_crates: Rc::new(vec![]),
             });
@@ -17137,23 +17197,12 @@ pub fn emit_type_def_from_connective(
                     env.clone(),
                     emit_info.clone(),
                 );
-                let guarded_struct = v1_rt::concat(
-                    leaf_sharing_disagreement_refusal(
-                        item_text.clone(),
-                        crate::v1_compiler_infer_emit_info::type_decl_identity(
-                            env.module_path.clone(),
-                            item_text.clone(),
-                        ),
-                        emit_info.clone(),
-                    ),
-                    struct_text.clone(),
-                );
                 if (clone_bound_refusal.clone() == "".to_string()) {
-                    guarded_struct.clone()
+                    struct_text.clone()
                 } else {
                     v1_rt::concat(
                         v1_rt::concat(clone_bound_refusal.clone(), "\n".to_string()),
-                        guarded_struct.clone(),
+                        struct_text.clone(),
                     )
                 }
             }
@@ -17318,27 +17367,17 @@ pub fn emit_type_def_from_connective(
                                 emit_info.clone(),
                                 env.source_indices.clone(),
                             );
-                            let enum_text = v1_rt::concat(
-                                leaf_sharing_disagreement_refusal(
-                                    item_text.clone(),
-                                    crate::v1_compiler_infer_emit_info::type_decl_identity(
-                                        env.module_path.clone(),
-                                        item_text.clone(),
-                                    ),
-                                    emit_info.clone(),
-                                ),
-                                emit_enum_from_children(
-                                    item_text.clone(),
-                                    type_params.clone(),
-                                    generic_param_names.clone(),
-                                    header_clone_param_names.clone(),
-                                    item.children.clone(),
-                                    recursive_types.clone(),
-                                    shared_types.clone(),
-                                    env.clone(),
-                                    serde_policy.clone(),
-                                    emit_info.clone(),
-                                ),
+                            let enum_text = emit_enum_from_children(
+                                item_text.clone(),
+                                type_params.clone(),
+                                generic_param_names.clone(),
+                                header_clone_param_names.clone(),
+                                item.children.clone(),
+                                recursive_types.clone(),
+                                shared_types.clone(),
+                                env.clone(),
+                                serde_policy.clone(),
+                                emit_info.clone(),
                             );
                             let validations = if (clone_bound_refusal.clone() == "".to_string()) {
                                 validations.clone()
