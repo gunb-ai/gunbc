@@ -45,7 +45,7 @@ import gunbc.flex_vast_credential { flex_vast_api_key_secret_ref, flex_vast_api_
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, RentedEndCondition,
   RentedDesiredEngine, RentedHostAccessDeclaration, RentedAccessRoute,
-  rented_allocation_identity, RentedProviderAsk,
+  rented_allocation_identity,
 }
 import gunbc.serving.rented_replica { RentedGpuDevice }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
@@ -467,10 +467,6 @@ fn flex_acquired_allocation(
       owner: policy.owner as NonEmptyStr,
       asked_at: asked_at,
       asked_rate: request.bid,
-      provider_ask: RentedProviderAsk {
-        ask: int_to_decimal_string(value: request.offer_id) as NonEmptyStr,
-        machine: int_to_decimal_string(value: request.machine_id) as NonEmptyStr,
-      },
     },
     contract: RentedContractUnread { obligation: flex_contract_unread_obligation },
     card: placement.card,

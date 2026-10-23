@@ -9,7 +9,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import extdeps.currency.currency { Usd }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
-import gunbc.serving.rented_allocation { RentedProviderAsk, RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire, rented_engine_served_name }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire, rented_engine_served_name }
 import gunbc.serving.rented_release { RentedObservedInstance,
   RentedDrainNotListening, RentedDrainUnreadable, RentedAnchorAbsent, RentedAnchorPresent, RentedLegOutcomeNotReached, RentedStoreNoPartials, RentedStorePartials,
   RentedHostAnswered, RentedHostSilent, RentedHostReading, RentedVantageReached, RentedVantageNotReached, RentedVantageUnread,
@@ -58,7 +58,6 @@ fn w_acquired() -> RentedServingAllocation {
       owner: "gunbc-flex" as NonEmptyStr,
       asked_at: 1792008000000,
       asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
-      provider_ask: RentedProviderAsk { ask: "77" as NonEmptyStr, machine: "42" as NonEmptyStr },
     },
     contract: i.contract, card: i.card, end: i.end, engine: i.engine,
     artifact: i.artifact, host: i.host, route: i.route,

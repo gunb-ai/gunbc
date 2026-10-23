@@ -11,7 +11,7 @@ import extdeps.cloud.vast_ai {
   vast_ai_charges_refusal, VastAiChargeFromVolume, VastAiChargeFromInstance, VastAiChargeFromServerless, VastAiChargeFromEndpoint, VastAiChargeFromWorkergroup, VastAiChargeSourceUnrecognized,
 }
 import product.fabric.flex_vast_shadow { FlexChargesStanding, FlexChargesPageTurn, flex_fold_charge_pages }
-import gunbc.serving.rented_allocation { RentedProviderAsk, RentedServingAllocation, RentedAllocationAcquired }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired }
 import gunbc.serving.rented_release { RentedGone, RentedPendingStillListed }
 import gunbc.serving.rented_settlement {
   RentedSettlementReadings, RentedChargesWalked, RentedChargesRefused, RentedChargesNotRead,
@@ -60,7 +60,6 @@ fn w_acquired() -> RentedServingAllocation {
       owner: "gunbc-flex" as NonEmptyStr,
       asked_at: 1792008000000,
       asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
-      provider_ask: RentedProviderAsk { ask: "77" as NonEmptyStr, machine: "42" as NonEmptyStr },
     },
     contract: i.contract, card: i.card, end: i.end, engine: i.engine,
     artifact: i.artifact, host: i.host, route: i.route,

@@ -524,8 +524,8 @@ test fn an_answered_create_constructs_the_acquired_allocation_keyed_by_provider_
   let a = flex_acquired_allocation(policy: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none).policy, request: r, placement: w_placement(), instance_id: 555, asked_at: 1792008000000)
   (a.identity == rented_allocation_identity(provider: flex_provider_declaration, contract: "555" as NonEmptyStr))
     && match a.origin {
-      RentedAllocationAcquired { owner: o, asked_at: at, asked_rate: rate, provider_ask: ask } =>
-        ((o as String) == "gunbc-flex") && (at == 1792008000000) && (money_per_hour_micros(q: rate) == w_bid_micros()) && ((ask.ask as String) == "7") && ((ask.machine as String) == "42")
+      RentedAllocationAcquired { owner: o, asked_at: at, asked_rate: rate } =>
+        ((o as String) == "gunbc-flex") && (at == 1792008000000) && (money_per_hour_micros(q: rate) == w_bid_micros())
       _ => false
     }
     && match a.contract {
