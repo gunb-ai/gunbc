@@ -514,7 +514,10 @@ fn slot_registration_file_command(instance: NonEmptyStr) -> List<String> {
 }
 
 fn slot_registration_unreadable(instance: NonEmptyStr, cause: String) -> SlotRegistrationIdentity {
-  SlotRegistrationUnreadable { instance: instance, cause: cause }
+  // THE CAUSE NAMES THE SLOT IT FAILED ON, not merely the typed field. A reader that cannot say which slot
+  // it could not read leaves an operator with nothing to act on, and a §5 diagnostic has to be located:
+  // this string is what reaches the observe receipt and the bracket's withheld-cap verdict verbatim.
+  SlotRegistrationUnreadable { instance: instance, cause: join(["slot ", instance as String, ": ", cause], "") }
 }
 
 // THE ONE HOST READ of the current registration identity, over the administrator-over-fleet-SSH edge.
