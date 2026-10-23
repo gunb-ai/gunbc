@@ -370,16 +370,6 @@ data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 // effect_plan_bash_materialize's UnsupportedEffectPlanStep arms currently refuse; class 3 has no
 // dissolution -- a marker that must not parse as shell is correctly a String; class 4 is owned by
 // the module that authors the body.
-// THE OPTION SET THAT MAKES BOTH FOLDS REQUIRE A BASH RECEIVER, DECLARED ONCE.
-//
-// `pipefail` is not POSIX sh -- it is the option that decides the emitted program cannot be handed
-// to `sh -s`, which is exactly what `extdeps.shell.exec` pins on the transport side. The literal was
-// spelled twice here, once at the head of each fold, and nothing named it: a witness that wanted to
-// read the fact had to render the entire program and grep it, at a cost the required floor's
-// per-claim ceiling refuses. Naming it makes the apply's own shell contract readable at its
-// producer, and keeps the two folds from drifting apart on the option set they set.
-data deploy_shell_strict_options_command: String = "set -euo pipefail"
-
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
     run: Run {
@@ -595,12 +585,6 @@ fn live_deploy_tailnet_door_unit_file(
         }
       }
   }
-}
-
-fn live_deploy_tailnet_door_unit_file_at(
-  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second,
-) -> LiveDeployTailnetDoorUnitEmission {
-  live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
 }
 
 // THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
@@ -1422,21 +1406,6 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
     decl_name: "install_d_shared_mode",
     field: WholeDeclaration,
   }
-)
-
-// THE BELT'S RECEIPT WRITE IS NOT CRASH-SAFE, AND THAT IS ADMITTED RATHER THAN OVERLOOKED. The tick
-// writes its receipt in place instead of through the same-directory staging + rename that
-// gunbc.fleet.fleet_converge_cli uses. In-place is correct on ownership grounds — the directory is
-// service-user-owned and the file is not a stale root-owned artifact — but a tick interrupted
-// mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a
-// wrong verdict. Adopting the atomic publish is the strictly better construction and is not done
-// here, so the weaker one is a decision on the record.
-//
-// The trigger is UNBOUND deliberately. The discharge is the belt tick adopting the atomic publish,
-// and no declaration carries that today — binding forward to a name nobody has written is the §3
-// fabricated-citation class std.dissolution refuses by name.
-data belt_receipt_in_place_write_residue_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "dissolves-on: the belt tick publishes its receipt through the same-directory staging + rename gunbc.fleet.fleet_converge_cli uses, so an interrupted tick cannot leave a truncated receipt behind." as NonEmptyStr
 )
 
 fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
