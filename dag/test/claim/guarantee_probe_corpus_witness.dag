@@ -298,8 +298,8 @@ test fn duplicate_probe_id_reds_registry() -> Bool {
 }
 
 test fn probe_set_digest_is_stable() -> Bool {
-  let a = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
-  let b = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
+  let a = probe_set_digest(probe_ids: guarantee_probe_ids()).digest
+  let b = probe_set_digest(probe_ids: guarantee_probe_ids()).digest
   a == b && a != ""
 }
 
@@ -822,8 +822,8 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      (receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
-        && !((receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))
+      receipt.anchor.probe_set_digest.digest == (probe_set_digest(probe_ids: executed).digest)
+        && !(receipt.anchor.probe_set_digest.digest == (probe_set_digest(probe_ids: guarantee_probe_ids()).digest))
     Absent => false
   }
 }
