@@ -78,6 +78,8 @@ fn claim_change_text(c: AmbientOperationClaim) -> String {
 // The table names the candidate by declaration identity and the parameter labels the call would rename; it is
 // a manager-named candidate, not a derivation: the census prints the declaration row when the module
 // contributes, and the column says when it did not. A spelling absent from the table has no candidate.
+// TRIGGER (manager direction, tidy-ant-251): derive the candidates from declaration rows when std.algebra resolves
+// (it is a refused declarer today, so the census prints none of its declarations); until then this table is manager direction.
 type DeclaredCandidate {
   spelling: String
   module: String
