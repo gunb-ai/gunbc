@@ -2292,7 +2292,7 @@ fn native_lane_pattern_admits_module(pattern: TargetPattern, module_qn: String) 
 // receipt runs) and every candidate test module. Everything else the run reads is a module one of these
 // requests.
 fn native_lane_candidate_entries(pattern: TargetPattern, population: List<String>) -> List<String> {
-  run_substrate_entries(base: Cons {
+  Cons {
     head: native_route_live_control_module,
     tail: filter(
       xs: population,
@@ -2300,7 +2300,7 @@ fn native_lane_candidate_entries(pattern: TargetPattern, population: List<String
         name != native_route_live_control_module && native_lane_pattern_admits_module(pattern: pattern, module_qn: name)
       }
     )
-  })
+  }
 }
 
 // WHAT THE ACQUIRER HANDS BACK: the modules of the requested closure, verified exact (R9), and the
