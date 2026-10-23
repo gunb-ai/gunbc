@@ -323,12 +323,61 @@ test fn infer_generic_formal_instantiation_refuses_a_non_inhabiting_argument_hol
 // THE DISCRIMINATING HALF THAT STAYS COUNTED: a type variable inside an ARROW formal (`(Int) -> T`) is
 // still the generic formal the judge holds no instance for; only a first-order Instantiation is matched.
 // (A bare variable formal binds its first instance and is decided, so it is not the counted shape.)
+// THE CLAIMED BEHAVIOR, RE-TARGETED TO THE SHAPE THAT STILL EXHIBITS IT AFTER #14749. This claim
+// asserts: an inhabitance obligation whose type mentions an in-scope type variable is COUNTED at the
+// frontier (ACCEPTED with the counted reason), not refused. Pre-#14749 (c5d5b2025e4e) the fixture put
+// the arrow INSIDE a formal (g<T>(t: (Int) -> T)) and its obligation counted, because nothing could
+// decide an in-scope T. The rigid-binder leaf rule made exactly that obligation decidable -- an
+// in-scope T now compares as itself -- so the counted reason for a T-headed FORMAL is gone by design
+// (the row gunbc.recurring_failure_mode witness_module_absent_from_the_executed_set records the
+// claim's old assertion as that rule's documented symptom). The counted frontier for an in-scope type
+// variable SURVIVES where the obligation cannot collapse to a self-comparison: applying a GENERIC
+// ARROW itself whose signature mentions T. This fixture pins THAT shape -- byte-faithful to the
+// arrow above (minted codomain positions 3004/3005), with the type-parameter binder minted (3006/3007,
+// distinct ids per position as v2.test.lens_common.infer_fixture requires) and the arrow applied
+// directly to the argument. claim_batch on this module re-derives the verdict; the assertion is
+// unchanged from the pre-#14749 claim (Accepted + counted reason present).
+fn inhabitance_arrow_formal_generic_application_tree() -> Node {
+  let arrow = inhabitance_arrow_formal_tree_minted_codomain()
+  let binder_conj = Node {
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [
+        Edge {
+          label: Authored { name: ^inhabitance_type_param_t },
+          target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3006),
+          declaration: NotADeclaration
+        }
+      ],
+      source: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3007)
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: type_params_edge(conj: binder_conj)
+          ),
+          occurrence_id: OccurrenceSynthetic
+        },
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -> Bool {
   match infer(
     tree: claim_resolved_tree_without_declarations(
-      root: inhabitance_generic_formal_tree_over(
-        declared: inhabitance_arrow_formal_tree_minted_codomain()
-      )
+      root: inhabitance_arrow_formal_generic_application_tree()
     )
   ) {
     Rejected { diagnostics: _ } => false
