@@ -512,6 +512,9 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
+      // RESIDUE: second consumer of the leaf-spelling classifier (the first is the emitter's
+      // node_is_keyed_collection); tracked by gunbc.recurring_failure_mode
+      // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose trigger covers both sites.
       if is_container_type(name: n.name) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
       else if decl.inferred != none { true }
       else { true }
