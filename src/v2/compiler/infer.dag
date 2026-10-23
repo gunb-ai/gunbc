@@ -7732,7 +7732,8 @@ fn infer_gather_literal_payload_step(
 
 // THE ONE FUNNEL A NODE'S SETTLED ROW IS REACHED THROUGH, so it is the one place the demands its
 // children recorded join the row's own: every row below builds its acc from entries alone, and
-// infer_gather_acc_with_demands puts the merged demands back on whatever acc the row returned.
+// infer_gather_acc_with_demands puts the merged demands back on whatever acc the row returned, BESIDE the demands
+// that row itself recorded (every row's acc is fresh, so an overwrite would drop the application row's own demand).
 fn infer_gather_fold_step_merged(
   acc: InferGatherFoldAcc,
   merged_entries: Map<Node, List<InferredFacts>>,
@@ -7742,7 +7743,7 @@ fn infer_gather_fold_step_merged(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  infer_gather_acc_set_demands(
+  infer_gather_acc_with_demands(
     acc: infer_gather_fold_step_row(
       acc: acc,
       merged_entries: merged_entries,
@@ -7769,24 +7770,6 @@ fn infer_gather_acc_with_demands(acc: InferGatherFoldAcc, demands: List<InferLit
     declared_position_expected: acc.declared_position_expected,
     rigid_binders: acc.rigid_binders,
     demands: concat(acc.demands, demands),
-    branch_hold: acc.branch_hold
-  }
-}
-
-fn infer_gather_acc_set_demands(acc: InferGatherFoldAcc, demands: List<InferLiteralRefinementDemand>) -> InferGatherFoldAcc {
-  InferGatherFoldAcc {
-    node: acc.node,
-    entries: acc.entries,
-    failed: acc.failed,
-    pending: acc.pending,
-    await_branch_row: acc.await_branch_row,
-    await_match_row: acc.await_match_row,
-    await_loop_row: acc.await_loop_row,
-    await_transform_row: acc.await_transform_row,
-    children_remaining: acc.children_remaining,
-    declared_position_expected: acc.declared_position_expected,
-    rigid_binders: acc.rigid_binders,
-    demands: demands,
     branch_hold: acc.branch_hold
   }
 }
