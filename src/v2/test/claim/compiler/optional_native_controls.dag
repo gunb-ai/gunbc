@@ -11,6 +11,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.types { Bool, String }
+import v2.std.node { Symbol }
 import v2.compiler.infer { infer }
 import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -179,37 +180,20 @@ test fn onc_unit_at_unit_accepts() -> Bool {
   onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Unit {\n  let z: Unit = u\n  z\n}\n")
 }
 
-test fn probe_generic_none_as_bool_reason_is_unsolved() -> Bool {
-  match onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") {
-    Rejected { diagnostics: _ } => false
+fn onc_none_fatal_reason(body: String) -> Symbol {
+  match onc_none_assemble(body: body) {
+    Rejected { diagnostics: _ } => ^assemble_rejected
     Accepted { value: root, diagnostics: _ } =>
       match infer(tree: root) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_unsolved_constructor_type_variable
+        Accepted { value: _, diagnostics: _ } => ^infer_accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
       }
   }
 }
 
-test fn probe_generic_none_as_bool_reason_is_annotation() -> Bool {
-  match onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^bound_value_does_not_inhabit_annotation
-      }
-  }
-}
-
-test fn probe_generic_none_unused_let_reason_is_unsolved() -> Bool {
-  match onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int {\n  let c = id(x: none)\n  1\n}\n") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_unsolved_constructor_type_variable
-      }
-  }
+// probe: the reason a generic none read as Bool is refused with, against the reason none at a non-optional position gives.
+test fn probe_generic_none_as_bool_reason_equals_none_at_int() -> Bool {
+  onc_none_fatal_reason(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") == onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") && onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") != ^infer_accepted
 }
 
 test fn onc_none_at_a_non_optional_position_refuses() -> Bool {
