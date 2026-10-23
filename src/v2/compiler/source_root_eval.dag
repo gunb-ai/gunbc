@@ -3259,7 +3259,7 @@ fn native_traversal_census_in_scope(module_qn: QualifiedName) -> Bool {
 
 fn native_traversal_census_owned(module: String) -> Bool {
   fold_list(xs: traversal_stage_roster, empty: false, cons: fn(any, s) {
-    any || fold_list(xs: s.modules, empty: false, cons: fn(a, m) { a || m == module })
+    any || (s.root.module_path == module)
   })
 }
 
@@ -3290,7 +3290,7 @@ fn native_traversal_census_module(w: NativeTraversalCensusFold, root: Normalized
 }
 
 fn native_traversal_census_seeds() -> List<String> {
-  fold_list(xs: collection_roster_rows, empty: traversal_primitive_seeds, cons: fn(acc, r) {
+  fold_list(xs: collection_roster_rows, empty: fold_list(xs: traversal_primitive_seeds, empty: [], cons: fn(a, d) { Cons { head: concat(d.module_path, concat(".", d.decl_name)), tail: a } }), cons: fn(acc, r) {
     Cons { head: concat(r.row.module_path, concat(".", r.row.decl_name)), tail: acc }
   })
 }

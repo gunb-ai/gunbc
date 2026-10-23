@@ -1,6 +1,7 @@
 module v2.compiler.traversal_order_census
 
 import std.algebra { Cons, Empty, fold_list, list_snoc_item, is_empty, length, empty_map, map_insert, map_lookup, list_at_optional }
+import std.decl_ref { DeclarationRef }
 import v2.compiler.eval { eval_transform_has_callee_reference }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.compiler.resolve { ResolvedTree }
@@ -364,13 +365,13 @@ fn trav_rounds() -> List<Int> {
 
 fn trav_owned_modules(stages: List<TraversalStage>) -> Map<String, Bool> {
   fold_list(xs: stages, empty: empty_map(), cons: fn(m, s) {
-    fold_list(xs: s.modules, empty: m, cons: fn(a, mod) { map_insert(m: a, key: mod, value: true) })
+    fold_list(xs: [s.root.module_path], empty: m, cons: fn(a, mod) { map_insert(m: a, key: mod, value: true) })
   })
 }
 
 fn trav_stage_of_module(stages: List<TraversalStage>, module: String) -> String {
   fold_list(xs: stages, empty: "", cons: fn(found, s) {
-    if fold_list(xs: s.modules, empty: false, cons: fn(any, mod) { any || mod == module }) { s.stage } else { found }
+    if fold_list(xs: [s.root.module_path], empty: false, cons: fn(any, mod) { any || mod == module }) { s.stage } else { found }
   })
 }
 
@@ -568,11 +569,11 @@ fn traversal_census_join(
     }
   })
   let missing_roots = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
-    if trav_has_fn(index: index, key: s.root) { acc } else { list_snoc_item(xs: acc, item: concat("missing_root ", concat(s.stage, concat(" ", s.root)))) }
+    if trav_has_fn(index: index, key: trav_ref_key(r: s.root)) { acc } else { list_snoc_item(xs: acc, item: concat("missing_root ", concat(s.stage, concat(" ", trav_ref_key(r: s.root))))) }
   })
   let unowned = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
-    if trav_has_fn(index: index, key: s.root) {
-      let closure = trav_closure(root: s.root, index: index, facts: facts)
+    if trav_has_fn(index: index, key: trav_ref_key(r: s.root)) {
+      let closure = trav_closure(root: trav_ref_key(r: s.root), index: index, facts: facts)
       let settled = if is_empty(xs: closure.frontier) { acc } else { list_snoc_item(xs: acc, item: concat("closure_did_not_settle ", s.stage)) }
       fold_list(xs: trav_unowned(stage: s, closure: closure, facts: facts, owned: owned), empty: settled, cons: fn(a, u) { list_snoc_item(xs: a, item: concat("unowned_module ", u)) })
     } else {
@@ -617,7 +618,7 @@ fn trav_total_line(stage: String, module: String, results: List<TraversalSiteRes
 
 fn traversal_census_lines(stages: List<TraversalStage>, report: TraversalCensusReport) -> List<String> {
   let totals = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
-    fold_list(xs: s.modules, empty: acc, cons: fn(a, mod) {
+    fold_list(xs: [s.root.module_path], empty: acc, cons: fn(a, mod) {
       list_snoc_item(xs: a, item: trav_total_line(stage: s.stage, module: mod, results: report.results))
     })
   })
@@ -642,4 +643,8 @@ fn traversal_census_lines(stages: List<TraversalStage>, report: TraversalCensusR
   fold_list(xs: [totals, unresolved, stale, refusals, verdict], empty: [], cons: fn(acc, l) {
     fold_list(xs: l, empty: acc, cons: fn(a, x) { list_snoc_item(xs: a, item: x) })
   })
+}
+
+fn trav_ref_key(r: DeclarationRef) -> String {
+  concat(r.module_path, concat(".", r.decl_name))
 }
