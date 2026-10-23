@@ -7,13 +7,11 @@ module v2.test.claim.walk_plan_schedule_lens
 
 import std.execution_mode { Hermetic }
 import std.realization_schedule {
-  RealizationObjective,
   RealizationPlan,
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
   RunnableKernelWorkload,
-  SelectionOff,
   WalkPlan,
   NoWalkFinalization,
   NoFinalizationDeclared,
@@ -44,7 +42,6 @@ fn synthetic_claim(function: String) -> Runnable {
 fn synthetic_ordinary_plan() -> RealizationPlan<Runnable> {
   RealizationPlan {
     target: synthetic_target,
-    objective: RealizationObjective { goals: [] },
     schedule: [
       [synthetic_claim(function: "cheap_claim_pool_gate_passes")],
       [synthetic_claim(function: synthetic_compile_gate_fn)],
@@ -128,7 +125,6 @@ fn discovery_runnable() -> Runnable {
     source_roots: ["dag"],
     scan_dirs: [],
     explicit_entries: [],
-    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile_negligible()
