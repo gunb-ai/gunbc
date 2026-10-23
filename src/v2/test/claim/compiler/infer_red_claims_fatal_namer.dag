@@ -99,6 +99,21 @@ data nam_candidate_set: List<String> = [
   "infer_reason_caller_admission_callee_unresolved",
   "infer_transform_operand_type_mismatch",
   "infer_literal_at_optional_is_not_present",
+  "application_argument_label_unknown",
+  "application_argument_slot_bound_twice",
+  "application_parameter_order_absent",
+  "application_parameter_order_malformed",
+  "application_positional_deficit",
+  "application_positional_surplus",
+  "arrow_body_does_not_inhabit_declared_return",
+  "find_witness_reason_ambiguous_candidate",
+  "find_witness_reason_invalid_witness",
+  "find_witness_reason_no_candidate",
+  "find_witness_reason_not_realized",
+  "record_construct_field_missing",
+  "record_construct_field_not_declared",
+  "record_construct_field_not_named",
+  "record_field_value_does_not_inhabit",
   "ACCEPTED"
 ]
 
@@ -108,6 +123,37 @@ data nam_candidate_set: List<String> = [
 // precedent: single-line predicates per record_field_pun:139).
 fn nam_str_eq(a: String, b: String) -> Bool {
   a == b
+}
+
+
+// FAMILY MEMBERSHIP via contains over a typed prefix list -- same pattern nam_in_set proves green,
+// no 779-character boolean chain (parser risk) for the twelve-prefix catch-all.
+data nam_family_prefixes: List<String> = [
+  "inhabitance_",
+  "infer_",
+  "resolve",
+  "body_lowering_",
+  "application_",
+  "find_witness_",
+  "record_",
+  "arrow_",
+  "cast_",
+  "coercion_",
+  "native_",
+  "grammar_",
+  "assemble_",
+  "emit_",
+  "eval_",
+  "parse_"
+]
+
+// contains calls eq(candidate, item): candidate is the prefix from the list, item is the reason.
+fn nam_reason_starts(prefix: String, reason: String) -> Bool {
+  starts_with(s: reason, prefix: prefix)
+}
+
+fn nam_any_family(x: String) -> Bool {
+  contains(xs: nam_family_prefixes, item: x, eq: nam_reason_starts)
 }
 
 fn nam_in_set(x: String) -> Bool {
@@ -345,4 +391,212 @@ test fn nam_b_fatal_family_is_resolve() -> Bool {
 
 test fn nam_b_fatal_family_is_none() -> Bool {
   (!(nam_starts(x: nam_b_reason(), prefix: "inhabitance_"))) && (!(nam_starts(x: nam_b_reason(), prefix: "infer_"))) && (!(nam_starts(x: nam_b_reason(), prefix: "resolve"))) && (nam_b_reason() != "ACCEPTED") && (nam_b_reason() != "RESOLVE_REFUSED")
+}
+
+// ---- ROUND 3 (M3 msg_daeba408): widen with the EXACT symbols the corpus shows mintable through the executed files
+// (grep of reason-mint sites in v2.compiler.infer + v2.std.inhabitance + v2.std.find_witness, intersected
+// with corpus mint sites), NOT guessed family names. KEY GAP IN ROUND 1'S PARTITION: the label itself
+// starts with application_, a prefix no family control covered -- so an application-shaped fatal other
+// than the label PASSed every family claim as 'none'. Prime suspects by tree shape: (a) application_
+// arity/order/label reasons; (c) arrow_body_does_not_inhabit_declared_return (its formal is
+// (Int) -> T with an Int body).
+
+test fn nam_a_fatal_is_app_label_unknown() -> Bool {
+  nam_a_reason() == "application_argument_label_unknown"
+}
+
+test fn nam_a_fatal_is_app_slot_bound_twice() -> Bool {
+  nam_a_reason() == "application_argument_slot_bound_twice"
+}
+
+test fn nam_a_fatal_is_app_param_order_absent() -> Bool {
+  nam_a_reason() == "application_parameter_order_absent"
+}
+
+test fn nam_a_fatal_is_app_param_order_malformed() -> Bool {
+  nam_a_reason() == "application_parameter_order_malformed"
+}
+
+test fn nam_a_fatal_is_app_pos_deficit() -> Bool {
+  nam_a_reason() == "application_positional_deficit"
+}
+
+test fn nam_a_fatal_is_app_pos_surplus() -> Bool {
+  nam_a_reason() == "application_positional_surplus"
+}
+
+test fn nam_a_fatal_is_arrow_body_not_inhabit_return() -> Bool {
+  nam_a_reason() == "arrow_body_does_not_inhabit_declared_return"
+}
+
+test fn nam_a_fatal_is_fw_ambiguous() -> Bool {
+  nam_a_reason() == "find_witness_reason_ambiguous_candidate"
+}
+
+test fn nam_a_fatal_is_fw_invalid() -> Bool {
+  nam_a_reason() == "find_witness_reason_invalid_witness"
+}
+
+test fn nam_a_fatal_is_fw_no_candidate() -> Bool {
+  nam_a_reason() == "find_witness_reason_no_candidate"
+}
+
+test fn nam_a_fatal_is_fw_not_realized() -> Bool {
+  nam_a_reason() == "find_witness_reason_not_realized"
+}
+
+test fn nam_a_fatal_is_rec_field_missing() -> Bool {
+  nam_a_reason() == "record_construct_field_missing"
+}
+
+test fn nam_a_fatal_is_rec_field_not_declared() -> Bool {
+  nam_a_reason() == "record_construct_field_not_declared"
+}
+
+test fn nam_a_fatal_is_rec_field_not_named() -> Bool {
+  nam_a_reason() == "record_construct_field_not_named"
+}
+
+test fn nam_a_fatal_is_rec_field_value_not_inhabit() -> Bool {
+  nam_a_reason() == "record_field_value_does_not_inhabit"
+}
+
+test fn nam_a_fatal_family_is_application() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "application_")
+}
+
+test fn nam_a_fatal_family_is_find_witness() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "find_witness_")
+}
+
+test fn nam_a_fatal_family_is_record() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "record_")
+}
+
+test fn nam_a_fatal_family_is_arrow() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "arrow_")
+}
+
+test fn nam_a_fatal_family_is_cast() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "cast_")
+}
+
+test fn nam_a_fatal_family_is_coercion() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "coercion_")
+}
+
+test fn nam_a_fatal_family_is_native() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "native_")
+}
+
+test fn nam_a_fatal_family_is_grammar() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "grammar_")
+}
+
+// CATCH-ALL v2: excludes ALL twelve prefixes (the four original families lacked application_ -- the label's OWN prefix -- which is why round 1's none PASSed trivially for anything application-shaped).
+// CATCH-ALL v2: excludes ALL SIXTEEN prefixes round 2+3 partition (round 1's four families
+// lacked application_ -- the label's OWN prefix -- so any application-shaped fatal PASSed the
+// four-family none trivially; see msg_daeba408).
+test fn nam_a_fatal_family_is_still_none() -> Bool {
+  (!(nam_any_family(x: nam_a_reason()))) && (nam_a_reason() != "ACCEPTED") && (nam_a_reason() != "RESOLVE_REFUSED")
+}
+
+test fn nam_c_fatal_is_app_label_unknown() -> Bool {
+  nam_c_reason() == "application_argument_label_unknown"
+}
+
+test fn nam_c_fatal_is_app_slot_bound_twice() -> Bool {
+  nam_c_reason() == "application_argument_slot_bound_twice"
+}
+
+test fn nam_c_fatal_is_app_param_order_absent() -> Bool {
+  nam_c_reason() == "application_parameter_order_absent"
+}
+
+test fn nam_c_fatal_is_app_param_order_malformed() -> Bool {
+  nam_c_reason() == "application_parameter_order_malformed"
+}
+
+test fn nam_c_fatal_is_app_pos_deficit() -> Bool {
+  nam_c_reason() == "application_positional_deficit"
+}
+
+test fn nam_c_fatal_is_app_pos_surplus() -> Bool {
+  nam_c_reason() == "application_positional_surplus"
+}
+
+test fn nam_c_fatal_is_arrow_body_not_inhabit_return() -> Bool {
+  nam_c_reason() == "arrow_body_does_not_inhabit_declared_return"
+}
+
+test fn nam_c_fatal_is_fw_ambiguous() -> Bool {
+  nam_c_reason() == "find_witness_reason_ambiguous_candidate"
+}
+
+test fn nam_c_fatal_is_fw_invalid() -> Bool {
+  nam_c_reason() == "find_witness_reason_invalid_witness"
+}
+
+test fn nam_c_fatal_is_fw_no_candidate() -> Bool {
+  nam_c_reason() == "find_witness_reason_no_candidate"
+}
+
+test fn nam_c_fatal_is_fw_not_realized() -> Bool {
+  nam_c_reason() == "find_witness_reason_not_realized"
+}
+
+test fn nam_c_fatal_is_rec_field_missing() -> Bool {
+  nam_c_reason() == "record_construct_field_missing"
+}
+
+test fn nam_c_fatal_is_rec_field_not_declared() -> Bool {
+  nam_c_reason() == "record_construct_field_not_declared"
+}
+
+test fn nam_c_fatal_is_rec_field_not_named() -> Bool {
+  nam_c_reason() == "record_construct_field_not_named"
+}
+
+test fn nam_c_fatal_is_rec_field_value_not_inhabit() -> Bool {
+  nam_c_reason() == "record_field_value_does_not_inhabit"
+}
+
+test fn nam_c_fatal_family_is_application() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "application_")
+}
+
+test fn nam_c_fatal_family_is_find_witness() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "find_witness_")
+}
+
+test fn nam_c_fatal_family_is_record() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "record_")
+}
+
+test fn nam_c_fatal_family_is_arrow() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "arrow_")
+}
+
+test fn nam_c_fatal_family_is_cast() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "cast_")
+}
+
+test fn nam_c_fatal_family_is_coercion() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "coercion_")
+}
+
+test fn nam_c_fatal_family_is_native() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "native_")
+}
+
+test fn nam_c_fatal_family_is_grammar() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "grammar_")
+}
+
+// CATCH-ALL v2: excludes ALL twelve prefixes (the four original families lacked application_ -- the label's OWN prefix -- which is why round 1's none PASSed trivially for anything application-shaped).
+// CATCH-ALL v2: excludes ALL SIXTEEN prefixes round 2+3 partition (round 1's four families
+// lacked application_ -- the label's OWN prefix -- so any application-shaped fatal PASSed the
+// four-family none trivially; see msg_daeba408).
+test fn nam_c_fatal_family_is_still_none() -> Bool {
+  (!(nam_any_family(x: nam_c_reason()))) && (nam_c_reason() != "ACCEPTED") && (nam_c_reason() != "RESOLVE_REFUSED")
 }
