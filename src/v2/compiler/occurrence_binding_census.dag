@@ -224,14 +224,15 @@ fn occurrence_binding_declaration_params(arrow: Node) -> String {
 }
 
 fn occurrence_binding_params_text(members: List<Edge>) -> String {
-  fold_list(xs: members, empty: "", cons: fn(acc, e) {
-    match e.label {
-      Authored { name: p } =>
-        (if acc == "" { "" } else { acc + ", " }) + symbol_lexeme(sym: p) + ": " + ref_text(t: type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)))
-      StructuralLabel { label: _ } => acc
-      Positional => acc
-    }
-  })
+  join(filter(map(members, m => occurrence_binding_param_text(edge: m)), t => t != ""), ", ")
+}
+
+fn occurrence_binding_param_text(edge: Edge) -> String {
+  match edge.label {
+    Authored { name: p } => symbol_lexeme(sym: p) + ": " + ref_text(t: type_ref_text(n: symbol_index_binder_type_or_target(target: edge.target)))
+    StructuralLabel { label: _ } => ""
+    Positional => ""
+  }
 }
 
 // THE OTHER HALF OF EXACTLY ONE SOURCE PER OCCURRENCE: a declaration reference in the resolved tree
