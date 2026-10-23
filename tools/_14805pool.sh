@@ -52,7 +52,8 @@ run_chunk() { # tag entry fns... ; prints POOLROW lines for its claims; rc 0=ver
     cd $WT && timeout $CHUNK_T $CB --claim-run --source-root dag --source-root src/v2 --entry $entry --functions "$(printf '%s,' "$@" | sed 's/,$//')" > $out 2>&1 ) &
   local pid=$!
   # memory.current sampler (memory.peak absent on this kernel): max seen while the proc lives
-  local pkfile=/tmp/w805p_out/$tag.peak pkmax=0
+  local pkmax=0
+  [ -f $cg/memory.current ] || echo "SAMPLER_NO_FILE $cg/memory.current" >> /tmp/w805p_out/sampler.diag
   while kill -0 $pid 2>/dev/null; do
     if [ -f $cg/memory.current ]; then cur=$(cat $cg/memory.current 2>/dev/null || echo 0); else cur=0; fi
     [ "$cur" -gt "$pkmax" ] 2>/dev/null && pkmax=$cur
@@ -62,7 +63,7 @@ run_chunk() { # tag entry fns... ; prints POOLROW lines for its claims; rc 0=ver
   local pk=$((pkmax/1024)); rm -rf $cg 2>/dev/null || true
   local got=0 line nm
   for nm in "$@"; do
-    line=$(grep -aE "^(PASS|FAIL|UNOBSERVED) $nm$" $out | head -1)
+    line=$(grep -aE "^(PASS|FAIL|UNOBSERVED) $nm( |\$)" $out | head -1)
     if [ -n "$line" ]; then
       got=$((got+1))
       echo "POOLROW $TREE $entry $nm ${line%% *} $rc $pk -"
@@ -98,7 +99,7 @@ for f in $FILES; do
     for tag in "${tags[@]}"; do cat /tmp/w805p_out/$tag.rows 2>/dev/null; done
     # requeue sweep: any UNOBSERVED rows with cause=timeout/oom in multi-claim chunks -> rerun singly, once
     for tag in "${tags[@]}"; do
-      grep -E ' UNOBSERVED [0-9]+ (na|[0-9]+) (timeout|oom|rc=137)$' /tmp/w805p_out/$tag.rows 2>/dev/null | while read -r _ _ ent nm _ _ _; do
+      grep -E ' UNOBSERVED [0-9]+ (na|[0-9]+) (timeout|oom|rc=137|rc=1)$' /tmp/w805p_out/$tag.rows 2>/dev/null | while read -r _ _ ent nm _ _ _; do
         echo "RETRY1 $TREE $ent $nm"
         run_chunk "${tag}_rt_$(echo $nm | cut -c1-24)" "$ent" "$nm"
       done
