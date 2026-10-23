@@ -31672,7 +31672,7 @@ mod peel_alias_fixpoint_termination {
                 ),
             );
             // No files in this probe: the peel tree is synthetic, module_path is empty.
-            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // file_modules / module_named_imports / alias_cycles therefore come from empty_symbol_index,
             // the same constructor every other empty SymbolIndex uses.
             let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
@@ -31680,6 +31680,7 @@ mod peel_alias_fixpoint_termination {
                 global_bare,
                 services: empty_index.services.clone(),
                 transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                alias_cycles: empty_index.alias_cycles.clone(),
                 type_head_exposures: empty_index.type_head_exposures.clone(),
                 file_modules: empty_index.file_modules.clone(),
                 module_named_imports: empty_index.module_named_imports.clone(),
