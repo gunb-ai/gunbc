@@ -1,0 +1,54 @@
+module v2.test.claim.compiler.infer_nested_shape_fatal_exact
+
+// SEAT 16, SCRATCH (never-merge). Round 9: exact == over the bucket round 8 located.
+// Same tree as rounds 7/8 (claim's own builders). One PASS names the fatal.
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness {
+  inhabitance_arrow_formal_tree_minted_codomain,
+  inhabitance_generic_formal_tree_over
+}
+
+fn nex_fatal_sym(d: NonEmptyDiagnostics) -> String {
+  symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+}
+
+fn nex_reason() -> String {
+  match infer(tree: claim_resolved_tree_without_declarations(
+    root: inhabitance_generic_formal_tree_over(
+      declared: inhabitance_arrow_formal_tree_minted_codomain()
+    )
+  )) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => nex_fatal_sym(d: d)
+  }
+}
+
+test fn nex_is_application_parameter_order_absent() -> Bool {
+  nex_reason() == "application_parameter_order_absent"
+}
+test fn nex_is_application_parameter_order_malformed() -> Bool {
+  nex_reason() == "application_parameter_order_malformed"
+}
+test fn nex_is_application_positional_deficit() -> Bool {
+  nex_reason() == "application_positional_deficit"
+}
+test fn nex_is_application_positional_surplus() -> Bool {
+  nex_reason() == "application_positional_surplus"
+}
+test fn nex_is_arrow_body_child_ambiguous() -> Bool {
+  nex_reason() == "arrow_body_child_ambiguous"
+}
+test fn nex_is_arrow_body_child_missing() -> Bool {
+  nex_reason() == "arrow_body_child_missing"
+}
+test fn nex_is_arrow_body_child_not_arrow() -> Bool {
+  nex_reason() == "arrow_body_child_not_arrow"
+}
+test fn nex_is_arrow_body_does_not_inhabit_declared_return() -> Bool {
+  nex_reason() == "arrow_body_does_not_inhabit_declared_return"
+}
